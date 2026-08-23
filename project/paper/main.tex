@@ -1,0 +1,139 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,booktabs,graphicx,hyperref,xcolor,tabularx,array}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{caption}
+\hypersetup{colorlinks=true,citecolor=blue!50!black,linkcolor=blue!45!black,urlcolor=blue!55!black}
+\graphicspath{{../runs/full-training-363490-2026-08-11-r2/plots/}{../runs/mass-ablation-363490-2026-08-11/plots/}}
+\newcommand{\todo}[1]{\textcolor{red!70!black}{\textbf{TODO: #1}}}
+\title{Discrimination and Background-Mass Stability in an MC-Only\\$H\to ZZ^{*}\to4\ell$ XGBoost Study}
+\author{Draft for internal discussion}
+\date{Version 1.0 evidence freeze: 11 August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We study a Monte-Carlo-only classifier for separating simulated $H\to ZZ^{*}\to4\ell$ events from continuum $ZZ\to4\ell$ background while preserving the background four-lepton mass distribution. After a common event selection, the signal and background samples contain 187,128 and 11,976 events, respectively. A 14-variable XGBoost reference model that excludes $m_{4\ell}$ achieves a weighted out-of-fold (OOF) area under the ROC curve of 0.8853 and a one-shot independent-test AUC of 0.8941. However, its background mass distribution is strongly sculpted: the largest OOF weighted Kolmogorov--Smirnov (KS) distance across three frozen working points is 0.458. Three predeclared feature-removal profiles fail the joint requirement of OOF AUC $\geq0.80$ and KS $\leq0.10$ at every working point. The ablation therefore terminates as \texttt{no\_eligible\_profile}; its held-out test is not opened. The result establishes that excluding the mass itself, or removing a small set of correlated inputs, is insufficient for this setup and motivates explicit decorrelation-aware training. No collision-data result is reported.
+\end{abstract}
+
+\section{Introduction}
+
+The four-lepton final state provides a constrained experimental topology in which a narrow simulated Higgs contribution near 125~GeV can be contrasted with continuum $ZZ$ production. Multivariate classifiers can exploit differences in decay and production kinematics, but a classifier used before a mass-spectrum analysis must not create artificial structures in the background observable. This tension motivates a joint evaluation of discrimination and background-shape stability rather than optimization of AUC alone.
+
+This work develops a reproducible, MC-only method study using ATLAS Open Data educational samples and XGBoost~\cite{atlasopendata2025,atlasmetadata2025,chen2016xgboost}. The immediate question is whether a classifier that does not receive $m_{4\ell}$ can retain useful signal--background separation while preserving the continuum-background mass shape. The contribution of this version is a frozen reference training, an explicit mass-sculpting diagnostic, and a predeclared feature-ablation decision with a sealed held-out test.
+
+\todo{Add a reviewed literature paragraph on decorrelated classifiers, adversarial training, DDT-style transformations, and mass-decorrelated taggers before external circulation. No unverified citations are inserted in this draft.}
+
+\section{Samples and event selection}
+\label{sec:data}
+
+The signal is Higgs MC dataset 345060 and the principal continuum background is $ZZ$ MC dataset 363490. The inputs follow the ATLAS 13~TeV Open Data educational format~\cite{atlasopendata2025}. Dataset identifiers and normalization metadata are checked against the published metadata catalogue~\cite{atlasmetadata2025}. A retained data16 period-A file is outside the scope of this MC-only study and is neither read nor scored in the frozen training and ablation stages discussed here.
+
+The common selection applies trigger, lepton identification and isolation, impact-parameter, four-good-lepton, trigger-matching, ordered lepton-$p_T$, acceptance, charge, same-flavour opposite-sign (SFOS) pairing, and dilepton-mass requirements. The $Z_1$ candidate is the SFOS pair closest to the nominal $Z$ mass; the other pair is $Z_2$. The analysis window is $105\leq m_{4\ell}<160$~GeV. Table~\ref{tab:samples} gives the frozen counts.
+
+\begin{table}[ht]
+\centering
+\caption{Event counts in the frozen DSID 363490 baseline.}
+\label{tab:samples}
+\begin{tabular}{lrr}
+\toprule
+Sample & Read events & Selected events\\
+\midrule
+Higgs 345060 MC & 419,943 & 187,128\\
+Continuum $ZZ$ 363490 MC & 554,279 & 11,976\\
+data16 period A (not used here) & 29,275 & 2\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Signed physical weights are retained for yield summaries. Since the classifier does not accept negative sample weights, fitting uses normalized absolute physical weights, with class balancing applied within each fit. The final MC table contains 199,104 rows split deterministically into 119,676 training, 39,719 validation, and 39,709 test rows. Stable event identities prevent train--test overlap.
+
+\section{Classification method}
+\label{sec:method}
+
+The 14 inputs are the transverse momenta and pseudorapidities of the four $p_T$-ordered leptons, $m_{Z1}$, $m_{Z2}$, $p_T^{4\ell}$, $\Delta R_{Z1}$, $\Delta R_{Z2}$, and $|\Delta\phi_{ZZ}|$. The four-lepton mass, event/run/channel identifiers, sample source, and all weight fields are forbidden features. Excluding $m_{4\ell}$ prevents direct mass leakage but does not guarantee independence from mass-correlated kinematics.
+
+The development procedure uses five-fold OOF predictions. Six XGBoost candidates span maximum depths 2, 3, and 4 and minimum child weights 5 and 20. Common settings are 1000 maximum estimators, learning rate 0.05, subsample and column-sample fractions 0.8, $L_1$ regularization 0.1, $L_2$ regularization 2.0, histogram tree construction, and early stopping after 50 rounds. The frozen reference is the depth-4, child-weight-20 candidate with 998 trees.
+
+Three operating points are defined from OOF background efficiencies of 0.50, 0.20, and 0.10, denoted loose, medium, and tight. Their score thresholds are 0.2561855, 0.6316323, and 0.7826042. Performance is measured by weighted ROC AUC. Shape stability is measured by the weighted KS distance between the inclusive $ZZ$ $m_{4\ell}$ distribution and the distribution after each score threshold.
+
+\section{Validation and blinding protocol}
+\label{sec:protocol}
+
+Candidate choice, stopping iteration, and operating points are determined from development/OOF information. After freezing these choices, the reference model is evaluated once on the independent MC test split. The reference test result is an audit, not an input to model selection.
+
+The subsequent mass-sculpting ablation is a separate gated study. Before running it, three selectable feature profiles and two acceptance criteria were fixed: weighted OOF AUC $\geq0.80$ and weighted $ZZ$ mass KS $\leq0.10$ at all three operating points. The held-out test for a reduced profile could be opened only if the profile passed both OOF requirements. No threshold, candidate set, or acceptance criterion could be relaxed after observing the OOF results. Collision data remained sealed.
+
+\section{Results}
+\label{sec:results}
+
+The official DSID 363490 selection provides 11,976 background events, 25.4 times the 471 events in the superseded DSID 700600 baseline. The reference model reaches weighted AUC values of 0.885296 OOF and 0.894054 on the independent test (Fig.~\ref{fig:roc}). Its OOF signal efficiencies at the loose, medium, and tight points are 0.9833, 0.8081, and 0.5945, respectively.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.72\linewidth]{roc_curve.png}
+\caption{MC-only ROC curves for the frozen reference model. The test curve is the one-shot evaluation after all reference-model choices were fixed.}
+\label{fig:roc}
+\end{figure}
+
+The useful discrimination is accompanied by substantial background mass dependence. The OOF score--mass weighted correlation for $ZZ$ is $-0.6335$. The inclusive-to-selected OOF KS distances are 0.2912, 0.4083, and 0.4580 from loose to tight. Figure~\ref{fig:mass} shows the corresponding MC spectra. The narrow Higgs-MC concentration is a simulated feature and is not an observation in collision data.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.82\linewidth]{mc_mass_working_points.png}
+\caption{Simulated Higgs and continuum-$ZZ$ four-lepton mass distributions before and after the frozen working points. The changing $ZZ$ shape is the central limitation of the reference classifier.}
+\label{fig:mass}
+\end{figure}
+
+Table~\ref{tab:ablation} reports the predeclared development-only ablation. Removing the four strongest candidate mass proxies reduces AUC to 0.7997 while leaving a maximum KS of 0.3447. The eight-variable shape profile lowers the maximum KS to 0.1720 but has AUC 0.7564. The seven-variable angular/pseudorapidity profile has AUC 0.7447 and maximum KS 0.2025. None passes the joint criteria (Fig.~\ref{fig:tradeoff}).
+
+\begin{table}[ht]
+\centering
+\caption{OOF feature-ablation results. The full model is report-only; the other three profiles were selectable.}
+\label{tab:ablation}
+\begin{tabular}{lrrl}
+\toprule
+Profile & Weighted AUC & Maximum $ZZ$ KS & Decision\\
+\midrule
+14-variable reference & 0.885296 & 0.457954 & Reference only\\
+Drop four mass proxies & 0.799653 & 0.344692 & Ineligible\\
+Eight-variable shape & 0.756382 & 0.171962 & Ineligible\\
+Seven-variable angular/$\eta$ & 0.744706 & 0.202488 & Ineligible\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.70\linewidth]{oof_profile_tradeoff.png}
+\caption{OOF discrimination--shape trade-off. Eligibility requires AUC $\geq0.80$ and maximum KS $\leq0.10$. No selectable profile enters the accepted region.}
+\label{fig:tradeoff}
+\end{figure}
+
+The frozen decision is therefore \texttt{no\_eligible\_profile}. In accordance with the protocol, no reduced-profile model, test predictions, test metrics, or selected-profile mass plot was produced. The complete software suite passed 535 tests. An independent final review reported zero Critical and zero Important findings; its sole Minor finding was a clipped reference annotation in Fig.~\ref{fig:tradeoff}, with no effect on the plotted point or tabulated value.
+
+\section{Discussion}
+
+The reference AUC demonstrates that the selected kinematics contain substantial process information. Nevertheless, the background-shape result shows why feature exclusion alone is not a sufficient decorrelation strategy. Variables such as reconstructed $Z$ masses and soft-lepton transverse momenta are kinematically related to the four-lepton invariant mass. A flexible tree ensemble can combine them into an indirect mass estimator even when $m_{4\ell}$ itself is absent.
+
+The ablation exposes a practical trade-off. Simple removal of correlated inputs reduces some mass dependence but either remains far above the shape limit or loses the required discrimination. The near-threshold AUC of the ten-variable profile (0.799653) does not justify rounding it into acceptance because its KS failure remains large and the criteria were fixed in advance.
+
+These conclusions are deliberately limited. Only one signal and one continuum-background MC dataset are used; reducible and misidentification backgrounds are absent. No detector/theory systematic variations, control regions, sidebands, likelihood fit, or formal sensitivity estimate are included. Real collision data are not evaluated. Consequently, the present classifier is not eligible for a physics measurement or an observed-signal claim.
+
+\todo{Design and pre-register a new decorrelation-aware development study in a new run path. Compare explicit penalty, adversarial, reweighting, or DDT-like approaches; specify multiple-seed stability before execution.}
+
+\todo{After a method passes the unchanged OOF gate, perform exactly one held-out MC test; subsequently design systematic variations, additional backgrounds, sidebands, and a blinded likelihood analysis as separate stages.}
+
+\section{Conclusion}
+
+An MC-only XGBoost classifier for $H\to ZZ^{*}\to4\ell$ achieves weighted AUC near 0.89 but strongly sculpts the continuum-$ZZ$ four-lepton mass spectrum. Three predeclared feature-removal strategies fail the simultaneous discrimination and shape-stability requirements. The correct version 1.0 terminal is therefore \texttt{no\_eligible\_profile}, with the ablation test and collision data left unopened. The evidence supports a new, explicitly decorrelation-aware training study under the same predeclared gates; it does not support loosening the criteria or interpreting the current output as a physics result.
+
+\section*{Reproducibility and evidence status}
+
+The numerical results in this draft are transcribed from immutable baseline, training, and ablation manifests and artifacts. The three run directories are treated as read-only evidence. This draft creates no new physics result. \todo{Before journal submission, add author/institution information, an artifact DOI or repository release, license statements, and a full reviewed bibliography.}
+
+\bibliographystyle{unsrtnat}
+\small
+\bibliography{references}
+\end{document}

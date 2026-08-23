@@ -1,0 +1,223 @@
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\setCJKmainfont{Songti SC}
+\setCJKsansfont{Heiti SC}
+\setCJKmonofont{Heiti SC}
+\usepackage[margin=2.25cm]{geometry}
+\usepackage{amsmath,booktabs,graphicx,hyperref,xcolor,enumitem,tabularx,array,float}
+\usepackage{caption}
+\hypersetup{colorlinks=true,linkcolor=blue!45!black,urlcolor=blue!55!black}
+\definecolor{verified}{HTML}{1B5E20}
+\definecolor{proposal}{HTML}{8A4B08}
+\newcommand{\verified}{\textcolor{verified}{\textbf{已验证}}}
+\newcommand{\proposal}{\textcolor{proposal}{\textbf{建议/待验证}}}
+\graphicspath{{../../../runs/full-training-363490-2026-08-11-r2/plots/}{../../../runs/mass-ablation-363490-2026-08-11/plots/}}
+\setlist{nosep,leftmargin=2em}
+\title{基于 XGBoost 的 $H\to ZZ^{*}\to4\ell$ MC-only 方法学研究\\\large 教授汇报稿（版本 1.0）}
+\author{研究进展报告}
+\date{2026年8月12日}
+
+\begin{document}
+\maketitle
+
+\section*{执行摘要}
+
+\textbf{研究问题。} 在不把四轻子不变质量 $m_{4\ell}$ 直接输入分类器的前提下，能否用运动学变量区分 Higgs 信号 MC 与连续 $ZZ^{*}\to4\ell$ 背景 MC，同时保持背景 $m_{4\ell}$ 形状稳定，从而为后续盲分析提供可接受的事件选择？
+
+\textbf{结果。} \verified：官方 DSID 363490 经统一 selection 后保留 11,976 个 $ZZ$ 事件。14 特征 XGBoost 的加权 OOF AUC 为 0.8853，一次性独立 test AUC 为 0.8941，说明分类信息确实存在；但其 $ZZ$ 质量谱在三个冻结工作点均被明显改变，最大 OOF 加权 KS 距离为 0.458。三种预先规定的删特征方案没有任何一种同时满足 OOF AUC $\geq0.80$ 且所有工作点 KS $\leq0.10$，因此按协议发布 \texttt{no\_eligible\_profile}。这表明简单删掉质量代理变量不足以同时保留判别能力与背景质量形状。消融阶段的 held-out test 未开启，门槛未事后放宽，真实数据未读取或评分。
+
+\section{数据选择与分析边界}
+
+本项目是教学/研究级 MC-only 方法学验证，不是 ATLAS 正式测量，也不支持“重新发现 Higgs”、测量信号强度或报告观测显著性。
+
+数据来自 ATLAS 13 TeV Open Data for Education 2025 beta，以简化 ROOT ntuple 形式发布。使用的上游 \texttt{exactly4lep} collection 已要求事件恰好包含四个电子或 muon 候选，且每个候选的 $p_T\geq7$ GeV；这是面向 $ZZ\to4\ell$ 和 Higgs 四轻子衰变的文件级预筛选，不等同于本文随后实施的完整事件 selection\cite{atlas-open-data-2025}。不同年份/生产版本的输入分支由项目适配层统一为同一套物理量定义后，再执行相同的冻结 selection。
+
+监督学习只使用两类模拟样本：DSID 345060 为质量 125 GeV 的胶子融合 Higgs 信号 $gg\to H\to ZZ^{*}\to4\ell$；DSID 363490 的 \texttt{llll} 样本描述非共振四轻子（本研究中的连续 $ZZ^{(*)}\to4\ell$）背景，是该末态的主要不可约背景。另保留 data16 period A 碰撞数据入口用于未来协议验证，但它没有 MC truth 标签，当前阶段既不参与训练，也不被读取或评分。
+
+\begin{table}[ht]
+\centering
+\caption{冻结 DSID 363490 基准的样本规模。}
+\begin{tabular}{lrrl}
+\toprule
+样本 & ROOT 读取数 & selection 后 & 用途\\
+\midrule
+Higgs 345060 MC & 419,943 & 187,128 & 信号\\
+$ZZ$ 363490 MC & 554,279 & 11,976 & 连续背景\\
+data16 period A & 29,275 & 2 & 仅保留；本阶段不读取/评分\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+表 2 的选择结构沿用 ATLAS $H\to ZZ^{*}\to4\ell$ 分析的通行思路：触发与轻子质量要求、四轻子候选、两个不重叠 SFOS 对、以最接近名义 $Z$ 质量的 pair 定义 $Z_1$，以及对轻子和双轻子质量施加门槛\cite{atlas-h4l-run1,atlas-open-data-hzz}。但表中每一个具体阈值均以本项目冻结配置为准；例如本项目采用 $20/15/10/7$ GeV 的有序 $p_T$ 门槛，因此这是受 ATLAS 分析启发的可复现教学 selection，而不是对某篇正式测量的逐项复刻。$Z_2$ 为剩余 SFOS 对；Higgs 与 $ZZ$ MC 使用完全相同的选择逻辑。
+
+\begin{table}[H]
+\centering
+\small
+\caption{冻结 DSID 363490 基准采用的 selection。边界符号与实际配置一致。}
+\begin{tabularx}{\linewidth}{>{\bfseries}p{2.8cm}X}
+\toprule
+阶段 & 要求\\
+\midrule
+事件 trigger & 通过配置中的 event-level trigger 判定。\\
+轻子数与类型 & 恰好四个良好轻子；每个轻子为电子（$|\mathrm{type}|=11$）或 muon（$|\mathrm{type}|=13$）。\\
+紧 identification & 四个轻子均通过配置中的 tight-ID 标志。\\
+Isolation & track 和 calorimeter 相对 isolation 均 $<0.30$。\\
+Impact parameter & 电子 $|d_0/\sigma_{d_0}|<5$；muon $|d_0/\sigma_{d_0}|<3$；所有轻子 $|z_0\sin\theta|<0.5$ mm。\\
+Trigger matching & 至少一个入选轻子满足配置中的 trigger-match 要求。\\
+有序轻子 $p_T$ & $p_{T,1}\geq20$、$p_{T,2}\geq15$、$p_{T,3}\geq10$、$p_{T,4}\geq7$ GeV。\\
+探测器接受度 & 电子 $|\eta|<2.47$；muon $|\eta|<2.7$。\\
+电荷与配对 & 四轻子总电荷为零，并可组成两个不重叠的 SFOS pair。\\
+低质量 veto & 所有可能的 SFOS pair 均满足 $m_{\ell\ell}>5$ GeV。\\
+$Z_1$ 质量窗 & $50<m_{Z1}<106$ GeV。\\
+$Z_2$ 质量窗 & fixed 模式：$12<m_{Z2}<115$ GeV。\\
+四轻子质量窗 & $105\leq m_{4\ell}<160$ GeV；$m_{4\ell}$ 不进入模型。\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+MC 表共 199,104 行，按稳定事件身份划分为 train 119,676、validation 39,719、test 39,709；预测审计表包含 development OOF 159,395 行和独立 test 39,709 行。带符号物理权重用于产额；训练使用归一化的 $|w_{\rm phys}|$，避免 XGBoost 的负 sample-weight 限制。
+
+\section{机器学习方法}
+
+冻结模型使用的 14 个输入变量逐项列于表~\ref{tab:model-features}。其中四个轻子按 $p_T$ 从高到低编号；$Z_1$ 是质量更接近名义 $Z$ 玻色子质量的 SFOS 轻子对，$Z_2$ 是另一对。明确禁止 $m_{4\ell}$、事件/运行/样本标识和权重进入模型。
+
+\begin{table}[H]
+\centering
+\caption{冻结 XGBoost 模型的全部 14 个输入变量。表中顺序与实现中的特征顺序一致。}
+\label{tab:model-features}
+\small
+\begin{tabularx}{\textwidth}{@{}clX@{}}
+\toprule
+序号 & 代码字段 & 物理量与定义 \\
+\midrule
+1  & \texttt{lep1\_pt}      & 最高 $p_T$ 轻子的横动量 $p_{T,1}$（GeV） \\
+2  & \texttt{lep2\_pt}      & 次高 $p_T$ 轻子的横动量 $p_{T,2}$（GeV） \\
+3  & \texttt{lep3\_pt}      & 第三高 $p_T$ 轻子的横动量 $p_{T,3}$（GeV） \\
+4  & \texttt{lep4\_pt}      & 最低 $p_T$ 轻子的横动量 $p_{T,4}$（GeV） \\
+5  & \texttt{lep1\_eta}     & 最高 $p_T$ 轻子的赝快度 $\eta_1$ \\
+6  & \texttt{lep2\_eta}     & 次高 $p_T$ 轻子的赝快度 $\eta_2$ \\
+7  & \texttt{lep3\_eta}     & 第三高 $p_T$ 轻子的赝快度 $\eta_3$ \\
+8  & \texttt{lep4\_eta}     & 最低 $p_T$ 轻子的赝快度 $\eta_4$ \\
+9  & \texttt{mZ1}           & $Z_1$ 候选轻子对的不变质量 $m_{Z1}$（GeV） \\
+10 & \texttt{mZ2}           & $Z_2$ 候选轻子对的不变质量 $m_{Z2}$（GeV） \\
+11 & \texttt{pt4l}          & 四轻子系统的横动量 $p_T^{4\ell}$（GeV） \\
+12 & \texttt{deltaR\_Z1}    & $Z_1$ 两个轻子间的 $\Delta R=\sqrt{(\Delta\eta)^2+(\Delta\phi)^2}$ \\
+13 & \texttt{deltaR\_Z2}    & $Z_2$ 两个轻子间的 $\Delta R=\sqrt{(\Delta\eta)^2+(\Delta\phi)^2}$ \\
+14 & \texttt{deltaPhi\_ZZ}  & 两个重建 $Z$ 候选在横平面内的方位角间隔 $|\Delta\phi_{ZZ}|$（rad） \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Classifier 与结构。} 分类器是 XGBoost 3.3.0 的 \texttt{XGBClassifier}，目标函数为 binary logistic；输出是事件属于 Higgs 类的 score。它不是神经网络，因而没有通常意义上的 hidden layers。对特征向量 $\mathbf{x}$，$T$ 棵树的加性输出及其概率映射可写为
+\begin{equation}
+F_T(\mathbf{x})=F_0+\eta\sum_{t=1}^{T}f_t(\mathbf{x}),
+\qquad
+s(\mathbf{x})=\sigma\!\left(F_T(\mathbf{x})\right)
+=\frac{1}{1+e^{-F_T(\mathbf{x})}},
+\end{equation}
+其中 $f_t$ 是第 $t$ 棵决策树，$\eta=0.05$ 为学习率，$s\in(0,1)$ 是 Higgs-class score。每一轮新树拟合当前集成尚未解释好的梯度残差。冻结终态取 $T=998$，每棵树的 \texttt{max\_depth}=4，即从根节点起最多四层分裂；“998 棵树”不等于“998 层网络”。
+
+\textbf{超参数。} 预声明网格只比较 $\texttt{max\_depth}\in\{2,3,4\}$ 与 $\texttt{min\_child\_weight}\in\{5,20\}$ 的六种组合。其余参数固定：学习率 0.05、最多 1000 个 boosting rounds、row subsample 0.8、feature subsample 0.8、L1 正则 0.1、L2 正则 2.0、hist tree method、随机种子 42。每个 fold 以加权 AUC 为监控指标，若 50 轮没有改善即 early stop。最终入选 \texttt{depth4\_child20}；五个 fold 的最佳树数为 987、998、995、1000、998，取中位数得到最终 998 棵树。
+
+\textbf{训练次数与数据流。} train 与 validation 合并为 159,395 行 development 数据，再按稳定事件身份确定性划分为 5 folds；test 的 39,709 行始终隔离。每个候选训练 5 次，每次用四个 folds 拟合、一个 fold 验证并产生该部分 OOF score，因此参考模型选择共 $6\times5=30$ 次拟合，且每个 development 事件对每个候选恰好被验证一次。候选按五折平均加权 AUC 和 one-standard-error 规则选择，在统计上可竞争的模型中优先较浅、较强正则的模型。选定结构和树数后，再用全部 development 数据重训 1 次最终 classifier；因此参考阶段共 31 次拟合。独立 test 只在终态冻结后评分一次，不参与训练或 early stopping。
+
+\textbf{训练权重归一化。} 对某次拟合使用的 $N$ 个事件，令类别 $c\in\{0,1\}$ 分别表示 $ZZ$ 与 Higgs，原始物理权重为 $w_i^{\rm phys}$。实现中使用
+\begin{equation}
+w_i^{\rm train}
+=|w_i^{\rm phys}|\,
+\frac{N/2}{\displaystyle\sum_{j:y_j=c}|w_j^{\rm phys}|},
+\qquad i:y_i=c,
+\end{equation}
+因此
+\begin{equation}
+\sum_{i:y_i=0}w_i^{\rm train}
+=\sum_{i:y_i=1}w_i^{\rm train}=\frac{N}{2},
+\qquad
+\frac{1}{N}\sum_i w_i^{\rm train}=1.
+\end{equation}
+这个归一化在每个 fold 的拟合集内重新计算，使两类对训练损失的总权重相同，并满足 XGBoost 对非负 sample weight 的要求。它只用于优化分类器；物理产额仍按 $Y=\sum_i w_i^{\rm phys}$ 使用带符号权重。loose/medium/tight 工作点随后仅由入选模型的 OOF score 按目标 $ZZ$ 效率 0.50/0.20/0.10 冻结。
+
+删特征消融沿用同一六候选五折流程：三个预声明 profile 共完成 $3\times6\times5=90$ 次 development-only 拟合。由于没有 profile 通过 AUC/KS 双门槛，协议没有为消融方案进行最终重训，也没有开启其 held-out test。
+
+\section{关键结果}
+
+\begin{table}[ht]
+\centering
+\caption{参考模型的冻结性能与质量形状诊断（全部为 MC）。}
+\begin{tabular}{lr}
+\toprule
+指标 & 数值\\
+\midrule
+加权 OOF AUC & 0.885296\\
+加权独立 test AUC & 0.894054\\
+OOF loose/medium/tight $ZZ$ KS & 0.291194 / 0.408339 / 0.457954\\
+OOF score--$m_{4\ell}$ 加权相关 & $-0.633503$\\
+冻结阈值（loose/medium/tight） & 0.256186 / 0.631632 / 0.782604\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.82\linewidth]{roc_curve.png}
+\caption{冻结参考模型的 MC-only ROC。图中 test 仅为参考模型固定后的一次独立评价。}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.88\linewidth]{mc_mass_working_points.png}
+\caption{冻结工作点前后的 Higgs 与 $ZZ$ MC 质量谱。Higgs MC 在约 125 GeV 集中，但 $ZZ$ 形状随阈值明显变化；这不是观测数据中的峰。}
+\end{figure}
+
+\begin{table}[ht]
+\centering
+\caption{development-only 删特征消融；合格要求 AUC $\ge0.80$ 且三个工作点 KS 全部 $\le0.10$。}
+\begin{tabular}{lrrl}
+\toprule
+Profile & OOF AUC & 最大 OOF $ZZ$ KS & 结论\\
+\midrule
+full14 reference & 0.885296 & 0.457954 & 仅参考；强塑形\\
+drop top-4 proxies & 0.799653 & 0.344692 & AUC 与 KS 均失败\\
+shape8 & 0.756382 & 0.171962 & AUC 与 KS 均失败\\
+angular+eta7 & 0.744706 & 0.202488 & AUC 与 KS 均失败\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.78\linewidth]{oof_profile_tradeoff.png}
+\caption{预声明 profile 的 OOF AUC--最大 KS 权衡。绿色合格区由固定 0.80/0.10 标准定义；没有可选 profile。右侧 reference 标签轻微裁切是独立审查记录的唯一 Minor，不影响数值。}
+\end{figure}
+
+\section{物理解读}
+
+\begin{itemize}
+  \item AUC 约 0.89 表明 Higgs 与连续 $ZZ$ 的四轻子运动学存在可学习差异。
+  \item 排除 $m_{4\ell}$ 只能防止\emph{直接}质量泄漏；$m_{Z1}$、$m_{Z2}$、软轻子 $p_T$ 等变量仍与 $m_{4\ell}$ 相关，树模型可间接重建质量信息。
+  \item tighter score selection 对低质量或特定运动学区域的 $ZZ$ 事件选择效率不同，导致背景模板形状变化。若直接用于质量谱拟合，分类器可能把平滑背景塑造成非平滑结构，造成错误的信号解释或背景建模偏差。
+  \item 删特征降低了部分塑形，但同时损失区分度；现有结果支持研究显式去相关，而不支持继续无约束地微调同一特征删除方案。
+\end{itemize}
+
+\section{限制与当前问题}
+
+\begin{itemize}
+  \item 当前结论只覆盖 Higgs 345060 与连续 $ZZ$ 363490 MC；没有可约背景、误识别背景或数据驱动估计。
+  \item 没有系统误差、控制区、sideband、质量谱 likelihood 或正式显著性计算。
+  \item 只含一个很小的 data16 period A 保留样本，且真实数据在当前阶段保持封存。
+  \item AUC 与 KS 是当前方法学门槛，不等同于最终物理灵敏度；尚未量化去相关对预期显著性或参数不确定度的影响。
+  \item 参考模型已证明有质量塑形，不能作为后续观测质量谱分析的合格终态。
+\end{itemize}
+
+\small
+\begin{thebibliography}{9}
+\bibitem{atlas-open-data-2025}
+ATLAS Collaboration, ``13 TeV 2025 Data---Beta,'' ATLAS Open Data for Education, collection 与 reconstructed-object 说明，\url{https://opendata.atlas.cern/docs/data/for_education/13TeV25_details}（访问日期：2026-08-11）。
+
+\bibitem{atlas-h4l-run1}
+ATLAS Collaboration, ``Measurements of Higgs boson production and couplings in the four-lepton channel in $pp$ collisions at center-of-mass energies of 7 and 8 TeV with the ATLAS detector,'' \emph{Phys. Rev. D} \textbf{91}, 012006 (2015), \href{https://doi.org/10.1103/PhysRevD.91.012006}{doi:10.1103/PhysRevD.91.012006}, \href{https://arxiv.org/abs/1408.5191}{arXiv:1408.5191}.
+
+\bibitem{atlas-open-data-hzz}
+ATLAS Collaboration, ``Example Analyses with the 13 TeV Data for Education: $H\to ZZ\to4\ell$,'' ATLAS Open Data, \url{https://opendata.atlas.cern/docs/documentation/example_analyses/analysis_examples_education_2020}（访问日期：2026-08-11）。
+\end{thebibliography}
+
+\end{document}

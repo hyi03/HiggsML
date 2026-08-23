@@ -1,0 +1,247 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "Why the DSID 363490 classifier sculpts the ZZ mass spectrum",
+    "description": "MC-only diagnostic of score–mass dependence in the immutable DSID 363490 training run.",
+    "generatedAt": "2026-08-11T08:55:00-04:00",
+    "blocks": [
+      {
+        "id": "summary",
+        "type": "markdown",
+        "body": "## Technical summary\n\nThe classifier produces a visible Higgs MC concentration near 125 GeV and strong discrimination (weighted AUC 0.885 OOF and 0.894 test), but it does not preserve the ZZ mass shape. The score–mass correlation is about -0.64 in both OOF and test ZZ, and every frozen working point exceeds the configured 0.10 mass-shape KS limit. The most plausible indirect mass carriers are the third- and fourth-lepton transverse momenta and the reconstructed Z masses. This is descriptive evidence, not yet a causal feature-ablation result."
+      },
+      {
+        "id": "metric-strip",
+        "type": "metric-strip",
+        "cardIds": ["auc", "score-mass", "largest-ks"]
+      },
+      {
+        "id": "ks-finding",
+        "type": "markdown",
+        "body": "## Every frozen working point changes the ZZ mass shape\n\nAll six inclusive-to-selected weighted KS distances exceed 0.10. The effect becomes larger as the working point tightens and reproduces on the held-out test split. This means the selected ZZ background cannot currently be treated as having the same mass shape as inclusive ZZ."
+      },
+      {
+        "id": "ks-chart-block",
+        "type": "chart",
+        "chartId": "ks-chart"
+      },
+      {
+        "id": "driver-finding",
+        "type": "markdown",
+        "body": "## Four-lepton mass is reconstructed indirectly from allowed kinematics\n\nThe model never receives m4l directly. Nevertheless, m4l is built from the same lepton and dilepton kinematics available to the classifier. In test ZZ, lep3_pt has the largest weighted linear correlation with m4l (0.486), followed by lep4_pt (0.393), mZ2 (0.383), and mZ1 (0.240). The same ordering is broadly reproduced in OOF ZZ."
+      },
+      {
+        "id": "correlation-chart-block",
+        "type": "chart",
+        "chartId": "mass-correlation-chart"
+      },
+      {
+        "id": "driver-table-block",
+        "type": "table",
+        "tableId": "feature-table"
+      },
+      {
+        "id": "definitions",
+        "type": "markdown",
+        "body": "## Scope and metric definitions\n\nThe population is label-0 DSID 363490 ZZ MC after the full four-lepton selection. OOF contains development events scored only by models that did not train on those events; test is the untouched held-out split. Correlations and KS distances use absolute physical MC weights. The KS distance compares the inclusive ZZ m4l distribution with the distribution after applying a frozen OOF-derived score threshold. A value of zero means identical weighted shapes; larger values mean stronger shape change."
+      },
+      {
+        "id": "methodology",
+        "type": "markdown",
+        "body": "## Method and robustness checks\n\nRows in the baseline MC table were aligned to the published OOF and test score tables by their preserved order and then verified event-by-event using channelNumber, eventNumber, split, and label. Weighted Pearson correlations were computed separately in OOF and test ZZ. XGBoost gain importance was read from the frozen model. The agreement between OOF and test signs and magnitudes is a robustness check against a split-specific fluctuation."
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "body": "## Correlation identifies candidates, not causes\n\nFeature–mass correlation and tree gain cannot prove which variable causes sculpting because features are mutually dependent and trees use nonlinear interactions. The current score tables retain mZ1, mZ2, and pt4l but not every training feature, so this diagnostic joins to the immutable baseline MC table. No real data and no 700600 sample were used. The historical warning=false is a confirmed software defect and must not be interpreted as clean background shape."
+      },
+      {
+        "id": "recommendations",
+        "type": "markdown",
+        "body": "## Recommended next step: a small predeclared ablation study\n\nRun development-fold comparisons rather than deleting variables ad hoc. Start with the full baseline, then remove the strongest direct mass proxies as one physics-motivated group, and compare against a conservative angular-plus-eta group. Select a mitigation using OOF AUC and OOF mass-shape metrics before opening test performance. Keep m4l excluded in every candidate and publish each run under a fresh immutable directory."
+      },
+      {
+        "id": "questions",
+        "type": "markdown",
+        "body": "## Questions the ablation must answer\n\n- How much OOF AUC is lost when lep3_pt, lep4_pt, mZ1, and mZ2 are removed?\n- Do all six working-point KS distances fall materially, or only the loose point?\n- Is the remaining sculpting driven by deltaPhi_ZZ or nonlinear combinations of the leading-lepton momenta?\n- Does the conclusion reproduce on test only after the candidate is chosen from development evidence?"
+      }
+    ],
+    "cards": [
+      {
+        "id": "auc",
+        "description": "Weighted classifier discrimination",
+        "dataset": "headline",
+        "sourceId": "headline-source",
+        "metrics": [
+          {"label": "OOF AUC", "field": "oof_auc", "format": "number"},
+          {"label": "Test AUC", "field": "test_auc", "format": "number"}
+        ]
+      },
+      {
+        "id": "score-mass",
+        "description": "Weighted ZZ score–mass correlation",
+        "dataset": "headline",
+        "sourceId": "headline-source",
+        "metrics": [
+          {"label": "Test correlation", "field": "test_score_mass", "format": "number"},
+          {"label": "OOF correlation", "field": "oof_score_mass", "format": "number"}
+        ]
+      },
+      {
+        "id": "largest-ks",
+        "description": "Largest inclusive-to-selected ZZ mass KS distance",
+        "dataset": "headline",
+        "sourceId": "headline-source",
+        "metrics": [
+          {"label": "Test tight KS", "field": "test_tight_ks", "format": "number"},
+          {"label": "Configured limit", "field": "ks_limit", "format": "number"}
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "ks-chart",
+        "title": "ZZ mass-shape KS distance by working point",
+        "subtitle": "Absolute-weighted inclusive versus selected m4l; dashed reference at 0.10",
+        "type": "bar",
+        "dataset": "ks_distances",
+        "sourceId": "ks-source",
+        "encodings": {
+          "x": {"field": "working_point", "type": "nominal", "label": "Working point"},
+          "y": {"field": "ks_distance", "type": "quantitative", "label": "Weighted KS distance"},
+          "color": {"field": "sample", "type": "nominal", "label": "Score sample"},
+          "tooltip": [
+            {"field": "sample", "type": "text", "label": "Sample"},
+            {"field": "working_point", "type": "text", "label": "Working point"},
+            {"field": "ks_distance", "type": "quantitative", "label": "KS distance"}
+          ]
+        },
+        "referenceLines": [{"value": 0.1, "label": "warning limit"}],
+        "layout": "full"
+      },
+      {
+        "id": "mass-correlation-chart",
+        "title": "Training-feature correlation with m4l in held-out ZZ MC",
+        "subtitle": "Weighted Pearson correlation on the test split; m4l is not a model input",
+        "type": "bar",
+        "dataset": "feature_diagnostics",
+        "sourceId": "feature-source",
+        "encodings": {
+          "x": {"field": "feature", "type": "nominal", "label": "Training feature"},
+          "y": {"field": "test_m4l_correlation", "type": "quantitative", "label": "Weighted Pearson correlation"},
+          "tooltip": [
+            {"field": "feature", "type": "text", "label": "Feature"},
+            {"field": "test_m4l_correlation", "type": "quantitative", "label": "Test correlation"},
+            {"field": "oof_m4l_correlation", "type": "quantitative", "label": "OOF correlation"},
+            {"field": "gain_share", "type": "quantitative", "label": "Gain share"}
+          ]
+        },
+        "layout": "full"
+      }
+    ],
+    "tables": [
+      {
+        "id": "feature-table",
+        "title": "Feature-level diagnostic values",
+        "subtitle": "ZZ absolute-weighted correlations and normalized XGBoost gain in the immutable run",
+        "dataset": "feature_diagnostics",
+        "sourceId": "feature-source",
+        "defaultSort": {"field": "test_m4l_correlation", "direction": "desc"},
+        "density": "dense",
+        "layout": "full",
+        "columns": [
+          {"field": "feature", "label": "Feature", "type": "text"},
+          {"field": "oof_m4l_correlation", "label": "OOF corr. with m4l", "format": "number"},
+          {"field": "test_m4l_correlation", "label": "Test corr. with m4l", "format": "number"},
+          {"field": "oof_score_correlation", "label": "OOF corr. with score", "format": "number"},
+          {"field": "test_score_correlation", "label": "Test corr. with score", "format": "number"},
+          {"field": "gain_share", "label": "Gain share", "format": "number"}
+        ]
+      }
+    ],
+    "sources": [
+      {"id": "headline-source", "label": "Reviewed headline metrics query", "path": "docs/reports/dsid363490-sculpting-diagnostic/queries/headline.sql"},
+      {"id": "ks-source", "label": "Reviewed mass-shape KS query", "path": "docs/reports/dsid363490-sculpting-diagnostic/queries/ks-distances.sql"},
+      {"id": "baseline-mc", "label": "DSID 363490 selected MC table", "path": "runs/full-baseline-363490-2026-08-11-r2/processed/mc_events.csv.gz"},
+      {"id": "scores", "label": "OOF and test prediction audits", "path": "runs/full-training-363490-2026-08-11-r2/predictions"},
+      {"id": "model", "label": "Frozen XGBoost model", "path": "runs/full-training-363490-2026-08-11-r2/model/xgboost_model.json"},
+      {
+        "id": "feature-source",
+        "label": "Reproducible MC-only feature diagnostic",
+        "path": "docs/reports/dsid363490-sculpting-diagnostic/queries/feature-diagnostics.sql",
+        "query": {
+          "language": "python",
+          "description": "Event-order alignment verified with channelNumber, eventNumber, split, and label; absolute-weighted Pearson correlations computed separately for OOF and test ZZ; normalized gain read from the frozen XGBoost model.",
+          "tables_used": [
+            "runs/full-baseline-363490-2026-08-11-r2/processed/mc_events.csv.gz",
+            "runs/full-training-363490-2026-08-11-r2/predictions/oof_scores.csv.gz",
+            "runs/full-training-363490-2026-08-11-r2/predictions/test_scores.csv.gz",
+            "runs/full-training-363490-2026-08-11-r2/model/xgboost_model.json"
+          ],
+          "metric_definitions": [
+            "Weighted Pearson uses absolute physical MC weights on label-0 ZZ events.",
+            "Gain share is each feature's XGBoost total gain divided by total gain across all 14 training features."
+          ]
+        }
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-11T08:55:00-04:00",
+    "status": "ready",
+    "datasets": {
+      "headline": [
+        {"oof_auc": 0.885296, "test_auc": 0.894054, "oof_score_mass": -0.633503, "test_score_mass": -0.637689, "test_tight_ks": 0.473386, "ks_limit": 0.1}
+      ],
+      "ks_distances": [
+        {"sample": "OOF", "working_point": "loose", "ks_distance": 0.291194},
+        {"sample": "OOF", "working_point": "medium", "ks_distance": 0.408339},
+        {"sample": "OOF", "working_point": "tight", "ks_distance": 0.457954},
+        {"sample": "Test", "working_point": "loose", "ks_distance": 0.323940},
+        {"sample": "Test", "working_point": "medium", "ks_distance": 0.431848},
+        {"sample": "Test", "working_point": "tight", "ks_distance": 0.473386}
+      ],
+      "feature_diagnostics": [
+        {"feature": "lep3_pt", "oof_m4l_correlation": 0.493524, "test_m4l_correlation": 0.486154, "abs_test_m4l_correlation": 0.486154, "oof_score_correlation": -0.354374, "test_score_correlation": -0.387108, "gain_share": 0.102875},
+        {"feature": "lep4_pt", "oof_m4l_correlation": 0.381751, "test_m4l_correlation": 0.392944, "abs_test_m4l_correlation": 0.392944, "oof_score_correlation": -0.216391, "test_score_correlation": -0.242681, "gain_share": 0.041583},
+        {"feature": "mZ2", "oof_m4l_correlation": 0.408125, "test_m4l_correlation": 0.382944, "abs_test_m4l_correlation": 0.382944, "oof_score_correlation": -0.207315, "test_score_correlation": -0.188175, "gain_share": 0.135034},
+        {"feature": "mZ1", "oof_m4l_correlation": 0.281085, "test_m4l_correlation": 0.239883, "abs_test_m4l_correlation": 0.239883, "oof_score_correlation": -0.313974, "test_score_correlation": -0.287354, "gain_share": 0.137819},
+        {"feature": "lep1_pt", "oof_m4l_correlation": 0.188666, "test_m4l_correlation": 0.218887, "abs_test_m4l_correlation": 0.218887, "oof_score_correlation": -0.088802, "test_score_correlation": -0.131410, "gain_share": 0.065269},
+        {"feature": "lep2_pt", "oof_m4l_correlation": 0.207699, "test_m4l_correlation": 0.201241, "abs_test_m4l_correlation": 0.201241, "oof_score_correlation": -0.101287, "test_score_correlation": -0.112702, "gain_share": 0.037080},
+        {"feature": "deltaPhi_ZZ", "oof_m4l_correlation": 0.154790, "test_m4l_correlation": 0.186911, "abs_test_m4l_correlation": 0.186911, "oof_score_correlation": -0.331603, "test_score_correlation": -0.339405, "gain_share": 0.140041},
+        {"feature": "deltaR_Z1", "oof_m4l_correlation": -0.078276, "test_m4l_correlation": -0.089792, "abs_test_m4l_correlation": 0.089792, "oof_score_correlation": -0.057703, "test_score_correlation": -0.018448, "gain_share": 0.038872},
+        {"feature": "pt4l", "oof_m4l_correlation": 0.030888, "test_m4l_correlation": 0.050505, "abs_test_m4l_correlation": 0.050505, "oof_score_correlation": 0.212976, "test_score_correlation": 0.165304, "gain_share": 0.071108},
+        {"feature": "deltaR_Z2", "oof_m4l_correlation": 0.025635, "test_m4l_correlation": -0.013908, "abs_test_m4l_correlation": 0.013908, "oof_score_correlation": 0.051306, "test_score_correlation": 0.100016, "gain_share": 0.051723},
+        {"feature": "lep4_eta", "oof_m4l_correlation": -0.003375, "test_m4l_correlation": -0.017947, "abs_test_m4l_correlation": 0.017947, "oof_score_correlation": 0.006443, "test_score_correlation": 0.022583, "gain_share": 0.037739},
+        {"feature": "lep1_eta", "oof_m4l_correlation": -0.002530, "test_m4l_correlation": 0.009455, "abs_test_m4l_correlation": 0.009455, "oof_score_correlation": 0.012145, "test_score_correlation": 0.016283, "gain_share": 0.050724},
+        {"feature": "lep2_eta", "oof_m4l_correlation": -0.009933, "test_m4l_correlation": -0.008885, "abs_test_m4l_correlation": 0.008885, "oof_score_correlation": 0.000714, "test_score_correlation": 0.007723, "gain_share": 0.037844},
+        {"feature": "lep3_eta", "oof_m4l_correlation": 0.005876, "test_m4l_correlation": 0.001934, "abs_test_m4l_correlation": 0.001934, "oof_score_correlation": 0.000277, "test_score_correlation": 0.022426, "gain_share": 0.052288}
+      ]
+    }
+  },
+  "sources": [
+    {"id": "headline-source", "label": "Reviewed headline metrics query", "path": "docs/reports/dsid363490-sculpting-diagnostic/queries/headline.sql"},
+    {"id": "ks-source", "label": "Reviewed mass-shape KS query", "path": "docs/reports/dsid363490-sculpting-diagnostic/queries/ks-distances.sql"},
+    {"id": "baseline-mc", "label": "DSID 363490 selected MC table", "path": "runs/full-baseline-363490-2026-08-11-r2/processed/mc_events.csv.gz"},
+    {"id": "scores", "label": "OOF and test prediction audits", "path": "runs/full-training-363490-2026-08-11-r2/predictions"},
+    {"id": "model", "label": "Frozen XGBoost model", "path": "runs/full-training-363490-2026-08-11-r2/model/xgboost_model.json"},
+    {
+      "id": "feature-source",
+      "label": "Reproducible MC-only feature diagnostic",
+      "path": "docs/reports/dsid363490-sculpting-diagnostic/queries/feature-diagnostics.sql",
+      "query": {
+        "language": "python",
+        "description": "Event-order alignment verified with channelNumber, eventNumber, split, and label; absolute-weighted Pearson correlations computed separately for OOF and test ZZ; normalized gain read from the frozen XGBoost model.",
+        "tables_used": [
+          "runs/full-baseline-363490-2026-08-11-r2/processed/mc_events.csv.gz",
+          "runs/full-training-363490-2026-08-11-r2/predictions/oof_scores.csv.gz",
+          "runs/full-training-363490-2026-08-11-r2/predictions/test_scores.csv.gz",
+          "runs/full-training-363490-2026-08-11-r2/model/xgboost_model.json"
+        ]
+      }
+    }
+  ]
+}

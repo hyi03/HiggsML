@@ -1,0 +1,12 @@
+awkward
+matplotlib
+mplhep
+numpy
+pandas
+pyyaml
+pytest
+scikit-learn
+tqdm
+uproot
+vector
+xgboost

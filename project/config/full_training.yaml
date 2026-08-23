@@ -1,0 +1,26 @@
+schema_version: "1.0"
+folds: 5
+random_seed: 42
+n_jobs: 4
+common_parameters:
+  n_estimators: 1000
+  learning_rate: 0.05
+  subsample: 0.8
+  colsample_bytree: 0.8
+  reg_alpha: 0.1
+  reg_lambda: 2.0
+  objective: binary:logistic
+  eval_metric: auc
+  early_stopping_rounds: 50
+  tree_method: hist
+candidates:
+  max_depth: [2, 3, 4]
+  min_child_weight: [5, 20]
+working_points:
+  loose: 0.50
+  medium: 0.20
+  tight: 0.10
+warnings:
+  auc_gap_limit: 0.05
+  ks_distance_limit: 0.10
+mass_bins_gev: [105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 155, 160]

@@ -1,0 +1,44 @@
+schema_version: "1.0"
+luminosity_pb: 10000.0
+tree_name: analysis
+momentum_unit: GeV
+input_profile: release22
+entry_stop: null
+chunk_size_events: 50000
+
+samples:
+  zz:
+    path: data/raw/zz.root
+    channel_numbers: [700600]
+    label: 0
+    input_profile: release22
+
+selection:
+  require_exactly_four_leptons: true
+  allowed_lepton_types: [11, 13]
+  lepton_pt_thresholds_gev: [20.0, 15.0, 10.0, 7.0]
+  electron_max_abs_eta: 2.47
+  muon_max_abs_eta: 2.7
+  require_zero_charge: true
+  min_all_sfos_mass_gev: 5.0
+  z1_mass_window_gev: [50.0, 106.0]
+  z2_mass:
+    min_mode: fixed
+    fixed_min_gev: 12.0
+    max_gev: 115.0
+    sliding:
+      low_m4l_gev: 140.0
+      high_m4l_gev: 190.0
+      low_min_gev: 12.0
+      high_min_gev: 50.0
+  m4l_window_gev: [105.0, 160.0]
+  lepton_quality:
+    enabled: true
+    require_event_trigger: true
+    require_trigger_match: true
+    require_tight_id: true
+    track_isolation_max: 0.3
+    calo_isolation_max: 0.3
+    electron_d0sig_max: 5.0
+    muon_d0sig_max: 3.0
+    z0_sintheta_max_mm: 0.5

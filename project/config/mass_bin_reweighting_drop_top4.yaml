@@ -1,0 +1,55 @@
+schema_version: "1.1"
+input_run: runs/full-baseline-363490-2026-08-11-r2
+input_manifest_sha256: 10e0c293dd60291193019df04f4f6dd4672893dea98d23f972c8a78f21e843b8
+reference_run: runs/full-training-363490-2026-08-11-r2
+reference_manifest_sha256: da015d0a00bb002e69dc98eb9631c1b561af65f8da44b78a641d4e013558bf65
+ablation_run: runs/mass-ablation-363490-2026-08-11
+ablation_manifest_sha256: 5120e6080e82b14f66917ba731c98715fa5d6190c25c396d8c675200e9ca52df
+raw_zz_path: data/raw/zz_363490.root
+raw_zz_sha256: 76503d0cb2a015b814b43e5bc1887ea53a62b057e9ac2f812eaaec1efb1a3f07
+features:
+  - lep1_pt
+  - lep2_pt
+  - lep1_eta
+  - lep2_eta
+  - lep3_eta
+  - lep4_eta
+  - pt4l
+  - deltaR_Z1
+  - deltaR_Z2
+  - deltaPhi_ZZ
+mass_bin_edges: [105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 155, 160]
+minimum_effective_count: 100.0
+epsilon_floor: 0.000001
+damping: 0.5
+round_factor_bounds: [0.5, 2.0]
+cumulative_bounds: [0.2, 5.0]
+maximum_corrections: 5
+auc_floor: 0.80
+ks_limit: 0.10
+require_signal_efficiency_above_zz: true
+artifacts_no_selection:
+  - config.yaml
+  - artifacts/iteration_results.csv
+  - artifacts/bin_efficiencies.csv
+  - artifacts/weight_multipliers.csv
+  - artifacts/selection.json
+  - plots/iteration_tradeoff.png
+  - plots/zz_efficiency_by_mass.png
+  - artifacts/study_manifest.json
+artifacts_selected:
+  - config.yaml
+  - artifacts/iteration_results.csv
+  - artifacts/bin_efficiencies.csv
+  - artifacts/weight_multipliers.csv
+  - artifacts/selection.json
+  - artifacts/test_metrics.json
+  - model/xgboost_model.json
+  - predictions/selected_oof_scores.csv.gz
+  - predictions/test_scores.csv.gz
+  - plots/iteration_tradeoff.png
+  - plots/zz_efficiency_by_mass.png
+  - plots/selected_mass_sculpting.png
+  - artifacts/study_manifest.json
+reweighting_reference_run: runs/mass-reweighting-363490-2026-08-11
+reweighting_reference_manifest_sha256: 145e38478dfd12310a82f4ed544c6cf0b09204cbc1c7d08e6e485941c00f9e38

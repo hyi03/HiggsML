@@ -1,0 +1,219 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,booktabs,graphicx,hyperref,xcolor,enumitem,tabularx,array,float}
+\usepackage{caption}
+\hypersetup{colorlinks=true,linkcolor=blue!45!black,urlcolor=blue!55!black}
+\definecolor{verified}{HTML}{1B5E20}
+\definecolor{proposal}{HTML}{8A4B08}
+\newcommand{\verified}{\textcolor{verified}{\textbf{Verified}}}
+\newcommand{\proposal}{\textcolor{proposal}{\textbf{Proposed / to be validated}}}
+\graphicspath{{../../../runs/full-training-363490-2026-08-11-r2/plots/}{../../../runs/mass-ablation-363490-2026-08-11/plots/}}
+\setlist{nosep,leftmargin=2em}
+\title{An MC-Only XGBoost Study of $H\to ZZ^{*}\to4\ell$\\\large Professor Briefing, Methodology Version 1.0}
+\author{Research Progress Report}
+\date{12 August 2026}
+
+\begin{document}
+\maketitle
+
+\section*{Executive summary}
+
+\textbf{Research question.} Can kinematic variables distinguish simulated Higgs signal from continuum $ZZ^{*}\to4\ell$ background without giving the classifier the four-lepton invariant mass $m_{4\ell}$, while preserving the background $m_{4\ell}$ shape well enough for a later blinded analysis?
+
+\textbf{Result.} \verified: The common selection retains 11,976 events from official $ZZ$ DSID 363490. The 14-feature XGBoost classifier achieves weighted AUC values of 0.8853 OOF and 0.8941 on its one-shot independent test. The discrimination is real, but the classifier strongly sculpts the $ZZ$ mass spectrum: the largest OOF weighted KS distance across the three frozen operating points is 0.458. None of three predeclared feature-removal profiles simultaneously satisfies OOF AUC $\geq0.80$ and KS $\leq0.10$ at every operating point. The protocol-defined result is therefore \texttt{no\_eligible\_profile}. This shows that simple removal of mass-proxy features is insufficient to preserve both discrimination and the background mass shape. The ablation held-out test was not opened, the criteria were not relaxed after seeing the result, and collision data were neither read nor scored.
+
+\section{Data selection and analysis scope}
+
+This is an educational/research MC-only methodology study. It is not an official ATLAS measurement and cannot support a claim of rediscovering the Higgs boson, measuring a signal strength, or reporting an observed significance.
+
+The inputs come from the ATLAS 13 TeV Open Data for Education 2025 beta release, distributed as simplified ROOT ntuples. Its upstream \texttt{exactly4lep} collection already requires exactly four electron or muon candidates with $p_T\geq7$ GeV each. This is a file-level preselection enriched in $ZZ\to4\ell$ and Higgs four-lepton decays; it is not the complete event selection applied below\cite{atlas-open-data-2025}. An input-adaptation layer harmonizes branches from different production profiles into one canonical set of physics quantities before the same frozen selection is evaluated.
+
+Supervised learning uses two simulated classes. DSID 345060 is the 125 GeV gluon-fusion Higgs signal, $gg\to H\to ZZ^{*}\to4\ell$. The DSID 363490 \texttt{llll} sample represents non-resonant four-lepton production---the continuum $ZZ^{(*)}\to4\ell$ background in this study and the principal irreducible background to the final state. A data16 period-A collision-data entry is retained for future protocol checks, but it has no MC truth label and is neither used for training nor read or scored in this stage.
+
+\begin{table}[ht]
+\centering
+\caption{Sample sizes in the frozen DSID 363490 baseline.}
+\begin{tabular}{lrrl}
+\toprule
+Sample & ROOT entries & Selected & Role\\
+\midrule
+Higgs 345060 MC & 419,943 & 187,128 & Signal\\
+$ZZ$ 363490 MC & 554,279 & 11,976 & Continuum background\\
+data16 period A & 29,275 & 2 & Retained; not read/scored here\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The structure of Table~2 follows the standard logic of ATLAS $H\to ZZ^{*}\to4\ell$ analyses: trigger and lepton-quality requirements, a four-lepton candidate, two non-overlapping SFOS pairs, defining $Z_1$ as the pair closest to the nominal $Z$ mass, and lepton and dilepton-mass requirements\cite{atlas-h4l-run1,atlas-open-data-hzz}. Every numerical threshold in the table nevertheless comes from this project's frozen configuration. In particular, the ordered $p_T$ thresholds are $20/15/10/7$ GeV. The implementation is therefore a reproducible ATLAS-inspired educational selection, not a cut-for-cut reproduction of a published measurement. The remaining SFOS pair is $Z_2$, and identical logic is applied to Higgs and $ZZ$ MC.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Selection used for the frozen DSID 363490 baseline, in cutflow order. Boundary symbols reproduce the implemented configuration.}
+\begin{tabularx}{\linewidth}{>{\bfseries}p{3.2cm}X}
+\toprule
+Stage & Requirement\\
+\midrule
+Event trigger & Pass the configured event-level trigger decision.\\
+Lepton content & Exactly four good leptons, each an electron ($|\mathrm{type}|=11$) or muon ($|\mathrm{type}|=13$).\\
+Identification & All four leptons pass the configured tight-identification flag.\\
+Isolation & Track and calorimeter relative isolation are each $<0.30$.\\
+Impact parameters & Electrons: $|d_0/\sigma_{d_0}|<5$; muons: $|d_0/\sigma_{d_0}|<3$; all leptons: $|z_0\sin\theta|<0.5$ mm.\\
+Trigger matching & At least one selected lepton satisfies the configured trigger-match requirement.\\
+Ordered lepton $p_T$ & $p_{T,1}\geq20$, $p_{T,2}\geq15$, $p_{T,3}\geq10$, and $p_{T,4}\geq7$ GeV.\\
+Detector acceptance & Electrons: $|\eta|<2.47$; muons: $|\eta|<2.7$.\\
+Charge and pairing & Total charge is zero; the four leptons form two non-overlapping SFOS pairs.\\
+Low-mass veto & Every possible SFOS pair has $m_{\ell\ell}>5$ GeV.\\
+$Z_1$ window & $50<m_{Z1}<106$ GeV.\\
+$Z_2$ window & Fixed mode: $12<m_{Z2}<115$ GeV.\\
+Four-lepton window & $105\leq m_{4\ell}<160$ GeV; $m_{4\ell}$ is not a model feature.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The selected MC table contains 199,104 rows, deterministically divided into 119,676 train, 39,719 validation, and 39,709 test rows. Prediction audits contain 159,395 development OOF rows and 39,709 independent-test rows. Signed physical weights are retained for yields; normalized $|w_{\rm phys}|$ is used for training because XGBoost does not accept negative sample weights.
+
+\section{Machine-learning method}
+
+Table~\ref{tab:model-features} lists all 14 inputs to the frozen model. The four leptons are numbered in descending $p_T$ order. $Z_1$ is the SFOS lepton pair whose mass is closer to the nominal $Z$-boson mass, and $Z_2$ is the other pair. The four-lepton mass, event/run/sample identifiers, and all weights are explicitly forbidden model features.
+
+\begin{table}[H]
+\centering
+\caption{All 14 input variables of the frozen XGBoost model, in implementation order.}
+\label{tab:model-features}
+\small
+\begin{tabularx}{\textwidth}{@{}clX@{}}
+\toprule
+No. & Code field & Physical quantity and definition \\
+\midrule
+1  & \texttt{lep1\_pt}      & Transverse momentum $p_{T,1}$ of the leading lepton (GeV) \\
+2  & \texttt{lep2\_pt}      & Transverse momentum $p_{T,2}$ of the subleading lepton (GeV) \\
+3  & \texttt{lep3\_pt}      & Transverse momentum $p_{T,3}$ of the third lepton (GeV) \\
+4  & \texttt{lep4\_pt}      & Transverse momentum $p_{T,4}$ of the fourth lepton (GeV) \\
+5  & \texttt{lep1\_eta}     & Pseudorapidity $\eta_1$ of the leading lepton \\
+6  & \texttt{lep2\_eta}     & Pseudorapidity $\eta_2$ of the subleading lepton \\
+7  & \texttt{lep3\_eta}     & Pseudorapidity $\eta_3$ of the third lepton \\
+8  & \texttt{lep4\_eta}     & Pseudorapidity $\eta_4$ of the fourth lepton \\
+9  & \texttt{mZ1}           & Invariant mass $m_{Z1}$ of the $Z_1$-candidate lepton pair (GeV) \\
+10 & \texttt{mZ2}           & Invariant mass $m_{Z2}$ of the $Z_2$-candidate lepton pair (GeV) \\
+11 & \texttt{pt4l}          & Transverse momentum $p_T^{4\ell}$ of the four-lepton system (GeV) \\
+12 & \texttt{deltaR\_Z1}    & Separation of the two $Z_1$ leptons, $\Delta R=\sqrt{(\Delta\eta)^2+(\Delta\phi)^2}$ \\
+13 & \texttt{deltaR\_Z2}    & Separation of the two $Z_2$ leptons, $\Delta R=\sqrt{(\Delta\eta)^2+(\Delta\phi)^2}$ \\
+14 & \texttt{deltaPhi\_ZZ}  & Absolute azimuthal separation $|\Delta\phi_{ZZ}|$ between the reconstructed $Z$ candidates (rad) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Classifier and structure.} The classifier is XGBoost 3.3.0's \texttt{XGBClassifier} with a binary-logistic objective; its output is a Higgs-class score. This is not a neural network and therefore has no hidden layers in the usual sense. For feature vector $\mathbf{x}$, the additive output of $T$ trees and its probability mapping can be written as
+\begin{equation}
+F_T(\mathbf{x})=F_0+\eta\sum_{t=1}^{T}f_t(\mathbf{x}),
+\qquad
+s(\mathbf{x})=\sigma\!\left(F_T(\mathbf{x})\right)
+=\frac{1}{1+e^{-F_T(\mathbf{x})}},
+\end{equation}
+where $f_t$ is tree $t$, $\eta=0.05$ is the learning rate, and $s\in(0,1)$ is the Higgs-class score. Each new tree fits gradient residuals left by the current ensemble. The frozen endpoint uses $T=998$ sequential boosting trees with \texttt{max\_depth}=4, meaning at most four levels of splits from a root. ``998 trees'' does not mean a 998-layer network.
+
+\textbf{Hyperparameters.} The predeclared grid varies only maximum depth $\in\{2,3,4\}$ and minimum child weight $\in\{5,20\}$, giving six candidates. All other settings are fixed: learning rate 0.05, at most 1000 boosting rounds, row subsampling 0.8, feature subsampling 0.8, L1 regularization 0.1, L2 regularization 2.0, the histogram tree method, and random seed 42. Weighted AUC is monitored within each fold, with early stopping after 50 rounds without improvement. The selected candidate is \texttt{depth4\_child20}. Its five best tree counts are 987, 998, 995, 1000, and 998; their median fixes the final count at 998.
+
+\textbf{Number of fits and data flow.} Train and validation are combined into 159,395 development rows and deterministically assigned to five folds by stable event identity; all 39,709 test rows remain isolated. Each candidate is fitted five times, using four folds for fitting and one for validation and OOF scoring. Reference selection therefore performs $6\times5=30$ fits, and every development event is evaluated exactly once per candidate. Candidates are compared using mean five-fold weighted AUC and a one-standard-error rule, preferring the shallower, more strongly regularized model among statistically competitive candidates. After the structure and tree count are fixed, one final classifier is refitted on all development rows, for 31 reference-stage fits in total. The independent test is scored once after freezing and is never used for fitting or early stopping.
+
+\textbf{Training-weight normalization.} For a fitting subset of $N$ events, let $c\in\{0,1\}$ denote $ZZ$ and Higgs, respectively, and let $w_i^{\rm phys}$ be the original physical weight. The implementation uses
+\begin{equation}
+w_i^{\rm train}
+=|w_i^{\rm phys}|\,
+\frac{N/2}{\displaystyle\sum_{j:y_j=c}|w_j^{\rm phys}|},
+\qquad i:y_i=c,
+\end{equation}
+so that
+\begin{equation}
+\sum_{i:y_i=0}w_i^{\rm train}
+=\sum_{i:y_i=1}w_i^{\rm train}=\frac{N}{2},
+\qquad
+\frac{1}{N}\sum_i w_i^{\rm train}=1.
+\end{equation}
+This normalization is recomputed within every fold's fitting subset. It gives the two classes equal total influence on the training loss and satisfies XGBoost's requirement for non-negative sample weights. It is used only to optimize the classifier; physical yields still use signed weights, $Y=\sum_i w_i^{\rm phys}$. Loose, medium, and tight operating points are then frozen only from the selected model's OOF scores at target $ZZ$ efficiencies of 0.50, 0.20, and 0.10.
+
+The feature-ablation stage uses the same six-candidate, five-fold procedure. Its three predeclared profiles therefore require $3\times6\times5=90$ development-only fits. Because no profile passes both gates, the protocol performs no final ablation refit and never opens an ablation held-out test.
+
+\section{Key results}
+
+\begin{table}[ht]
+\centering
+\caption{Frozen reference performance and shape diagnostics (MC only).}
+\begin{tabular}{lr}
+\toprule
+Metric & Value\\
+\midrule
+Weighted OOF AUC & 0.885296\\
+Weighted independent-test AUC & 0.894054\\
+OOF loose/medium/tight $ZZ$ KS & 0.291194 / 0.408339 / 0.457954\\
+OOF weighted score--$m_{4\ell}$ correlation & $-0.633503$\\
+Frozen loose/medium/tight thresholds & 0.256186 / 0.631632 / 0.782604\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.78\linewidth]{roc_curve.png}
+\caption{MC-only ROC for the frozen reference classifier. The test curve is the one-shot evaluation after all reference choices were fixed.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.86\linewidth]{mc_mass_working_points.png}
+\caption{Higgs and $ZZ$ MC mass spectra before and after the frozen operating points. Higgs MC concentrates near 125 GeV, while the $ZZ$ shape changes with threshold. This is not a peak observed in collision data.}
+\end{figure}
+
+\begin{table}[ht]
+\centering
+\caption{Development-only feature ablation. Eligibility requires AUC $\geq0.80$ and all three KS values $\leq0.10$.}
+\begin{tabular}{lrrl}
+\toprule
+Profile & OOF AUC & Maximum OOF $ZZ$ KS & Decision\\
+\midrule
+14-feature reference & 0.885296 & 0.457954 & Reference only; strong sculpting\\
+Drop four mass proxies & 0.799653 & 0.344692 & Fails AUC and KS\\
+Eight-variable shape & 0.756382 & 0.171962 & Fails AUC and KS\\
+Seven-variable angular/$\eta$ & 0.744706 & 0.202488 & Fails AUC and KS\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\linewidth]{oof_profile_tradeoff.png}
+\caption{OOF AUC--maximum-KS trade-off for the predeclared profiles. The accepted region is defined by the fixed 0.80/0.10 criteria; no selectable profile enters it. The clipped reference label is the only Minor recorded by independent review and does not affect the value.}
+\end{figure}
+
+\section{Physics interpretation}
+
+\begin{itemize}
+  \item AUC near 0.89 shows that the four-lepton kinematics contain learnable differences between simulated Higgs and continuum $ZZ$ processes.
+  \item Excluding $m_{4\ell}$ prevents only \emph{direct} mass leakage. Inputs such as $m_{Z1}$, $m_{Z2}$, and soft-lepton $p_T$ remain kinematically correlated with $m_{4\ell}$, allowing a tree ensemble to reconstruct mass information indirectly.
+  \item Tighter score selections have mass-dependent $ZZ$ efficiency. If used directly before a mass fit, they could turn a smooth background into a non-smooth template and bias signal or background interpretation.
+  \item Feature removal reduces some sculpting but sacrifices discrimination. The evidence motivates explicit decorrelation rather than unconstrained tuning of further ad hoc deletion profiles.
+\end{itemize}
+
+\section{Limitations and current problem}
+
+\begin{itemize}
+  \item The conclusion covers only Higgs 345060 and continuum $ZZ$ 363490 MC; reducible, misidentification, and data-driven backgrounds are absent.
+  \item No systematic uncertainties, control regions, sidebands, mass-spectrum likelihood, or formal significance calculation are included.
+  \item Only a tiny retained data16 period-A sample is present, and collision data remain sealed for this stage.
+  \item AUC and KS are methodology gates, not final physics sensitivity. The impact of decorrelation on expected significance or parameter uncertainty is not yet quantified.
+  \item The reference classifier demonstrably sculpts mass and is not an eligible endpoint for an observed mass-spectrum analysis.
+\end{itemize}
+
+\begin{thebibliography}{9}
+\bibitem{atlas-open-data-2025}
+ATLAS Collaboration, ``13 TeV 2025 Data---Beta,'' ATLAS Open Data for Education, collection and reconstructed-object documentation, \url{https://opendata.atlas.cern/docs/data/for_education/13TeV25_details} (accessed 11 August 2026).
+
+\bibitem{atlas-h4l-run1}
+ATLAS Collaboration, ``Measurements of Higgs boson production and couplings in the four-lepton channel in $pp$ collisions at center-of-mass energies of 7 and 8 TeV with the ATLAS detector,'' \emph{Phys. Rev. D} \textbf{91}, 012006 (2015), \href{https://doi.org/10.1103/PhysRevD.91.012006}{doi:10.1103/PhysRevD.91.012006}, \href{https://arxiv.org/abs/1408.5191}{arXiv:1408.5191}.
+
+\bibitem{atlas-open-data-hzz}
+ATLAS Collaboration, ``Example Analyses with the 13 TeV Data for Education: $H\to ZZ\to4\ell$,'' ATLAS Open Data, \url{https://opendata.atlas.cern/docs/documentation/example_analyses/analysis_examples_education_2020} (accessed 11 August 2026).
+\end{thebibliography}
+
+\end{document}

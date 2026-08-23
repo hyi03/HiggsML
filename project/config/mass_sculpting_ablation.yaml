@@ -1,0 +1,49 @@
+schema_version: "1.0"
+input_run: runs/full-baseline-363490-2026-08-11-r2
+input_manifest_sha256: 10e0c293dd60291193019df04f4f6dd4672893dea98d23f972c8a78f21e843b8
+reference_run: runs/full-training-363490-2026-08-11-r2
+reference_manifest_sha256: da015d0a00bb002e69dc98eb9631c1b561af65f8da44b78a641d4e013558bf65
+auc_floor: 0.80
+ks_limit: 0.10
+profiles:
+  drop_top4_mass_proxies:
+    - lep1_pt
+    - lep2_pt
+    - lep1_eta
+    - lep2_eta
+    - lep3_eta
+    - lep4_eta
+    - pt4l
+    - deltaR_Z1
+    - deltaR_Z2
+    - deltaPhi_ZZ
+  shape8:
+    - lep1_eta
+    - lep2_eta
+    - lep3_eta
+    - lep4_eta
+    - pt4l
+    - deltaR_Z1
+    - deltaR_Z2
+    - deltaPhi_ZZ
+  angular_eta7:
+    - lep1_eta
+    - lep2_eta
+    - lep3_eta
+    - lep4_eta
+    - deltaR_Z1
+    - deltaR_Z2
+    - deltaPhi_ZZ
+artifacts_no_selection:
+  - artifacts/profile_results.csv
+  - artifacts/selection.json
+  - plots/oof_profile_tradeoff.png
+artifacts_selected:
+  - artifacts/profile_results.csv
+  - artifacts/selection.json
+  - artifacts/test_metrics.json
+  - model/xgboost_model.json
+  - predictions/selected_oof_scores.csv.gz
+  - predictions/test_scores.csv.gz
+  - plots/oof_profile_tradeoff.png
+  - plots/selected_mass_sculpting.png
