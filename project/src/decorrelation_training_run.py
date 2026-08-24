@@ -7,6 +7,8 @@ import json
 import os
 from pathlib import Path
 import pickle
+import pickletools
+import struct
 from types import MappingProxyType
 from typing import Any, Mapping
 import warnings
@@ -284,12 +286,12 @@ class MCStudyPartitions:
 @dataclass(frozen=True, init=False)
 class DecorrelationArtifactReceipt:
     _run_identity: tuple[int, int]
-    _authorization: object
     selected: bool
     _selected_coefficient: float | None
     _outputs: Mapping[str, Mapping[str, Any]]
     _model: Any | None
     _model_bytes: bytes | None
+    _content_digest: str
 
     def __new__(cls, *args, **kwargs):
         raise TypeError(
@@ -300,7 +302,6 @@ class DecorrelationArtifactReceipt:
 
 def _new_artifact_receipt(
     run_identity: tuple[int, int],
-    authorization: object,
     selected: bool,
     selected_coefficient: float | None,
     outputs: Mapping[str, Mapping[str, Any]],
@@ -310,27 +311,23 @@ def _new_artifact_receipt(
 ) -> DecorrelationArtifactReceipt:
     receipt = object.__new__(DecorrelationArtifactReceipt)
     object.__setattr__(receipt, "_run_identity", run_identity)
-    object.__setattr__(receipt, "_authorization", authorization)
     object.__setattr__(receipt, "selected", bool(selected))
     object.__setattr__(receipt, "_selected_coefficient", selected_coefficient)
     object.__setattr__(receipt, "_outputs", _freeze_output_records(outputs))
     object.__setattr__(receipt, "_model", model)
     object.__setattr__(receipt, "_model_bytes", model_bytes)
+    object.__setattr__(
+        receipt,
+        "_content_digest",
+        _receipt_content_digest(
+            run_identity=run_identity,
+            selected=selected,
+            selected_coefficient=selected_coefficient,
+            outputs=outputs,
+            model_bytes=model_bytes,
+        ),
+    )
     return receipt
-
-
-@dataclass
-class _RunAuthorization:
-    layout: TrainingOutputLayout
-    run_dir: Path
-    directory_identities: Mapping[str, tuple[int, int]]
-    token: object
-    completion_manifest_sha256: str | None = None
-    completion_model_sha256: str | None = None
-    completion_selected: bool | None = None
-
-
-_RUN_AUTHORIZATIONS: dict[int, _RunAuthorization] = {}
 
 
 def approved_decorrelation_artifacts(*, selected: bool) -> set[str]:
@@ -496,54 +493,7 @@ def resolve_decorrelation_output(
 def claim_decorrelation_output(
     layout: TrainingOutputLayout,
 ) -> TrainingOutputLayout:
-    claimed = claim_training_output(layout)
-    identities = claimed.directory_identities
-    if identities is None:
-        raise RuntimeError("decorrelation output claim has no directory identities")
-    _RUN_AUTHORIZATIONS[id(claimed)] = _RunAuthorization(
-        layout=claimed,
-        run_dir=claimed.run_dir,
-        directory_identities=MappingProxyType(dict(identities)),
-        token=object(),
-    )
-    return claimed
-
-
-def _run_authorization(layout: TrainingOutputLayout) -> _RunAuthorization:
-    authorization = _RUN_AUTHORIZATIONS.get(id(layout))
-    if (
-        authorization is None
-        or authorization.layout is not layout
-        or authorization.run_dir != layout.run_dir
-        or layout.directory_identities is None
-        or dict(authorization.directory_identities)
-        != dict(layout.directory_identities)
-    ):
-        raise ValueError(
-            "decorrelation output must be the exact claimed run capability"
-        )
-    return authorization
-
-
-def _authorize_completed_run(
-    layout: TrainingOutputLayout,
-    *,
-    manifest_bytes: bytes,
-    selected: bool,
-    model_bytes: bytes | None,
-) -> None:
-    authorization = _run_authorization(layout)
-    if authorization.completion_manifest_sha256 is not None:
-        raise RuntimeError("decorrelation completion was already authorized")
-    if selected != (model_bytes is not None):
-        raise ValueError("decorrelation completion model authorization is invalid")
-    authorization.completion_manifest_sha256 = hashlib.sha256(
-        manifest_bytes
-    ).hexdigest()
-    authorization.completion_model_sha256 = (
-        None if model_bytes is None else hashlib.sha256(model_bytes).hexdigest()
-    )
-    authorization.completion_selected = selected
+    return claim_training_output(layout)
 
 
 def write_decorrelation_artifacts(
@@ -555,7 +505,6 @@ def write_decorrelation_artifacts(
     """Write exactly one conditional non-manifest contract without clobbering."""
     descriptors: dict[str, int] | None = None
     try:
-        authorization = _run_authorization(layout)
         descriptors = _open_claimed_directories(layout)
         root = descriptors["."]
         if _entry_exists(root, ".terminal.failed") or _entry_exists(
@@ -661,7 +610,6 @@ def write_decorrelation_artifacts(
             )
         return _new_artifact_receipt(
             layout.directory_identities["."],
-            authorization.token,
             selected,
             selected_coefficient,
             expected_outputs,
@@ -918,6 +866,20 @@ def _trusted_model_bytes(model: Any, selected_coefficient: float) -> bytes:
         raise ValueError(
             "selected model pickle round-trip changed verification predictions"
         ) from error
+    safe_observed = _validate_model_pickle_semantics(
+        payload, selected_coefficient
+    )
+    try:
+        np.testing.assert_allclose(
+            safe_observed,
+            expected,
+            rtol=0.0,
+            atol=4.0 * np.finfo(float).eps,
+        )
+    except AssertionError as error:
+        raise ValueError(
+            "safe model audit changed verification predictions"
+        ) from error
     return payload
 
 
@@ -966,6 +928,748 @@ def _random_states_equal(
     )
 
 
+@dataclass(frozen=True)
+class _SafePickleGlobal:
+    module: str
+    name: str
+
+
+@dataclass(eq=False)
+class _SafePickleNode:
+    kind: str
+    constructor: _SafePickleGlobal
+    args: tuple[Any, ...]
+    state: Any = None
+    state_installed: bool = False
+
+
+_SAFE_MODEL_GLOBALS = frozenset(
+    {
+        ("hep_ml.gradientboosting", "UGradientBoostingClassifier"),
+        ("hep_ml.losses", "KnnFlatnessLossFunction"),
+        ("hep_ml.tree", "SklearnClusteringTree"),
+        ("numpy.random._pickle", "__randomstate_ctor"),
+        ("numpy.random._pickle", "__bit_generator_ctor"),
+        ("numpy.random._mt19937", "MT19937"),
+        ("numpy._core.numeric", "_frombuffer"),
+        ("numpy.core.numeric", "_frombuffer"),
+        ("numpy", "dtype"),
+        ("numpy._core.multiarray", "scalar"),
+        ("numpy.core.multiarray", "scalar"),
+        ("scipy.sparse._csr", "csr_matrix"),
+        ("sklearn.tree._tree", "Tree"),
+    }
+)
+
+
+def _validate_model_pickle_semantics(
+    payload: bytes, selected_coefficient: float
+) -> np.ndarray:
+    """Audit a fitted hep_ml pickle without importing or invoking its globals."""
+    if (
+        not isinstance(payload, bytes)
+        or len(payload) < 1_000
+        or len(payload) > 512 * 1024 * 1024
+        or not payload.startswith(b"\x80\x05")
+    ):
+        raise ValueError("flatness model pickle does not match the frozen policy")
+    try:
+        root = _safe_parse_pickle(payload)
+        if not _safe_node_is(
+            root,
+            kind="newobj",
+            module="hep_ml.gradientboosting",
+            name="UGradientBoostingClassifier",
+        ):
+            raise ValueError("flatness model pickle changes the classifier type")
+        if root.args != () or not isinstance(root.state, dict):
+            raise ValueError("flatness model pickle has invalid classifier state")
+        state = root.state
+        required_state = {
+            "loss",
+            "n_estimators",
+            "learning_rate",
+            "subsample",
+            "min_samples_split",
+            "min_samples_leaf",
+            "max_features",
+            "max_leaf_nodes",
+            "max_depth",
+            "update_tree",
+            "train_features",
+            "random_state",
+            "splitter",
+            "classes_",
+            "estimators",
+            "scores",
+            "n_features",
+            "initial_step",
+        }
+        if set(state) != required_state:
+            raise ValueError("flatness model pickle changes classifier state")
+        expected_policy = {
+            "n_estimators": 300,
+            "learning_rate": 0.05,
+            "subsample": 0.8,
+            "min_samples_split": 2,
+            "min_samples_leaf": 50,
+            "max_features": None,
+            "max_leaf_nodes": None,
+            "max_depth": 3,
+            "update_tree": True,
+            "splitter": "best",
+            "n_features": len(_FEATURES),
+        }
+        if any(state.get(name) != value for name, value in expected_policy.items()):
+            raise ValueError("flatness model pickle changes the frozen model policy")
+        if state.get("train_features") != list(_FEATURES):
+            raise ValueError("flatness model pickle changes the DropTop4 features")
+        if state.get("classes_") != [0, 1]:
+            raise ValueError("flatness model pickle changes the classifier labels")
+        initial_step = state.get("initial_step")
+        if (
+            isinstance(initial_step, bool)
+            or not isinstance(initial_step, (int, float))
+            or not np.isfinite(float(initial_step))
+        ):
+            raise ValueError("flatness model pickle has an invalid initial step")
+
+        loss = state["loss"]
+        labels = _validate_safe_loss(loss, selected_coefficient)
+        _validate_safe_random_state_policy(
+            state["random_state"],
+            loss.state["random_state"],
+            labels=labels,
+            uniform_labels=_safe_numpy_array(
+                loss.state["uniform_label"], allowed_codes={"i8"}
+            ),
+            max_groups=5000,
+            n_estimators=300,
+            subsample=0.8,
+        )
+        probabilities = _safe_model_verification_probabilities(root)
+        if (
+            probabilities.shape != (len(_model_verification_frame()), 2)
+            or not np.isfinite(probabilities).all()
+            or (probabilities < 0.0).any()
+            or (probabilities > 1.0).any()
+            or not np.allclose(
+                probabilities.sum(axis=1),
+                np.ones(len(probabilities)),
+                rtol=0.0,
+                atol=np.finfo(float).eps,
+            )
+        ):
+            raise ValueError(
+                "flatness model pickle predictions violate the classifier contract"
+            )
+        return probabilities
+    except ValueError:
+        raise
+    except Exception as error:
+        raise ValueError(
+            "flatness model pickle does not match the frozen semantics"
+        ) from error
+
+
+def _safe_parse_pickle(payload: bytes) -> Any:
+    stack: list[Any] = []
+    memo: dict[int, Any] = {}
+    mark = object()
+    operation_count = 0
+    protocol_seen = False
+
+    def take_marked() -> list[Any]:
+        for index in range(len(stack) - 1, -1, -1):
+            if stack[index] is mark:
+                values = stack[index + 1 :]
+                del stack[index:]
+                return values
+        raise ValueError("flatness model pickle has an unmatched mark")
+
+    try:
+        for operation, argument, position in pickletools.genops(payload):
+            operation_count += 1
+            if operation_count > 2_000_000 or len(stack) > 2_000_000:
+                raise ValueError("flatness model pickle exceeds safe limits")
+            name = operation.name
+            if name == "PROTO":
+                if protocol_seen or position != 0 or argument != 5:
+                    raise ValueError("flatness model pickle must use protocol 5")
+                protocol_seen = True
+            elif name == "FRAME":
+                if not protocol_seen:
+                    raise ValueError("flatness model pickle frame precedes protocol")
+            elif name == "MARK":
+                stack.append(mark)
+            elif name == "NONE":
+                stack.append(None)
+            elif name == "NEWTRUE":
+                stack.append(True)
+            elif name == "NEWFALSE":
+                stack.append(False)
+            elif name in {
+                "BININT",
+                "BININT1",
+                "BININT2",
+                "BINFLOAT",
+                "LONG1",
+                "LONG4",
+                "INT",
+                "LONG",
+            }:
+                stack.append(argument)
+            elif name in {
+                "SHORT_BINUNICODE",
+                "BINUNICODE",
+                "BINUNICODE8",
+                "UNICODE",
+            }:
+                if not isinstance(argument, str):
+                    raise ValueError("flatness model pickle text is invalid")
+                stack.append(argument)
+            elif name in {
+                "SHORT_BINBYTES",
+                "BINBYTES",
+                "BINBYTES8",
+                "BYTEARRAY8",
+            }:
+                stack.append(bytes(argument))
+            elif name == "EMPTY_DICT":
+                stack.append({})
+            elif name == "EMPTY_LIST":
+                stack.append([])
+            elif name == "EMPTY_TUPLE":
+                stack.append(())
+            elif name == "TUPLE":
+                stack.append(tuple(take_marked()))
+            elif name == "TUPLE1":
+                if not stack:
+                    raise ValueError("flatness model pickle stack underflow")
+                stack[-1:] = [(stack[-1],)]
+            elif name == "TUPLE2":
+                if len(stack) < 2:
+                    raise ValueError("flatness model pickle stack underflow")
+                stack[-2:] = [(stack[-2], stack[-1])]
+            elif name == "TUPLE3":
+                if len(stack) < 3:
+                    raise ValueError("flatness model pickle stack underflow")
+                stack[-3:] = [(stack[-3], stack[-2], stack[-1])]
+            elif name == "APPEND":
+                if len(stack) < 2 or not isinstance(stack[-2], list):
+                    raise ValueError("flatness model pickle append is invalid")
+                value = stack.pop()
+                stack[-1].append(value)
+            elif name == "APPENDS":
+                values = take_marked()
+                if not stack or not isinstance(stack[-1], list):
+                    raise ValueError("flatness model pickle appends are invalid")
+                stack[-1].extend(values)
+            elif name == "SETITEM":
+                if len(stack) < 3 or not isinstance(stack[-3], dict):
+                    raise ValueError("flatness model pickle setitem is invalid")
+                value = stack.pop()
+                key = stack.pop()
+                stack[-1][key] = value
+            elif name == "SETITEMS":
+                values = take_marked()
+                if (
+                    not stack
+                    or not isinstance(stack[-1], dict)
+                    or len(values) % 2
+                ):
+                    raise ValueError("flatness model pickle setitems are invalid")
+                for index in range(0, len(values), 2):
+                    stack[-1][values[index]] = values[index + 1]
+            elif name == "MEMOIZE":
+                if not stack:
+                    raise ValueError("flatness model pickle memo is invalid")
+                memo[len(memo)] = stack[-1]
+            elif name in {"BINPUT", "LONG_BINPUT", "PUT"}:
+                if not stack or type(argument) is not int or argument in memo:
+                    raise ValueError("flatness model pickle memo index is invalid")
+                memo[argument] = stack[-1]
+            elif name in {"BINGET", "LONG_BINGET", "GET"}:
+                if type(argument) is not int or argument not in memo:
+                    raise ValueError("flatness model pickle memo reference is invalid")
+                stack.append(memo[argument])
+            elif name in {"STACK_GLOBAL", "GLOBAL"}:
+                if name == "STACK_GLOBAL":
+                    if len(stack) < 2:
+                        raise ValueError("flatness model pickle global is invalid")
+                    global_name = stack.pop()
+                    module = stack.pop()
+                else:
+                    if not isinstance(argument, str) or " " not in argument:
+                        raise ValueError("flatness model pickle global is invalid")
+                    module, global_name = argument.split(" ", 1)
+                if (
+                    not isinstance(module, str)
+                    or not isinstance(global_name, str)
+                    or (module, global_name) not in _SAFE_MODEL_GLOBALS
+                ):
+                    raise ValueError("flatness model pickle references an unsafe global")
+                stack.append(_SafePickleGlobal(module, global_name))
+            elif name in {"REDUCE", "NEWOBJ"}:
+                if len(stack) < 2:
+                    raise ValueError("flatness model pickle constructor is invalid")
+                args = stack.pop()
+                constructor = stack.pop()
+                if (
+                    not isinstance(args, tuple)
+                    or not isinstance(constructor, _SafePickleGlobal)
+                    or (constructor.module, constructor.name)
+                    not in _SAFE_MODEL_GLOBALS
+                ):
+                    raise ValueError("flatness model pickle constructor is unsafe")
+                stack.append(
+                    _SafePickleNode(
+                        "reduce" if name == "REDUCE" else "newobj",
+                        constructor,
+                        args,
+                    )
+                )
+            elif name == "BUILD":
+                if len(stack) < 2 or not isinstance(stack[-2], _SafePickleNode):
+                    raise ValueError("flatness model pickle build is invalid")
+                state = stack.pop()
+                target = stack[-1]
+                if target.state_installed:
+                    raise ValueError("flatness model pickle repeats object state")
+                target.state = state
+                target.state_installed = True
+            elif name == "STOP":
+                if (
+                    not protocol_seen
+                    or position != len(payload) - 1
+                    or len(stack) != 1
+                    or stack[0] is mark
+                ):
+                    raise ValueError("flatness model pickle is incomplete")
+                return stack[0]
+            else:
+                raise ValueError(
+                    f"flatness model pickle uses unsupported opcode {name}"
+                )
+    except (TypeError, KeyError, IndexError, OverflowError) as error:
+        raise ValueError("flatness model pickle structure is invalid") from error
+    raise ValueError("flatness model pickle has no terminal opcode")
+
+
+def _safe_node_is(
+    value: Any, *, kind: str, module: str, name: str
+) -> bool:
+    return (
+        isinstance(value, _SafePickleNode)
+        and value.kind == kind
+        and value.constructor == _SafePickleGlobal(module, name)
+        and value.state_installed
+    )
+
+
+def _validate_safe_loss(
+    loss: Any, selected_coefficient: float
+) -> np.ndarray:
+    if not _safe_node_is(
+        loss,
+        kind="newobj",
+        module="hep_ml.losses",
+        name="KnnFlatnessLossFunction",
+    ) or loss.args != ():
+        raise ValueError("flatness model pickle changes the loss type")
+    if not isinstance(loss.state, dict):
+        raise ValueError("flatness model pickle has invalid loss state")
+    required = {
+        "n_neighbours",
+        "max_groups",
+        "random_state",
+        "uniform_features",
+        "uniform_label",
+        "power",
+        "fl_coefficient",
+        "allow_wrong_signs",
+        "regularization_",
+        "group_indices",
+        "group_matrices",
+        "group_weights",
+        "label_masks",
+        "y",
+        "y_signed",
+        "sample_weight",
+        "divided_weight",
+    }
+    if set(loss.state) != required:
+        raise ValueError("flatness model pickle changes the loss state")
+    if (
+        loss.state["n_neighbours"] != 100
+        or loss.state["max_groups"] != 5000
+        or loss.state["uniform_features"] != ["m4l"]
+        or loss.state["power"] != 2.0
+        or loss.state["fl_coefficient"] != selected_coefficient
+        or loss.state["allow_wrong_signs"] is not True
+    ):
+        raise ValueError("flatness model pickle changes the frozen loss policy")
+    uniform = _safe_numpy_array(
+        loss.state["uniform_label"], allowed_codes={"i8"}
+    )
+    if uniform.shape != (1,) or not np.array_equal(uniform, np.asarray([0])):
+        raise ValueError("flatness model pickle changes the uniform label")
+    labels = _safe_numpy_array(loss.state["y"], allowed_codes={"i8"})
+    if (
+        labels.ndim != 1
+        or labels.size == 0
+        or not set(labels.tolist()) <= {0, 1}
+    ):
+        raise ValueError("flatness model pickle has invalid fitted labels")
+    return labels.astype(int, copy=False)
+
+
+def _safe_numpy_array(
+    value: Any, *, allowed_codes: set[str]
+) -> np.ndarray:
+    if not (
+        _safe_node_is_frombuffer(value)
+        and len(value.args) == 4
+        and isinstance(value.args[0], bytes)
+        and isinstance(value.args[2], tuple)
+        and value.args[3] == "C"
+    ):
+        raise ValueError("flatness model pickle contains an invalid array")
+    payload, dtype_value, shape, _ = value.args
+    code, byte_order = _safe_dtype(dtype_value)
+    if code not in allowed_codes:
+        raise ValueError("flatness model pickle changes an array dtype")
+    dtype_map = {
+        "i8": np.dtype("<i8"),
+        "i4": np.dtype("<i4"),
+        "u4": np.dtype("<u4"),
+        "u1": np.dtype("u1"),
+        "f8": np.dtype("<f8"),
+        "b1": np.dtype("?"),
+    }
+    if code not in dtype_map or byte_order not in {"<", "|"}:
+        raise ValueError("flatness model pickle uses an invalid array dtype")
+    if (
+        any(type(dimension) is not int or dimension < 0 for dimension in shape)
+        or len(shape) > 4
+    ):
+        raise ValueError("flatness model pickle contains an invalid array shape")
+    count = int(np.prod(shape, dtype=np.int64)) if shape else 1
+    dtype = dtype_map[code]
+    if count > 100_000_000 or len(payload) != count * dtype.itemsize:
+        raise ValueError("flatness model pickle array size is inconsistent")
+    return np.frombuffer(payload, dtype=dtype).reshape(shape).copy()
+
+
+def _safe_node_is_frombuffer(value: Any) -> bool:
+    return (
+        isinstance(value, _SafePickleNode)
+        and value.kind == "reduce"
+        and value.constructor.name == "_frombuffer"
+        and value.constructor.module
+        in {"numpy._core.numeric", "numpy.core.numeric"}
+        and not value.state_installed
+    )
+
+
+def _safe_dtype(value: Any) -> tuple[str, str]:
+    if not (
+        _safe_node_is(
+            value,
+            kind="reduce",
+            module="numpy",
+            name="dtype",
+        )
+        and len(value.args) == 3
+        and isinstance(value.args[0], str)
+        and value.args[1:] == (False, True)
+        and isinstance(value.state, tuple)
+        and len(value.state) == 8
+        and value.state[0] == 3
+        and value.state[1] in {"<", "|"}
+    ):
+        raise ValueError("flatness model pickle contains an invalid dtype")
+    return value.args[0], value.state[1]
+
+
+def _validate_safe_random_state_policy(
+    model_random: Any,
+    loss_random: Any,
+    *,
+    labels: np.ndarray,
+    uniform_labels: np.ndarray,
+    max_groups: int,
+    n_estimators: int,
+    subsample: float,
+) -> None:
+    expected_loss = np.random.RandomState(42)
+    for label in uniform_labels:
+        count = int(np.count_nonzero(labels == label))
+        if count > max_groups:
+            expected_loss.choice(count, size=max_groups, replace=False)
+    if not _safe_random_state_equals(loss_random, expected_loss):
+        raise ValueError("flatness model pickle changes the loss random state")
+
+    expected_model = np.random.RandomState(42)
+    n_samples = len(labels)
+    n_inbag = int(subsample * n_samples)
+    for _ in range(n_estimators):
+        expected_model.choice(n_samples, size=n_inbag, replace=False)
+        expected_model.randint(np.iinfo(np.int32).max)
+    if not _safe_random_state_equals(model_random, expected_model):
+        raise ValueError("flatness model pickle changes the model random state")
+
+
+def _safe_random_state_equals(
+    value: Any, expected: np.random.RandomState
+) -> bool:
+    if not (
+        isinstance(value, _SafePickleNode)
+        and value.kind == "reduce"
+        and value.constructor
+        == _SafePickleGlobal("numpy.random._pickle", "__randomstate_ctor")
+        and len(value.args) == 1
+        and value.state_installed
+        and isinstance(value.state, dict)
+    ):
+        return False
+    bit_generator = value.args[0]
+    if not (
+        isinstance(bit_generator, _SafePickleNode)
+        and bit_generator.kind == "reduce"
+        and bit_generator.constructor
+        == _SafePickleGlobal("numpy.random._pickle", "__bit_generator_ctor")
+        and bit_generator.args
+        == ((_SafePickleGlobal("numpy.random._mt19937", "MT19937")),)
+        and bit_generator.state_installed
+        and isinstance(bit_generator.state, tuple)
+        and len(bit_generator.state) == 2
+        and bit_generator.state[1] is None
+    ):
+        return False
+    state = value.state
+    inner = state.get("state")
+    if (
+        set(state) != {"bit_generator", "state", "has_gauss", "gauss"}
+        or state.get("bit_generator") != "MT19937"
+        or not isinstance(inner, dict)
+        or set(inner) != {"key", "pos"}
+        or type(inner.get("pos")) is not int
+        or state.get("has_gauss") not in {0, 1}
+        or not isinstance(state.get("gauss"), float)
+    ):
+        return False
+    try:
+        key = _safe_numpy_array(inner["key"], allowed_codes={"u4"})
+    except ValueError:
+        return False
+    expected_state = expected.get_state()
+    return (
+        key.shape == (624,)
+        and np.array_equal(key, expected_state[1])
+        and inner["pos"] == expected_state[2]
+        and state["has_gauss"] == expected_state[3]
+        and state["gauss"] == expected_state[4]
+    )
+
+
+def _safe_model_verification_probabilities(root: _SafePickleNode) -> np.ndarray:
+    state = root.state
+    estimators = state["estimators"]
+    if not isinstance(estimators, list) or len(estimators) != 300:
+        raise ValueError("flatness model pickle changes the fitted tree count")
+    matrix = _model_verification_frame().loc[:, list(_FEATURES)].to_numpy(
+        dtype=float
+    )
+    scores = np.full(len(matrix), float(state["initial_step"]), dtype=float)
+    for estimator in estimators:
+        if not isinstance(estimator, list) or len(estimator) != 2:
+            raise ValueError("flatness model pickle contains an invalid estimator")
+        tree, leaf_values_value = estimator
+        leaf_values = _safe_numpy_array(
+            leaf_values_value, allowed_codes={"f8"}
+        )
+        scores += 0.05 * _safe_tree_predictions(tree, leaf_values, matrix)
+    positive = np.empty(len(scores), dtype=float)
+    nonnegative = scores >= 0.0
+    positive[nonnegative] = 1.0 / (1.0 + np.exp(-scores[nonnegative]))
+    exponential = np.exp(scores[~nonnegative])
+    positive[~nonnegative] = exponential / (1.0 + exponential)
+    return np.column_stack((1.0 - positive, positive))
+
+
+def _safe_tree_predictions(
+    tree: Any, leaf_values: np.ndarray, matrix: np.ndarray
+) -> np.ndarray:
+    if not _safe_node_is(
+        tree,
+        kind="newobj",
+        module="hep_ml.tree",
+        name="SklearnClusteringTree",
+    ) or not isinstance(tree.state, dict):
+        raise ValueError("flatness model pickle changes a fitted tree type")
+    required_tree_state = {
+        "criterion",
+        "splitter",
+        "max_depth",
+        "min_samples_split",
+        "min_samples_leaf",
+        "min_weight_fraction_leaf",
+        "max_features",
+        "max_leaf_nodes",
+        "random_state",
+        "min_impurity_decrease",
+        "class_weight",
+        "ccp_alpha",
+        "monotonic_cst",
+        "n_features_in_",
+        "n_outputs_",
+        "max_features_",
+        "tree_",
+    }
+    state = tree.state
+    if (
+        set(state) != required_tree_state
+        or state["criterion"] != "squared_error"
+        or state["splitter"] != "best"
+        or state["max_depth"] != 3
+        or state["min_samples_split"] != 2
+        or state["min_samples_leaf"] != 50
+        or state["n_features_in_"] != len(_FEATURES)
+        or state["n_outputs_"] != 1
+    ):
+        raise ValueError("flatness model pickle changes the fitted tree policy")
+    raw_tree = state["tree_"]
+    if not (
+        isinstance(raw_tree, _SafePickleNode)
+        and raw_tree.kind == "reduce"
+        and raw_tree.constructor
+        == _SafePickleGlobal("sklearn.tree._tree", "Tree")
+        and len(raw_tree.args) == 3
+        and raw_tree.args[0] == len(_FEATURES)
+        and raw_tree.args[2] == 1
+        and raw_tree.state_installed
+        and isinstance(raw_tree.state, dict)
+    ):
+        raise ValueError("flatness model pickle contains an invalid sklearn tree")
+    class_counts = _safe_numpy_array(raw_tree.args[1], allowed_codes={"i8"})
+    if class_counts.shape != (1,) or not np.array_equal(
+        class_counts, np.asarray([1])
+    ):
+        raise ValueError("flatness model pickle changes tree output shape")
+    tree_state = raw_tree.state
+    if set(tree_state) != {"max_depth", "node_count", "nodes", "values"}:
+        raise ValueError("flatness model pickle changes sklearn tree state")
+    node_count = tree_state["node_count"]
+    depth = tree_state["max_depth"]
+    if (
+        type(node_count) is not int
+        or not 1 <= node_count <= 15
+        or type(depth) is not int
+        or not 0 <= depth <= 3
+    ):
+        raise ValueError("flatness model pickle has invalid tree dimensions")
+    nodes = _safe_tree_nodes(tree_state["nodes"], node_count)
+    values = _safe_numpy_array(tree_state["values"], allowed_codes={"f8"})
+    if (
+        values.shape != (node_count, 1, 1)
+        or leaf_values.shape != (node_count,)
+        or not np.isfinite(values).all()
+        or not np.isfinite(leaf_values).all()
+    ):
+        raise ValueError("flatness model pickle has invalid tree values")
+    predictions = np.empty(len(matrix), dtype=float)
+    for row_index, row in enumerate(matrix):
+        node_index = 0
+        for _ in range(node_count):
+            left, right, feature, threshold, _, _, _, missing_left = nodes[
+                node_index
+            ]
+            if left == -1 and right == -1:
+                if feature != -2:
+                    raise ValueError("flatness model pickle has an invalid leaf")
+                predictions[row_index] = leaf_values[node_index]
+                break
+            if (
+                not 0 <= left < node_count
+                or not 0 <= right < node_count
+                or left == node_index
+                or right == node_index
+                or not 0 <= feature < len(_FEATURES)
+                or missing_left not in {0, 1}
+            ):
+                raise ValueError("flatness model pickle has an invalid branch")
+            node_index = left if row[feature] <= threshold else right
+        else:
+            raise ValueError("flatness model pickle tree contains a cycle")
+    return predictions
+
+
+def _safe_tree_nodes(value: Any, node_count: int) -> list[tuple[Any, ...]]:
+    if not (
+        _safe_node_is_frombuffer(value)
+        and len(value.args) == 4
+        and isinstance(value.args[0], bytes)
+        and value.args[2] == (node_count,)
+        and value.args[3] == "C"
+    ):
+        raise ValueError("flatness model pickle contains invalid tree nodes")
+    payload, dtype_value, _, _ = value.args
+    code, byte_order = _safe_dtype(dtype_value)
+    expected_names = (
+        "left_child",
+        "right_child",
+        "feature",
+        "threshold",
+        "impurity",
+        "n_node_samples",
+        "weighted_n_node_samples",
+        "missing_go_to_left",
+    )
+    state = dtype_value.state
+    if (
+        code != "V64"
+        or byte_order != "|"
+        or state[3] != expected_names
+        or not isinstance(state[4], dict)
+        or set(state[4]) != set(expected_names)
+        or state[5:] != (64, 1, 16)
+        or len(payload) != node_count * 64
+    ):
+        raise ValueError("flatness model pickle changes the tree-node dtype")
+    expected_fields = {
+        "left_child": ("i8", 0),
+        "right_child": ("i8", 8),
+        "feature": ("i8", 16),
+        "threshold": ("f8", 24),
+        "impurity": ("f8", 32),
+        "n_node_samples": ("i8", 40),
+        "weighted_n_node_samples": ("f8", 48),
+        "missing_go_to_left": ("u1", 56),
+    }
+    for name, (expected_code, expected_offset) in expected_fields.items():
+        field = state[4][name]
+        if (
+            not isinstance(field, tuple)
+            or len(field) != 2
+            or field[1] != expected_offset
+            or _safe_dtype(field[0])[0] != expected_code
+        ):
+            raise ValueError("flatness model pickle changes the tree-node fields")
+    records: list[tuple[Any, ...]] = []
+    for index in range(node_count):
+        record = struct.unpack_from("<qqqddqdB7x", payload, index * 64)
+        if (
+            not np.isfinite(record[3])
+            or not np.isfinite(record[4])
+            or not np.isfinite(record[6])
+            or record[5] < 0
+        ):
+            raise ValueError("flatness model pickle contains invalid tree nodes")
+        records.append(record)
+    return records
+
+
 def _validate_receipt_evidence(
     layout: TrainingOutputLayout,
     receipt: DecorrelationArtifactReceipt,
@@ -977,27 +1681,35 @@ def _validate_receipt_evidence(
             "publisher requires a DecorrelationArtifactReceipt"
         )
     try:
-        authorization = _run_authorization(layout)
         run_identity = receipt._run_identity
-        receipt_authorization = receipt._authorization
         selected = receipt.selected
         receipt_coefficient = receipt._selected_coefficient
         outputs = receipt._outputs
         model = receipt._model
         model_bytes = receipt._model_bytes
+        content_digest = receipt._content_digest
     except AttributeError as error:
-        raise ValueError("artifact receipt is missing writer-bound evidence") from error
+        raise ValueError(
+            "artifact receipt is missing writer-bound content evidence"
+        ) from error
     if (
         layout.directory_identities is None
         or run_identity != layout.directory_identities.get(".")
     ):
         raise ValueError("artifact receipt does not belong to this claimed run")
-    if receipt_authorization is not authorization.token:
-        raise ValueError("artifact receipt lacks writer-bound authorization")
     if type(selected) is not bool or not isinstance(outputs, Mapping):
         raise ValueError("artifact receipt metadata is invalid")
     if receipt_coefficient != selected_coefficient:
         raise ValueError("artifact receipt changes the selected coefficient")
+    expected_digest = _receipt_content_digest(
+        run_identity=run_identity,
+        selected=selected,
+        selected_coefficient=receipt_coefficient,
+        outputs=outputs,
+        model_bytes=model_bytes,
+    )
+    if not isinstance(content_digest, str) or content_digest != expected_digest:
+        raise ValueError("artifact receipt writer-bound content evidence changed")
     if not selected:
         if (
             selected_coefficient is not None
@@ -1627,11 +2339,22 @@ def _validate_on_disk_artifacts(
     model_payload, _ = _read_entry_bytes(
         descriptors["model"], "flatness_model.pkl"
     )
+    selected_coefficient = decision.get("selected_coefficient")
     if (
-        not isinstance(trusted_model_sha256, str)
-        or hashlib.sha256(model_payload).hexdigest() != trusted_model_sha256
+        type(selected_coefficient) is not float
+        or selected_coefficient not in config.coefficients
     ):
-        raise ValueError("published model lacks writer-bound model authorization")
+        raise ValueError("selected model coefficient is not approved")
+    _validate_model_pickle_semantics(model_payload, selected_coefficient)
+    if (
+        trusted_model_sha256 is not None
+        and (
+            not isinstance(trusted_model_sha256, str)
+            or hashlib.sha256(model_payload).hexdigest()
+            != trusted_model_sha256
+        )
+    ):
+        raise ValueError("published model differs from writer-bound model evidence")
 
 
 def _plain_csv_bytes(frame: pd.DataFrame) -> bytes:
@@ -1751,12 +2474,6 @@ def publish_decorrelation_manifest(
         staged_manifest = None
         os.close(staged_descriptor)
         staged_descriptor = None
-        _authorize_completed_run(
-            layout,
-            manifest_bytes=serialized,
-            selected=receipt.selected,
-            model_bytes=verified_model_bytes,
-        )
         _assert_decorrelation_contract(
             descriptors,
             selected=receipt.selected,
@@ -2143,6 +2860,49 @@ def _freeze_output_records(
     )
 
 
+def _receipt_content_digest(
+    *,
+    run_identity: tuple[int, int],
+    selected: bool,
+    selected_coefficient: float | None,
+    outputs: Mapping[str, Mapping[str, Any]],
+    model_bytes: bytes | None,
+) -> str:
+    if (
+        not isinstance(run_identity, tuple)
+        or len(run_identity) != 2
+        or any(type(value) is not int for value in run_identity)
+        or type(selected) is not bool
+        or not isinstance(outputs, Mapping)
+        or (model_bytes is not None and not isinstance(model_bytes, bytes))
+    ):
+        raise ValueError("artifact receipt content evidence is invalid")
+    normalized_outputs = {
+        relative: dict(record)
+        for relative, record in sorted(outputs.items())
+        if isinstance(relative, str) and isinstance(record, Mapping)
+    }
+    if len(normalized_outputs) != len(outputs):
+        raise ValueError("artifact receipt output evidence is invalid")
+    evidence = _json_bytes(
+        {
+            "schema_version": "1.0",
+            "run_identity": list(run_identity),
+            "selected": selected,
+            "selected_coefficient": selected_coefficient,
+            "outputs": normalized_outputs,
+            "model_sha256": (
+                None
+                if model_bytes is None
+                else hashlib.sha256(model_bytes).hexdigest()
+            ),
+        }
+    )
+    return hashlib.sha256(
+        b"decorrelation-artifact-receipt-v1\x00" + evidence
+    ).hexdigest()
+
+
 def _assert_output_receipt(
     layout: TrainingOutputLayout,
     descriptors: Mapping[str, int],
@@ -2161,12 +2921,6 @@ def _assert_output_receipt(
 
 
 def _study_manifest_exists(layout: TrainingOutputLayout) -> bool:
-    try:
-        authorization = _run_authorization(layout)
-    except Exception:
-        return False
-    if authorization.completion_manifest_sha256 is None:
-        return False
     descriptors: dict[str, int] | None = None
     try:
         descriptors = _open_claimed_directories(layout)
@@ -2175,11 +2929,6 @@ def _study_manifest_exists(layout: TrainingOutputLayout) -> bool:
                 descriptors["artifacts"], "study_manifest.json"
             )
         except (OSError, ValueError, FileNotFoundError):
-            return False
-        if (
-            hashlib.sha256(payload).hexdigest()
-            != authorization.completion_manifest_sha256
-        ):
             return False
         try:
             manifest = json.loads(payload.decode("utf-8"))
@@ -2209,8 +2958,6 @@ def _study_manifest_exists(layout: TrainingOutputLayout) -> bool:
             config_bytes, _ = _read_entry_bytes(descriptors["."], "config.yaml")
             config = _load_config_bytes(config_bytes)
             selected = _validate_completed_decision(decision, config)
-            if selected is not authorization.completion_selected:
-                return False
             _validate_software(manifest.get("software"))
             _assert_decorrelation_contract(
                 descriptors,
@@ -2223,7 +2970,7 @@ def _study_manifest_exists(layout: TrainingOutputLayout) -> bool:
                 config,
                 selected=selected,
                 decision=decision,
-                trusted_model_sha256=authorization.completion_model_sha256,
+                trusted_model_sha256=None,
             )
             study_config = sources.get("study_config")
             if (

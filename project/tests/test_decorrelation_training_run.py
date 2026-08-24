@@ -603,6 +603,45 @@ def test_forged_receipt_cannot_authorize_untrusted_selected_outputs(
     assert not (layout.artifacts_dir / "study_manifest.json").exists()
 
 
+def test_token_bearing_forged_receipt_does_not_authorize_publication(
+    tmp_path: Path, frozen_sources
+):
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+    legitimate = training_run.write_decorrelation_artifacts(
+        layout=layout,
+        config_bytes=frozen_sources.config_bytes,
+        artifacts=_artifacts(selected=False),
+    )
+    forged = object.__new__(training_run.DecorrelationArtifactReceipt)
+    for name in (
+        "_run_identity",
+        "selected",
+        "_selected_coefficient",
+        "_outputs",
+        "_model",
+        "_model_bytes",
+    ):
+        object.__setattr__(forged, name, getattr(legitimate, name))
+    object.__setattr__(
+        forged,
+        "_authorization",
+        _reachable_authorization_token(layout),
+    )
+
+    with pytest.raises(ValueError, match="receipt|writer"):
+        training_run.publish_decorrelation_manifest(
+            layout=layout,
+            sources=frozen_sources,
+            outcome=_outcome(selected=False),
+            receipt=forged,
+            software=_software(),
+        )
+
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+    assert not (layout.artifacts_dir / "study_manifest.json").exists()
+
+
 def test_source_mutation_blocks_manifest(frozen_sources, monkeypatch):
     original = training_run.StudySource.from_path
 
@@ -799,6 +838,23 @@ def test_pickle_none_with_rebound_hash_does_not_complete(
     assert (layout.run_dir / "failure.json").is_file()
 
 
+def test_pickle_none_with_rebound_manifest_and_authorization_does_not_complete(
+    tmp_path: Path, frozen_sources, fitted_hep_model
+):
+    layout = _publish_selection(tmp_path, frozen_sources, fitted_hep_model)
+    _replace_output_and_rebind_manifest(
+        layout,
+        "model/flatness_model.pkl",
+        pickle.dumps(None, protocol=5),
+    )
+    _rebind_reachable_completion_authorization(layout)
+
+    training_run.record_decorrelation_failure(layout, RuntimeError("failed"))
+
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+
+
 def test_non_png_with_rebound_hash_does_not_complete(
     tmp_path: Path, frozen_sources
 ):
@@ -883,6 +939,27 @@ def test_verified_selected_completion_prevents_failure_overwrite(
         layout, RuntimeError("late selected failure")
     )
 
+    assert not (layout.run_dir / ".terminal.failed").exists()
+    assert not (layout.run_dir / "failure.json").exists()
+
+
+@pytest.mark.parametrize("selected", [False, True])
+def test_verified_completion_survives_process_authorization_state_loss(
+    tmp_path: Path, frozen_sources, fitted_hep_model, selected: bool
+):
+    if selected:
+        layout = _publish_selection(tmp_path, frozen_sources, fitted_hep_model)
+    else:
+        layout = _publish_no_selection(tmp_path, frozen_sources)
+    manifest_path = layout.artifacts_dir / "study_manifest.json"
+    original = manifest_path.read_bytes()
+    _clear_reachable_authorization_registries()
+
+    training_run.record_decorrelation_failure(
+        layout, RuntimeError("simulated post-restart failure")
+    )
+
+    assert manifest_path.read_bytes() == original
     assert not (layout.run_dir / ".terminal.failed").exists()
     assert not (layout.run_dir / "failure.json").exists()
 
@@ -1063,6 +1140,48 @@ def _replace_output_and_rebind_manifest(
     manifest = json.loads(manifest_path.read_text())
     manifest["outputs"][relative] = record
     manifest_path.write_text(json.dumps(manifest))
+
+
+def _reachable_authorization_registries() -> list[dict]:
+    return [
+        value
+        for name, value in vars(training_run).items()
+        if "AUTHORIZ" in name.upper() and isinstance(value, dict)
+    ]
+
+
+def _reachable_authorization_token(layout) -> object:
+    for registry in _reachable_authorization_registries():
+        for authorization in registry.values():
+            if getattr(authorization, "layout", None) is layout and hasattr(
+                authorization, "token"
+            ):
+                return authorization.token
+    return object()
+
+
+def _rebind_reachable_completion_authorization(layout) -> None:
+    manifest = (layout.artifacts_dir / "study_manifest.json").read_bytes()
+    model = (layout.model_dir / "flatness_model.pkl").read_bytes()
+    for registry in _reachable_authorization_registries():
+        for authorization in registry.values():
+            if getattr(authorization, "layout", None) is not layout:
+                continue
+            if hasattr(authorization, "completion_manifest_sha256"):
+                authorization.completion_manifest_sha256 = hashlib.sha256(
+                    manifest
+                ).hexdigest()
+            if hasattr(authorization, "completion_model_sha256"):
+                authorization.completion_model_sha256 = hashlib.sha256(
+                    model
+                ).hexdigest()
+            if hasattr(authorization, "completion_selected"):
+                authorization.completion_selected = True
+
+
+def _clear_reachable_authorization_registries() -> None:
+    for registry in _reachable_authorization_registries():
+        registry.clear()
 
 
 def _write_manual_selected_outputs(
