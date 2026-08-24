@@ -308,3 +308,42 @@ def test_evaluate_candidate_matches_validated_metric_helpers(production_config):
         name: values["inclusive_to_selected_ks_distance"]
         for name, values in diagnostics["working_points"].items()
     }
+
+
+def test_real_hep_ml_synthetic_oof_scores_every_row_without_mass_tree_feature(
+    production_config,
+):
+    counts = {(fold, label): 0 for fold in range(5) for label in (0, 1)}
+    rows = []
+    event = 1
+    while min(counts.values()) < 110:
+        for label in (0, 1):
+            channel = 363490 if label == 0 else 345060
+            event_number = event * 2 + label
+            fold = development_fold(channel, event_number, folds=5)
+            if counts[(fold, label)] >= 110:
+                continue
+            row = {
+                name: float(np.sin(event_number * (offset + 1) * 0.013))
+                for offset, name in enumerate(FEATURES)
+            }
+            row.update(
+                {
+                    "m4l": 105.25 + (event_number % 55),
+                    "eventNumber": event_number,
+                    "channelNumber": channel,
+                    "split": "train" if event_number % 3 else "validation",
+                    "label": label,
+                    "physical_weight": -1.0 if event_number % 11 == 0 else 1.0,
+                }
+            )
+            rows.append(row)
+            counts[(fold, label)] += 1
+        event += 1
+    frame = pd.DataFrame(rows)
+
+    oof = generate_flatness_oof(frame, production_config, 0.5)
+
+    assert len(oof) == len(frame)
+    assert np.isfinite(oof["score_lambda_0p5"]).all()
+    assert "m4l" not in DROP_TOP4_FEATURES

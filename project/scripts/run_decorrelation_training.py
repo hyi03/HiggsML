@@ -2,17 +2,99 @@
 
 from __future__ import annotations
 
+import argparse
+from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
-from src.decorrelation_training import FlatnessOutcome
+from src.decorrelation_training import (
+    FlatnessOutcome,
+    OneShotTestGate,
+    fit_selected_and_score_test,
+    run_development_study,
+)
 from src.decorrelation_training_plots import (
     plot_candidate_tradeoff,
     plot_selected_mass_sculpting,
     plot_working_point_ks,
 )
-from src.decorrelation_training_run import DecorrelationConfig
+from src.decorrelation_training_run import (
+    DecorrelationConfig,
+    MCStudyPartitions,
+    assert_decorrelation_sources_unchanged,
+    claim_decorrelation_output,
+    publish_decorrelation_manifest,
+    record_decorrelation_failure,
+    resolve_decorrelation_output,
+    resolve_decorrelation_sources,
+    write_decorrelation_artifacts,
+)
+from src.full_training_run import load_training_mc_frame
+from src.provenance import software_versions
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Run the sealed MC-only DropTop4 KNN-flatness study"
+    )
+    parser.add_argument("--input-run", required=True)
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--run-dir", required=True)
+    args = parser.parse_args(argv)
+
+    project_root = Path(__file__).resolve().parents[1]
+    working_directory = Path.cwd()
+    resolve_decorrelation_output(
+        project_root=project_root,
+        working_directory=working_directory,
+        input_run=Path(args.input_run),
+        run_dir=Path(args.run_dir),
+    )
+    sources = resolve_decorrelation_sources(
+        input_run=args.input_run, config_path=args.config
+    )
+    layout = resolve_decorrelation_output(
+        project_root=project_root,
+        working_directory=working_directory,
+        input_run=sources.training_input.input_run,
+        run_dir=Path(args.run_dir),
+    )
+    layout = claim_decorrelation_output(layout)
+    try:
+        frame = load_training_mc_frame(sources.training_input)
+        partitions = MCStudyPartitions.from_frame(frame)
+        development = partitions.development
+        selection = run_development_study(development, sources.config)
+        if selection.selected is None:
+            outcome = FlatnessOutcome(selection=selection, evidence=None)
+        else:
+            outcome = fit_selected_and_score_test(
+                development,
+                OneShotTestGate(partitions.open_test),
+                sources.config,
+                selection,
+            )
+        artifacts = build_decorrelation_artifacts(outcome, sources.config)
+        receipt = write_decorrelation_artifacts(
+            layout=layout,
+            config_bytes=sources.config_bytes,
+            artifacts=artifacts,
+        )
+        assert_decorrelation_sources_unchanged(sources)
+        publish_decorrelation_manifest(
+            layout=layout,
+            sources=sources,
+            outcome=outcome,
+            receipt=receipt,
+            software=software_versions(),
+        )
+    except Exception as error:
+        record_decorrelation_failure(layout, error)
+        raise
+    _display_summary(artifacts["selection"], layout.run_dir)
+    return 0
 
 
 def build_decorrelation_artifacts(
@@ -157,3 +239,17 @@ def _candidate_name(coefficient: float) -> str:
 
 def _score_column(coefficient: float) -> str:
     return f"score_{_candidate_name(coefficient)}"
+
+
+def _display_summary(selection, run_dir: Path) -> None:
+    try:
+        print(f"study status: {selection['status']}")
+        print(f"selected candidate: {selection.get('selected_candidate')}")
+        print(f"test opened: {selection['test_opened']}")
+        print(f"output path: {run_dir}")
+    except (BrokenPipeError, OSError, KeyError, ValueError):
+        pass
+
+
+if __name__ == "__main__":
+    main()

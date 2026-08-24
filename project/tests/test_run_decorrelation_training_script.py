@@ -2,7 +2,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
+import pytest
 
+from scripts import run_decorrelation_training
 from scripts.run_decorrelation_training import build_decorrelation_artifacts
 from src.decorrelation_training_run import load_decorrelation_config
 
@@ -59,6 +61,122 @@ def test_selected_artifacts_report_test_without_reselecting():
         "working_point_ks.png",
         "selected_mass_sculpting.png",
     }
+
+
+def test_cli_runs_selected_stages_in_sealed_order(monkeypatch):
+    stages = []
+    unresolved = SimpleNamespace(run_dir=Path("out"), directory_identities=None)
+    claimed = SimpleNamespace(
+        run_dir=Path("out"), directory_identities={".": (1, 2)}
+    )
+    selected = SimpleNamespace(coefficient=1.0)
+    selection = SimpleNamespace(results=(), selected=selected)
+    outcome = SimpleNamespace(selection=selection, evidence=object())
+    sources = SimpleNamespace(
+        training_input=SimpleNamespace(input_run=Path("input")),
+        config=object(),
+        config_bytes=b"config",
+    )
+    partitions = SimpleNamespace(
+        development=pd.DataFrame(), open_test=lambda: pd.DataFrame()
+    )
+    resolves = iter((unresolved, unresolved))
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "resolve_decorrelation_output",
+        lambda **kwargs: stages.append(
+            "output_preflight" if not stages else "output_rebind"
+        )
+        or next(resolves),
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "resolve_decorrelation_sources",
+        lambda **kwargs: stages.append("source_resolve") or sources,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "claim_decorrelation_output",
+        lambda layout: stages.append("output_claim") or claimed,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "load_training_mc_frame",
+        lambda value: stages.append("mc_load") or pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training.MCStudyPartitions,
+        "from_frame",
+        lambda frame: stages.append("partition") or partitions,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "run_development_study",
+        lambda development, config: stages.append("development_study")
+        or selection,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "fit_selected_and_score_test",
+        lambda *args: stages.append("selected_test_gate") or outcome,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "build_decorrelation_artifacts",
+        lambda *args: stages.append("build_artifacts") or {"selection": {}},
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "write_decorrelation_artifacts",
+        lambda **kwargs: stages.append("write_artifacts") or object(),
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "assert_decorrelation_sources_unchanged",
+        lambda value: stages.append("source_recheck"),
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "publish_decorrelation_manifest",
+        lambda **kwargs: stages.append("publish_manifest") or {},
+    )
+    monkeypatch.setattr(run_decorrelation_training, "software_versions", lambda: {})
+
+    assert run_decorrelation_training.main(
+        ["--input-run", "input", "--config", "config", "--run-dir", "out"]
+    ) == 0
+    assert stages == [
+        "output_preflight",
+        "source_resolve",
+        "output_rebind",
+        "output_claim",
+        "mc_load",
+        "partition",
+        "development_study",
+        "selected_test_gate",
+        "build_artifacts",
+        "write_artifacts",
+        "source_recheck",
+        "publish_manifest",
+    ]
+
+
+@pytest.mark.parametrize("flag", ["--data", "--test", "--model"])
+def test_parser_exposes_only_frozen_paths(flag):
+    with pytest.raises(SystemExit) as error:
+        run_decorrelation_training.main(
+            [
+                "--input-run",
+                "input",
+                "--config",
+                "config",
+                "--run-dir",
+                "out",
+                flag,
+                "forbidden",
+            ]
+        )
+    assert error.value.code == 2
 
 
 def _config():
