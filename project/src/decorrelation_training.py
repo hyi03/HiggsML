@@ -215,9 +215,13 @@ class FlatnessOutcome:
                 raise ValueError("outcome evidence must be selected flatness evidence")
             if (
                 selection.selected is None
-                or evidence.candidate.coefficient != selection.selected.coefficient
+                or not _candidates_semantically_equal(
+                    evidence.candidate, selection.selected
+                )
             ):
-                raise ValueError("outcome evidence must match the selected candidate")
+                raise ValueError(
+                    "outcome evidence must derive from the exact selected candidate"
+                )
             evidence = replace(evidence, candidate=selection.selected)
         object.__setattr__(self, "selection", selection)
         object.__setattr__(self, "evidence", evidence)
@@ -648,6 +652,27 @@ def _snapshot_candidate(result: FlatnessCandidateResult) -> FlatnessCandidateRes
         zz_ks_distances=_freeze_value(result.zz_ks_distances),
         eligibility_reasons=result.eligibility_reasons,
         oof_scores=result.oof_scores.copy(deep=True),
+    )
+
+
+def _candidates_semantically_equal(
+    first: FlatnessCandidateResult,
+    second: FlatnessCandidateResult,
+) -> bool:
+    return (
+        first.coefficient == second.coefficient
+        and first.weighted_auc == second.weighted_auc
+        and first.background_score_mass_correlation
+        == second.background_score_mass_correlation
+        and first.working_points == second.working_points
+        and first.achieved_background_efficiencies
+        == second.achieved_background_efficiencies
+        and first.signal_efficiencies == second.signal_efficiencies
+        and first.target_background_efficiencies
+        == second.target_background_efficiencies
+        and first.zz_ks_distances == second.zz_ks_distances
+        and first.eligibility_reasons == second.eligibility_reasons
+        and first.oof_scores.equals(second.oof_scores)
     )
 
 

@@ -15,6 +15,7 @@ from src.decorrelation_training_run import load_decorrelation_config
 from src.decorrelation_training import (
     DROP_TOP4_FEATURES,
     FlatnessCandidateResult,
+    FlatnessOutcome,
     FlatnessSelection,
     OneShotTestGate,
     build_flatness_model,
@@ -620,3 +621,37 @@ def test_outcome_snapshots_selection_before_return(
 
     assert outcome.selection.selected.oof_scores.loc[row, "m4l"] == original_mass
     assert outcome.evidence.candidate.oof_scores.loc[row, "m4l"] == original_mass
+
+
+def test_outcome_rejects_evidence_from_different_same_coefficient_candidate(
+    development_frame,
+    test_frame,
+    production_config,
+    candidate_result,
+    monkeypatch,
+):
+    class FakeModel:
+        def fit(self, X, y, sample_weight):
+            return self
+
+        def predict_proba(self, X):
+            score = np.linspace(0.1, 0.9, len(X))
+            return np.column_stack([1.0 - score, score])
+
+    candidate_a = candidate_result(coefficient=1.0, auc=0.82, maximum_ks=0.06)
+    selection_a = FlatnessSelection(results=(candidate_a,), selected=candidate_a)
+    candidate_b = candidate_result(coefficient=1.0, auc=0.84, maximum_ks=0.04)
+    selection_b = FlatnessSelection(results=(candidate_b,), selected=candidate_b)
+    monkeypatch.setattr(
+        "src.decorrelation_training.build_flatness_model",
+        lambda config, coefficient: FakeModel(),
+    )
+    evidence_a = fit_selected_and_score_test(
+        development_frame,
+        OneShotTestGate(lambda: test_frame),
+        production_config,
+        selection_a,
+    ).evidence
+
+    with pytest.raises(ValueError, match="exact selected candidate"):
+        FlatnessOutcome(selection=selection_b, evidence=evidence_a)
