@@ -155,15 +155,23 @@ Exit code `0`; complete output:
 ```
 
 Step 5 static evidence was rerun from the clean reviewed head before this fix
-round. The prescribed placeholder/real-data-name `rg -n` audit exited `1` with
-exact output `<empty>`; for `rg`, exit `1` means no matching line, not command
-failure. `git diff --check` exited `0` with exact output `<empty>`, and
-`git status --short` exited `0` with exact output `<empty>`.
+round. The exact prescribed command was:
 
-After the documentation edits, the same prescribed `rg -n` audit again exited
-`1` with exact output `<empty>`, and `git diff --check` again exited `0` with
-exact output `<empty>`. The following `git status --short` exited `0` with this
-exact expected documentation-only output:
+```bash
+rg -n "TB[D]|TO[D]O|periodA.*(scored|opened)|data_events" docs/superpowers/plans/2026-08-24-drop-top4-knn-flatness-training-report.md
+```
+
+It exited `1` with exact output `<empty>`; for `rg`, exit `1` means no matching
+line, not command failure. This recorded execution preceded addition of the
+verbatim command itself to the report. `git diff --check` exited `0` with exact
+output `<empty>`, and `git status --short` exited `0` with exact output
+`<empty>`.
+
+After the Fix Round 1 documentation edits, but still before the verbatim
+command was added, the same prescribed `rg -n` audit again exited `1` with
+exact output `<empty>`, and `git diff --check` again exited `0` with exact
+output `<empty>`. The following `git status --short` exited `0` with this exact
+expected documentation-only output:
 
 ```text
  M docs/superpowers/plans/2026-08-24-drop-top4-knn-flatness-training-report.md
