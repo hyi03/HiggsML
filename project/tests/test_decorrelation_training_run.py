@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 from dataclasses import replace
+import gzip
 import hashlib
 import json
 from pathlib import Path
@@ -43,6 +45,15 @@ _ALL_MC_FEATURES = (
     "deltaR_Z2",
     "deltaPhi_ZZ",
 )
+_AUDIT_COLUMNS = (
+    "eventNumber",
+    "channelNumber",
+    "split",
+    "label",
+    "physical_weight",
+    "m4l",
+    "development_fold",
+)
 _COMMON_ARTIFACTS = {
     "artifacts/candidate_results.csv",
     "artifacts/working_point_metrics.csv",
@@ -58,6 +69,9 @@ _SELECTED_ARTIFACTS = {
     "predictions/test_scores.csv.gz",
     "plots/selected_mass_sculpting.png",
 }
+_VALID_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
 
 
 @pytest.fixture
@@ -225,6 +239,47 @@ def test_publisher_reparses_resolved_source_config_binding(tmp_path: Path):
     assert not (layout.artifacts_dir / "study_manifest.json").exists()
 
 
+def test_publisher_reconstructs_training_input_paths_and_rows(tmp_path: Path):
+    sources = _strict_sources()
+    attacker_config = tmp_path / "attacker-config.yaml"
+    attacker_summary = tmp_path / "attacker-summary.json"
+    attacker_config.write_bytes(sources.records["task4a_config"].snapshot)
+    attacker_summary.write_bytes(sources.records["task4a_summary"].snapshot)
+    forged_training_input = replace(
+        sources.training_input,
+        config_path=attacker_config,
+        summary_path=attacker_summary,
+        expected_rows=sources.training_input.expected_rows + 1,
+    )
+    forged_records = dict(sources.records)
+    forged_records["task4a_config"] = training_run.StudySource.from_path(
+        "task4a_config", attacker_config, capture=True
+    )
+    forged_records["task4a_summary"] = training_run.StudySource.from_path(
+        "task4a_summary", attacker_summary, capture=True
+    )
+    object.__setattr__(sources, "training_input", forged_training_input)
+    object.__setattr__(sources, "records", forged_records)
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+    receipt = training_run.write_decorrelation_artifacts(
+        layout=layout,
+        config_bytes=sources.config_bytes,
+        artifacts=_artifacts(selected=False),
+    )
+
+    with pytest.raises(ValueError, match="independently resolved sources"):
+        training_run.publish_decorrelation_manifest(
+            layout=layout,
+            sources=sources,
+            outcome=_outcome(selected=False),
+            receipt=receipt,
+            software=_software(),
+        )
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+    assert not (layout.artifacts_dir / "study_manifest.json").exists()
+
+
 def test_partitions_expose_development_and_open_test_once(mc_frame: pd.DataFrame):
     partitions = training_run.MCStudyPartitions.from_frame(mc_frame)
 
@@ -286,6 +341,27 @@ def test_selection_writes_exact_conditional_artifacts(
     }
 
 
+def test_writer_eligibility_uses_frozen_target_not_achieved_efficiency(
+    tmp_path: Path, frozen_sources, fitted_hep_model
+):
+    artifacts = _artifacts(selected=True, model=fitted_hep_model)
+    working_points = artifacts["working_point_metrics"]
+    working_points.loc[
+        (working_points["candidate"] == "lambda_1p0")
+        & (working_points["working_point"] == "loose"),
+        "achieved_background_efficiency",
+    ] = 0.9
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+
+    receipt = training_run.write_decorrelation_artifacts(
+        layout=layout,
+        config_bytes=frozen_sources.config_bytes,
+        artifacts=artifacts,
+    )
+
+    assert receipt.selected is True
+
+
 def test_csv_gzip_is_byte_deterministic(tmp_path: Path):
     payloads: list[bytes] = []
     config_bytes = Path("config/decorrelation_training_drop_top4.yaml").read_bytes()
@@ -336,6 +412,39 @@ def test_write_receipt_binds_exact_trusted_model_bytes(
     model_path.write_bytes(bytes([original[0] ^ 1]) + original[1:])
 
     with pytest.raises(RuntimeError, match="output receipt changed"):
+        training_run.publish_decorrelation_manifest(
+            layout=layout,
+            sources=frozen_sources,
+            outcome=_outcome(selected=True),
+            receipt=receipt,
+            software=_software(),
+        )
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+    assert not (layout.artifacts_dir / "study_manifest.json").exists()
+
+
+def test_forged_receipt_cannot_authorize_untrusted_selected_outputs(
+    tmp_path: Path, frozen_sources
+):
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+    _write_manual_selected_outputs(
+        layout,
+        config_bytes=frozen_sources.config_bytes,
+        artifacts=_artifacts(selected=True),
+    )
+    receipt = object.__new__(training_run.DecorrelationArtifactReceipt)
+    object.__setattr__(receipt, "_run_identity", layout.directory_identities["."])
+    object.__setattr__(receipt, "selected", True)
+    object.__setattr__(receipt, "_outputs", _filesystem_output_records(layout, True))
+    object.__setattr__(receipt, "_model", b"not-a-model-object")
+    object.__setattr__(
+        receipt,
+        "_model_bytes",
+        b"not-a-trusted-hep-ml-pickle",
+    )
+
+    with pytest.raises((TypeError, ValueError), match="model|PNG|semantic"):
         training_run.publish_decorrelation_manifest(
             layout=layout,
             sources=frozen_sources,
@@ -497,6 +606,62 @@ def test_counterfeit_complete_manifest_hash_does_not_suppress_failure(
     manifest[record_group][record_name]["sha256"] = "0" * 64
     manifest_path = layout.artifacts_dir / "study_manifest.json"
     manifest_path.write_text(json.dumps(manifest))
+
+    training_run.record_decorrelation_failure(layout, RuntimeError("failed"))
+
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+
+
+def test_contradictory_selection_with_rebound_hash_does_not_complete(
+    tmp_path: Path, frozen_sources
+):
+    layout = _publish_no_selection(tmp_path, frozen_sources)
+    contradictory = {
+        "schema_version": "1.0",
+        "status": "eligible_candidate_test_reported",
+        "selected_candidate": "lambda_1p0",
+        "test_opened": True,
+        "auc_floor": 0.80,
+        "ks_limit": 0.10,
+    }
+    _replace_output_and_rebind_manifest(
+        layout,
+        "artifacts/selection.json",
+        json.dumps(contradictory, sort_keys=True).encode("utf-8"),
+    )
+
+    training_run.record_decorrelation_failure(layout, RuntimeError("failed"))
+
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+
+
+def test_non_png_with_rebound_hash_does_not_complete(
+    tmp_path: Path, frozen_sources
+):
+    layout = _publish_no_selection(tmp_path, frozen_sources)
+    _replace_output_and_rebind_manifest(
+        layout,
+        "plots/candidate_tradeoff.png",
+        b"not-a-decodable-png",
+    )
+
+    training_run.record_decorrelation_failure(layout, RuntimeError("failed"))
+
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+
+
+def test_wrong_csv_schema_with_rebound_hash_does_not_complete(
+    tmp_path: Path, frozen_sources
+):
+    layout = _publish_no_selection(tmp_path, frozen_sources)
+    _replace_output_and_rebind_manifest(
+        layout,
+        "artifacts/candidate_results.csv",
+        b"wrong_column\n1\n",
+    )
 
     training_run.record_decorrelation_failure(layout, RuntimeError("failed"))
 
@@ -673,6 +838,106 @@ def _strict_sources():
     )
 
 
+def _publish_no_selection(tmp_path: Path, sources):
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+    receipt = training_run.write_decorrelation_artifacts(
+        layout=layout,
+        config_bytes=sources.config_bytes,
+        artifacts=_artifacts(selected=False),
+    )
+    training_run.publish_decorrelation_manifest(
+        layout=layout,
+        sources=sources,
+        outcome=_outcome(selected=False),
+        receipt=receipt,
+        software=_software(),
+    )
+    return layout
+
+
+def _replace_output_and_rebind_manifest(
+    layout, relative: str, payload: bytes
+) -> None:
+    output = layout.run_dir / relative
+    output.write_bytes(payload)
+    record: dict[str, object] = {
+        "path": str(output),
+        "size_bytes": len(payload),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+    }
+    if relative.endswith(".csv") or relative.endswith(".csv.gz"):
+        record["row_count"] = len(pd.read_csv(output))
+    manifest_path = layout.artifacts_dir / "study_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["outputs"][relative] = record
+    manifest_path.write_text(json.dumps(manifest))
+
+
+def _write_manual_selected_outputs(
+    layout,
+    *,
+    config_bytes: bytes,
+    artifacts: dict[str, object],
+) -> None:
+    plots = artifacts["plot_artifacts"]
+    payloads = {
+        "config.yaml": config_bytes,
+        "artifacts/candidate_results.csv": artifacts[
+            "candidate_results"
+        ].to_csv(index=False).encode("utf-8"),
+        "artifacts/working_point_metrics.csv": artifacts[
+            "working_point_metrics"
+        ].to_csv(index=False).encode("utf-8"),
+        "artifacts/selection.json": json.dumps(
+            artifacts["selection"], sort_keys=True
+        ).encode("utf-8"),
+        "artifacts/test_metrics.json": json.dumps(
+            artifacts["test_metrics"], sort_keys=True
+        ).encode("utf-8"),
+        "model/flatness_model.pkl": b"not-a-trusted-hep-ml-pickle",
+        "predictions/oof_scores.csv.gz": gzip.compress(
+            artifacts["oof_scores"].to_csv(index=False).encode("utf-8"),
+            mtime=0,
+        ),
+        "predictions/selected_oof_scores.csv.gz": gzip.compress(
+            artifacts["selected_oof_scores"].to_csv(index=False).encode("utf-8"),
+            mtime=0,
+        ),
+        "predictions/test_scores.csv.gz": gzip.compress(
+            artifacts["test_scores"].to_csv(index=False).encode("utf-8"),
+            mtime=0,
+        ),
+        "plots/candidate_tradeoff.png": b"not-a-decodable-png",
+        "plots/working_point_ks.png": plots["working_point_ks.png"],
+        "plots/selected_mass_sculpting.png": plots[
+            "selected_mass_sculpting.png"
+        ],
+    }
+    for relative, payload in payloads.items():
+        (layout.run_dir / relative).write_bytes(payload)
+
+
+def _filesystem_output_records(layout, selected: bool):
+    relative_paths = {
+        "config.yaml",
+        *_COMMON_ARTIFACTS,
+        *(_SELECTED_ARTIFACTS if selected else set()),
+    }
+    records = {}
+    for relative in relative_paths:
+        path = layout.run_dir / relative
+        payload = path.read_bytes()
+        record = {
+            "path": str(path),
+            "size_bytes": len(payload),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        }
+        if relative.endswith(".csv") or relative.endswith(".csv.gz"):
+            record["row_count"] = len(pd.read_csv(path))
+        records[relative] = record
+    return records
+
+
 def _fresh_layout(tmp_path: Path, *, name: str = "study"):
     return training_run.resolve_decorrelation_output(
         project_root=tmp_path,
@@ -695,32 +960,70 @@ def _artifacts(*, selected: bool, model=None) -> dict[str, object]:
         "auc_floor": 0.80,
         "ks_limit": 0.10,
     }
+    coefficients = [0.0, 0.5, 1.0, 2.0, 3.0]
+    candidates = [f"lambda_{str(value).replace('.', 'p')}" for value in coefficients]
+    eligible = [False, False, selected, False, False]
+    maximum_ks = [0.2, 0.2, 0.08 if selected else 0.2, 0.2, 0.2]
+    aucs = [0.79, 0.78, 0.82 if selected else 0.79, 0.77, 0.76]
+    candidate_results = pd.DataFrame(
+        {
+            "candidate": candidates,
+            "coefficient": coefficients,
+            "weighted_oof_auc": aucs,
+            "maximum_oof_zz_ks": maximum_ks,
+            "background_score_mass_correlation": [-0.2] * 5,
+            "eligible": eligible,
+            "eligibility_reasons": [
+                "" if value else "weighted_auc_below_floor" for value in eligible
+            ],
+        }
+    )
+    point_rows = []
+    for candidate, coefficient, is_eligible, candidate_ks in zip(
+        candidates, coefficients, eligible, maximum_ks
+    ):
+        for point, threshold, target, signal_efficiency in zip(
+            ("loose", "medium", "tight"),
+            (0.25, 0.5, 0.75),
+            (0.5, 0.2, 0.1),
+            (0.8, 0.5, 0.3) if is_eligible else (0.4, 0.1, 0.05),
+        ):
+            point_rows.append(
+                {
+                    "candidate": candidate,
+                    "coefficient": coefficient,
+                    "working_point": point,
+                    "threshold": threshold,
+                    "target_background_efficiency": target,
+                    "achieved_background_efficiency": target,
+                    "signal_efficiency": signal_efficiency,
+                    "zz_mass_ks_distance": candidate_ks,
+                }
+            )
+    oof_scores = pd.DataFrame(
+        {
+            "eventNumber": [1, 2],
+            "channelNumber": [363490, 345060],
+            "split": ["train", "validation"],
+            "label": [0, 1],
+            "physical_weight": [1.0, 1.0],
+            "m4l": [120.0, 130.0],
+            "development_fold": [0, 1],
+            "score_lambda_0p0": [0.2, 0.8],
+            "score_lambda_0p5": [0.25, 0.75],
+            "score_lambda_1p0": [0.3, 0.7],
+            "score_lambda_2p0": [0.35, 0.65],
+            "score_lambda_3p0": [0.4, 0.6],
+        }
+    )
     artifacts: dict[str, object] = {
-        "candidate_results": pd.DataFrame(
-            {
-                "candidate": ["lambda_0p0", "lambda_1p0"],
-                "weighted_oof_auc": [0.79, 0.82],
-                "eligible": [False, selected],
-            }
-        ),
-        "working_point_metrics": pd.DataFrame(
-            {
-                "candidate": ["lambda_0p0", "lambda_1p0"],
-                "working_point": ["loose", "tight"],
-                "zz_mass_ks_distance": [0.2, 0.08],
-            }
-        ),
+        "candidate_results": candidate_results,
+        "working_point_metrics": pd.DataFrame(point_rows),
         "selection": selection,
-        "oof_scores": pd.DataFrame(
-            {
-                "eventNumber": [1, 2],
-                "split": ["train", "validation"],
-                "score_lambda_0p0": [0.2, 0.8],
-            }
-        ),
+        "oof_scores": oof_scores,
         "plot_artifacts": {
-            "candidate_tradeoff.png": b"\x89PNG\r\n\x1a\ntradeoff",
-            "working_point_ks.png": b"\x89PNG\r\n\x1a\nks",
+            "candidate_tradeoff.png": _VALID_PNG,
+            "working_point_ks.png": _VALID_PNG,
         },
         "model": None,
         "selected_oof_scores": None,
@@ -730,21 +1033,48 @@ def _artifacts(*, selected: bool, model=None) -> dict[str, object]:
     if selected:
         artifacts.update(
             model=model,
-            selected_oof_scores=pd.DataFrame(
-                {"eventNumber": [1, 2], "oof_score": [0.25, 0.75]}
-            ),
+            selected_oof_scores=oof_scores.loc[:, list(_AUDIT_COLUMNS)]
+            .copy()
+            .assign(oof_score=oof_scores["score_lambda_1p0"]),
             test_scores=pd.DataFrame(
                 {
                     "eventNumber": [3, 4],
+                    "channelNumber": [363490, 345060],
                     "split": ["test", "test"],
+                    "label": [0, 1],
+                    "physical_weight": [1.0, 1.0],
+                    "m4l": [121.0, 131.0],
                     "score": [0.3, 0.7],
                 }
             ),
-            test_metrics={"schema_version": "1.0", "weighted_auc": 0.81},
+            test_metrics={
+                "schema_version": "1.0",
+                "weighted_auc": 0.81,
+                "background_score_mass_correlation": -0.2,
+                "working_points": {
+                    name: {
+                        "threshold": threshold,
+                        "target_background_efficiency": target,
+                        "achieved_background_efficiency": target,
+                        "signal_efficiency": signal,
+                    }
+                    for name, threshold, target, signal in zip(
+                        ("loose", "medium", "tight"),
+                        (0.25, 0.5, 0.75),
+                        (0.5, 0.2, 0.1),
+                        (0.8, 0.5, 0.3),
+                    )
+                },
+                "zz_ks_distances": {
+                    "loose": 0.05,
+                    "medium": 0.06,
+                    "tight": 0.07,
+                },
+            },
         )
         artifacts["plot_artifacts"][
             "selected_mass_sculpting.png"
-        ] = b"\x89PNG\r\n\x1a\nmass"
+        ] = _VALID_PNG
     return artifacts
 
 

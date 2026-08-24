@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import pickle
+import pickletools
 from types import MappingProxyType
 from typing import Any, Mapping
 
@@ -124,6 +126,43 @@ _SOFTWARE_KEYS = frozenset(
         "hep_ml",
     }
 )
+_CANDIDATE_COLUMNS = (
+    "candidate",
+    "coefficient",
+    "weighted_oof_auc",
+    "maximum_oof_zz_ks",
+    "background_score_mass_correlation",
+    "eligible",
+    "eligibility_reasons",
+)
+_WORKING_POINT_COLUMNS = (
+    "candidate",
+    "coefficient",
+    "working_point",
+    "threshold",
+    "target_background_efficiency",
+    "achieved_background_efficiency",
+    "signal_efficiency",
+    "zz_mass_ks_distance",
+)
+_AUDIT_COLUMNS = (
+    "eventNumber",
+    "channelNumber",
+    "split",
+    "label",
+    "physical_weight",
+    "m4l",
+    "development_fold",
+)
+_TEST_SCORE_COLUMNS = (
+    "eventNumber",
+    "channelNumber",
+    "split",
+    "label",
+    "physical_weight",
+    "m4l",
+    "score",
+)
 _TOP_LEVEL_KEYS = {
     "schema_version",
     "input_run",
@@ -234,43 +273,36 @@ class MCStudyPartitions:
         return self._test.copy(deep=True)
 
 
-_RECEIPT_TOKEN = object()
-
-
 @dataclass(frozen=True, init=False)
 class DecorrelationArtifactReceipt:
     _run_identity: tuple[int, int]
     selected: bool
     _outputs: Mapping[str, Mapping[str, Any]]
+    _model: Any | None
+    _model_bytes: bytes | None
 
-    def __new__(
-        cls,
-        token: object = None,
-        run_identity: tuple[int, int] | None = None,
-        selected: bool = False,
-        outputs: Mapping[str, Mapping[str, Any]] | None = None,
-    ):
-        if (
-            token is not _RECEIPT_TOKEN
-            or run_identity is None
-            or outputs is None
-        ):
-            raise TypeError(
-                "DecorrelationArtifactReceipt is returned by "
-                "write_decorrelation_artifacts"
-            )
-        return super().__new__(cls)
+    def __new__(cls, *args, **kwargs):
+        raise TypeError(
+            "DecorrelationArtifactReceipt is returned by "
+            "write_decorrelation_artifacts"
+        )
 
-    def __init__(
-        self,
-        token: object,
-        run_identity: tuple[int, int],
-        selected: bool,
-        outputs: Mapping[str, Mapping[str, Any]],
-    ) -> None:
-        object.__setattr__(self, "_run_identity", run_identity)
-        object.__setattr__(self, "selected", bool(selected))
-        object.__setattr__(self, "_outputs", _freeze_output_records(outputs))
+
+def _new_artifact_receipt(
+    run_identity: tuple[int, int],
+    selected: bool,
+    outputs: Mapping[str, Mapping[str, Any]],
+    *,
+    model: Any | None,
+    model_bytes: bytes | None,
+) -> DecorrelationArtifactReceipt:
+    receipt = object.__new__(DecorrelationArtifactReceipt)
+    object.__setattr__(receipt, "_run_identity", run_identity)
+    object.__setattr__(receipt, "selected", bool(selected))
+    object.__setattr__(receipt, "_outputs", _freeze_output_records(outputs))
+    object.__setattr__(receipt, "_model", model)
+    object.__setattr__(receipt, "_model_bytes", model_bytes)
+    return receipt
 
 
 def approved_decorrelation_artifacts(*, selected: bool) -> set[str]:
@@ -539,11 +571,12 @@ def write_decorrelation_artifacts(
             raise RuntimeError(
                 "decorrelation output changed during artifact publication"
             )
-        return DecorrelationArtifactReceipt(
-            _RECEIPT_TOKEN,
+        return _new_artifact_receipt(
             layout.directory_identities["."],
             selected,
             expected_outputs,
+            model=artifacts["model"],
+            model_bytes=serialized.get("flatness_model"),
         )
     except Exception as error:
         record_decorrelation_failure(layout, error)
@@ -611,10 +644,21 @@ def _validate_artifact_values(
     if not isinstance(plots, Mapping) or set(plots) != expected_plots:
         raise ValueError("plot outputs do not match the conditional allowlist")
     for name, payload in plots.items():
-        if not isinstance(payload, bytes) or not payload.startswith(
-            b"\x89PNG\r\n\x1a\n"
-        ):
-            raise ValueError(f"plot output is not a PNG: {name}")
+        _validate_png_bytes(payload, name)
+
+    _validate_candidate_tables(
+        artifacts["candidate_results"],
+        artifacts["working_point_metrics"],
+        config,
+    )
+    _validate_oof_scores(artifacts["oof_scores"], config)
+    selected_candidate = _validate_selection_semantics(
+        selection,
+        config,
+        artifacts["candidate_results"],
+        selected=selected,
+        decision=None,
+    )
 
     if selected:
         _validate_finite_frame(
@@ -624,6 +668,14 @@ def _validate_artifact_values(
         if not isinstance(artifacts["test_metrics"], Mapping):
             raise TypeError("test_metrics must be a mapping")
         _json_bytes(artifacts["test_metrics"])
+        assert selected_candidate is not None
+        _validate_selected_oof_scores(
+            artifacts["selected_oof_scores"],
+            artifacts["oof_scores"],
+            selected_candidate,
+        )
+        _validate_test_scores(artifacts["test_scores"])
+        _validate_test_metrics(artifacts["test_metrics"], config)
     return selected
 
 
@@ -704,6 +756,41 @@ def _trusted_model_bytes(model: Any) -> bytes:
     return payload
 
 
+def _validate_receipt_evidence(
+    layout: TrainingOutputLayout,
+    receipt: DecorrelationArtifactReceipt,
+) -> bytes | None:
+    if type(receipt) is not DecorrelationArtifactReceipt:
+        raise FileNotFoundError(
+            "publisher requires a DecorrelationArtifactReceipt"
+        )
+    try:
+        run_identity = receipt._run_identity
+        selected = receipt.selected
+        outputs = receipt._outputs
+        model = receipt._model
+        model_bytes = receipt._model_bytes
+    except AttributeError as error:
+        raise ValueError("artifact receipt is missing writer-bound evidence") from error
+    if (
+        layout.directory_identities is None
+        or run_identity != layout.directory_identities.get(".")
+    ):
+        raise ValueError("artifact receipt does not belong to this claimed run")
+    if type(selected) is not bool or not isinstance(outputs, Mapping):
+        raise ValueError("artifact receipt metadata is invalid")
+    if not selected:
+        if model is not None or model_bytes is not None:
+            raise ValueError("no-selection receipt contains model evidence")
+        return None
+    if not isinstance(model_bytes, bytes):
+        raise ValueError("selected receipt is missing trusted model bytes")
+    verified = _trusted_model_bytes(model)
+    if verified != model_bytes:
+        raise ValueError("selected receipt model evidence changed")
+    return verified
+
+
 def _model_verification_frame() -> pd.DataFrame:
     rows = (
         (35.0, 28.0, 0.1, -0.2, 0.3, -0.4, 42.0, 1.1, 1.4, 2.2),
@@ -723,6 +810,425 @@ def _validate_finite_frame(frame: Any, name: str) -> None:
         raise ValueError(f"{name} contains non-finite numeric content")
 
 
+def _validate_candidate_tables(
+    candidates: pd.DataFrame,
+    working_points: pd.DataFrame,
+    config: DecorrelationConfig,
+) -> None:
+    if list(candidates.columns) != list(_CANDIDATE_COLUMNS):
+        raise ValueError("candidate_results columns do not match the contract")
+    expected_candidates = [_candidate_name(value) for value in config.coefficients]
+    if (
+        len(candidates) != len(expected_candidates)
+        or candidates["candidate"].tolist() != expected_candidates
+    ):
+        raise ValueError("candidate_results rows do not match frozen candidates")
+    candidate_coefficients = candidates["coefficient"].to_numpy(dtype=float)
+    if not np.array_equal(candidate_coefficients, np.asarray(config.coefficients)):
+        raise ValueError("candidate_results coefficients changed")
+    _require_finite_columns(
+        candidates,
+        (
+            "coefficient",
+            "weighted_oof_auc",
+            "maximum_oof_zz_ks",
+            "background_score_mass_correlation",
+        ),
+        "candidate_results",
+    )
+    if any(type(value) not in (bool, np.bool_) for value in candidates["eligible"]):
+        raise ValueError("candidate_results eligible values must be booleans")
+    if any(not isinstance(value, str) for value in candidates["eligibility_reasons"]):
+        raise ValueError("candidate_results eligibility reasons must be strings")
+
+    point_names = tuple(config.working_points)
+    expected_point_candidates = [
+        candidate
+        for candidate in expected_candidates
+        for _ in point_names
+    ]
+    expected_point_names = list(point_names) * len(expected_candidates)
+    expected_point_coefficients = np.repeat(
+        np.asarray(config.coefficients, dtype=float), len(point_names)
+    )
+    if (
+        list(working_points.columns) != list(_WORKING_POINT_COLUMNS)
+        or len(working_points) != len(expected_point_candidates)
+        or working_points["candidate"].tolist() != expected_point_candidates
+        or working_points["working_point"].tolist() != expected_point_names
+        or not np.array_equal(
+            working_points["coefficient"].to_numpy(dtype=float),
+            expected_point_coefficients,
+        )
+    ):
+        raise ValueError("working_point_metrics rows do not match the contract")
+    _require_finite_columns(
+        working_points,
+        _WORKING_POINT_COLUMNS[1:2] + _WORKING_POINT_COLUMNS[3:],
+        "working_point_metrics",
+    )
+    for candidate_index, candidate in enumerate(expected_candidates):
+        rows = working_points.loc[working_points["candidate"] == candidate]
+        if any(
+            rows.iloc[index]["target_background_efficiency"]
+            != config.working_points[name]
+            for index, name in enumerate(point_names)
+        ):
+            raise ValueError("working-point targets change the frozen config")
+        maximum_ks = float(rows["zz_mass_ks_distance"].max())
+        if maximum_ks != float(
+            candidates.iloc[candidate_index]["maximum_oof_zz_ks"]
+        ):
+            raise ValueError("candidate and working-point KS metrics disagree")
+        eligible = (
+            float(candidates.iloc[candidate_index]["weighted_oof_auc"])
+            >= config.auc_floor
+            and maximum_ks <= config.ks_limit
+            and all(
+                float(row["signal_efficiency"])
+                > float(row["target_background_efficiency"])
+                for _, row in rows.iterrows()
+            )
+        )
+        if bool(candidates.iloc[candidate_index]["eligible"]) is not eligible:
+            raise ValueError("candidate eligibility contradicts frozen gates")
+
+
+def _validate_oof_scores(frame: pd.DataFrame, config: DecorrelationConfig) -> None:
+    score_columns = tuple(
+        f"score_{_candidate_name(value)}" for value in config.coefficients
+    )
+    if list(frame.columns) != [*_AUDIT_COLUMNS, *score_columns] or frame.empty:
+        raise ValueError("oof_scores schema does not match the contract")
+    _validate_audit_identity(frame, allowed_splits={"train", "validation"})
+    _require_finite_columns(
+        frame,
+        (
+            "eventNumber",
+            "channelNumber",
+            "label",
+            "physical_weight",
+            "m4l",
+            "development_fold",
+            *score_columns,
+        ),
+        "oof_scores",
+    )
+    folds = frame["development_fold"].to_numpy(dtype=float)
+    if (
+        not np.equal(folds, np.floor(folds)).all()
+        or (folds < 0).any()
+        or (folds >= config.folds).any()
+    ):
+        raise ValueError("oof_scores development folds are invalid")
+    _validate_binary_labels(frame, "oof_scores")
+    for column in score_columns:
+        scores = frame[column].to_numpy(dtype=float)
+        if (scores < 0.0).any() or (scores > 1.0).any():
+            raise ValueError("oof_scores probabilities are outside [0, 1]")
+
+
+def _validate_selected_oof_scores(
+    frame: pd.DataFrame,
+    oof_scores: pd.DataFrame,
+    selected_candidate: str,
+) -> None:
+    if list(frame.columns) != [*_AUDIT_COLUMNS, "oof_score"]:
+        raise ValueError("selected_oof_scores schema does not match the contract")
+    _validate_audit_identity(frame, allowed_splits={"train", "validation"})
+    _require_finite_columns(
+        frame,
+        (
+            "eventNumber",
+            "channelNumber",
+            "label",
+            "physical_weight",
+            "m4l",
+            "development_fold",
+            "oof_score",
+        ),
+        "selected_oof_scores",
+    )
+    identity = ["channelNumber", "eventNumber", "split"]
+    selected_indexed = frame.set_index(identity).sort_index()
+    oof_indexed = oof_scores.set_index(identity).sort_index()
+    if not selected_indexed.index.equals(oof_indexed.index):
+        raise ValueError("selected_oof_scores identities differ from oof_scores")
+    for column in _AUDIT_COLUMNS:
+        if column in identity:
+            continue
+        if not selected_indexed[column].equals(oof_indexed[column]):
+            raise ValueError("selected_oof_scores audit evidence changed")
+    expected_score = f"score_{selected_candidate}"
+    if not np.array_equal(
+        selected_indexed["oof_score"].to_numpy(dtype=float),
+        oof_indexed[expected_score].to_numpy(dtype=float),
+    ):
+        raise ValueError("selected_oof_scores do not match selected candidate")
+
+
+def _validate_test_scores(frame: pd.DataFrame) -> None:
+    if list(frame.columns) != list(_TEST_SCORE_COLUMNS) or frame.empty:
+        raise ValueError("test_scores schema does not match the contract")
+    _validate_audit_identity(frame, allowed_splits={"test"})
+    _require_finite_columns(
+        frame,
+        (
+            "eventNumber",
+            "channelNumber",
+            "label",
+            "physical_weight",
+            "m4l",
+            "score",
+        ),
+        "test_scores",
+    )
+    _validate_binary_labels(frame, "test_scores")
+    scores = frame["score"].to_numpy(dtype=float)
+    if (scores < 0.0).any() or (scores > 1.0).any():
+        raise ValueError("test_scores probabilities are outside [0, 1]")
+
+
+def _validate_audit_identity(
+    frame: pd.DataFrame, *, allowed_splits: set[str]
+) -> None:
+    identity = ["channelNumber", "eventNumber", "split"]
+    if frame.loc[:, identity].isna().any().any():
+        raise ValueError("artifact identity fields must not be missing")
+    if frame.duplicated(identity).any():
+        raise ValueError("artifact identities must be unique")
+    if not set(frame["split"]) or not set(frame["split"]) <= allowed_splits:
+        raise ValueError("artifact split values do not match the contract")
+
+
+def _validate_binary_labels(frame: pd.DataFrame, name: str) -> None:
+    labels = frame["label"].to_numpy(dtype=float)
+    if not np.equal(labels, np.floor(labels)).all() or not set(labels) <= {0.0, 1.0}:
+        raise ValueError(f"{name} labels must be binary integers")
+
+
+def _require_finite_columns(
+    frame: pd.DataFrame, columns: tuple[str, ...], name: str
+) -> None:
+    try:
+        values = frame.loc[:, list(columns)].to_numpy(dtype=float)
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(f"{name} numeric schema is invalid") from error
+    if not np.isfinite(values).all():
+        raise ValueError(f"{name} numeric content must be finite")
+
+
+def _validate_selection_semantics(
+    selection: Mapping[str, Any],
+    config: DecorrelationConfig,
+    candidates: pd.DataFrame,
+    *,
+    selected: bool,
+    decision: Mapping[str, Any] | None,
+) -> str | None:
+    _validate_selection_contract(selection, config)
+    candidate = selection["selected_candidate"]
+    if selected:
+        if (
+            selection["status"] != "eligible_candidate_test_reported"
+            or not isinstance(candidate, str)
+            or candidate not in set(candidates["candidate"])
+            or selection["test_opened"] is not True
+        ):
+            raise ValueError("selection contradicts selected artifact set")
+        selected_row = candidates.loc[candidates["candidate"] == candidate].iloc[0]
+        if not bool(selected_row["eligible"]):
+            raise ValueError("selection names an ineligible candidate")
+    else:
+        if (
+            selection["status"] != "no_eligible_candidate"
+            or candidate is not None
+            or selection["test_opened"] is not False
+            or candidates["eligible"].astype(bool).any()
+        ):
+            raise ValueError("selection contradicts no-selection artifact set")
+    if decision is not None and any(
+        selection[key] != decision[key]
+        for key in ("status", "selected_candidate", "test_opened")
+    ):
+        raise ValueError("selection artifact contradicts manifest decision")
+    return candidate
+
+
+def _validate_test_metrics(value: Any, config: DecorrelationConfig) -> None:
+    if not isinstance(value, Mapping) or set(value) != {
+        "schema_version",
+        "weighted_auc",
+        "background_score_mass_correlation",
+        "working_points",
+        "zz_ks_distances",
+    }:
+        raise ValueError("test_metrics schema does not match the contract")
+    if value["schema_version"] != "1.0":
+        raise ValueError("test_metrics schema_version must be 1.0")
+    _require_finite_numbers(
+        (value["weighted_auc"], value["background_score_mass_correlation"]),
+        "test_metrics",
+    )
+    points = value["working_points"]
+    distances = value["zz_ks_distances"]
+    if (
+        not isinstance(points, Mapping)
+        or set(points) != set(config.working_points)
+        or not isinstance(distances, Mapping)
+        or set(distances) != set(config.working_points)
+    ):
+        raise ValueError("test_metrics working points do not match the contract")
+    for name in config.working_points:
+        point = points[name]
+        if not isinstance(point, Mapping) or set(point) != {
+            "threshold",
+            "target_background_efficiency",
+            "achieved_background_efficiency",
+            "signal_efficiency",
+        }:
+            raise ValueError("test_metrics working-point schema is invalid")
+        _require_finite_numbers(tuple(point.values()), "test_metrics")
+        if point["target_background_efficiency"] != config.working_points[name]:
+            raise ValueError("test_metrics changes a frozen working-point target")
+        distance = distances[name]
+        if distance is not None:
+            _require_finite_numbers((distance,), "test_metrics")
+
+
+def _require_finite_numbers(values: tuple[Any, ...], name: str) -> None:
+    if any(
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not np.isfinite(float(value))
+        for value in values
+    ):
+        raise ValueError(f"{name} numeric content must be finite")
+
+
+def _validate_png_bytes(payload: bytes, name: str) -> None:
+    if not isinstance(payload, bytes) or not payload.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise ValueError(f"plot output is not a PNG: {name}")
+    try:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(payload)) as image:
+            if image.format != "PNG":
+                raise ValueError(f"plot output is not a PNG: {name}")
+            image.verify()
+    except Exception as error:
+        raise ValueError(f"plot output is not a decodable PNG: {name}") from error
+
+
+def _validate_model_envelope(payload: bytes) -> None:
+    if (
+        not isinstance(payload, bytes)
+        or len(payload) < 3
+        or len(payload) > 512 * 1024 * 1024
+        or not payload.startswith(b"\x80\x05")
+    ):
+        raise ValueError("flatness model does not have a safe pickle envelope")
+    try:
+        operations = list(pickletools.genops(payload))
+    except Exception as error:
+        raise ValueError("flatness model pickle envelope is malformed") from error
+    if (
+        not operations
+        or operations[0][0].name != "PROTO"
+        or operations[0][1] != 5
+        or operations[-1][0].name != "STOP"
+        or operations[-1][2] != len(payload) - 1
+    ):
+        raise ValueError("flatness model pickle envelope is incomplete")
+
+
+def _read_csv_artifact(
+    descriptor: int, name: str, *, compression: str | None = None
+) -> pd.DataFrame:
+    payload, _ = _read_entry_bytes(descriptor, name)
+    try:
+        return pd.read_csv(
+            io.BytesIO(payload),
+            compression=compression,
+            keep_default_na=False,
+        )
+    except Exception as error:
+        raise ValueError(f"decorrelation CSV is invalid: {name}") from error
+
+
+def _read_json_artifact(descriptor: int, name: str) -> Mapping[str, Any]:
+    payload, _ = _read_entry_bytes(descriptor, name)
+    try:
+        value = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"decorrelation JSON is invalid: {name}") from error
+    if not isinstance(value, Mapping):
+        raise ValueError(f"decorrelation JSON must contain an object: {name}")
+    return value
+
+
+def _validate_on_disk_artifacts(
+    descriptors: Mapping[str, int],
+    config: DecorrelationConfig,
+    *,
+    selected: bool,
+    decision: Mapping[str, Any],
+    trusted_model_bytes: bytes | None,
+) -> None:
+    candidates = _read_csv_artifact(
+        descriptors["artifacts"], "candidate_results.csv"
+    )
+    working_points = _read_csv_artifact(
+        descriptors["artifacts"], "working_point_metrics.csv"
+    )
+    _validate_candidate_tables(candidates, working_points, config)
+    oof_scores = _read_csv_artifact(
+        descriptors["predictions"], "oof_scores.csv.gz", compression="gzip"
+    )
+    _validate_oof_scores(oof_scores, config)
+    selection = _read_json_artifact(descriptors["artifacts"], "selection.json")
+    selected_candidate = _validate_selection_semantics(
+        selection,
+        config,
+        candidates,
+        selected=selected,
+        decision=decision,
+    )
+    plot_names = ["candidate_tradeoff.png", "working_point_ks.png"]
+    if selected:
+        plot_names.append("selected_mass_sculpting.png")
+    for name in plot_names:
+        payload, _ = _read_entry_bytes(descriptors["plots"], name)
+        _validate_png_bytes(payload, name)
+    if not selected:
+        if trusted_model_bytes is not None:
+            raise ValueError("no-selection publication contains model evidence")
+        return
+    assert selected_candidate is not None
+    selected_oof = _read_csv_artifact(
+        descriptors["predictions"],
+        "selected_oof_scores.csv.gz",
+        compression="gzip",
+    )
+    test_scores = _read_csv_artifact(
+        descriptors["predictions"], "test_scores.csv.gz", compression="gzip"
+    )
+    _validate_selected_oof_scores(
+        selected_oof, oof_scores, selected_candidate
+    )
+    _validate_test_scores(test_scores)
+    _validate_test_metrics(
+        _read_json_artifact(descriptors["artifacts"], "test_metrics.json"),
+        config,
+    )
+    model_payload, _ = _read_entry_bytes(
+        descriptors["model"], "flatness_model.pkl"
+    )
+    _validate_model_envelope(model_payload)
+    if trusted_model_bytes is not None and model_payload != trusted_model_bytes:
+        raise ValueError("published model differs from writer-bound model evidence")
+
+
 def _plain_csv_bytes(frame: pd.DataFrame) -> bytes:
     return frame.to_csv(index=False).encode("utf-8")
 
@@ -737,20 +1243,10 @@ def publish_decorrelation_manifest(
 ) -> dict[str, Any]:
     """Publish a complete manifest last after immediate source/output rechecks."""
     try:
-        if not isinstance(receipt, DecorrelationArtifactReceipt):
-            raise FileNotFoundError(
-                "publisher requires a DecorrelationArtifactReceipt"
-            )
-        if (
-            layout.directory_identities is None
-            or receipt._run_identity != layout.directory_identities.get(".")
-        ):
-            raise ValueError(
-                "artifact receipt does not belong to this claimed run"
-            )
-        _validate_source_inventory(sources)
+        verified_model_bytes = _validate_receipt_evidence(layout, receipt)
+        trusted_sources = _independently_resolve_sources(sources)
         _validate_software(software)
-        decision = _decision_from_outcome(outcome, sources.config)
+        decision = _decision_from_outcome(outcome, trusted_sources.config)
         if receipt.selected != decision["test_opened"]:
             raise ValueError("decision contradicts conditional artifact receipt")
     except Exception as error:
@@ -782,15 +1278,22 @@ def publish_decorrelation_manifest(
             terminal_lock_present=True,
         )
         _assert_selection_matches_decision(
-            descriptors["artifacts"], decision, sources.config
+            descriptors["artifacts"], decision, trusted_sources.config
         )
         outputs = _assert_output_receipt(layout, descriptors, receipt)
+        _validate_on_disk_artifacts(
+            descriptors,
+            trusted_sources.config,
+            selected=receipt.selected,
+            decision=decision,
+            trusted_model_bytes=verified_model_bytes,
+        )
         manifest = {
             "schema_version": "1.0",
             "status": "complete",
             "decision": decision,
             "software": dict(software),
-            "sources": _source_manifest_records(sources),
+            "sources": _source_manifest_records(trusted_sources),
             "outputs": outputs,
         }
         serialized = _json_bytes(manifest)
@@ -802,7 +1305,7 @@ def publish_decorrelation_manifest(
         )
 
         def final_check() -> None:
-            assert_decorrelation_sources_unchanged(sources)
+            assert_decorrelation_sources_unchanged(trusted_sources)
             _assert_staged_manifest_unchanged(
                 descriptors["artifacts"],
                 staged_manifest,
@@ -812,6 +1315,13 @@ def publish_decorrelation_manifest(
             )
             if _assert_output_receipt(layout, descriptors, receipt) != outputs:
                 raise RuntimeError("decorrelation output receipt changed")
+            _validate_on_disk_artifacts(
+                descriptors,
+                trusted_sources.config,
+                selected=receipt.selected,
+                decision=decision,
+                trusted_model_bytes=verified_model_bytes,
+            )
             _revalidate_named_layout(layout)
 
         _promote_decorrelation_manifest_no_clobber(
@@ -952,6 +1462,28 @@ def _validate_source_inventory(sources: DecorrelationSources) -> None:
         or training_input.expected_rows < 0
     ):
         raise ValueError("decorrelation training row receipt is invalid")
+
+
+def _independently_resolve_sources(
+    sources: DecorrelationSources,
+) -> DecorrelationSources:
+    _validate_source_inventory(sources)
+    strict_config = _load_config_bytes(sources.config_bytes)
+    study_config = sources.records["study_config"]
+    trusted = resolve_decorrelation_sources(
+        input_run=strict_config.input_run,
+        config_path=study_config.path,
+    )
+    if (
+        sources.config != trusted.config
+        or sources.config_bytes != trusted.config_bytes
+        or sources.training_input != trusted.training_input
+        or dict(sources.records) != dict(trusted.records)
+    ):
+        raise ValueError(
+            "decorrelation capability differs from independently resolved sources"
+        )
+    return trusted
 
 
 def _validate_software(software: Mapping[str, Any]) -> None:
@@ -1249,6 +1781,13 @@ def _study_manifest_exists(layout: TrainingOutputLayout) -> bool:
                 selected=selected,
                 manifest_present=True,
                 terminal_lock_present=True,
+            )
+            _validate_on_disk_artifacts(
+                descriptors,
+                config,
+                selected=selected,
+                decision=decision,
+                trusted_model_bytes=None,
             )
             resolved_sources = resolve_decorrelation_sources(
                 input_run=config.input_run,
