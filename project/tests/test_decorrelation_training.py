@@ -108,3 +108,47 @@ def test_oof_scores_every_development_row_once_and_rebalances_each_fold(
     assert oof["development_fold"].between(0, 4).all()
     assert np.isfinite(oof["score_lambda_0p5"]).all()
     assert len(fitted_indices) == 5
+
+
+def test_oof_rejects_nonfinite_probability_in_any_predict_proba_column(
+    development_frame, production_config
+):
+    class FakeModel:
+        def fit(self, x, y, sample_weight):
+            return self
+
+        def predict_proba(self, x):
+            scores = np.linspace(0.1, 0.9, len(x))
+            probabilities = np.column_stack([1.0 - scores, scores])
+            probabilities[0, 0] = np.nan
+            return probabilities
+
+    with pytest.raises(ValueError, match="non-finite evaluation scores"):
+        generate_flatness_oof(
+            development_frame,
+            production_config,
+            0.5,
+            model_factory=lambda **kwargs: FakeModel(),
+        )
+
+
+def test_oof_rejects_duplicate_development_index_before_fold_fitting(
+    development_frame, production_config
+):
+    duplicated = development_frame.copy(deep=True)
+    duplicated.index = pd.Index([index // 2 for index in range(len(duplicated))])
+
+    class FakeModel:
+        def fit(self, x, y, sample_weight):
+            raise AssertionError("duplicate indexes must be rejected before fold fitting")
+
+        def predict_proba(self, x):
+            raise AssertionError("duplicate indexes must be rejected before scoring")
+
+    with pytest.raises(ValueError, match="unique DataFrame index"):
+        generate_flatness_oof(
+            duplicated,
+            production_config,
+            0.5,
+            model_factory=lambda **kwargs: FakeModel(),
+        )

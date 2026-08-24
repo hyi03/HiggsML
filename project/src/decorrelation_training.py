@@ -79,6 +79,8 @@ def generate_flatness_oof(
     coefficient: float,
     model_factory: ModelFactory | None = None,
 ) -> pd.DataFrame:
+    if not development.index.is_unique:
+        raise ValueError("out-of-fold scoring requires a unique DataFrame index")
     validate_development_frame(development)
     development_folds = assign_development_folds(development, folds=config.folds)
     fitting_columns = [*DROP_TOP4_FEATURES, "m4l"]
@@ -128,9 +130,9 @@ def _positive_class_probabilities(predicted: object) -> np.ndarray:
     values = np.asarray(predicted, dtype=float)
     if values.ndim != 2 or values.shape[1] != 2:
         raise ValueError("classifier predict_proba must return two class probabilities")
-    scores = values[:, 1]
-    if not np.isfinite(scores).all():
+    if not np.isfinite(values).all():
         raise ValueError("classifier returned non-finite evaluation scores")
+    scores = values[:, 1]
     return scores
 
 
