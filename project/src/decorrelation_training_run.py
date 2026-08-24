@@ -29,7 +29,6 @@ from .full_training_run import (
     _csv_bytes,
     _entries,
     _entry_exists,
-    _install_failure_locked as _training_install_failure_locked,
     _json_bytes,
     _open_claimed_directories,
     _open_verified_root,
@@ -113,6 +112,18 @@ _SOURCE_KEYS = frozenset(
         "task4a_manifest",
     }
 )
+_SOFTWARE_KEYS = frozenset(
+    {
+        "python",
+        "numpy",
+        "pandas",
+        "pyyaml",
+        "uproot",
+        "xgboost",
+        "scikit-learn",
+        "hep_ml",
+    }
+)
 _TOP_LEVEL_KEYS = {
     "schema_version",
     "input_run",
@@ -151,12 +162,46 @@ class DecorrelationConfig:
     artifacts_selected: tuple[str, ...]
 
 
-@dataclass(frozen=True)
+_SOURCE_CAPABILITY_TOKEN = object()
+
+
+@dataclass(frozen=True, init=False)
 class DecorrelationSources:
     config: DecorrelationConfig
     config_bytes: bytes
     training_input: TrainingInput
     records: Mapping[str, StudySource]
+
+    def __new__(
+        cls,
+        token: object = None,
+        *,
+        config: DecorrelationConfig | None = None,
+        config_bytes: bytes | None = None,
+        training_input: TrainingInput | None = None,
+        records: Mapping[str, StudySource] | None = None,
+    ):
+        if token is not _SOURCE_CAPABILITY_TOKEN:
+            raise TypeError(
+                "DecorrelationSources is returned by "
+                "resolve_decorrelation_sources"
+            )
+        return super().__new__(cls)
+
+    def __init__(
+        self,
+        token: object,
+        *,
+        config: DecorrelationConfig,
+        config_bytes: bytes,
+        training_input: TrainingInput,
+        records: Mapping[str, StudySource],
+    ) -> None:
+        object.__setattr__(self, "config", config)
+        object.__setattr__(self, "config_bytes", config_bytes)
+        object.__setattr__(self, "training_input", training_input)
+        object.__setattr__(self, "records", MappingProxyType(dict(records)))
+        _validate_source_inventory(self)
 
 
 class MCStudyPartitions:
@@ -337,6 +382,7 @@ def resolve_decorrelation_sources(
     if set(records) != _SOURCE_KEYS:
         raise RuntimeError("decorrelation source inventory is incomplete")
     sources = DecorrelationSources(
+        _SOURCE_CAPABILITY_TOKEN,
         config=config,
         config_bytes=config_bytes,
         training_input=training_input,
@@ -349,8 +395,7 @@ def resolve_decorrelation_sources(
 def assert_decorrelation_sources_unchanged(
     sources: DecorrelationSources,
 ) -> None:
-    if not isinstance(sources, DecorrelationSources):
-        raise TypeError("sources must be DecorrelationSources")
+    _validate_source_inventory(sources)
     for source in sources.records.values():
         try:
             current = StudySource.from_path(source.name, source.path)
@@ -745,19 +790,7 @@ def publish_decorrelation_manifest(
             "status": "complete",
             "decision": decision,
             "software": dict(software),
-            "sources": {
-                name: {
-                    "path": str(source.path),
-                    "size_bytes": source.size_bytes,
-                    "sha256": source.sha256,
-                    **(
-                        {"expected_rows": sources.training_input.expected_rows}
-                        if name == "task4a_mc"
-                        else {}
-                    ),
-                }
-                for name, source in sources.records.items()
-            },
+            "sources": _source_manifest_records(sources),
             "outputs": outputs,
         }
         serialized = _json_bytes(manifest)
@@ -808,7 +841,7 @@ def publish_decorrelation_manifest(
             )
             if locked:
                 _install_decorrelation_failure_locked(
-                    descriptors["."], layout.run_dir, error
+                    descriptors["."], layout, error
                 )
             else:
                 record_decorrelation_failure(layout, error)
@@ -850,8 +883,19 @@ def _promote_decorrelation_manifest_no_clobber(
 
 
 def _validate_source_inventory(sources: DecorrelationSources) -> None:
-    if not isinstance(sources, DecorrelationSources):
-        raise TypeError("sources must be DecorrelationSources")
+    if type(sources) is not DecorrelationSources:
+        raise TypeError(
+            "sources must be returned by resolve_decorrelation_sources"
+        )
+    if not isinstance(sources.config_bytes, bytes):
+        raise TypeError("decorrelation source config snapshot must contain bytes")
+    strict_config = _load_config_bytes(sources.config_bytes)
+    if sources.config != strict_config:
+        raise ValueError(
+            "decorrelation source capability does not match strict frozen config"
+        )
+    if not isinstance(sources.training_input, TrainingInput):
+        raise TypeError("decorrelation source training input is invalid")
     if set(sources.records) != _SOURCE_KEYS or any(
         not isinstance(source, StudySource) or source.name != name
         for name, source in sources.records.items()
@@ -861,19 +905,83 @@ def _validate_source_inventory(sources: DecorrelationSources) -> None:
         )
     if sources.records["study_config"].snapshot != sources.config_bytes:
         raise ValueError("decorrelation config receipt does not match its snapshot")
+    training_input = sources.training_input
+    hashes = training_input.hashes
+    if set(hashes) != {"config", "mc", "summary", "manifest"}:
+        raise ValueError("decorrelation training input hashes are incomplete")
+    configured_input = Path(strict_config.input_run).resolve()
+    if Path(training_input.input_run).resolve() != configured_input:
+        raise ValueError("decorrelation training input changes the frozen run")
+    expected_paths = {
+        "task4a_config": training_input.config_path,
+        "task4a_mc": training_input.mc_path,
+        "task4a_summary": training_input.summary_path,
+        "task4a_manifest": training_input.manifest_path,
+    }
+    expected_hashes = {
+        "task4a_config": hashes["config"],
+        "task4a_mc": hashes["mc"],
+        "task4a_summary": hashes["summary"],
+        "task4a_manifest": hashes["manifest"],
+    }
+    if any(
+        source.path != Path(os.path.abspath(expected_paths[name]))
+        or source.sha256 != expected_hashes[name]
+        for name, source in sources.records.items()
+        if name != "study_config"
+    ):
+        raise ValueError("decorrelation source records change the training input")
+    for name in ("study_config", "task4a_config", "task4a_summary", "task4a_manifest"):
+        source = sources.records[name]
+        snapshot = source.snapshot
+        if (
+            not isinstance(snapshot, bytes)
+            or len(snapshot) != source.size_bytes
+            or hashlib.sha256(snapshot).hexdigest() != source.sha256
+        ):
+            raise ValueError("decorrelation captured source receipt is inconsistent")
+    if sources.records["task4a_mc"].snapshot is not None:
+        raise ValueError("decorrelation MC source must not capture table bytes")
     if (
-        sources.training_input.hashes["manifest"]
-        != sources.config.input_manifest_sha256
-        or sources.training_input.hashes["mc"]
-        != sources.config.input_mc_sha256
+        hashes["manifest"] != strict_config.input_manifest_sha256
+        or hashes["mc"] != strict_config.input_mc_sha256
     ):
         raise ValueError("decorrelation source receipts do not match frozen config")
+    if (
+        type(training_input.expected_rows) is not int
+        or training_input.expected_rows < 0
+    ):
+        raise ValueError("decorrelation training row receipt is invalid")
 
 
 def _validate_software(software: Mapping[str, Any]) -> None:
-    if not isinstance(software, Mapping) or software.get("hep_ml") != "0.8.0":
+    if (
+        not isinstance(software, Mapping)
+        or set(software) != _SOFTWARE_KEYS
+        or any(not isinstance(value, str) for value in software.values())
+    ):
+        raise ValueError("manifest software does not match the approved contract")
+    if software.get("hep_ml") != "0.8.0":
         raise ValueError("manifest software must record hep_ml 0.8.0")
     _json_bytes(software)
+
+
+def _source_manifest_records(
+    sources: DecorrelationSources,
+) -> dict[str, dict[str, Any]]:
+    return {
+        name: {
+            "path": str(source.path),
+            "size_bytes": source.size_bytes,
+            "sha256": source.sha256,
+            **(
+                {"expected_rows": sources.training_input.expected_rows}
+                if name == "task4a_mc"
+                else {}
+            ),
+        }
+        for name, source in sources.records.items()
+    }
 
 
 def _decision_from_outcome(
@@ -1097,18 +1205,14 @@ def _assert_output_receipt(
     return current
 
 
-def _study_manifest_exists(root: int) -> bool:
+def _study_manifest_exists(layout: TrainingOutputLayout) -> bool:
+    descriptors: dict[str, int] | None = None
     try:
-        artifacts = os.open(
-            "artifacts",
-            os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0),
-            dir_fd=root,
-        )
-    except OSError:
-        return False
-    try:
+        descriptors = _open_claimed_directories(layout)
         try:
-            payload, _ = _read_entry_bytes(artifacts, "study_manifest.json")
+            payload, identity = _read_entry_bytes(
+                descriptors["artifacts"], "study_manifest.json"
+            )
         except (OSError, ValueError, FileNotFoundError):
             return False
         try:
@@ -1130,49 +1234,117 @@ def _study_manifest_exists(root: int) -> bool:
         if (
             manifest.get("schema_version") != "1.0"
             or manifest.get("status") != "complete"
-            or not isinstance(decision, Mapping)
-            or type(decision.get("test_opened")) is not bool
             or not isinstance(sources, Mapping)
             or set(sources) != _SOURCE_KEYS
             or not isinstance(outputs, Mapping)
         ):
             return False
-        expected_outputs = {
-            "config.yaml",
-            *approved_decorrelation_artifacts(
-                selected=decision["test_opened"]
-            ),
-        }
-        return set(outputs) == expected_outputs and all(
-            _valid_manifest_record(record)
-            for record in (*sources.values(), *outputs.values())
-        )
-    finally:
-        os.close(artifacts)
-
-
-def _valid_manifest_record(record: Any) -> bool:
-    if not isinstance(record, Mapping):
+        try:
+            config_bytes, _ = _read_entry_bytes(descriptors["."], "config.yaml")
+            config = _load_config_bytes(config_bytes)
+            selected = _validate_completed_decision(decision, config)
+            _validate_software(manifest.get("software"))
+            _assert_decorrelation_contract(
+                descriptors,
+                selected=selected,
+                manifest_present=True,
+                terminal_lock_present=True,
+            )
+            resolved_sources = resolve_decorrelation_sources(
+                input_run=config.input_run,
+                config_path=sources["study_config"]["path"],
+            )
+            _validate_source_inventory(resolved_sources)
+            assert_decorrelation_sources_unchanged(resolved_sources)
+            if (
+                resolved_sources.config_bytes != config_bytes
+                or dict(sources) != _source_manifest_records(resolved_sources)
+            ):
+                return False
+            current_outputs = _build_output_records(
+                layout, descriptors, selected=selected
+            )
+            if dict(outputs) != current_outputs:
+                return False
+            final_payload, final_identity = _read_entry_bytes(
+                descriptors["artifacts"], "study_manifest.json"
+            )
+            if final_payload != payload or final_identity != identity:
+                return False
+            if (
+                _build_output_records(layout, descriptors, selected=selected)
+                != current_outputs
+            ):
+                return False
+            _revalidate_named_layout(layout)
+            return True
+        except Exception:
+            return False
+    except Exception:
         return False
-    sha256 = record.get("sha256")
-    size = record.get("size_bytes")
-    return (
-        isinstance(record.get("path"), str)
-        and isinstance(size, int)
-        and not isinstance(size, bool)
-        and size >= 0
-        and isinstance(sha256, str)
-        and len(sha256) == 64
-        and all(character in "0123456789abcdef" for character in sha256)
-    )
+    finally:
+        _close_descriptors(descriptors)
+
+
+def _validate_completed_decision(
+    decision: Any, config: DecorrelationConfig
+) -> bool:
+    if not isinstance(decision, Mapping) or set(decision) != {
+        "status",
+        "selected_candidate",
+        "selected_coefficient",
+        "test_opened",
+    }:
+        raise ValueError("study manifest decision does not match the contract")
+    selected = decision["test_opened"]
+    if type(selected) is not bool:
+        raise ValueError("study manifest test_opened must be a boolean")
+    if not selected:
+        if dict(decision) != {
+            "status": "no_eligible_candidate",
+            "selected_candidate": None,
+            "selected_coefficient": None,
+            "test_opened": False,
+        }:
+            raise ValueError("study manifest no-selection decision is invalid")
+        return False
+    coefficient = decision["selected_coefficient"]
+    if (
+        decision["status"] != "eligible_candidate_test_reported"
+        or type(coefficient) is not float
+        or coefficient not in config.coefficients
+        or decision["selected_candidate"] != _candidate_name(coefficient)
+    ):
+        raise ValueError("study manifest selected decision is invalid")
+    return True
 
 
 def _install_decorrelation_failure_locked(
-    root: int, run_dir: Path, error: BaseException
+    root: int, layout: TrainingOutputLayout, error: BaseException
 ) -> None:
-    if _study_manifest_exists(root):
+    if _study_manifest_exists(layout):
         return
-    _training_install_failure_locked(root, run_dir, error)
+    try:
+        os.mkdir(".terminal.failed", dir_fd=root)
+    except FileExistsError:
+        pass
+    if _entry_exists(root, "failure.json"):
+        return
+    try:
+        _atomic_publish_bytes(
+            root,
+            layout.run_dir,
+            "failure.json",
+            _json_bytes(
+                {
+                    "status": "failed",
+                    "error_type": type(error).__name__,
+                    "message": str(error),
+                }
+            ),
+        )
+    except Exception:
+        pass
 
 
 def record_decorrelation_failure(
@@ -1187,7 +1359,7 @@ def record_decorrelation_failure(
     try:
         _terminal_lock_acquire(root)
         locked = True
-        _install_decorrelation_failure_locked(root, layout.run_dir, error)
+        _install_decorrelation_failure_locked(root, layout, error)
     except Exception:
         pass
     finally:

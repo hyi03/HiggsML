@@ -67,6 +67,11 @@ def synthetic_task4a_run(tmp_path: Path) -> Path:
     return _synthetic_task4a_run(tmp_path)
 
 
+@pytest.fixture(scope="module")
+def frozen_sources():
+    return _strict_sources()
+
+
 @pytest.fixture
 def mc_frame() -> pd.DataFrame:
     rows: list[dict[str, object]] = []
@@ -142,12 +147,8 @@ def test_config_rejects_changed_coefficient(tmp_path: Path):
         training_run.load_decorrelation_config(changed)
 
 
-def test_source_inventory_is_explicitly_mc_only(
-    tmp_path: Path, synthetic_task4a_run: Path
-):
-    sources = _resolved_sources(tmp_path, synthetic_task4a_run)
-
-    assert set(sources.records) == {
+def test_source_inventory_is_explicitly_mc_only(frozen_sources):
+    assert set(frozen_sources.records) == {
         "study_config",
         "task4a_config",
         "task4a_mc",
@@ -156,9 +157,12 @@ def test_source_inventory_is_explicitly_mc_only(
     }
     assert all(
         "data_events" not in str(source.path)
-        for source in sources.records.values()
+        for source in frozen_sources.records.values()
     )
-    assert all("periodA" not in str(source.path) for source in sources.records.values())
+    assert all(
+        "periodA" not in str(source.path)
+        for source in frozen_sources.records.values()
+    )
 
 
 def test_public_source_resolver_rejects_rebound_config(
@@ -177,6 +181,50 @@ def test_no_source_resolver_bypass_is_exposed():
     )
 
 
+def test_source_capability_rejects_direct_construction(frozen_sources):
+    with pytest.raises(TypeError, match="returned by resolve_decorrelation_sources"):
+        training_run.DecorrelationSources(
+            config=frozen_sources.config,
+            config_bytes=frozen_sources.config_bytes,
+            training_input=frozen_sources.training_input,
+            records=frozen_sources.records,
+        )
+
+
+def test_source_capability_rejects_dataclass_replace(frozen_sources):
+    rebound = replace(frozen_sources.config, input_run="runs/attacker-controlled")
+
+    with pytest.raises(TypeError):
+        replace(frozen_sources, config=rebound)
+
+
+def test_publisher_reparses_resolved_source_config_binding(tmp_path: Path):
+    sources = _strict_sources()
+    object.__setattr__(
+        sources,
+        "config",
+        replace(sources.config, input_run="runs/attacker-controlled"),
+    )
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+    receipt = training_run.write_decorrelation_artifacts(
+        layout=layout,
+        config_bytes=sources.config_bytes,
+        artifacts=_artifacts(selected=False),
+    )
+
+    with pytest.raises(ValueError, match="strict frozen config"):
+        training_run.publish_decorrelation_manifest(
+            layout=layout,
+            sources=sources,
+            outcome=_outcome(selected=False),
+            receipt=receipt,
+            software=_software(),
+        )
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+    assert not (layout.artifacts_dir / "study_manifest.json").exists()
+
+
 def test_partitions_expose_development_and_open_test_once(mc_frame: pd.DataFrame):
     partitions = training_run.MCStudyPartitions.from_frame(mc_frame)
 
@@ -191,19 +239,16 @@ def test_partitions_expose_development_and_open_test_once(mc_frame: pd.DataFrame
         partitions.open_test()
 
 
-def test_no_selection_writes_exact_common_artifacts(
-    tmp_path: Path, synthetic_task4a_run: Path
-):
-    sources = _resolved_sources(tmp_path, synthetic_task4a_run)
+def test_no_selection_writes_exact_common_artifacts(tmp_path: Path, frozen_sources):
     layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
     receipt = training_run.write_decorrelation_artifacts(
         layout=layout,
-        config_bytes=sources.config_bytes,
+        config_bytes=frozen_sources.config_bytes,
         artifacts=_artifacts(selected=False),
     )
     training_run.publish_decorrelation_manifest(
         layout=layout,
-        sources=sources,
+        sources=frozen_sources,
         outcome=_outcome(selected=False),
         receipt=receipt,
         software=_software(),
@@ -217,18 +262,17 @@ def test_no_selection_writes_exact_common_artifacts(
 
 
 def test_selection_writes_exact_conditional_artifacts(
-    tmp_path: Path, synthetic_task4a_run: Path, fitted_hep_model
+    tmp_path: Path, frozen_sources, fitted_hep_model
 ):
-    sources = _resolved_sources(tmp_path, synthetic_task4a_run)
     layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
     receipt = training_run.write_decorrelation_artifacts(
         layout=layout,
-        config_bytes=sources.config_bytes,
+        config_bytes=frozen_sources.config_bytes,
         artifacts=_artifacts(selected=True, model=fitted_hep_model),
     )
     training_run.publish_decorrelation_manifest(
         layout=layout,
-        sources=sources,
+        sources=frozen_sources,
         outcome=_outcome(selected=True),
         receipt=receipt,
         software=_software(),
@@ -279,13 +323,12 @@ def test_model_pickle_round_trip_preserves_verification_predictions(
 
 
 def test_write_receipt_binds_exact_trusted_model_bytes(
-    tmp_path: Path, synthetic_task4a_run: Path, fitted_hep_model
+    tmp_path: Path, frozen_sources, fitted_hep_model
 ):
-    sources = _resolved_sources(tmp_path, synthetic_task4a_run)
     layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
     receipt = training_run.write_decorrelation_artifacts(
         layout=layout,
-        config_bytes=sources.config_bytes,
+        config_bytes=frozen_sources.config_bytes,
         artifacts=_artifacts(selected=True, model=fitted_hep_model),
     )
     model_path = layout.model_dir / "flatness_model.pkl"
@@ -295,7 +338,7 @@ def test_write_receipt_binds_exact_trusted_model_bytes(
     with pytest.raises(RuntimeError, match="output receipt changed"):
         training_run.publish_decorrelation_manifest(
             layout=layout,
-            sources=sources,
+            sources=frozen_sources,
             outcome=_outcome(selected=True),
             receipt=receipt,
             software=_software(),
@@ -305,15 +348,23 @@ def test_write_receipt_binds_exact_trusted_model_bytes(
     assert not (layout.artifacts_dir / "study_manifest.json").exists()
 
 
-def test_source_mutation_blocks_manifest(
-    tmp_path: Path, synthetic_task4a_run: Path
-):
-    sources = _resolved_sources(tmp_path, synthetic_task4a_run)
-    summary = sources.records["task4a_summary"].path
-    summary.write_text(json.dumps({"replacement": True}))
+def test_source_mutation_blocks_manifest(frozen_sources, monkeypatch):
+    original = training_run.StudySource.from_path
+
+    def changed_source(cls, name, path, *, capture=False):
+        source = original(name, path, capture=capture)
+        if name == "task4a_summary":
+            return replace(source, sha256="0" * 64)
+        return source
+
+    monkeypatch.setattr(
+        training_run.StudySource,
+        "from_path",
+        classmethod(changed_source),
+    )
 
     with pytest.raises(RuntimeError, match="source changed"):
-        training_run.assert_decorrelation_sources_unchanged(sources)
+        training_run.assert_decorrelation_sources_unchanged(frozen_sources)
 
 
 def test_decision_artifact_contradiction_is_rejected(tmp_path: Path):
@@ -383,23 +434,22 @@ def test_existing_output_path_is_rejected_before_claim(tmp_path: Path):
 
 
 def test_foreign_output_receipt_is_rejected(
-    tmp_path: Path, synthetic_task4a_run: Path
+    tmp_path: Path, frozen_sources
 ):
-    sources = _resolved_sources(tmp_path, synthetic_task4a_run)
     first = training_run.claim_decorrelation_output(_fresh_layout(tmp_path, name="first"))
     second = training_run.claim_decorrelation_output(
         _fresh_layout(tmp_path, name="second")
     )
     receipt = training_run.write_decorrelation_artifacts(
         layout=first,
-        config_bytes=sources.config_bytes,
+        config_bytes=frozen_sources.config_bytes,
         artifacts=_artifacts(selected=False),
     )
 
     with pytest.raises(ValueError, match="does not belong"):
         training_run.publish_decorrelation_manifest(
             layout=second,
-            sources=sources,
+            sources=frozen_sources,
             outcome=_outcome(selected=False),
             receipt=receipt,
             software=_software(),
@@ -421,14 +471,89 @@ def test_dangling_manifest_does_not_suppress_terminal_failure(tmp_path: Path):
     assert (layout.run_dir / "failure.json").is_file()
 
 
-def test_promotion_seam_substitution_fails_closed(
-    tmp_path: Path, synthetic_task4a_run: Path, monkeypatch
+@pytest.mark.parametrize(
+    ("record_group", "record_name"),
+    [
+        ("outputs", "config.yaml"),
+        ("sources", "task4a_mc"),
+    ],
+)
+def test_counterfeit_complete_manifest_hash_does_not_suppress_failure(
+    tmp_path: Path, frozen_sources, record_group: str, record_name: str
 ):
-    sources = _resolved_sources(tmp_path, synthetic_task4a_run)
     layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
     receipt = training_run.write_decorrelation_artifacts(
         layout=layout,
-        config_bytes=sources.config_bytes,
+        config_bytes=frozen_sources.config_bytes,
+        artifacts=_artifacts(selected=False),
+    )
+    manifest = training_run.publish_decorrelation_manifest(
+        layout=layout,
+        sources=frozen_sources,
+        outcome=_outcome(selected=False),
+        receipt=receipt,
+        software=_software(),
+    )
+    manifest[record_group][record_name]["sha256"] = "0" * 64
+    manifest_path = layout.artifacts_dir / "study_manifest.json"
+    manifest_path.write_text(json.dumps(manifest))
+
+    training_run.record_decorrelation_failure(layout, RuntimeError("failed"))
+
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+
+
+@pytest.mark.parametrize("dangling", [False, True])
+def test_foreign_training_manifest_does_not_suppress_failure(
+    tmp_path: Path, dangling: bool
+):
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+    foreign = layout.artifacts_dir / "training_manifest.json"
+    if dangling:
+        foreign.symlink_to(tmp_path / "missing-training-manifest")
+    else:
+        foreign.write_text("{}")
+
+    training_run.record_decorrelation_failure(layout, RuntimeError("failed"))
+
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+
+
+def test_verified_study_completion_prevents_failure_overwrite(
+    tmp_path: Path, frozen_sources
+):
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+    receipt = training_run.write_decorrelation_artifacts(
+        layout=layout,
+        config_bytes=frozen_sources.config_bytes,
+        artifacts=_artifacts(selected=False),
+    )
+    training_run.publish_decorrelation_manifest(
+        layout=layout,
+        sources=frozen_sources,
+        outcome=_outcome(selected=False),
+        receipt=receipt,
+        software=_software(),
+    )
+    manifest_path = layout.artifacts_dir / "study_manifest.json"
+    original = manifest_path.read_bytes()
+
+    training_run.record_decorrelation_failure(layout, RuntimeError("late failure"))
+
+    assert manifest_path.read_bytes() == original
+    assert not (layout.run_dir / ".terminal.failed").exists()
+    assert not (layout.run_dir / "failure.json").exists()
+
+
+def test_promotion_seam_substitution_fails_closed(
+    tmp_path: Path, frozen_sources, monkeypatch
+):
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+    receipt = training_run.write_decorrelation_artifacts(
+        layout=layout,
+        config_bytes=frozen_sources.config_bytes,
         artifacts=_artifacts(selected=False),
     )
 
@@ -445,7 +570,7 @@ def test_promotion_seam_substitution_fails_closed(
     with pytest.raises(RuntimeError, match="output receipt changed"):
         training_run.publish_decorrelation_manifest(
             layout=layout,
-            sources=sources,
+            sources=frozen_sources,
             outcome=_outcome(selected=False),
             receipt=receipt,
             software=_software(),
@@ -456,41 +581,63 @@ def test_promotion_seam_substitution_fails_closed(
 
 
 def test_manifest_requires_pinned_hep_ml_version(
-    tmp_path: Path, synthetic_task4a_run: Path
+    tmp_path: Path, frozen_sources
 ):
-    sources = _resolved_sources(tmp_path, synthetic_task4a_run)
     layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
     receipt = training_run.write_decorrelation_artifacts(
         layout=layout,
-        config_bytes=sources.config_bytes,
+        config_bytes=frozen_sources.config_bytes,
         artifacts=_artifacts(selected=False),
     )
 
     with pytest.raises(ValueError, match="hep_ml 0.8.0"):
         training_run.publish_decorrelation_manifest(
             layout=layout,
-            sources=sources,
+            sources=frozen_sources,
             outcome=_outcome(selected=False),
             receipt=receipt,
-            software={"hep_ml": "0.8.1"},
+            software={**_software(), "hep_ml": "0.8.1"},
         )
     assert (layout.run_dir / ".terminal.failed").is_dir()
     assert not (layout.artifacts_dir / "study_manifest.json").exists()
 
 
-def test_manifest_is_newer_than_every_published_artifact(
-    tmp_path: Path, synthetic_task4a_run: Path
+def test_manifest_requires_exact_software_inventory(
+    tmp_path: Path, frozen_sources
 ):
-    sources = _resolved_sources(tmp_path, synthetic_task4a_run)
     layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
     receipt = training_run.write_decorrelation_artifacts(
         layout=layout,
-        config_bytes=sources.config_bytes,
+        config_bytes=frozen_sources.config_bytes,
+        artifacts=_artifacts(selected=False),
+    )
+    software = {**_software(), "unexpected": "1.0"}
+
+    with pytest.raises(ValueError, match="software.*approved contract"):
+        training_run.publish_decorrelation_manifest(
+            layout=layout,
+            sources=frozen_sources,
+            outcome=_outcome(selected=False),
+            receipt=receipt,
+            software=software,
+        )
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+    assert not (layout.artifacts_dir / "study_manifest.json").exists()
+
+
+def test_manifest_is_newer_than_every_published_artifact(
+    tmp_path: Path, frozen_sources
+):
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+    receipt = training_run.write_decorrelation_artifacts(
+        layout=layout,
+        config_bytes=frozen_sources.config_bytes,
         artifacts=_artifacts(selected=False),
     )
     manifest = training_run.publish_decorrelation_manifest(
         layout=layout,
-        sources=sources,
+        sources=frozen_sources,
         outcome=_outcome(selected=False),
         receipt=receipt,
         software=_software(),
@@ -519,44 +666,10 @@ def _bound_config(tmp_path: Path, input_run: Path) -> Path:
     return path
 
 
-def _resolved_sources(tmp_path: Path, input_run: Path):
-    from src.full_training_run import resolve_training_input
-
-    training_input = resolve_training_input(input_run)
-    frozen = training_run.load_decorrelation_config(
-        Path("config/decorrelation_training_drop_top4.yaml")
-    )
-    validated = replace(
-        frozen,
-        input_run=str(input_run.resolve()),
-        input_manifest_sha256=_sha(input_run / "artifacts/run_manifest.json"),
-        input_mc_sha256=_sha(input_run / "processed/mc_events.csv.gz"),
-    )
-    config_source = training_run.StudySource.from_path(
-        "study_config",
-        Path("config/decorrelation_training_drop_top4.yaml"),
-        capture=True,
-    )
-    records = {
-        "study_config": config_source,
-        "task4a_config": training_run.StudySource.from_path(
-            "task4a_config", training_input.config_path, capture=True
-        ),
-        "task4a_mc": training_run.StudySource.from_path(
-            "task4a_mc", training_input.mc_path
-        ),
-        "task4a_summary": training_run.StudySource.from_path(
-            "task4a_summary", training_input.summary_path, capture=True
-        ),
-        "task4a_manifest": training_run.StudySource.from_path(
-            "task4a_manifest", training_input.manifest_path, capture=True
-        ),
-    }
-    return training_run.DecorrelationSources(
-        config=validated,
-        config_bytes=config_source.snapshot,
-        training_input=training_input,
-        records=records,
+def _strict_sources():
+    return training_run.resolve_decorrelation_sources(
+        input_run=Path("runs/full-baseline-363490-2026-08-11-r2"),
+        config_path=Path("config/decorrelation_training_drop_top4.yaml"),
     )
 
 
@@ -653,7 +766,16 @@ def _verification_matrix() -> pd.DataFrame:
 
 
 def _software() -> dict[str, str]:
-    return {"python": "test", "hep_ml": "0.8.0"}
+    return {
+        "python": "test",
+        "numpy": "test",
+        "pandas": "test",
+        "pyyaml": "test",
+        "uproot": "test",
+        "xgboost": "test",
+        "scikit-learn": "test",
+        "hep_ml": "0.8.0",
+    }
 
 
 def _published_files(run_dir: Path) -> set[str]:
