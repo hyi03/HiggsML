@@ -28,6 +28,7 @@ _DISTRIBUTIONS = {
     "uproot": "uproot",
     "xgboost": "xgboost",
     "scikit-learn": "scikit-learn",
+    "hep_ml": "hep-ml",
 }
 _GIT_SHA_PATTERN = re.compile(r"[0-9a-fA-F]{40}")
 
