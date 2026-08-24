@@ -10,6 +10,9 @@ import pandas as pd
 import pytest
 
 from src.decorrelation_training_plots import (
+    _build_candidate_tradeoff_figure,
+    _build_selected_mass_sculpting_figure,
+    _build_working_point_ks_figure,
     plot_candidate_tradeoff,
     plot_selected_mass_sculpting,
     plot_working_point_ks,
@@ -31,7 +34,13 @@ def _candidate_results():
                 "tight": 0.08 + coefficient / 100,
             },
         )
-        for coefficient, auc in ((0.0, 0.83), (0.5, 0.82), (1.0, 0.81))
+        for coefficient, auc in (
+            (0.0, 0.83),
+            (0.5, 0.82),
+            (1.0, 0.81),
+            (2.0, 0.80),
+            (3.0, 0.79),
+        )
     )
 
 
@@ -60,6 +69,7 @@ def _assert_valid_png(payload: bytes) -> None:
     assert image.ndim == 3
     assert image.shape[0] > 100
     assert image.shape[1] > 100
+    assert float(image[..., :3].std()) > 0.01
 
 
 def test_common_plots_are_valid_mc_only_pngs_and_close_figures():
@@ -72,6 +82,85 @@ def test_common_plots_are_valid_mc_only_pngs_and_close_figures():
     _assert_valid_png(tradeoff)
     _assert_valid_png(working_points)
     assert plt.get_fignums() == before
+
+
+def test_tradeoff_figure_contains_frozen_scientific_artists():
+    """A blank PNG cannot satisfy the five candidates or frozen boundaries."""
+    figure, axis = _build_candidate_tradeoff_figure(_candidate_results())
+    try:
+        assert "MC-only" in axis.get_title()
+        assert [collection.get_label() for collection in axis.collections] == [
+            "lambda_0p0",
+            "lambda_0p5",
+            "lambda_1p0",
+            "lambda_2p0",
+            "lambda_3p0",
+        ]
+        assert sum(len(collection.get_offsets()) for collection in axis.collections) == 5
+        boundaries = {line.get_label(): line for line in axis.lines}
+        np.testing.assert_allclose(boundaries["AUC floor 0.80"].get_xdata(), [0.8, 0.8])
+        np.testing.assert_allclose(boundaries["KS limit 0.10"].get_ydata(), [0.1, 0.1])
+    finally:
+        plt.close(figure)
+
+
+def test_working_point_figure_contains_three_ks_series_and_limit():
+    """A blank or collapsed plot cannot satisfy the three working-point series."""
+    figure, axis = _build_working_point_ks_figure(_candidate_results())
+    try:
+        assert "MC-only" in axis.get_title()
+        lines = {line.get_label(): line for line in axis.lines}
+        assert set(_working_points()) == {"loose", "medium", "tight"}
+        assert set(("loose", "medium", "tight")) <= set(lines)
+        assert all(len(lines[name].get_xdata()) == 5 for name in _working_points())
+        np.testing.assert_allclose(lines["KS limit 0.10"].get_ydata(), [0.1, 0.1])
+    finally:
+        plt.close(figure)
+
+
+def test_mass_figure_has_two_mc_panels_and_four_nonempty_shapes_each():
+    """Both MC panels must expose inclusive plus all three frozen selections."""
+    figure, axes = _build_selected_mass_sculpting_figure(
+        _score_frame("oof_score"),
+        _score_frame("score"),
+        _working_points(),
+        mass_bins_gev=MASS_BINS,
+    )
+    try:
+        assert len(axes) == 2
+        assert "MC-only" in figure._suptitle.get_text()
+        for axis in axes:
+            labels = axis.get_legend_handles_labels()[1]
+            assert labels[0] == "inclusive"
+            assert [label.split(" ", 1)[0] for label in labels[1:]] == [
+                "loose",
+                "medium",
+                "tight",
+            ]
+            assert len(axis.patches) == 4
+    finally:
+        plt.close(figure)
+
+
+def test_mass_figure_annotates_empty_frozen_test_selection():
+    """An empty tight test selection must be shown without a fabricated curve."""
+    test = _score_frame("score")
+    test.loc[test["label"] == 0, "score"] = [0.25, 0.55, 0.75, 0.89]
+    figure, axes = _build_selected_mass_sculpting_figure(
+        _score_frame("oof_score"),
+        test,
+        _working_points(),
+        mass_bins_gev=MASS_BINS,
+    )
+    try:
+        test_labels = axes[1].get_legend_handles_labels()[1]
+        assert not any(label.startswith("tight ") for label in test_labels)
+        assert any(
+            text.get_text() == "tight: No selected ZZ MC"
+            for text in axes[1].texts
+        )
+    finally:
+        plt.close(figure)
 
 
 @pytest.mark.parametrize(

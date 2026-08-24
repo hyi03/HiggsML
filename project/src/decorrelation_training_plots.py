@@ -16,77 +16,89 @@ _WORKING_POINTS = ("loose", "medium", "tight")
 
 def plot_candidate_tradeoff(results: Iterable[Any]) -> bytes:
     """Plot weighted OOF AUC against maximum OOF ZZ mass KS."""
-    candidates = _validated_candidates(results)
-    figure, axis = plt.subplots(figsize=(7, 4.5))
+    figure, _axis = _build_candidate_tradeoff_figure(results)
     try:
-        for candidate in candidates:
-            coefficient = candidate["coefficient"]
-            auc = candidate["weighted_auc"]
-            maximum_ks = max(candidate["zz_ks_distances"].values())
-            label = _candidate_name(coefficient)
-            axis.scatter(auc, maximum_ks, label=label)
-            axis.annotate(
-                label,
-                (auc, maximum_ks),
-                xytext=(4, 4),
-                textcoords="offset points",
-            )
-        axis.axvline(
-            0.80,
-            color="black",
-            linestyle="--",
-            linewidth=1.0,
-            label="AUC floor 0.80",
-        )
-        axis.axhline(
-            0.10,
-            color="dimgray",
-            linestyle=":",
-            linewidth=1.2,
-            label="KS limit 0.10",
-        )
-        axis.set(
-            title="MC-only DropTop4 flatness candidate trade-off",
-            xlabel="Weighted development OOF AUC",
-            ylabel="Maximum development OOF ZZ mass KS",
-        )
-        axis.legend(fontsize=8)
-        figure.tight_layout()
         return _render_png(figure)
     finally:
         plt.close(figure)
+
+
+def _build_candidate_tradeoff_figure(results: Iterable[Any]):
+    """Build the trade-off figure; the caller owns the figure lifecycle."""
+    candidates = _validated_candidates(results)
+    figure, axis = plt.subplots(figsize=(7, 4.5))
+    for candidate in candidates:
+        coefficient = candidate["coefficient"]
+        auc = candidate["weighted_auc"]
+        maximum_ks = max(candidate["zz_ks_distances"].values())
+        label = _candidate_name(coefficient)
+        axis.scatter(auc, maximum_ks, label=label)
+        axis.annotate(
+            label,
+            (auc, maximum_ks),
+            xytext=(4, 4),
+            textcoords="offset points",
+        )
+    axis.axvline(
+        0.80,
+        color="black",
+        linestyle="--",
+        linewidth=1.0,
+        label="AUC floor 0.80",
+    )
+    axis.axhline(
+        0.10,
+        color="dimgray",
+        linestyle=":",
+        linewidth=1.2,
+        label="KS limit 0.10",
+    )
+    axis.set(
+        title="MC-only DropTop4 flatness candidate trade-off",
+        xlabel="Weighted development OOF AUC",
+        ylabel="Maximum development OOF ZZ mass KS",
+    )
+    axis.legend(fontsize=8)
+    figure.tight_layout()
+    return figure, axis
 
 
 def plot_working_point_ks(results: Iterable[Any]) -> bytes:
     """Plot each development OOF ZZ mass KS against flatness coefficient."""
-    candidates = _validated_candidates(results)
-    coefficients = [candidate["coefficient"] for candidate in candidates]
-    figure, axis = plt.subplots(figsize=(7, 4.5))
+    figure, _axis = _build_working_point_ks_figure(results)
     try:
-        for name in _WORKING_POINTS:
-            axis.plot(
-                coefficients,
-                [candidate["zz_ks_distances"][name] for candidate in candidates],
-                marker="o",
-                label=name,
-            )
-        axis.axhline(
-            0.10,
-            color="black",
-            linestyle="--",
-            linewidth=1.0,
-            label="KS limit 0.10",
-        )
-        axis.set(
-            title="MC-only development OOF ZZ mass-shape stability",
-            xlabel="KNN flatness coefficient",
-            ylabel="Inclusive-to-selected ZZ mass KS",
-        )
-        axis.legend(fontsize=8)
-        figure.tight_layout()
         return _render_png(figure)
     finally:
         plt.close(figure)
+
+
+def _build_working_point_ks_figure(results: Iterable[Any]):
+    """Build the per-working-point KS figure; the caller closes it."""
+    candidates = _validated_candidates(results)
+    coefficients = [candidate["coefficient"] for candidate in candidates]
+    figure, axis = plt.subplots(figsize=(7, 4.5))
+    for name in _WORKING_POINTS:
+        axis.plot(
+            coefficients,
+            [candidate["zz_ks_distances"][name] for candidate in candidates],
+            marker="o",
+            label=name,
+        )
+    axis.axhline(
+        0.10,
+        color="black",
+        linestyle="--",
+        linewidth=1.0,
+        label="KS limit 0.10",
+    )
+    axis.set(
+        title="MC-only development OOF ZZ mass-shape stability",
+        xlabel="KNN flatness coefficient",
+        ylabel="Inclusive-to-selected ZZ mass KS",
+    )
+    axis.legend(fontsize=8)
+    figure.tight_layout()
+    return figure, axis
 
 
 def plot_selected_mass_sculpting(
@@ -97,25 +109,48 @@ def plot_selected_mass_sculpting(
     mass_bins_gev: Iterable[float],
 ) -> bytes:
     """Compare unit-area inclusive and selected ZZ shapes in OOF and test MC."""
+    figure, _axes = _build_selected_mass_sculpting_figure(
+        oof_scores,
+        test_scores,
+        working_points,
+        mass_bins_gev=mass_bins_gev,
+    )
+    try:
+        return _render_png(figure)
+    finally:
+        plt.close(figure)
+
+
+def _build_selected_mass_sculpting_figure(
+    oof_scores: pd.DataFrame,
+    test_scores: pd.DataFrame,
+    working_points: Mapping[str, Mapping[str, object]],
+    *,
+    mass_bins_gev: Iterable[float],
+):
+    """Build selected ZZ mass panels; the caller owns the figure lifecycle."""
     points = _validated_working_points(working_points)
     bins = _validated_bins(mass_bins_gev)
     _validate_mass_frame(oof_scores, "oof_score")
     _validate_mass_frame(test_scores, "score")
 
     figure, axes = plt.subplots(1, 2, figsize=(12, 4.5), sharey=True)
+    panels = (
+        (axes[0], oof_scores, "oof_score", "Development OOF ZZ MC"),
+        (axes[1], test_scores, "score", "Independent test ZZ MC"),
+    )
     try:
-        panels = (
-            (axes[0], oof_scores, "oof_score", "Development OOF ZZ MC"),
-            (axes[1], test_scores, "score", "Independent test ZZ MC"),
-        )
         for axis, frame, score_column, title in panels:
             zz = frame.loc[frame["label"] == 0]
             if zz.empty:
                 raise ValueError("mass-sculpting plot requires label-0 ZZ MC rows")
             _density_step(axis, zz, bins, label="inclusive")
-            for name in _WORKING_POINTS:
+            for point_index, name in enumerate(_WORKING_POINTS):
                 threshold = points[name]
                 selected = zz.loc[zz[score_column] >= threshold]
+                if selected.empty:
+                    _annotate_empty_selection(axis, name, point_index)
+                    continue
                 _density_step(
                     axis,
                     selected,
@@ -130,9 +165,10 @@ def plot_selected_mass_sculpting(
             axis.legend(fontsize=8)
         figure.suptitle("MC-only selected-candidate ZZ mass sculpting")
         figure.tight_layout()
-        return _render_png(figure)
-    finally:
+        return figure, tuple(axes)
+    except Exception:
         plt.close(figure)
+        raise
 
 
 def _validated_candidates(results: Iterable[Any]) -> tuple[dict[str, Any], ...]:
@@ -222,6 +258,19 @@ def _density_step(axis, frame: pd.DataFrame, bins: np.ndarray, *, label: str) ->
         histtype="step",
         linewidth=1.5,
         label=label,
+    )
+
+
+def _annotate_empty_selection(axis, working_point: str, point_index: int) -> None:
+    axis.text(
+        0.98,
+        0.96 - 0.07 * point_index,
+        f"{working_point}: No selected ZZ MC",
+        transform=axis.transAxes,
+        ha="right",
+        va="top",
+        color="dimgray",
+        fontsize=8,
     )
 
 

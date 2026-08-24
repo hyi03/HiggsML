@@ -75,7 +75,9 @@ def _candidate(config, coefficient, *, auc, ks, reverse=False):
     )
 
 
-def _outcome(config, *, selected: bool) -> FlatnessOutcome:
+def _outcome(
+    config, *, selected: bool, empty_test_tight: bool = False
+) -> FlatnessOutcome:
     results = tuple(
         _candidate(
             config,
@@ -106,7 +108,11 @@ def _outcome(config, *, selected: bool) -> FlatnessOutcome:
             "label": [0, 0, 0, 0, 1, 1, 1, 1],
             "physical_weight": [1.0, -0.5, 1.5, 2.0, 1.0, 2.0, -1.0, 0.5],
             "m4l": [109.0, 122.0, 140.0, 155.0, 112.0, 126.0, 144.0, 157.0],
-            "score": [0.3, 0.6, 0.8, 0.95, 0.2, 0.55, 0.85, 0.98],
+            "score": (
+                [0.3, 0.6, 0.7, 0.74, 0.2, 0.55, 0.85, 0.98]
+                if empty_test_tight
+                else [0.3, 0.6, 0.8, 0.95, 0.2, 0.55, 0.85, 0.98]
+            ),
         }
     )
     test_points = {
@@ -117,7 +123,7 @@ def _outcome(config, *, selected: bool) -> FlatnessOutcome:
         }
         for name, value, signal in zip(
             ("loose", "medium", "tight"),
-            (0.8, 0.7, 0.4),
+            (0.8, 0.7, 0.0 if empty_test_tight else 0.4),
             (0.9, 0.7, 0.5),
         )
     }
@@ -136,14 +142,18 @@ def _outcome(config, *, selected: bool) -> FlatnessOutcome:
         test_signal_efficiencies={
             name: test_points[name]["signal_efficiency"] for name in test_points
         },
-        test_zz_ks_distances={"loose": 0.05, "medium": 0.06, "tight": 0.07},
+        test_zz_ks_distances={
+            "loose": 0.05,
+            "medium": 0.06,
+            "tight": None if empty_test_tight else 0.07,
+        },
         test_zz_diagnostics={
             "working_points": {
                 name: {"inclusive_to_selected_ks_distance": value}
                 for name, value in (
                     ("loose", 0.05),
                     ("medium", 0.06),
-                    ("tight", 0.07),
+                    ("tight", None if empty_test_tight else 0.07),
                 )
             }
         },
@@ -247,6 +257,19 @@ def test_selected_artifacts_report_test_without_reselecting(config):
         "medium": 0.06,
         "tight": 0.07,
     }
+
+
+def test_selected_artifacts_preserve_empty_test_working_point(config):
+    """An empty frozen test selection is evidence, not a software failure."""
+    outcome = _outcome(config, selected=True, empty_test_tight=True)
+
+    artifacts = build_decorrelation_artifacts(outcome, config)
+
+    assert artifacts["selection"]["status"] == "eligible_candidate_test_reported"
+    assert artifacts["test_metrics"]["zz_ks_distances"]["tight"] is None
+    assert artifacts["plot_artifacts"]["selected_mass_sculpting.png"].startswith(
+        b"\x89PNG\r\n\x1a\n"
+    )
 
 
 def test_wide_oof_audit_rejects_contradictory_identity_evidence(config):
