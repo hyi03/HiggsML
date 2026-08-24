@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import pickle
 from types import SimpleNamespace
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -111,8 +112,39 @@ def mc_frame() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def fitted_hep_model():
+    from src.decorrelation_training import build_flatness_model
+
+    config = training_run.load_decorrelation_config(
+        Path("config/decorrelation_training_drop_top4.yaml")
+    )
+    generator = np.random.default_rng(42)
+    labels = np.asarray([0] * 120 + [1] * 120, dtype=int)
+    fitting = pd.DataFrame(
+        {
+            feature: generator.normal(size=len(labels))
+            for feature in _FEATURES
+        }
+    )
+    fitting["m4l"] = generator.uniform(105.0, 160.0, size=len(labels))
+    model = build_flatness_model(config, 1.0)
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="X has feature names, but NearestNeighbors was fitted without feature names",
+            category=UserWarning,
+        )
+        model.fit(
+            fitting,
+            labels,
+            sample_weight=np.ones(len(labels), dtype=float),
+        )
+    return model
+
+
+@pytest.fixture(scope="module")
+def wrong_hep_model():
     from hep_ml.gradientboosting import UGradientBoostingClassifier
     from hep_ml.losses import LogLossFunction
 
@@ -182,10 +214,23 @@ def test_source_inventory_is_explicitly_mc_only(frozen_sources):
 def test_public_source_resolver_rejects_rebound_config(
     tmp_path: Path, synthetic_task4a_run: Path
 ):
-    with pytest.raises(ValueError, match="frozen decision"):
+    with pytest.raises(ValueError, match="canonical.*study config"):
         training_run.resolve_decorrelation_sources(
             input_run=synthetic_task4a_run,
             config_path=_bound_config(tmp_path, synthetic_task4a_run),
+        )
+
+
+def test_source_resolver_rejects_byte_identical_attacker_config(
+    tmp_path: Path, frozen_sources
+):
+    attacker_config = tmp_path / "decorrelation_training_drop_top4.yaml"
+    attacker_config.write_bytes(frozen_sources.config_bytes)
+
+    with pytest.raises(ValueError, match="canonical.*study config"):
+        training_run.resolve_decorrelation_sources(
+            input_run=frozen_sources.training_input.input_run,
+            config_path=attacker_config,
         )
 
 
@@ -398,6 +443,107 @@ def test_model_pickle_round_trip_preserves_verification_predictions(
     )
 
 
+def test_writer_rejects_logloss_two_tree_model(
+    tmp_path: Path, frozen_sources, wrong_hep_model
+):
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+
+    with pytest.raises(ValueError, match="flatness model|KnnFlatness|policy"):
+        training_run.write_decorrelation_artifacts(
+            layout=layout,
+            config_bytes=frozen_sources.config_bytes,
+            artifacts=_artifacts(selected=True, model=wrong_hep_model),
+        )
+
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+
+
+def test_writer_rejects_inferior_eligible_selection(
+    tmp_path: Path, frozen_sources, fitted_hep_model
+):
+    artifacts = _artifacts(selected=True, model=fitted_hep_model)
+    candidates = artifacts["candidate_results"]
+    better = candidates["candidate"] == "lambda_0p0"
+    candidates.loc[better, "weighted_oof_auc"] = 0.90
+    candidates.loc[better, "maximum_oof_zz_ks"] = 0.05
+    candidates.loc[better, "eligible"] = True
+    candidates.loc[better, "eligibility_reasons"] = ""
+    points = artifacts["working_point_metrics"]
+    better_points = points["candidate"] == "lambda_0p0"
+    points.loc[better_points, "signal_efficiency"] = [0.8, 0.5, 0.3]
+    points.loc[better_points, "zz_mass_ks_distance"] = 0.05
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+
+    with pytest.raises(ValueError, match="deterministic.*winner"):
+        training_run.write_decorrelation_artifacts(
+            layout=layout,
+            config_bytes=frozen_sources.config_bytes,
+            artifacts=artifacts,
+        )
+
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+
+
+@pytest.mark.parametrize("case", ("reasons", "candidate_range", "point_range"))
+def test_writer_rejects_incorrect_eligibility_reasons_or_metric_ranges(
+    tmp_path: Path, frozen_sources, case: str
+):
+    artifacts = _artifacts(selected=False)
+    if case == "reasons":
+        artifacts["candidate_results"].loc[
+            0, "eligibility_reasons"
+        ] = "weighted_auc_below_floor"
+    elif case == "candidate_range":
+        artifacts["candidate_results"].loc[
+            0, "background_score_mass_correlation"
+        ] = 1.01
+    else:
+        artifacts["working_point_metrics"].loc[0, "threshold"] = -0.01
+    layout = training_run.claim_decorrelation_output(
+        _fresh_layout(tmp_path, name=case)
+    )
+
+    with pytest.raises(ValueError, match="eligibility reasons|range"):
+        training_run.write_decorrelation_artifacts(
+            layout=layout,
+            config_bytes=frozen_sources.config_bytes,
+            artifacts=artifacts,
+        )
+
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+
+
+@pytest.mark.parametrize("case", ("test_score", "weighted_auc", "threshold"))
+def test_writer_rejects_inconsistent_test_scores_metrics_or_thresholds(
+    tmp_path: Path, frozen_sources, fitted_hep_model, case: str
+):
+    artifacts = _artifacts(selected=True, model=fitted_hep_model)
+    if case == "test_score":
+        artifacts["test_scores"].loc[0, "score"] = 0.9
+    elif case == "weighted_auc":
+        artifacts["test_metrics"]["weighted_auc"] = 0.5
+    else:
+        artifacts["test_metrics"]["working_points"]["loose"][
+            "threshold"
+        ] = 0.2
+    layout = training_run.claim_decorrelation_output(
+        _fresh_layout(tmp_path, name=case)
+    )
+
+    with pytest.raises(ValueError, match="test_metrics|frozen.*threshold"):
+        training_run.write_decorrelation_artifacts(
+            layout=layout,
+            config_bytes=frozen_sources.config_bytes,
+            artifacts=artifacts,
+        )
+
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+
+
 def test_write_receipt_binds_exact_trusted_model_bytes(
     tmp_path: Path, frozen_sources, fitted_hep_model
 ):
@@ -444,7 +590,7 @@ def test_forged_receipt_cannot_authorize_untrusted_selected_outputs(
         b"not-a-trusted-hep-ml-pickle",
     )
 
-    with pytest.raises((TypeError, ValueError), match="model|PNG|semantic"):
+    with pytest.raises((TypeError, ValueError), match="writer-bound"):
         training_run.publish_decorrelation_manifest(
             layout=layout,
             sources=frozen_sources,
@@ -637,6 +783,22 @@ def test_contradictory_selection_with_rebound_hash_does_not_complete(
     assert (layout.run_dir / "failure.json").is_file()
 
 
+def test_pickle_none_with_rebound_hash_does_not_complete(
+    tmp_path: Path, frozen_sources, fitted_hep_model
+):
+    layout = _publish_selection(tmp_path, frozen_sources, fitted_hep_model)
+    _replace_output_and_rebind_manifest(
+        layout,
+        "model/flatness_model.pkl",
+        pickle.dumps(None, protocol=5),
+    )
+
+    training_run.record_decorrelation_failure(layout, RuntimeError("failed"))
+
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+
+
 def test_non_png_with_rebound_hash_does_not_complete(
     tmp_path: Path, frozen_sources
 ):
@@ -708,6 +870,19 @@ def test_verified_study_completion_prevents_failure_overwrite(
     training_run.record_decorrelation_failure(layout, RuntimeError("late failure"))
 
     assert manifest_path.read_bytes() == original
+    assert not (layout.run_dir / ".terminal.failed").exists()
+    assert not (layout.run_dir / "failure.json").exists()
+
+
+def test_verified_selected_completion_prevents_failure_overwrite(
+    tmp_path: Path, frozen_sources, fitted_hep_model
+):
+    layout = _publish_selection(tmp_path, frozen_sources, fitted_hep_model)
+
+    training_run.record_decorrelation_failure(
+        layout, RuntimeError("late selected failure")
+    )
+
     assert not (layout.run_dir / ".terminal.failed").exists()
     assert not (layout.run_dir / "failure.json").exists()
 
@@ -855,6 +1030,23 @@ def _publish_no_selection(tmp_path: Path, sources):
     return layout
 
 
+def _publish_selection(tmp_path: Path, sources, model):
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+    receipt = training_run.write_decorrelation_artifacts(
+        layout=layout,
+        config_bytes=sources.config_bytes,
+        artifacts=_artifacts(selected=True, model=model),
+    )
+    training_run.publish_decorrelation_manifest(
+        layout=layout,
+        sources=sources,
+        outcome=_outcome(selected=True),
+        receipt=receipt,
+        software=_software(),
+    )
+    return layout
+
+
 def _replace_output_and_rebind_manifest(
     layout, relative: str, payload: bytes
 ) -> None:
@@ -965,6 +1157,17 @@ def _artifacts(*, selected: bool, model=None) -> dict[str, object]:
     eligible = [False, False, selected, False, False]
     maximum_ks = [0.2, 0.2, 0.08 if selected else 0.2, 0.2, 0.2]
     aucs = [0.79, 0.78, 0.82 if selected else 0.79, 0.77, 0.76]
+    ineligible_reasons = ",".join(
+        (
+            "weighted_auc_below_floor",
+            "loose_zz_mass_ks_exceeds_limit",
+            "medium_zz_mass_ks_exceeds_limit",
+            "tight_zz_mass_ks_exceeds_limit",
+            "loose_signal_efficiency_not_above_background",
+            "medium_signal_efficiency_not_above_background",
+            "tight_signal_efficiency_not_above_background",
+        )
+    )
     candidate_results = pd.DataFrame(
         {
             "candidate": candidates,
@@ -974,7 +1177,7 @@ def _artifacts(*, selected: bool, model=None) -> dict[str, object]:
             "background_score_mass_correlation": [-0.2] * 5,
             "eligible": eligible,
             "eligibility_reasons": [
-                "" if value else "weighted_auc_below_floor" for value in eligible
+                "" if value else ineligible_reasons for value in eligible
             ],
         }
     )
@@ -1038,37 +1241,47 @@ def _artifacts(*, selected: bool, model=None) -> dict[str, object]:
             .assign(oof_score=oof_scores["score_lambda_1p0"]),
             test_scores=pd.DataFrame(
                 {
-                    "eventNumber": [3, 4],
-                    "channelNumber": [363490, 345060],
-                    "split": ["test", "test"],
-                    "label": [0, 1],
-                    "physical_weight": [1.0, 1.0],
-                    "m4l": [121.0, 131.0],
-                    "score": [0.3, 0.7],
+                    "eventNumber": [3, 4, 5, 6, 7, 8, 9, 10],
+                    "channelNumber": [363490] * 4 + [345060] * 4,
+                    "split": ["test"] * 8,
+                    "label": [0] * 4 + [1] * 4,
+                    "physical_weight": [1.0] * 8,
+                    "m4l": [
+                        110.0,
+                        120.0,
+                        140.0,
+                        150.0,
+                        111.0,
+                        125.0,
+                        143.0,
+                        158.0,
+                    ],
+                    "score": [0.2, 0.4, 0.6, 0.8, 0.3, 0.55, 0.85, 0.95],
                 }
             ),
             test_metrics={
                 "schema_version": "1.0",
-                "weighted_auc": 0.81,
-                "background_score_mass_correlation": -0.2,
+                "weighted_auc": 0.6875,
+                "background_score_mass_correlation": 0.9899494936611665,
                 "working_points": {
                     name: {
                         "threshold": threshold,
                         "target_background_efficiency": target,
-                        "achieved_background_efficiency": target,
+                        "achieved_background_efficiency": background,
                         "signal_efficiency": signal,
                     }
-                    for name, threshold, target, signal in zip(
+                    for name, threshold, target, background, signal in zip(
                         ("loose", "medium", "tight"),
                         (0.25, 0.5, 0.75),
                         (0.5, 0.2, 0.1),
-                        (0.8, 0.5, 0.3),
+                        (0.75, 0.5, 0.25),
+                        (1.0, 0.75, 0.5),
                     )
                 },
                 "zz_ks_distances": {
-                    "loose": 0.05,
-                    "medium": 0.06,
-                    "tight": 0.07,
+                    "loose": 0.25,
+                    "medium": 0.5,
+                    "tight": 0.75,
                 },
             },
         )

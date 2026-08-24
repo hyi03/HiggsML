@@ -7,12 +7,13 @@ import json
 import os
 from pathlib import Path
 import pickle
-import pickletools
 from types import MappingProxyType
 from typing import Any, Mapping
+import warnings
 
 import numpy as np
 import pandas as pd
+from sklearn.metrics import roc_auc_score
 import yaml
 
 from .external_zz_run import (
@@ -21,6 +22,7 @@ from .external_zz_run import (
     _publish_descriptor_no_clobber,
 )
 from .full_training_policy import validate_mc_frame
+from .full_training_evaluation import weighted_pearson
 from .full_training_run import (
     TrainingInput,
     TrainingOutputLayout,
@@ -48,6 +50,7 @@ from .mass_sculpting_ablation_run import (
     StudySource,
     _resolve_task4a_sources_without_table_load,
 )
+from .validation import weighted_ks_distance
 
 
 _FEATURES = (
@@ -86,6 +89,11 @@ _WORKING_POINTS = {
     "tight": 0.10,
 }
 _COEFFICIENTS = (0.0, 0.5, 1.0, 2.0, 3.0)
+_STUDY_CONFIG_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "config"
+    / "decorrelation_training_drop_top4.yaml"
+)
 _COMMON_ARTIFACTS = frozenset(
     {
         "artifacts/candidate_results.csv",
@@ -276,7 +284,9 @@ class MCStudyPartitions:
 @dataclass(frozen=True, init=False)
 class DecorrelationArtifactReceipt:
     _run_identity: tuple[int, int]
+    _authorization: object
     selected: bool
+    _selected_coefficient: float | None
     _outputs: Mapping[str, Mapping[str, Any]]
     _model: Any | None
     _model_bytes: bytes | None
@@ -290,7 +300,9 @@ class DecorrelationArtifactReceipt:
 
 def _new_artifact_receipt(
     run_identity: tuple[int, int],
+    authorization: object,
     selected: bool,
+    selected_coefficient: float | None,
     outputs: Mapping[str, Mapping[str, Any]],
     *,
     model: Any | None,
@@ -298,11 +310,27 @@ def _new_artifact_receipt(
 ) -> DecorrelationArtifactReceipt:
     receipt = object.__new__(DecorrelationArtifactReceipt)
     object.__setattr__(receipt, "_run_identity", run_identity)
+    object.__setattr__(receipt, "_authorization", authorization)
     object.__setattr__(receipt, "selected", bool(selected))
+    object.__setattr__(receipt, "_selected_coefficient", selected_coefficient)
     object.__setattr__(receipt, "_outputs", _freeze_output_records(outputs))
     object.__setattr__(receipt, "_model", model)
     object.__setattr__(receipt, "_model_bytes", model_bytes)
     return receipt
+
+
+@dataclass
+class _RunAuthorization:
+    layout: TrainingOutputLayout
+    run_dir: Path
+    directory_identities: Mapping[str, tuple[int, int]]
+    token: object
+    completion_manifest_sha256: str | None = None
+    completion_model_sha256: str | None = None
+    completion_selected: bool | None = None
+
+
+_RUN_AUTHORIZATIONS: dict[int, _RunAuthorization] = {}
 
 
 def approved_decorrelation_artifacts(*, selected: bool) -> set[str]:
@@ -387,8 +415,13 @@ def resolve_decorrelation_sources(
     *, input_run: str | Path, config_path: str | Path
 ) -> DecorrelationSources:
     """Resolve only the exact frozen production config and MC-only receipts."""
+    requested_config = Path(os.path.abspath(config_path))
+    if requested_config != _STUDY_CONFIG_PATH:
+        raise ValueError(
+            "decorrelation sources require the canonical project study config"
+        )
     config_source = StudySource.from_path(
-        "study_config", config_path, capture=True
+        "study_config", _STUDY_CONFIG_PATH, capture=True
     )
     config_bytes = config_source.snapshot
     if config_bytes is None:
@@ -463,7 +496,54 @@ def resolve_decorrelation_output(
 def claim_decorrelation_output(
     layout: TrainingOutputLayout,
 ) -> TrainingOutputLayout:
-    return claim_training_output(layout)
+    claimed = claim_training_output(layout)
+    identities = claimed.directory_identities
+    if identities is None:
+        raise RuntimeError("decorrelation output claim has no directory identities")
+    _RUN_AUTHORIZATIONS[id(claimed)] = _RunAuthorization(
+        layout=claimed,
+        run_dir=claimed.run_dir,
+        directory_identities=MappingProxyType(dict(identities)),
+        token=object(),
+    )
+    return claimed
+
+
+def _run_authorization(layout: TrainingOutputLayout) -> _RunAuthorization:
+    authorization = _RUN_AUTHORIZATIONS.get(id(layout))
+    if (
+        authorization is None
+        or authorization.layout is not layout
+        or authorization.run_dir != layout.run_dir
+        or layout.directory_identities is None
+        or dict(authorization.directory_identities)
+        != dict(layout.directory_identities)
+    ):
+        raise ValueError(
+            "decorrelation output must be the exact claimed run capability"
+        )
+    return authorization
+
+
+def _authorize_completed_run(
+    layout: TrainingOutputLayout,
+    *,
+    manifest_bytes: bytes,
+    selected: bool,
+    model_bytes: bytes | None,
+) -> None:
+    authorization = _run_authorization(layout)
+    if authorization.completion_manifest_sha256 is not None:
+        raise RuntimeError("decorrelation completion was already authorized")
+    if selected != (model_bytes is not None):
+        raise ValueError("decorrelation completion model authorization is invalid")
+    authorization.completion_manifest_sha256 = hashlib.sha256(
+        manifest_bytes
+    ).hexdigest()
+    authorization.completion_model_sha256 = (
+        None if model_bytes is None else hashlib.sha256(model_bytes).hexdigest()
+    )
+    authorization.completion_selected = selected
 
 
 def write_decorrelation_artifacts(
@@ -475,6 +555,7 @@ def write_decorrelation_artifacts(
     """Write exactly one conditional non-manifest contract without clobbering."""
     descriptors: dict[str, int] | None = None
     try:
+        authorization = _run_authorization(layout)
         descriptors = _open_claimed_directories(layout)
         root = descriptors["."]
         if _entry_exists(root, ".terminal.failed") or _entry_exists(
@@ -485,8 +566,15 @@ def write_decorrelation_artifacts(
         if not isinstance(config_bytes, bytes):
             raise TypeError("config_bytes must contain bytes")
         config = _load_config_bytes(config_bytes)
-        selected = _validate_artifact_values(artifacts, config=config)
-        serialized = _serialize_artifacts(artifacts, selected=selected)
+        selected_coefficient = _validate_artifact_values(
+            artifacts, config=config
+        )
+        selected = selected_coefficient is not None
+        serialized = _serialize_artifacts(
+            artifacts,
+            selected=selected,
+            selected_coefficient=selected_coefficient,
+        )
         expected_outputs = _serialized_output_records(
             layout,
             config_bytes=config_bytes,
@@ -573,7 +661,9 @@ def write_decorrelation_artifacts(
             )
         return _new_artifact_receipt(
             layout.directory_identities["."],
+            authorization.token,
             selected,
+            selected_coefficient,
             expected_outputs,
             model=artifacts["model"],
             model_bytes=serialized.get("flatness_model"),
@@ -587,7 +677,7 @@ def write_decorrelation_artifacts(
 
 def _validate_artifact_values(
     artifacts: Mapping[str, Any], *, config: DecorrelationConfig
-) -> bool:
+) -> float | None:
     expected_keys = {
         "candidate_results",
         "working_point_metrics",
@@ -675,8 +765,22 @@ def _validate_artifact_values(
             selected_candidate,
         )
         _validate_test_scores(artifacts["test_scores"])
-        _validate_test_metrics(artifacts["test_metrics"], config)
-    return selected
+        selected_points = artifacts["working_point_metrics"].loc[
+            artifacts["working_point_metrics"]["candidate"]
+            == selected_candidate
+        ]
+        _validate_test_metrics(
+            artifacts["test_metrics"],
+            config,
+            test_scores=artifacts["test_scores"],
+            selected_working_points=selected_points,
+        )
+        selected_row = artifacts["candidate_results"].loc[
+            artifacts["candidate_results"]["candidate"]
+            == selected_candidate
+        ].iloc[0]
+        return float(selected_row["coefficient"])
+    return None
 
 
 def _validate_selection_contract(
@@ -702,7 +806,10 @@ def _validate_selection_contract(
 
 
 def _serialize_artifacts(
-    artifacts: Mapping[str, Any], *, selected: bool
+    artifacts: Mapping[str, Any],
+    *,
+    selected: bool,
+    selected_coefficient: float | None,
 ) -> dict[str, bytes]:
     plots = artifacts["plot_artifacts"]
     serialized = {
@@ -716,9 +823,13 @@ def _serialize_artifacts(
         "working_point_ks.png": plots["working_point_ks.png"],
     }
     if selected:
+        if selected_coefficient is None:
+            raise ValueError("selected artifacts are missing a coefficient")
         serialized.update(
             test_metrics=_json_bytes(artifacts["test_metrics"]),
-            flatness_model=_trusted_model_bytes(artifacts["model"]),
+            flatness_model=_trusted_model_bytes(
+                artifacts["model"], selected_coefficient
+            ),
             selected_oof_scores=_csv_bytes(artifacts["selected_oof_scores"]),
             test_scores=_csv_bytes(artifacts["test_scores"]),
             **{
@@ -730,23 +841,77 @@ def _serialize_artifacts(
     return serialized
 
 
-def _trusted_model_bytes(model: Any) -> bytes:
+def _trusted_model_bytes(model: Any, selected_coefficient: float) -> bytes:
     from hep_ml.gradientboosting import UGradientBoostingClassifier
+    from hep_ml.losses import KnnFlatnessLossFunction
 
     if type(model) is not UGradientBoostingClassifier:
         raise TypeError("selected model must be a local hep_ml flatness model")
+    loss = getattr(model, "loss", None)
+    if type(loss) is not KnnFlatnessLossFunction:
+        raise ValueError(
+            "selected flatness model must use KnnFlatnessLossFunction"
+        )
+    model_policy = {
+        "n_estimators": 300,
+        "learning_rate": 0.05,
+        "max_depth": 3,
+        "min_samples_leaf": 50,
+        "subsample": 0.8,
+    }
+    if any(
+        getattr(model, name, None) != expected
+        for name, expected in model_policy.items()
+    ):
+        raise ValueError("selected flatness model changes the frozen model policy")
     if tuple(getattr(model, "train_features", ())) != _FEATURES:
         raise ValueError("selected model does not use the exact DropTop4 features")
+    if (
+        list(getattr(loss, "uniform_features", ())) != ["m4l"]
+        or not np.array_equal(
+            np.asarray(getattr(loss, "uniform_label", ())), np.asarray([0])
+        )
+        or getattr(loss, "n_neighbours", None) != 100
+        or getattr(loss, "max_groups", None) != 5000
+        or getattr(loss, "power", None) != 2.0
+        or getattr(loss, "fl_coefficient", None) != selected_coefficient
+        or getattr(loss, "allow_wrong_signs", None) is not True
+    ):
+        raise ValueError("selected flatness model changes the frozen loss policy")
+    if not _fitted_random_state_matches_seed(model, seed=42):
+        raise ValueError(
+            "selected flatness model changes the frozen random state policy"
+        )
     verification = _model_verification_frame()
     try:
-        expected = np.asarray(model.predict_proba(verification), dtype=float)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="X has feature names, but NearestNeighbors was fitted without feature names",
+                category=UserWarning,
+            )
+            expected = np.asarray(model.predict_proba(verification), dtype=float)
     except Exception as error:
         raise ValueError("selected hep_ml model is not fitted") from error
-    if not np.isfinite(expected).all():
-        raise ValueError("selected model verification predictions must be finite")
+    if (
+        expected.shape != (len(verification), 2)
+        or not np.isfinite(expected).all()
+        or (expected < 0.0).any()
+        or (expected > 1.0).any()
+        or not np.array_equal(expected.sum(axis=1), np.ones(len(verification)))
+    ):
+        raise ValueError(
+            "selected model verification predictions do not match the classifier contract"
+        )
     payload = pickle.dumps(model, protocol=5)
     restored = pickle.loads(payload)
-    observed = np.asarray(restored.predict_proba(verification), dtype=float)
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="X has feature names, but NearestNeighbors was fitted without feature names",
+            category=UserWarning,
+        )
+        observed = np.asarray(restored.predict_proba(verification), dtype=float)
     try:
         np.testing.assert_allclose(observed, expected, rtol=0.0, atol=0.0)
     except AssertionError as error:
@@ -756,17 +921,67 @@ def _trusted_model_bytes(model: Any) -> bytes:
     return payload
 
 
+def _fitted_random_state_matches_seed(model: Any, *, seed: int) -> bool:
+    loss = model.loss
+    model_random = getattr(model, "random_state", None)
+    loss_random = getattr(loss, "random_state", None)
+    if not isinstance(model_random, np.random.RandomState) or not isinstance(
+        loss_random, np.random.RandomState
+    ):
+        return False
+    labels = np.asarray(getattr(loss, "y", ()))
+    if labels.ndim != 1 or labels.size == 0:
+        return False
+    expected_loss = np.random.RandomState(seed)
+    for label in np.asarray(loss.uniform_label):
+        count = int(np.count_nonzero(labels == label))
+        if count > int(loss.max_groups):
+            expected_loss.choice(
+                count, size=int(loss.max_groups), replace=False
+            )
+    if not _random_states_equal(loss_random, expected_loss):
+        return False
+
+    estimators = getattr(model, "estimators", None)
+    if not isinstance(estimators, list) or len(estimators) != model.n_estimators:
+        return False
+    expected_model = np.random.RandomState(seed)
+    n_samples = len(labels)
+    n_inbag = int(float(model.subsample) * n_samples)
+    for _ in range(model.n_estimators):
+        expected_model.choice(n_samples, size=n_inbag, replace=False)
+        expected_model.randint(np.iinfo(np.int32).max)
+    return _random_states_equal(model_random, expected_model)
+
+
+def _random_states_equal(
+    first: np.random.RandomState, second: np.random.RandomState
+) -> bool:
+    first_state = first.get_state()
+    second_state = second.get_state()
+    return (
+        first_state[0] == second_state[0]
+        and np.array_equal(first_state[1], second_state[1])
+        and first_state[2:] == second_state[2:]
+    )
+
+
 def _validate_receipt_evidence(
     layout: TrainingOutputLayout,
     receipt: DecorrelationArtifactReceipt,
+    *,
+    selected_coefficient: float | None,
 ) -> bytes | None:
     if type(receipt) is not DecorrelationArtifactReceipt:
         raise FileNotFoundError(
             "publisher requires a DecorrelationArtifactReceipt"
         )
     try:
+        authorization = _run_authorization(layout)
         run_identity = receipt._run_identity
+        receipt_authorization = receipt._authorization
         selected = receipt.selected
+        receipt_coefficient = receipt._selected_coefficient
         outputs = receipt._outputs
         model = receipt._model
         model_bytes = receipt._model_bytes
@@ -777,15 +992,25 @@ def _validate_receipt_evidence(
         or run_identity != layout.directory_identities.get(".")
     ):
         raise ValueError("artifact receipt does not belong to this claimed run")
+    if receipt_authorization is not authorization.token:
+        raise ValueError("artifact receipt lacks writer-bound authorization")
     if type(selected) is not bool or not isinstance(outputs, Mapping):
         raise ValueError("artifact receipt metadata is invalid")
+    if receipt_coefficient != selected_coefficient:
+        raise ValueError("artifact receipt changes the selected coefficient")
     if not selected:
-        if model is not None or model_bytes is not None:
+        if (
+            selected_coefficient is not None
+            or model is not None
+            or model_bytes is not None
+        ):
             raise ValueError("no-selection receipt contains model evidence")
         return None
+    if selected_coefficient is None:
+        raise ValueError("selected receipt is missing a selected coefficient")
     if not isinstance(model_bytes, bytes):
         raise ValueError("selected receipt is missing trusted model bytes")
-    verified = _trusted_model_bytes(model)
+    verified = _trusted_model_bytes(model, selected_coefficient)
     if verified != model_bytes:
         raise ValueError("selected receipt model evidence changed")
     return verified
@@ -836,6 +1061,25 @@ def _validate_candidate_tables(
         ),
         "candidate_results",
     )
+    if (
+        (candidates["weighted_oof_auc"].to_numpy(dtype=float) < 0.0).any()
+        or (candidates["weighted_oof_auc"].to_numpy(dtype=float) > 1.0).any()
+        or (candidates["maximum_oof_zz_ks"].to_numpy(dtype=float) < 0.0).any()
+        or (candidates["maximum_oof_zz_ks"].to_numpy(dtype=float) > 1.0).any()
+        or (
+            candidates["background_score_mass_correlation"].to_numpy(
+                dtype=float
+            )
+            < -1.0
+        ).any()
+        or (
+            candidates["background_score_mass_correlation"].to_numpy(
+                dtype=float
+            )
+            > 1.0
+        ).any()
+    ):
+        raise ValueError("candidate_results metrics are outside the approved range")
     if any(type(value) not in (bool, np.bool_) for value in candidates["eligible"]):
         raise ValueError("candidate_results eligible values must be booleans")
     if any(not isinstance(value, str) for value in candidates["eligibility_reasons"]):
@@ -867,6 +1111,20 @@ def _validate_candidate_tables(
         _WORKING_POINT_COLUMNS[1:2] + _WORKING_POINT_COLUMNS[3:],
         "working_point_metrics",
     )
+    ranged_point_columns = (
+        "threshold",
+        "target_background_efficiency",
+        "achieved_background_efficiency",
+        "signal_efficiency",
+        "zz_mass_ks_distance",
+    )
+    point_values = working_points.loc[
+        :, list(ranged_point_columns)
+    ].to_numpy(dtype=float)
+    if (point_values < 0.0).any() or (point_values > 1.0).any():
+        raise ValueError(
+            "working_point_metrics values are outside the approved range"
+        )
     for candidate_index, candidate in enumerate(expected_candidates):
         rows = working_points.loc[working_points["candidate"] == candidate]
         if any(
@@ -880,16 +1138,34 @@ def _validate_candidate_tables(
             candidates.iloc[candidate_index]["maximum_oof_zz_ks"]
         ):
             raise ValueError("candidate and working-point KS metrics disagree")
-        eligible = (
+        thresholds = rows["threshold"].to_numpy(dtype=float)
+        if any(first > second for first, second in zip(thresholds, thresholds[1:])):
+            raise ValueError("working-point thresholds are not monotonic")
+        reasons: list[str] = []
+        if (
             float(candidates.iloc[candidate_index]["weighted_oof_auc"])
-            >= config.auc_floor
-            and maximum_ks <= config.ks_limit
-            and all(
-                float(row["signal_efficiency"])
-                > float(row["target_background_efficiency"])
-                for _, row in rows.iterrows()
+            < config.auc_floor
+        ):
+            reasons.append("weighted_auc_below_floor")
+        for _, row in rows.iterrows():
+            if float(row["zz_mass_ks_distance"]) > config.ks_limit:
+                reasons.append(
+                    f"{row['working_point']}_zz_mass_ks_exceeds_limit"
+                )
+        if config.require_signal_efficiency_above_background:
+            for _, row in rows.iterrows():
+                if float(row["signal_efficiency"]) <= float(
+                    row["target_background_efficiency"]
+                ):
+                    reasons.append(
+                        f"{row['working_point']}_signal_efficiency_not_above_background"
+                    )
+        expected_reasons = ",".join(reasons)
+        if candidates.iloc[candidate_index]["eligibility_reasons"] != expected_reasons:
+            raise ValueError(
+                "candidate eligibility reasons do not match the frozen gates"
             )
-        )
+        eligible = not reasons
         if bool(candidates.iloc[candidate_index]["eligible"]) is not eligible:
             raise ValueError("candidate eligibility contradicts frozen gates")
 
@@ -1039,6 +1315,19 @@ def _validate_selection_semantics(
         selected_row = candidates.loc[candidates["candidate"] == candidate].iloc[0]
         if not bool(selected_row["eligible"]):
             raise ValueError("selection names an ineligible candidate")
+        eligible = candidates.loc[candidates["eligible"].astype(bool)]
+        winner = min(
+            eligible.to_dict("records"),
+            key=lambda row: (
+                -float(row["weighted_oof_auc"]),
+                float(row["maximum_oof_zz_ks"]),
+                float(row["coefficient"]),
+            ),
+        )
+        if candidate != winner["candidate"]:
+            raise ValueError(
+                "selection does not name the deterministic eligible winner"
+            )
     else:
         if (
             selection["status"] != "no_eligible_candidate"
@@ -1055,7 +1344,13 @@ def _validate_selection_semantics(
     return candidate
 
 
-def _validate_test_metrics(value: Any, config: DecorrelationConfig) -> None:
+def _validate_test_metrics(
+    value: Any,
+    config: DecorrelationConfig,
+    *,
+    test_scores: pd.DataFrame,
+    selected_working_points: pd.DataFrame,
+) -> None:
     if not isinstance(value, Mapping) or set(value) != {
         "schema_version",
         "weighted_auc",
@@ -1070,6 +1365,12 @@ def _validate_test_metrics(value: Any, config: DecorrelationConfig) -> None:
         (value["weighted_auc"], value["background_score_mass_correlation"]),
         "test_metrics",
     )
+    if not 0.0 <= float(value["weighted_auc"]) <= 1.0:
+        raise ValueError("test_metrics weighted_auc is outside the approved range")
+    if not -1.0 <= float(value["background_score_mass_correlation"]) <= 1.0:
+        raise ValueError(
+            "test_metrics background correlation is outside the approved range"
+        )
     points = value["working_points"]
     distances = value["zz_ks_distances"]
     if (
@@ -1091,9 +1392,127 @@ def _validate_test_metrics(value: Any, config: DecorrelationConfig) -> None:
         _require_finite_numbers(tuple(point.values()), "test_metrics")
         if point["target_background_efficiency"] != config.working_points[name]:
             raise ValueError("test_metrics changes a frozen working-point target")
+        if any(
+            not 0.0 <= float(point[field]) <= 1.0
+            for field in (
+                "threshold",
+                "target_background_efficiency",
+                "achieved_background_efficiency",
+                "signal_efficiency",
+            )
+        ):
+            raise ValueError(
+                "test_metrics working-point value is outside the approved range"
+            )
         distance = distances[name]
         if distance is not None:
             _require_finite_numbers((distance,), "test_metrics")
+            if not 0.0 <= float(distance) <= 1.0:
+                raise ValueError(
+                    "test_metrics KS distance is outside the approved range"
+                )
+
+    indexed_points = selected_working_points.set_index("working_point")
+    if set(indexed_points.index) != set(config.working_points):
+        raise ValueError("selected OOF working points are incomplete")
+    labels = test_scores["label"].to_numpy(dtype=int)
+    scores = test_scores["score"].to_numpy(dtype=float)
+    weights = test_scores["physical_weight"].to_numpy(dtype=float)
+    masses = test_scores["m4l"].to_numpy(dtype=float)
+    if set(labels) != {0, 1}:
+        raise ValueError("test_scores must contain both binary classes")
+    absolute = np.abs(weights)
+    expected_auc = float(
+        roc_auc_score(labels, scores, sample_weight=absolute)
+    )
+    background = labels == 0
+    expected_correlation = weighted_pearson(
+        scores[background], masses[background], weights[background]
+    )
+    _require_exact_metric(
+        value["weighted_auc"], expected_auc, "weighted_auc"
+    )
+    _require_exact_metric(
+        value["background_score_mass_correlation"],
+        expected_correlation,
+        "background_score_mass_correlation",
+    )
+    for name in config.working_points:
+        frozen = indexed_points.loc[name]
+        point = points[name]
+        frozen_threshold = float(frozen["threshold"])
+        if float(point["threshold"]) != frozen_threshold:
+            raise ValueError(
+                "test_metrics changes a frozen selected OOF threshold"
+            )
+        if float(point["target_background_efficiency"]) != float(
+            frozen["target_background_efficiency"]
+        ):
+            raise ValueError(
+                "test_metrics changes a frozen selected OOF target"
+            )
+        selected_mask = scores >= frozen_threshold
+        expected_background = _absolute_efficiency(
+            background, selected_mask, weights
+        )
+        expected_signal = _absolute_efficiency(
+            labels == 1, selected_mask, weights
+        )
+        _require_exact_metric(
+            point["achieved_background_efficiency"],
+            expected_background,
+            f"{name} achieved_background_efficiency",
+        )
+        _require_exact_metric(
+            point["signal_efficiency"],
+            expected_signal,
+            f"{name} signal_efficiency",
+        )
+        selected_background = background & selected_mask
+        expected_distance = (
+            None
+            if not selected_background.any()
+            else weighted_ks_distance(
+                masses[background],
+                masses[selected_background],
+                weights[background],
+                weights[selected_background],
+            )
+        )
+        actual_distance = distances[name]
+        if expected_distance is None:
+            if actual_distance is not None:
+                raise ValueError(
+                    f"test_metrics {name} KS distance does not match test_scores"
+                )
+        elif actual_distance is None:
+            raise ValueError(
+                f"test_metrics {name} KS distance does not match test_scores"
+            )
+        else:
+            _require_exact_metric(
+                actual_distance,
+                expected_distance,
+                f"{name} zz_ks_distance",
+            )
+
+
+def _absolute_efficiency(
+    class_mask: np.ndarray,
+    selected_mask: np.ndarray,
+    weights: np.ndarray,
+) -> float:
+    denominator = float(np.abs(weights[class_mask]).sum())
+    if denominator <= 0.0:
+        raise ValueError("test_scores class weight must be positive")
+    return float(
+        np.abs(weights[class_mask & selected_mask]).sum() / denominator
+    )
+
+
+def _require_exact_metric(actual: Any, expected: Any, name: str) -> None:
+    if float(actual) != float(expected):
+        raise ValueError(f"test_metrics {name} does not match test_scores")
 
 
 def _require_finite_numbers(values: tuple[Any, ...], name: str) -> None:
@@ -1120,28 +1539,6 @@ def _validate_png_bytes(payload: bytes, name: str) -> None:
         raise ValueError(f"plot output is not a decodable PNG: {name}") from error
 
 
-def _validate_model_envelope(payload: bytes) -> None:
-    if (
-        not isinstance(payload, bytes)
-        or len(payload) < 3
-        or len(payload) > 512 * 1024 * 1024
-        or not payload.startswith(b"\x80\x05")
-    ):
-        raise ValueError("flatness model does not have a safe pickle envelope")
-    try:
-        operations = list(pickletools.genops(payload))
-    except Exception as error:
-        raise ValueError("flatness model pickle envelope is malformed") from error
-    if (
-        not operations
-        or operations[0][0].name != "PROTO"
-        or operations[0][1] != 5
-        or operations[-1][0].name != "STOP"
-        or operations[-1][2] != len(payload) - 1
-    ):
-        raise ValueError("flatness model pickle envelope is incomplete")
-
-
 def _read_csv_artifact(
     descriptor: int, name: str, *, compression: str | None = None
 ) -> pd.DataFrame:
@@ -1151,6 +1548,7 @@ def _read_csv_artifact(
             io.BytesIO(payload),
             compression=compression,
             keep_default_na=False,
+            float_precision="round_trip",
         )
     except Exception as error:
         raise ValueError(f"decorrelation CSV is invalid: {name}") from error
@@ -1173,7 +1571,7 @@ def _validate_on_disk_artifacts(
     *,
     selected: bool,
     decision: Mapping[str, Any],
-    trusted_model_bytes: bytes | None,
+    trusted_model_sha256: str | None,
 ) -> None:
     candidates = _read_csv_artifact(
         descriptors["artifacts"], "candidate_results.csv"
@@ -1201,7 +1599,7 @@ def _validate_on_disk_artifacts(
         payload, _ = _read_entry_bytes(descriptors["plots"], name)
         _validate_png_bytes(payload, name)
     if not selected:
-        if trusted_model_bytes is not None:
+        if trusted_model_sha256 is not None:
             raise ValueError("no-selection publication contains model evidence")
         return
     assert selected_candidate is not None
@@ -1217,16 +1615,23 @@ def _validate_on_disk_artifacts(
         selected_oof, oof_scores, selected_candidate
     )
     _validate_test_scores(test_scores)
+    selected_points = working_points.loc[
+        working_points["candidate"] == selected_candidate
+    ]
     _validate_test_metrics(
         _read_json_artifact(descriptors["artifacts"], "test_metrics.json"),
         config,
+        test_scores=test_scores,
+        selected_working_points=selected_points,
     )
     model_payload, _ = _read_entry_bytes(
         descriptors["model"], "flatness_model.pkl"
     )
-    _validate_model_envelope(model_payload)
-    if trusted_model_bytes is not None and model_payload != trusted_model_bytes:
-        raise ValueError("published model differs from writer-bound model evidence")
+    if (
+        not isinstance(trusted_model_sha256, str)
+        or hashlib.sha256(model_payload).hexdigest() != trusted_model_sha256
+    ):
+        raise ValueError("published model lacks writer-bound model authorization")
 
 
 def _plain_csv_bytes(frame: pd.DataFrame) -> bytes:
@@ -1243,10 +1648,19 @@ def publish_decorrelation_manifest(
 ) -> dict[str, Any]:
     """Publish a complete manifest last after immediate source/output rechecks."""
     try:
-        verified_model_bytes = _validate_receipt_evidence(layout, receipt)
         trusted_sources = _independently_resolve_sources(sources)
         _validate_software(software)
         decision = _decision_from_outcome(outcome, trusted_sources.config)
+        verified_model_bytes = _validate_receipt_evidence(
+            layout,
+            receipt,
+            selected_coefficient=decision["selected_coefficient"],
+        )
+        verified_model_sha256 = (
+            None
+            if verified_model_bytes is None
+            else hashlib.sha256(verified_model_bytes).hexdigest()
+        )
         if receipt.selected != decision["test_opened"]:
             raise ValueError("decision contradicts conditional artifact receipt")
     except Exception as error:
@@ -1286,7 +1700,7 @@ def publish_decorrelation_manifest(
             trusted_sources.config,
             selected=receipt.selected,
             decision=decision,
-            trusted_model_bytes=verified_model_bytes,
+            trusted_model_sha256=verified_model_sha256,
         )
         manifest = {
             "schema_version": "1.0",
@@ -1320,7 +1734,7 @@ def publish_decorrelation_manifest(
                 trusted_sources.config,
                 selected=receipt.selected,
                 decision=decision,
-                trusted_model_bytes=verified_model_bytes,
+                trusted_model_sha256=verified_model_sha256,
             )
             _revalidate_named_layout(layout)
 
@@ -1337,6 +1751,12 @@ def publish_decorrelation_manifest(
         staged_manifest = None
         os.close(staged_descriptor)
         staged_descriptor = None
+        _authorize_completed_run(
+            layout,
+            manifest_bytes=serialized,
+            selected=receipt.selected,
+            model_bytes=verified_model_bytes,
+        )
         _assert_decorrelation_contract(
             descriptors,
             selected=receipt.selected,
@@ -1415,6 +1835,10 @@ def _validate_source_inventory(sources: DecorrelationSources) -> None:
         )
     if sources.records["study_config"].snapshot != sources.config_bytes:
         raise ValueError("decorrelation config receipt does not match its snapshot")
+    if sources.records["study_config"].path != _STUDY_CONFIG_PATH:
+        raise ValueError(
+            "decorrelation config receipt does not use the canonical project study config"
+        )
     training_input = sources.training_input
     hashes = training_input.hashes
     if set(hashes) != {"config", "mc", "summary", "manifest"}:
@@ -1469,10 +1893,9 @@ def _independently_resolve_sources(
 ) -> DecorrelationSources:
     _validate_source_inventory(sources)
     strict_config = _load_config_bytes(sources.config_bytes)
-    study_config = sources.records["study_config"]
     trusted = resolve_decorrelation_sources(
         input_run=strict_config.input_run,
-        config_path=study_config.path,
+        config_path=_STUDY_CONFIG_PATH,
     )
     if (
         sources.config != trusted.config
@@ -1738,6 +2161,12 @@ def _assert_output_receipt(
 
 
 def _study_manifest_exists(layout: TrainingOutputLayout) -> bool:
+    try:
+        authorization = _run_authorization(layout)
+    except Exception:
+        return False
+    if authorization.completion_manifest_sha256 is None:
+        return False
     descriptors: dict[str, int] | None = None
     try:
         descriptors = _open_claimed_directories(layout)
@@ -1746,6 +2175,11 @@ def _study_manifest_exists(layout: TrainingOutputLayout) -> bool:
                 descriptors["artifacts"], "study_manifest.json"
             )
         except (OSError, ValueError, FileNotFoundError):
+            return False
+        if (
+            hashlib.sha256(payload).hexdigest()
+            != authorization.completion_manifest_sha256
+        ):
             return False
         try:
             manifest = json.loads(payload.decode("utf-8"))
@@ -1775,6 +2209,8 @@ def _study_manifest_exists(layout: TrainingOutputLayout) -> bool:
             config_bytes, _ = _read_entry_bytes(descriptors["."], "config.yaml")
             config = _load_config_bytes(config_bytes)
             selected = _validate_completed_decision(decision, config)
+            if selected is not authorization.completion_selected:
+                return False
             _validate_software(manifest.get("software"))
             _assert_decorrelation_contract(
                 descriptors,
@@ -1787,11 +2223,17 @@ def _study_manifest_exists(layout: TrainingOutputLayout) -> bool:
                 config,
                 selected=selected,
                 decision=decision,
-                trusted_model_bytes=None,
+                trusted_model_sha256=authorization.completion_model_sha256,
             )
+            study_config = sources.get("study_config")
+            if (
+                not isinstance(study_config, Mapping)
+                or study_config.get("path") != str(_STUDY_CONFIG_PATH)
+            ):
+                return False
             resolved_sources = resolve_decorrelation_sources(
                 input_run=config.input_run,
-                config_path=sources["study_config"]["path"],
+                config_path=_STUDY_CONFIG_PATH,
             )
             _validate_source_inventory(resolved_sources)
             assert_decorrelation_sources_unchanged(resolved_sources)
