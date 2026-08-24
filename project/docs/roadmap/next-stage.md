@@ -1,5 +1,17 @@
 # H → ZZ* → 4ℓ Demo 下一阶段路线图
 
+## DropTop4 KNN flatness 决定（2026-08-25）
+
+预先批准的一次 MC-only 原生平坦度训练已在新 run
+`runs/decorrelation-drop-top4-363490-2026-08-24` 完成。五个候选全部不合格：AUC
+均低于 `0.80`，且没有候选让 loose/medium/tight 三项 KS 同时不高于 `0.10`。
+终态为 `no_eligible_candidate`，held-out test 未开启，真实数据保持封存。
+
+本研究到此冻结，不追加系数、不改变特征、不放宽门槛，也不复用 run path。下一项
+工作是单独预注册一个结构上不同的方法，例如对抗式质量去相关目标，或明确的
+template/sideband 统计模型；在新设计获批前不启动训练。完整数值和哈希见
+[执行报告](../superpowers/plans/2026-08-24-drop-top4-knn-flatness-training-report.md)。
+
 ## Full14 封存决定（2026-08-23）
 
 Full14 XGBoost 已封存为失败的历史参考；不是可部署模型，也不是未来真实数据候选。
