@@ -1570,6 +1570,7 @@ def _safe_tree_predictions(
     ):
         raise ValueError("flatness model pickle has invalid tree dimensions")
     nodes = _safe_tree_nodes(tree_state["nodes"], node_count)
+    _validate_static_tree_topology(nodes, claimed_max_depth=depth)
     values = _safe_numpy_array(tree_state["values"], allowed_codes={"f8"})
     if (
         values.shape != (node_count, 1, 1)
@@ -1603,6 +1604,78 @@ def _safe_tree_predictions(
         else:
             raise ValueError("flatness model pickle tree contains a cycle")
     return predictions
+
+
+def _validate_static_tree_topology(
+    nodes: list[tuple[Any, ...]], *, claimed_max_depth: int
+) -> None:
+    """Validate the complete serialized sklearn tree without executing it."""
+    node_count = len(nodes)
+    children: list[tuple[int, ...]] = []
+    parent_counts = [0] * node_count
+    for node_index, node in enumerate(nodes):
+        left, right, feature, threshold, _, _, _, missing_left = node
+        if missing_left not in {0, 1}:
+            raise ValueError("flatness model pickle has an invalid tree node")
+        if left == -1 or right == -1:
+            if (
+                left != -1
+                or right != -1
+                or feature != -2
+                or threshold != -2.0
+            ):
+                raise ValueError("flatness model pickle has an invalid leaf sentinel")
+            children.append(())
+            continue
+        if (
+            not 0 <= left < node_count
+            or not 0 <= right < node_count
+            or left == node_index
+            or right == node_index
+            or not 0 <= feature < len(_FEATURES)
+        ):
+            raise ValueError("flatness model pickle has an invalid branch")
+        children.append((left, right))
+        parent_counts[left] += 1
+        parent_counts[right] += 1
+
+    visit_state = [0] * node_count
+    for start in range(node_count):
+        if visit_state[start] != 0:
+            continue
+        stack = [(start, False)]
+        while stack:
+            node_index, exiting = stack.pop()
+            if exiting:
+                visit_state[node_index] = 2
+                continue
+            if visit_state[node_index] == 1:
+                raise ValueError("flatness model pickle tree contains a cycle")
+            if visit_state[node_index] == 2:
+                continue
+            visit_state[node_index] = 1
+            stack.append((node_index, True))
+            stack.extend((child, False) for child in children[node_index])
+
+    reachable: set[int] = set()
+    stack = [0]
+    maximum_depth = 0
+    depths = [0] * node_count
+    while stack:
+        node_index = stack.pop()
+        if node_index in reachable:
+            continue
+        reachable.add(node_index)
+        maximum_depth = max(maximum_depth, depths[node_index])
+        for child in children[node_index]:
+            depths[child] = depths[node_index] + 1
+            stack.append(child)
+    if reachable != set(range(node_count)):
+        raise ValueError("flatness model pickle tree contains unreachable nodes")
+    if parent_counts[0] != 0 or any(count != 1 for count in parent_counts[1:]):
+        raise ValueError("flatness model pickle is not a proper tree")
+    if maximum_depth != claimed_max_depth or maximum_depth > 3:
+        raise ValueError("flatness model pickle has an invalid actual maximum depth")
 
 
 def _safe_tree_nodes(value: Any, node_count: int) -> list[tuple[Any, ...]]:

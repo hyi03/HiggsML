@@ -2,18 +2,38 @@
 
 from __future__ import annotations
 
+import argparse
+from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from src.decorrelation_training import FlatnessOutcome
+from src.decorrelation_training import (
+    FlatnessOutcome,
+    OneShotTestGate,
+    fit_selected_and_score_test,
+    run_development_study,
+)
 from src.decorrelation_training_plots import (
     plot_candidate_tradeoff,
     plot_selected_mass_sculpting,
     plot_working_point_ks,
 )
-from src.decorrelation_training_run import DecorrelationConfig
+from src.decorrelation_training_run import (
+    DecorrelationConfig,
+    MCStudyPartitions,
+    assert_decorrelation_sources_unchanged,
+    claim_decorrelation_output,
+    publish_decorrelation_manifest,
+    record_decorrelation_failure,
+    resolve_decorrelation_output,
+    resolve_decorrelation_sources,
+    write_decorrelation_artifacts,
+)
+from src.full_training_run import load_training_mc_frame
+from src.provenance import software_versions
 
 
 _WORKING_POINTS = ("loose", "medium", "tight")
@@ -28,6 +48,79 @@ _AUDIT_COLUMNS = (
 )
 _IDENTITY_COLUMNS = ("channelNumber", "eventNumber", "split")
 _MASS_BINS_GEV = (105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 155, 160)
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run the sealed MC-only DropTop4 flatness study"
+    )
+    parser.add_argument("--input-run", required=True)
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--run-dir", required=True)
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
+    project_root = Path(__file__).resolve().parents[1]
+    working_directory = Path.cwd()
+    resolve_decorrelation_output(
+        project_root=project_root,
+        working_directory=working_directory,
+        input_run=args.input_run,
+        run_dir=args.run_dir,
+    )
+    sources = resolve_decorrelation_sources(
+        input_run=args.input_run,
+        config_path=args.config,
+    )
+    layout = resolve_decorrelation_output(
+        project_root=project_root,
+        working_directory=working_directory,
+        input_run=sources.training_input.input_run,
+        run_dir=args.run_dir,
+    )
+    layout = claim_decorrelation_output(layout)
+    try:
+        frame = load_training_mc_frame(sources.training_input)
+        partitions = MCStudyPartitions.from_frame(frame)
+        selection = run_development_study(
+            partitions.development,
+            sources.config,
+        )
+        outcome = fit_selected_and_score_test(
+            partitions.development,
+            OneShotTestGate(partitions.open_test),
+            sources.config,
+            selection,
+        )
+        artifacts = build_decorrelation_artifacts(outcome, sources.config)
+        receipt = write_decorrelation_artifacts(
+            layout=layout,
+            config_bytes=sources.config_bytes,
+            artifacts=artifacts,
+        )
+        assert_decorrelation_sources_unchanged(sources)
+        publish_decorrelation_manifest(
+            layout=layout,
+            sources=sources,
+            outcome=outcome,
+            receipt=receipt,
+            software=software_versions(),
+        )
+    except Exception as error:
+        record_decorrelation_failure(layout, error)
+        raise
+    decision = artifacts["selection"]
+    selected = outcome.selection.selected
+    print(f"status: {decision['status']}")
+    print(
+        "selected coefficient: "
+        f"{None if selected is None else selected.coefficient}"
+    )
+    print(f"test opened: {decision['test_opened']}")
+    print(f"output: {layout.run_dir}")
+    return 0
 
 
 def build_decorrelation_artifacts(
@@ -225,3 +318,7 @@ def _candidate_name(coefficient: float) -> str:
 
 def _score_column(coefficient: float) -> str:
     return f"score_lambda_{str(float(coefficient)).replace('.', 'p')}"
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

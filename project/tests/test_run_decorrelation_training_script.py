@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from scripts import run_decorrelation_training
 from scripts.run_decorrelation_training import build_decorrelation_artifacts
 from src.decorrelation_training import (
     FlatnessCandidateResult,
@@ -22,6 +23,255 @@ def config():
     return load_decorrelation_config(
         Path("config/decorrelation_training_drop_top4.yaml")
     )
+
+
+def _recorded_cli_stages(monkeypatch, *, selected: bool) -> list[str]:
+    stages: list[str] = []
+    unresolved = SimpleNamespace(run_dir=Path("out"), directory_identities=None)
+    claimed = SimpleNamespace(
+        run_dir=Path("out"), directory_identities={".": (1, 2)}
+    )
+    chosen = SimpleNamespace(coefficient=0.5) if selected else None
+    selection = SimpleNamespace(selected=chosen)
+    outcome = SimpleNamespace(
+        selection=selection,
+        evidence=object() if selected else None,
+    )
+    sources = SimpleNamespace(
+        training_input=SimpleNamespace(input_run=Path("input")),
+        config=object(),
+        config_bytes=b"config",
+    )
+    partitions = SimpleNamespace(
+        development=object(),
+        open_test=lambda: stages.append("selected_test_gate") or pd.DataFrame(),
+    )
+    resolve_count = 0
+
+    def resolve_output(**kwargs):
+        nonlocal resolve_count
+        stage = "output_preflight" if resolve_count == 0 else "output_rebind"
+        resolve_count += 1
+        stages.append(stage)
+        return unresolved
+
+    def score_test(development, test_gate, config, observed_selection):
+        assert observed_selection is selection
+        if observed_selection.selected is not None:
+            test_gate.open()
+        return outcome
+
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "resolve_decorrelation_output",
+        resolve_output,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "resolve_decorrelation_sources",
+        lambda **kwargs: stages.append("source_resolve") or sources,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "claim_decorrelation_output",
+        lambda layout: stages.append("output_claim") or claimed,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "load_training_mc_frame",
+        lambda training_input: stages.append("mc_load") or object(),
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "MCStudyPartitions",
+        SimpleNamespace(
+            from_frame=lambda frame: stages.append("partition") or partitions
+        ),
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "run_development_study",
+        lambda development, config: stages.append("development_study")
+        or selection,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "fit_selected_and_score_test",
+        score_test,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "build_decorrelation_artifacts",
+        lambda observed, config: stages.append("build_artifacts")
+        or {
+            "selection": {
+                "status": (
+                    "eligible_candidate_test_reported"
+                    if selected
+                    else "no_eligible_candidate"
+                ),
+                "selected_candidate": "lambda_0p5" if selected else None,
+                "test_opened": selected,
+            }
+        },
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "write_decorrelation_artifacts",
+        lambda **kwargs: stages.append("write_artifacts") or object(),
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "assert_decorrelation_sources_unchanged",
+        lambda observed: stages.append("source_recheck"),
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "publish_decorrelation_manifest",
+        lambda **kwargs: stages.append("publish_manifest") or {},
+    )
+    monkeypatch.setattr(run_decorrelation_training, "software_versions", lambda: {})
+
+    assert run_decorrelation_training.main(
+        ["--input-run", "in", "--config", "cfg", "--run-dir", "out"]
+    ) == 0
+    return stages
+
+
+def test_cli_runs_frozen_stages_in_order(monkeypatch):
+    assert _recorded_cli_stages(monkeypatch, selected=True) == [
+        "output_preflight",
+        "source_resolve",
+        "output_rebind",
+        "output_claim",
+        "mc_load",
+        "partition",
+        "development_study",
+        "selected_test_gate",
+        "build_artifacts",
+        "write_artifacts",
+        "source_recheck",
+        "publish_manifest",
+    ]
+
+
+def test_no_selection_skips_selected_test_gate(monkeypatch):
+    assert _recorded_cli_stages(monkeypatch, selected=False) == [
+        "output_preflight",
+        "source_resolve",
+        "output_rebind",
+        "output_claim",
+        "mc_load",
+        "partition",
+        "development_study",
+        "build_artifacts",
+        "write_artifacts",
+        "source_recheck",
+        "publish_manifest",
+    ]
+
+
+def test_occupied_output_fails_before_source_resolution(monkeypatch):
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "resolve_decorrelation_output",
+        lambda **kwargs: (_ for _ in ()).throw(FileExistsError("occupied")),
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "resolve_decorrelation_sources",
+        lambda **kwargs: pytest.fail("sources must remain unopened"),
+    )
+
+    with pytest.raises(FileExistsError, match="occupied"):
+        run_decorrelation_training.main(
+            ["--input-run", "in", "--config", "cfg", "--run-dir", "out"]
+        )
+
+
+def test_post_claim_error_installs_failure(tmp_path: Path, monkeypatch):
+    from src import decorrelation_training_run as training_run
+
+    unresolved = training_run.resolve_decorrelation_output(
+        project_root=tmp_path,
+        working_directory=tmp_path,
+        input_run=tmp_path / "input",
+        run_dir=tmp_path / "study",
+    )
+    sources = SimpleNamespace(
+        training_input=SimpleNamespace(input_run=tmp_path / "input"),
+        config=object(),
+        config_bytes=b"config",
+    )
+    partitions = SimpleNamespace(development=object(), open_test=lambda: None)
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "resolve_decorrelation_output",
+        lambda **kwargs: unresolved,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "resolve_decorrelation_sources",
+        lambda **kwargs: sources,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "claim_decorrelation_output",
+        training_run.claim_decorrelation_output,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training, "load_training_mc_frame", lambda value: object()
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "MCStudyPartitions",
+        SimpleNamespace(from_frame=lambda frame: partitions),
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "run_development_study",
+        lambda development, config: (_ for _ in ()).throw(
+            RuntimeError("study failed")
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="study failed"):
+        run_decorrelation_training.main(
+            ["--input-run", "in", "--config", "cfg", "--run-dir", "out"]
+        )
+
+    assert (unresolved.run_dir / ".terminal.failed").is_dir()
+    assert (unresolved.run_dir / "failure.json").is_file()
+
+
+def test_parser_exposes_only_frozen_paths():
+    parser = run_decorrelation_training._build_parser()
+
+    assert {action.dest for action in parser._actions} == {
+        "help",
+        "input_run",
+        "config",
+        "run_dir",
+    }
+
+
+@pytest.mark.parametrize("flag", ("--data", "--test", "--model"))
+def test_parser_rejects_unapproved_paths(flag: str):
+    with pytest.raises(SystemExit) as error:
+        run_decorrelation_training._build_parser().parse_args(
+            [
+                "--input-run",
+                "in",
+                "--config",
+                "cfg",
+                "--run-dir",
+                "out",
+                flag,
+                "attacker-controlled",
+            ]
+        )
+
+    assert error.value.code == 2
 
 
 def _audit(coefficient: float, *, reverse: bool = False) -> pd.DataFrame:

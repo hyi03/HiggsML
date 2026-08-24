@@ -443,6 +443,193 @@ def test_model_pickle_round_trip_preserves_verification_predictions(
     )
 
 
+@pytest.mark.parametrize(
+    "malformation",
+    (
+        "invalid_child_index",
+        "invalid_feature_index",
+        "invalid_leaf_sentinel",
+        "unreachable_node",
+        "unvisited_cycle",
+        "incorrect_max_depth",
+    ),
+)
+def test_static_model_audit_rejects_malformed_unvisited_tree_nodes(
+    fitted_hep_model, malformation: str
+):
+    """Every serialized tree node must be valid, even if audit rows miss it."""
+    model = pickle.loads(pickle.dumps(fitted_hep_model, protocol=5))
+    raw_tree = model.estimators[0][0].tree_
+    state = raw_tree.__getstate__()
+    nodes = state["nodes"].copy()
+
+    verification = training_run._model_verification_frame().to_numpy(dtype=float)
+    visited = {0}
+    for row in verification:
+        node_index = 0
+        while nodes[node_index]["left_child"] != -1:
+            feature = int(nodes[node_index]["feature"])
+            node_index = int(
+                nodes[node_index]["left_child"]
+                if row[feature] <= nodes[node_index]["threshold"]
+                else nodes[node_index]["right_child"]
+            )
+            visited.add(node_index)
+    assert 2 not in visited
+    assert nodes[2]["left_child"] == -1
+    assert nodes[2]["right_child"] == -1
+    if malformation == "invalid_child_index":
+        nodes[2]["left_child"] = len(nodes)
+        nodes[2]["right_child"] = 4
+        nodes[2]["feature"] = 0
+    elif malformation == "invalid_feature_index":
+        nodes[2]["left_child"] = 3
+        nodes[2]["right_child"] = 4
+        nodes[2]["feature"] = len(_FEATURES)
+    elif malformation == "invalid_leaf_sentinel":
+        nodes[2]["feature"] = 0
+    elif malformation == "unreachable_node":
+        nodes[1]["left_child"] = 3
+    elif malformation == "unvisited_cycle":
+        nodes[2]["left_child"] = 2
+        nodes[2]["right_child"] = 2
+        nodes[2]["feature"] = 0
+    elif malformation == "incorrect_max_depth":
+        state["max_depth"] = 3
+    else:  # pragma: no cover - exhaustive parameter guard
+        raise AssertionError(malformation)
+    state["nodes"] = nodes
+    raw_tree.__setstate__(state)
+
+    with pytest.raises(ValueError, match="tree|branch|leaf|depth|reach|cycle"):
+        training_run._validate_model_pickle_semantics(
+            pickle.dumps(model, protocol=5),
+            selected_coefficient=1.0,
+        )
+
+
+def test_real_hep_ml_synthetic_oof_and_manifest(
+    tmp_path: Path, frozen_sources
+):
+    from hep_ml.gradientboosting import UGradientBoostingClassifier
+
+    from scripts.run_decorrelation_training import build_decorrelation_artifacts
+    from src.decorrelation_training import (
+        FlatnessOutcome,
+        evaluate_flatness_candidate,
+        generate_flatness_oof,
+        select_flatness_candidate,
+    )
+    from src.full_training_run import (
+        load_training_mc_frame,
+        resolve_training_input,
+    )
+
+    input_run = _real_hep_ml_task4a_run(tmp_path)
+    training_input = resolve_training_input(input_run)
+    production = frozen_sources.config
+    test_config = replace(
+        production,
+        input_run=str(input_run.resolve()),
+        input_manifest_sha256=training_input.hashes["manifest"],
+        input_mc_sha256=training_input.hashes["mc"],
+        coefficients=(0.5,),
+    )
+    assert test_config.model == production.model
+    assert test_config.flatness == production.flatness
+    assert test_config.input_manifest_sha256 == _sha(
+        input_run / "artifacts/run_manifest.json"
+    )
+    assert test_config.input_mc_sha256 == _sha(
+        input_run / "processed/mc_events.csv.gz"
+    )
+
+    frame = load_training_mc_frame(training_input)
+    development = frame.loc[frame["split"].isin(("train", "validation"))]
+    fitted_models: list[UGradientBoostingClassifier] = []
+
+    def real_factory(**kwargs):
+        model = UGradientBoostingClassifier(**kwargs)
+        fitted_models.append(model)
+        return model
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=(
+                "X has feature names, but NearestNeighbors was fitted without "
+                "feature names"
+            ),
+            category=UserWarning,
+        )
+        warnings.filterwarnings(
+            "ignore",
+            message=".*events out of all bins.*",
+            category=UserWarning,
+        )
+        oof = generate_flatness_oof(
+            development,
+            test_config,
+            0.5,
+            model_factory=real_factory,
+        )
+
+    assert len(oof) == len(development)
+    assert np.isfinite(oof["score_lambda_0p5"]).all()
+    assert len(fitted_models) == 5
+    for model in fitted_models:
+        assert tuple(model.train_features) == _FEATURES
+        assert "m4l" not in model.train_features
+
+    results = []
+    for coefficient in production.coefficients:
+        score_column = f"score_lambda_{str(float(coefficient)).replace('.', 'p')}"
+        audit = oof.rename(columns={"score_lambda_0p5": score_column})
+        results.append(
+            evaluate_flatness_candidate(
+                audit,
+                production,
+                coefficient=coefficient,
+            )
+        )
+    selection = select_flatness_candidate(results)
+    assert selection.selected is None
+    outcome = FlatnessOutcome(selection=selection, evidence=None)
+    artifacts = build_decorrelation_artifacts(outcome, production)
+
+    layout = training_run.claim_decorrelation_output(
+        _fresh_layout(tmp_path, name="real-hep-ml-study")
+    )
+    receipt = training_run.write_decorrelation_artifacts(
+        layout=layout,
+        config_bytes=frozen_sources.config_bytes,
+        artifacts=artifacts,
+    )
+    manifest = training_run.publish_decorrelation_manifest(
+        layout=layout,
+        sources=frozen_sources,
+        outcome=outcome,
+        receipt=receipt,
+        software=_software(),
+    )
+
+    expected_files = {
+        "config.yaml",
+        *production.artifacts_no_selection,
+        "artifacts/study_manifest.json",
+    }
+    payloads = {
+        path.relative_to(layout.run_dir).as_posix(): path.read_bytes()
+        for path in layout.run_dir.rglob("*")
+        if path.is_file()
+    }
+    assert set(payloads) == expected_files
+    for relative, record in manifest["outputs"].items():
+        assert payloads[relative] == (layout.run_dir / relative).read_bytes()
+        assert len(payloads[relative]) == record["size_bytes"]
+        assert hashlib.sha256(payloads[relative]).hexdigest() == record["sha256"]
+
+
 def test_writer_rejects_logloss_two_tree_model(
     tmp_path: Path, frozen_sources, wrong_hep_model
 ):
@@ -1067,6 +1254,97 @@ def test_manifest_is_newer_than_every_published_artifact(
         for path in layout.run_dir.rglob("*")
         if path.is_file() and path != manifest_path
     )
+
+
+def _real_hep_ml_task4a_run(tmp_path: Path) -> Path:
+    from tests.test_full_training_run import _synthetic_task4a_run
+    from src.full_training_policy import development_fold
+
+    run = _synthetic_task4a_run(tmp_path)
+    counts = {(fold, label): 0 for fold in range(5) for label in (0, 1)}
+    label_ordinals = {0: 0, 1: 0}
+    rows: list[dict[str, object]] = []
+    event_number = 1
+
+    def feature_values(event: int) -> dict[str, float]:
+        return {
+            feature: float(
+                np.sin(event * (index + 1) * 0.013)
+                + 0.5 * np.cos(event * 0.007 + index)
+            )
+            for index, feature in enumerate(_ALL_MC_FEATURES)
+        }
+
+    while min(counts.values()) < 110:
+        for label in (0, 1):
+            channel = 363490 if label == 0 else 345060
+            fold = development_fold(channel, event_number, folds=5)
+            bucket = (fold, label)
+            if counts[bucket] >= 110:
+                continue
+            ordinal = label_ordinals[label]
+            row: dict[str, object] = feature_values(event_number)
+            row.update(
+                {
+                    "eventNumber": event_number,
+                    "channelNumber": channel,
+                    "split": "train" if counts[bucket] % 2 == 0 else "validation",
+                    "label": label,
+                    "physical_weight": (
+                        -0.75 if event_number % 13 == 0 else 1.0 + 0.25 * label
+                    ),
+                    "m4l": (
+                        105.0 + 55.0 * ((ordinal * 37) % 111) / 110.0
+                        if label == 0
+                        else 125.0 + 1.5 * np.sin(ordinal * 0.19)
+                    ),
+                }
+            )
+            rows.append(row)
+            counts[bucket] += 1
+            label_ordinals[label] += 1
+        event_number += 1
+
+    for label in (0, 1):
+        channel = 363490 if label == 0 else 345060
+        for offset in range(20):
+            event = 10_000_000 + label * 1_000 + offset
+            row = feature_values(event)
+            row.update(
+                {
+                    "eventNumber": event,
+                    "channelNumber": channel,
+                    "split": "test",
+                    "label": label,
+                    "physical_weight": -0.5 if offset % 9 == 0 else 1.0,
+                    "m4l": (
+                        105.0 + 55.0 * offset / 19.0
+                        if label == 0
+                        else 125.0 + np.sin(offset)
+                    ),
+                }
+            )
+            rows.append(row)
+
+    frame = pd.DataFrame(rows)
+    assert counts == {(fold, label): 110 for fold in range(5) for label in (0, 1)}
+    for label in (0, 1):
+        assert set(frame.loc[frame["label"] == label, "split"]) == {
+            "train",
+            "validation",
+            "test",
+        }
+    frame.to_csv(run / "processed/mc_events.csv.gz", index=False)
+    summary_path = run / "artifacts/data_summary.json"
+    summary = json.loads(summary_path.read_text())
+    summary["mc"]["higgs"]["selected_events"] = int(
+        (frame["label"] == 1).sum()
+    )
+    summary["mc"]["zz"]["selected_events"] = int(
+        (frame["label"] == 0).sum()
+    )
+    summary_path.write_text(json.dumps(summary, sort_keys=True))
+    return run
 
 
 def _bound_config(tmp_path: Path, input_run: Path) -> Path:
