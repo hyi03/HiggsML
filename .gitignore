@@ -220,5 +220,6 @@ __marimo__/
 project/data
 project/runs
 project/tmp
+.worktrees/
 
 .DS_Store
