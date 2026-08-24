@@ -1,11 +1,51 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+import os
 from pathlib import Path
+import pickle
 from types import MappingProxyType
 from typing import Any, Mapping
 
+import numpy as np
+import pandas as pd
 import yaml
+
+from .external_zz_run import (
+    _assert_staged_manifest_unchanged,
+    _open_verified_staged_manifest,
+    _promote_bound_manifest_no_clobber,
+)
+from .full_training_policy import validate_mc_frame
+from .full_training_run import (
+    TrainingInput,
+    TrainingOutputLayout,
+    _assert_empty_claimed_layout,
+    _atomic_publish_bytes,
+    _cleanup_staged,
+    _close_descriptors,
+    _csv_bytes,
+    _entries,
+    _entry_exists,
+    _install_failure_locked as _training_install_failure_locked,
+    _json_bytes,
+    _open_claimed_directories,
+    _open_verified_root,
+    _output_record_from_descriptor,
+    _read_entry_bytes,
+    _revalidate_named_layout,
+    _stage_bytes,
+    _terminal_lock_acquire,
+    _terminal_lock_release,
+    assert_input_hashes_unchanged,
+    claim_training_output,
+    resolve_training_output,
+)
+from .mass_sculpting_ablation_run import (
+    StudySource,
+    _resolve_task4a_sources_without_table_load,
+)
 
 
 _FEATURES = (
@@ -63,6 +103,15 @@ _SELECTED_ARTIFACTS = frozenset(
         "plots/selected_mass_sculpting.png",
     }
 )
+_SOURCE_KEYS = frozenset(
+    {
+        "study_config",
+        "task4a_config",
+        "task4a_mc",
+        "task4a_summary",
+        "task4a_manifest",
+    }
+)
 _TOP_LEVEL_KEYS = {
     "schema_version",
     "input_run",
@@ -99,6 +148,72 @@ class DecorrelationConfig:
     require_signal_efficiency_above_background: bool
     artifacts_no_selection: tuple[str, ...]
     artifacts_selected: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DecorrelationSources:
+    config: DecorrelationConfig
+    config_bytes: bytes
+    training_input: TrainingInput
+    records: Mapping[str, StudySource]
+
+
+class MCStudyPartitions:
+    """Own deep MC partitions and permit one semantic held-out test opening."""
+
+    __slots__ = ("_development", "_test", "_test_opened")
+
+    def __init__(self, development: pd.DataFrame, test: pd.DataFrame) -> None:
+        self._development = development.copy(deep=True)
+        self._test = test.copy(deep=True)
+        self._test_opened = False
+
+    @classmethod
+    def from_frame(cls, frame: pd.DataFrame) -> "MCStudyPartitions":
+        if not isinstance(frame, pd.DataFrame):
+            raise TypeError("MC study input must be a DataFrame")
+        validate_mc_frame(frame)
+        development = frame.loc[frame["split"].isin(("train", "validation"))]
+        test = frame.loc[frame["split"] == "test"]
+        return cls(development.copy(deep=True), test.copy(deep=True))
+
+    @property
+    def development(self) -> pd.DataFrame:
+        return self._development.copy(deep=True)
+
+    def open_test(self) -> pd.DataFrame:
+        if self._test_opened:
+            raise RuntimeError("held-out test was already opened")
+        self._test_opened = True
+        return self._test.copy(deep=True)
+
+
+_RECEIPT_TOKEN = object()
+
+
+@dataclass(frozen=True, init=False)
+class DecorrelationArtifactReceipt:
+    _run_identity: tuple[int, int]
+    selected: bool
+
+    def __new__(
+        cls,
+        token: object = None,
+        run_identity: tuple[int, int] | None = None,
+        selected: bool = False,
+    ):
+        if token is not _RECEIPT_TOKEN or run_identity is None:
+            raise TypeError(
+                "DecorrelationArtifactReceipt is returned by "
+                "write_decorrelation_artifacts"
+            )
+        return super().__new__(cls)
+
+    def __init__(
+        self, token: object, run_identity: tuple[int, int], selected: bool
+    ) -> None:
+        object.__setattr__(self, "_run_identity", run_identity)
+        object.__setattr__(self, "selected", bool(selected))
 
 
 def approved_decorrelation_artifacts(*, selected: bool) -> set[str]:
@@ -177,3 +292,698 @@ def _matches_frozen_decisions(raw: Mapping[str, Any]) -> bool:
         and raw["ks_limit"] == 0.10
         and raw.get("require_signal_efficiency_above_background") is True
     )
+
+
+def resolve_decorrelation_sources(
+    *, input_run: str | Path, config_path: str | Path
+) -> DecorrelationSources:
+    """Resolve only the exact frozen production config and MC-only receipts."""
+    config_source = StudySource.from_path(
+        "study_config", config_path, capture=True
+    )
+    config_bytes = config_source.snapshot
+    if config_bytes is None:
+        raise RuntimeError("decorrelation config snapshot is unavailable")
+    config = _load_config_bytes(config_bytes)
+    return _resolve_decorrelation_sources_with_validated_config(
+        input_run=input_run,
+        config_path=config_source.path,
+        config=config,
+        _config_source=config_source,
+    )
+
+
+def _resolve_decorrelation_sources_with_validated_config(
+    *,
+    input_run: str | Path,
+    config_path: str | Path,
+    config: DecorrelationConfig,
+    _config_source: StudySource | None = None,
+) -> DecorrelationSources:
+    """Private seam for an already validated config; production always uses strict load."""
+    if not isinstance(config, DecorrelationConfig):
+        raise TypeError("config must be a validated DecorrelationConfig")
+    config_source = _config_source or StudySource.from_path(
+        "study_config", config_path, capture=True
+    )
+    config_bytes = config_source.snapshot
+    if config_bytes is None:
+        raise RuntimeError("decorrelation config snapshot is unavailable")
+
+    requested_input = Path(os.path.abspath(input_run)).resolve()
+    configured_input = Path(config.input_run).resolve()
+    if requested_input != configured_input:
+        raise ValueError("--input-run does not match the frozen decorrelation config")
+
+    training_input, task4a_records = _resolve_task4a_sources_without_table_load(
+        requested_input
+    )
+    if training_input.hashes["manifest"] != config.input_manifest_sha256:
+        raise ValueError(
+            "Task 4A manifest does not match the frozen decorrelation config"
+        )
+    if training_input.hashes["mc"] != config.input_mc_sha256:
+        raise ValueError("Task 4A MC does not match the frozen decorrelation config")
+
+    records = {"study_config": config_source, **task4a_records}
+    if set(records) != _SOURCE_KEYS:
+        raise RuntimeError("decorrelation source inventory is incomplete")
+    sources = DecorrelationSources(
+        config=config,
+        config_bytes=config_bytes,
+        training_input=training_input,
+        records=MappingProxyType(records),
+    )
+    assert_decorrelation_sources_unchanged(sources)
+    return sources
+
+
+def assert_decorrelation_sources_unchanged(
+    sources: DecorrelationSources,
+) -> None:
+    if not isinstance(sources, DecorrelationSources):
+        raise TypeError("sources must be DecorrelationSources")
+    for source in sources.records.values():
+        try:
+            current = StudySource.from_path(source.name, source.path)
+        except Exception as error:
+            raise RuntimeError(
+                f"decorrelation source changed during study: {source.name}"
+            ) from error
+        if (
+            current.size_bytes != source.size_bytes
+            or current.sha256 != source.sha256
+        ):
+            raise RuntimeError(
+                f"decorrelation source changed during study: {source.name}"
+            )
+    assert_input_hashes_unchanged(sources.training_input)
+
+
+def resolve_decorrelation_output(
+    *,
+    project_root: Path,
+    working_directory: Path,
+    input_run: str | Path,
+    run_dir: str | Path,
+) -> TrainingOutputLayout:
+    return resolve_training_output(
+        project_root=project_root,
+        working_directory=working_directory,
+        input_run=input_run,
+        run_dir=run_dir,
+    )
+
+
+def claim_decorrelation_output(
+    layout: TrainingOutputLayout,
+) -> TrainingOutputLayout:
+    return claim_training_output(layout)
+
+
+def write_decorrelation_artifacts(
+    layout: TrainingOutputLayout,
+    *,
+    config_bytes: bytes,
+    artifacts: Mapping[str, Any],
+) -> DecorrelationArtifactReceipt:
+    """Write exactly one conditional non-manifest contract without clobbering."""
+    descriptors: dict[str, int] | None = None
+    try:
+        descriptors = _open_claimed_directories(layout)
+        root = descriptors["."]
+        if _entry_exists(root, ".terminal.failed") or _entry_exists(
+            root, "failure.json"
+        ):
+            raise RuntimeError("cannot write a failed decorrelation run")
+        _assert_empty_claimed_layout(descriptors)
+        selected = _validate_artifact_values(artifacts)
+        serialized = _serialize_artifacts(artifacts, selected=selected)
+        if not isinstance(config_bytes, bytes):
+            raise TypeError("config_bytes must contain bytes")
+
+        _atomic_publish_bytes(root, layout.run_dir, "config.yaml", config_bytes)
+        _atomic_publish_bytes(
+            descriptors["artifacts"],
+            layout.artifacts_dir,
+            "candidate_results.csv",
+            serialized["candidate_results"],
+        )
+        _atomic_publish_bytes(
+            descriptors["artifacts"],
+            layout.artifacts_dir,
+            "working_point_metrics.csv",
+            serialized["working_point_metrics"],
+        )
+        _atomic_publish_bytes(
+            descriptors["artifacts"],
+            layout.artifacts_dir,
+            "selection.json",
+            serialized["selection"],
+        )
+        _atomic_publish_bytes(
+            descriptors["predictions"],
+            layout.predictions_dir,
+            "oof_scores.csv.gz",
+            serialized["oof_scores"],
+        )
+        for name in ("candidate_tradeoff.png", "working_point_ks.png"):
+            _atomic_publish_bytes(
+                descriptors["plots"],
+                layout.plots_dir,
+                name,
+                serialized[name],
+            )
+        if selected:
+            _atomic_publish_bytes(
+                descriptors["artifacts"],
+                layout.artifacts_dir,
+                "test_metrics.json",
+                serialized["test_metrics"],
+            )
+            _atomic_publish_bytes(
+                descriptors["model"],
+                layout.model_dir,
+                "flatness_model.pkl",
+                serialized["flatness_model"],
+            )
+            _atomic_publish_bytes(
+                descriptors["predictions"],
+                layout.predictions_dir,
+                "selected_oof_scores.csv.gz",
+                serialized["selected_oof_scores"],
+            )
+            _atomic_publish_bytes(
+                descriptors["predictions"],
+                layout.predictions_dir,
+                "test_scores.csv.gz",
+                serialized["test_scores"],
+            )
+            _atomic_publish_bytes(
+                descriptors["plots"],
+                layout.plots_dir,
+                "selected_mass_sculpting.png",
+                serialized["selected_mass_sculpting.png"],
+            )
+        _assert_decorrelation_contract(
+            descriptors,
+            selected=selected,
+            manifest_present=False,
+            terminal_lock_present=False,
+        )
+        return DecorrelationArtifactReceipt(
+            _RECEIPT_TOKEN, layout.directory_identities["."], selected
+        )
+    except Exception as error:
+        record_decorrelation_failure(layout, error)
+        raise
+    finally:
+        _close_descriptors(descriptors)
+
+
+def _validate_artifact_values(artifacts: Mapping[str, Any]) -> bool:
+    expected_keys = {
+        "candidate_results",
+        "working_point_metrics",
+        "selection",
+        "oof_scores",
+        "plot_artifacts",
+        "model",
+        "selected_oof_scores",
+        "test_scores",
+        "test_metrics",
+    }
+    if not isinstance(artifacts, Mapping) or set(artifacts) != expected_keys:
+        raise ValueError("artifact payload does not match the approved contract")
+    for name in ("candidate_results", "working_point_metrics", "oof_scores"):
+        _validate_finite_frame(artifacts[name], name)
+    if not isinstance(artifacts["selection"], Mapping):
+        raise TypeError("selection must be a mapping")
+    _json_bytes(artifacts["selection"])
+
+    selected = artifacts["model"] is not None
+    optional = (
+        artifacts["selected_oof_scores"],
+        artifacts["test_scores"],
+        artifacts["test_metrics"],
+    )
+    if selected and any(value is None for value in optional):
+        raise FileNotFoundError("selected study is missing test-only artifacts")
+    if not selected and any(value is not None for value in optional):
+        raise ValueError("no-selection study contains test-only artifacts")
+
+    selection = artifacts["selection"]
+    status = selection.get("status")
+    candidate = selection.get("selected_candidate")
+    test_opened = selection.get("test_opened")
+    if not selected and (
+        status != "no_eligible_candidate"
+        or candidate is not None
+        or test_opened is not False
+    ):
+        raise ValueError("decision artifact contradicts no-selection artifacts")
+    if selected and (
+        status != "eligible_candidate_test_reported"
+        or not isinstance(candidate, str)
+        or not candidate
+        or test_opened is not True
+    ):
+        raise ValueError("decision artifact contradicts selected artifacts")
+
+    plots = artifacts["plot_artifacts"]
+    expected_plots = {"candidate_tradeoff.png", "working_point_ks.png"}
+    if selected:
+        expected_plots.add("selected_mass_sculpting.png")
+    if not isinstance(plots, Mapping) or set(plots) != expected_plots:
+        raise ValueError("plot outputs do not match the conditional allowlist")
+    for name, payload in plots.items():
+        if not isinstance(payload, bytes) or not payload.startswith(
+            b"\x89PNG\r\n\x1a\n"
+        ):
+            raise ValueError(f"plot output is not a PNG: {name}")
+
+    if selected:
+        _validate_finite_frame(
+            artifacts["selected_oof_scores"], "selected_oof_scores"
+        )
+        _validate_finite_frame(artifacts["test_scores"], "test_scores")
+        if not isinstance(artifacts["test_metrics"], Mapping):
+            raise TypeError("test_metrics must be a mapping")
+        _json_bytes(artifacts["test_metrics"])
+    return selected
+
+
+def _serialize_artifacts(
+    artifacts: Mapping[str, Any], *, selected: bool
+) -> dict[str, bytes]:
+    plots = artifacts["plot_artifacts"]
+    serialized = {
+        "candidate_results": _plain_csv_bytes(artifacts["candidate_results"]),
+        "working_point_metrics": _plain_csv_bytes(
+            artifacts["working_point_metrics"]
+        ),
+        "selection": _json_bytes(artifacts["selection"]),
+        "oof_scores": _csv_bytes(artifacts["oof_scores"]),
+        "candidate_tradeoff.png": plots["candidate_tradeoff.png"],
+        "working_point_ks.png": plots["working_point_ks.png"],
+    }
+    if selected:
+        serialized.update(
+            test_metrics=_json_bytes(artifacts["test_metrics"]),
+            flatness_model=_trusted_model_bytes(artifacts["model"]),
+            selected_oof_scores=_csv_bytes(artifacts["selected_oof_scores"]),
+            test_scores=_csv_bytes(artifacts["test_scores"]),
+            **{
+                "selected_mass_sculpting.png": plots[
+                    "selected_mass_sculpting.png"
+                ]
+            },
+        )
+    return serialized
+
+
+def _trusted_model_bytes(model: Any) -> bytes:
+    from hep_ml.gradientboosting import UGradientBoostingClassifier
+
+    if type(model) is not UGradientBoostingClassifier:
+        raise TypeError("selected model must be a local hep_ml flatness model")
+    if tuple(getattr(model, "train_features", ())) != _FEATURES:
+        raise ValueError("selected model does not use the exact DropTop4 features")
+    verification = _model_verification_frame()
+    try:
+        expected = np.asarray(model.predict_proba(verification), dtype=float)
+    except Exception as error:
+        raise ValueError("selected hep_ml model is not fitted") from error
+    if not np.isfinite(expected).all():
+        raise ValueError("selected model verification predictions must be finite")
+    payload = pickle.dumps(model, protocol=5)
+    restored = pickle.loads(payload)
+    observed = np.asarray(restored.predict_proba(verification), dtype=float)
+    try:
+        np.testing.assert_allclose(observed, expected, rtol=0.0, atol=0.0)
+    except AssertionError as error:
+        raise ValueError(
+            "selected model pickle round-trip changed verification predictions"
+        ) from error
+    return payload
+
+
+def _model_verification_frame() -> pd.DataFrame:
+    rows = (
+        (35.0, 28.0, 0.1, -0.2, 0.3, -0.4, 42.0, 1.1, 1.4, 2.2),
+        (52.0, 31.0, -0.5, 0.6, -0.7, 0.8, 63.0, 2.1, 2.4, -2.2),
+    )
+    return pd.DataFrame(rows, columns=_FEATURES)
+
+
+def _validate_finite_frame(frame: Any, name: str) -> None:
+    if not isinstance(frame, pd.DataFrame):
+        raise TypeError(f"{name} must be a DataFrame")
+    try:
+        numeric = frame.select_dtypes(include=[np.number]).to_numpy(dtype=float)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{name} numeric content must be finite") from error
+    if not np.isfinite(numeric).all():
+        raise ValueError(f"{name} contains non-finite numeric content")
+
+
+def _plain_csv_bytes(frame: pd.DataFrame) -> bytes:
+    return frame.to_csv(index=False).encode("utf-8")
+
+
+def publish_decorrelation_manifest(
+    layout: TrainingOutputLayout,
+    *,
+    sources: DecorrelationSources,
+    outcome: Any,
+    receipt: DecorrelationArtifactReceipt,
+    software: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Publish a complete manifest last after immediate source/output rechecks."""
+    if not isinstance(receipt, DecorrelationArtifactReceipt):
+        raise FileNotFoundError(
+            "publisher requires a DecorrelationArtifactReceipt"
+        )
+    if (
+        layout.directory_identities is None
+        or receipt._run_identity != layout.directory_identities.get(".")
+    ):
+        raise ValueError("artifact receipt does not belong to this claimed run")
+    try:
+        _validate_source_inventory(sources)
+        _validate_software(software)
+        decision = _decision_from_outcome(outcome, sources.config)
+        if receipt.selected != decision["test_opened"]:
+            raise ValueError("decision contradicts conditional artifact receipt")
+    except Exception as error:
+        record_decorrelation_failure(layout, error)
+        raise
+
+    descriptors: dict[str, int] | None = None
+    locked = False
+    staged_manifest: str | None = None
+    staged_descriptor: int | None = None
+    try:
+        descriptors = _open_claimed_directories(layout)
+        root = descriptors["."]
+        _terminal_lock_acquire(root)
+        locked = True
+        if _entry_exists(root, ".terminal.failed") or _entry_exists(
+            root, "failure.json"
+        ):
+            raise RuntimeError("cannot publish a failed decorrelation run")
+        if _entry_exists(descriptors["artifacts"], "study_manifest.json"):
+            raise FileExistsError(
+                f"output entry already exists: "
+                f"{layout.artifacts_dir / 'study_manifest.json'}"
+            )
+        _assert_decorrelation_contract(
+            descriptors,
+            selected=receipt.selected,
+            manifest_present=False,
+            terminal_lock_present=True,
+        )
+        _assert_selection_matches_decision(descriptors["artifacts"], decision)
+        outputs = _build_output_records(
+            layout, descriptors, selected=receipt.selected
+        )
+        manifest = {
+            "schema_version": "1.0",
+            "status": "complete",
+            "decision": decision,
+            "software": dict(software),
+            "sources": {
+                name: {
+                    "path": str(source.path),
+                    "size_bytes": source.size_bytes,
+                    "sha256": source.sha256,
+                    **(
+                        {"expected_rows": sources.training_input.expected_rows}
+                        if name == "task4a_mc"
+                        else {}
+                    ),
+                }
+                for name, source in sources.records.items()
+            },
+            "outputs": outputs,
+        }
+        serialized = _json_bytes(manifest)
+        staged_manifest = _stage_bytes(
+            descriptors["artifacts"], "study_manifest.json", serialized
+        )
+        staged_descriptor, staged_identity = _open_verified_staged_manifest(
+            descriptors["artifacts"], staged_manifest, serialized
+        )
+
+        def final_check() -> None:
+            assert_decorrelation_sources_unchanged(sources)
+            _assert_staged_manifest_unchanged(
+                descriptors["artifacts"],
+                staged_manifest,
+                staged_descriptor,
+                staged_identity,
+                serialized,
+            )
+            if (
+                _build_output_records(
+                    layout, descriptors, selected=receipt.selected
+                )
+                != outputs
+            ):
+                raise RuntimeError(
+                    "decorrelation output changed before manifest publication"
+                )
+            _revalidate_named_layout(layout)
+
+        _promote_bound_manifest_no_clobber(
+            descriptors["artifacts"],
+            layout.artifacts_dir,
+            staged_manifest,
+            staged_descriptor,
+            staged_identity,
+            serialized,
+            "study_manifest.json",
+            immediate_check=final_check,
+        )
+        staged_manifest = None
+        os.close(staged_descriptor)
+        staged_descriptor = None
+        _assert_decorrelation_contract(
+            descriptors,
+            selected=receipt.selected,
+            manifest_present=True,
+            terminal_lock_present=True,
+        )
+        return manifest
+    except Exception as error:
+        if descriptors is not None:
+            _cleanup_staged(
+                descriptors.get("artifacts", descriptors["."]), staged_manifest
+            )
+            if locked:
+                _install_decorrelation_failure_locked(
+                    descriptors["."], layout.run_dir, error
+                )
+            else:
+                record_decorrelation_failure(layout, error)
+        else:
+            record_decorrelation_failure(layout, error)
+        raise
+    finally:
+        if descriptors is not None and locked:
+            _terminal_lock_release(descriptors["."])
+        if staged_descriptor is not None:
+            os.close(staged_descriptor)
+        _close_descriptors(descriptors)
+
+
+def _validate_source_inventory(sources: DecorrelationSources) -> None:
+    if not isinstance(sources, DecorrelationSources):
+        raise TypeError("sources must be DecorrelationSources")
+    if set(sources.records) != _SOURCE_KEYS or any(
+        not isinstance(source, StudySource) or source.name != name
+        for name, source in sources.records.items()
+    ):
+        raise ValueError(
+            "decorrelation source inventory does not match the approved contract"
+        )
+    if sources.records["study_config"].snapshot != sources.config_bytes:
+        raise ValueError("decorrelation config receipt does not match its snapshot")
+    if (
+        sources.training_input.hashes["manifest"]
+        != sources.config.input_manifest_sha256
+        or sources.training_input.hashes["mc"]
+        != sources.config.input_mc_sha256
+    ):
+        raise ValueError("decorrelation source receipts do not match frozen config")
+
+
+def _validate_software(software: Mapping[str, Any]) -> None:
+    if not isinstance(software, Mapping) or software.get("hep_ml") != "0.8.0":
+        raise ValueError("manifest software must record hep_ml 0.8.0")
+    _json_bytes(software)
+
+
+def _decision_from_outcome(
+    outcome: Any, config: DecorrelationConfig
+) -> dict[str, Any]:
+    selection = getattr(outcome, "selection", None)
+    selected = getattr(selection, "selected", None)
+    evidence = getattr(outcome, "evidence", None)
+    if selected is None:
+        if evidence is not None:
+            raise ValueError("outcome decision contradicts no-selection evidence")
+        return {
+            "status": "no_eligible_candidate",
+            "selected_candidate": None,
+            "selected_coefficient": None,
+            "test_opened": False,
+        }
+    if evidence is None:
+        raise ValueError("outcome decision contradicts selected evidence")
+    try:
+        coefficient = float(selected.coefficient)
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError("selected outcome coefficient must be numeric") from error
+    if not np.isfinite(coefficient) or coefficient not in config.coefficients:
+        raise ValueError("selected outcome coefficient is not approved")
+    return {
+        "status": "eligible_candidate_test_reported",
+        "selected_candidate": _candidate_name(coefficient),
+        "selected_coefficient": coefficient,
+        "test_opened": True,
+    }
+
+
+def _candidate_name(coefficient: float) -> str:
+    return f"lambda_{str(float(coefficient)).replace('.', 'p')}"
+
+
+def _assert_selection_matches_decision(
+    artifacts_descriptor: int, decision: Mapping[str, Any]
+) -> None:
+    payload, _ = _read_entry_bytes(artifacts_descriptor, "selection.json")
+    try:
+        selection = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("selection artifact is not valid JSON") from error
+    if not isinstance(selection, Mapping) or any(
+        selection.get(key) != decision[key]
+        for key in ("status", "selected_candidate", "test_opened")
+    ):
+        raise ValueError("decision contradicts the published selection artifact")
+
+
+def _assert_decorrelation_contract(
+    descriptors: Mapping[str, int],
+    *,
+    selected: bool,
+    manifest_present: bool,
+    terminal_lock_present: bool,
+) -> None:
+    root_expected = {"config.yaml", "model", "artifacts", "predictions", "plots"}
+    if terminal_lock_present:
+        root_expected.add(".terminal.lock")
+    if _entries(descriptors["."]) != root_expected:
+        raise ValueError("decorrelation run root does not match the approved contract")
+    relative = approved_decorrelation_artifacts(selected=selected)
+    expected = {
+        "model": {
+            Path(name).name for name in relative if name.startswith("model/")
+        },
+        "artifacts": {
+            Path(name).name
+            for name in relative
+            if name.startswith("artifacts/")
+        },
+        "predictions": {
+            Path(name).name
+            for name in relative
+            if name.startswith("predictions/")
+        },
+        "plots": {
+            Path(name).name for name in relative if name.startswith("plots/")
+        },
+    }
+    if manifest_present:
+        expected["artifacts"].add("study_manifest.json")
+    for directory, names in expected.items():
+        actual = _entries(descriptors[directory])
+        if actual != names:
+            if names - actual:
+                raise FileNotFoundError(
+                    f"required decorrelation output is missing in {directory}"
+                )
+            raise ValueError(
+                f"unexpected decorrelation output entry in {directory}"
+            )
+
+
+def _build_output_records(
+    layout: TrainingOutputLayout,
+    descriptors: Mapping[str, int],
+    *,
+    selected: bool,
+) -> dict[str, dict[str, Any]]:
+    outputs: dict[str, dict[str, Any]] = {}
+    config_record, _ = _output_record_from_descriptor(
+        descriptors["."], layout.config_snapshot, csv_rows=False
+    )
+    outputs["config.yaml"] = config_record
+    for relative in sorted(approved_decorrelation_artifacts(selected=selected)):
+        directory, _ = relative.split("/", 1)
+        path = layout.run_dir / relative
+        csv_rows = relative.endswith(".csv") or relative.endswith(".csv.gz")
+        compression = "gzip" if relative.endswith(".csv.gz") else None
+        record, _ = _output_record_from_descriptor(
+            descriptors[directory],
+            path,
+            csv_rows=csv_rows,
+            compression=compression,
+        )
+        outputs[relative] = record
+    return outputs
+
+
+def _study_manifest_exists(root: int) -> bool:
+    try:
+        artifacts = os.open(
+            "artifacts",
+            os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=root,
+        )
+    except OSError:
+        return False
+    try:
+        return _entry_exists(artifacts, "study_manifest.json")
+    finally:
+        os.close(artifacts)
+
+
+def _install_decorrelation_failure_locked(
+    root: int, run_dir: Path, error: BaseException
+) -> None:
+    if _study_manifest_exists(root):
+        return
+    _training_install_failure_locked(root, run_dir, error)
+
+
+def record_decorrelation_failure(
+    layout: TrainingOutputLayout, error: BaseException
+) -> None:
+    """Install one no-clobber terminal failure unless completion already exists."""
+    try:
+        root = _open_verified_root(layout)
+    except Exception:
+        return
+    locked = False
+    try:
+        _terminal_lock_acquire(root)
+        locked = True
+        _install_decorrelation_failure_locked(root, layout.run_dir, error)
+    except Exception:
+        pass
+    finally:
+        if locked:
+            _terminal_lock_release(root)
+        os.close(root)
