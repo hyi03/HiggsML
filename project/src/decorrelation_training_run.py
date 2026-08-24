@@ -81,6 +81,14 @@ class DecorrelationConfig:
     artifacts_no_selection: tuple[str, ...]
     artifacts_selected: tuple[str, ...]
 
+    @property
+    def mass_bins_gev(self) -> tuple[float, ...]:
+        return tuple(float(value) for value in range(105, 165, 5))
+
+    @property
+    def ks_distance_limit(self) -> float:
+        return self.ks_limit
+
 
 def approved_decorrelation_artifacts(*, selected: bool) -> set[str]:
     return set(
