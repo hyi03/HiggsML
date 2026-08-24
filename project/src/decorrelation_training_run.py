@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -15,7 +16,7 @@ import yaml
 from .external_zz_run import (
     _assert_staged_manifest_unchanged,
     _open_verified_staged_manifest,
-    _promote_bound_manifest_no_clobber,
+    _publish_descriptor_no_clobber,
 )
 from .full_training_policy import validate_mc_frame
 from .full_training_run import (
@@ -195,14 +196,20 @@ _RECEIPT_TOKEN = object()
 class DecorrelationArtifactReceipt:
     _run_identity: tuple[int, int]
     selected: bool
+    _outputs: Mapping[str, Mapping[str, Any]]
 
     def __new__(
         cls,
         token: object = None,
         run_identity: tuple[int, int] | None = None,
         selected: bool = False,
+        outputs: Mapping[str, Mapping[str, Any]] | None = None,
     ):
-        if token is not _RECEIPT_TOKEN or run_identity is None:
+        if (
+            token is not _RECEIPT_TOKEN
+            or run_identity is None
+            or outputs is None
+        ):
             raise TypeError(
                 "DecorrelationArtifactReceipt is returned by "
                 "write_decorrelation_artifacts"
@@ -210,10 +217,15 @@ class DecorrelationArtifactReceipt:
         return super().__new__(cls)
 
     def __init__(
-        self, token: object, run_identity: tuple[int, int], selected: bool
+        self,
+        token: object,
+        run_identity: tuple[int, int],
+        selected: bool,
+        outputs: Mapping[str, Mapping[str, Any]],
     ) -> None:
         object.__setattr__(self, "_run_identity", run_identity)
         object.__setattr__(self, "selected", bool(selected))
+        object.__setattr__(self, "_outputs", _freeze_output_records(outputs))
 
 
 def approved_decorrelation_artifacts(*, selected: bool) -> set[str]:
@@ -305,30 +317,6 @@ def resolve_decorrelation_sources(
     if config_bytes is None:
         raise RuntimeError("decorrelation config snapshot is unavailable")
     config = _load_config_bytes(config_bytes)
-    return _resolve_decorrelation_sources_with_validated_config(
-        input_run=input_run,
-        config_path=config_source.path,
-        config=config,
-        _config_source=config_source,
-    )
-
-
-def _resolve_decorrelation_sources_with_validated_config(
-    *,
-    input_run: str | Path,
-    config_path: str | Path,
-    config: DecorrelationConfig,
-    _config_source: StudySource | None = None,
-) -> DecorrelationSources:
-    """Private seam for an already validated config; production always uses strict load."""
-    if not isinstance(config, DecorrelationConfig):
-        raise TypeError("config must be a validated DecorrelationConfig")
-    config_source = _config_source or StudySource.from_path(
-        "study_config", config_path, capture=True
-    )
-    config_bytes = config_source.snapshot
-    if config_bytes is None:
-        raise RuntimeError("decorrelation config snapshot is unavailable")
 
     requested_input = Path(os.path.abspath(input_run)).resolve()
     configured_input = Path(config.input_run).resolve()
@@ -417,10 +405,18 @@ def write_decorrelation_artifacts(
         ):
             raise RuntimeError("cannot write a failed decorrelation run")
         _assert_empty_claimed_layout(descriptors)
-        selected = _validate_artifact_values(artifacts)
-        serialized = _serialize_artifacts(artifacts, selected=selected)
         if not isinstance(config_bytes, bytes):
             raise TypeError("config_bytes must contain bytes")
+        config = _load_config_bytes(config_bytes)
+        selected = _validate_artifact_values(artifacts, config=config)
+        serialized = _serialize_artifacts(artifacts, selected=selected)
+        expected_outputs = _serialized_output_records(
+            layout,
+            config_bytes=config_bytes,
+            artifacts=artifacts,
+            serialized=serialized,
+            selected=selected,
+        )
 
         _atomic_publish_bytes(root, layout.run_dir, "config.yaml", config_bytes)
         _atomic_publish_bytes(
@@ -491,8 +487,18 @@ def write_decorrelation_artifacts(
             manifest_present=False,
             terminal_lock_present=False,
         )
+        outputs = _build_output_records(
+            layout, descriptors, selected=selected
+        )
+        if outputs != expected_outputs:
+            raise RuntimeError(
+                "decorrelation output changed during artifact publication"
+            )
         return DecorrelationArtifactReceipt(
-            _RECEIPT_TOKEN, layout.directory_identities["."], selected
+            _RECEIPT_TOKEN,
+            layout.directory_identities["."],
+            selected,
+            expected_outputs,
         )
     except Exception as error:
         record_decorrelation_failure(layout, error)
@@ -501,7 +507,9 @@ def write_decorrelation_artifacts(
         _close_descriptors(descriptors)
 
 
-def _validate_artifact_values(artifacts: Mapping[str, Any]) -> bool:
+def _validate_artifact_values(
+    artifacts: Mapping[str, Any], *, config: DecorrelationConfig
+) -> bool:
     expected_keys = {
         "candidate_results",
         "working_point_metrics",
@@ -533,6 +541,7 @@ def _validate_artifact_values(artifacts: Mapping[str, Any]) -> bool:
         raise ValueError("no-selection study contains test-only artifacts")
 
     selection = artifacts["selection"]
+    _validate_selection_contract(selection, config)
     status = selection.get("status")
     candidate = selection.get("selected_candidate")
     test_opened = selection.get("test_opened")
@@ -571,6 +580,28 @@ def _validate_artifact_values(artifacts: Mapping[str, Any]) -> bool:
             raise TypeError("test_metrics must be a mapping")
         _json_bytes(artifacts["test_metrics"])
     return selected
+
+
+def _validate_selection_contract(
+    selection: Mapping[str, Any], config: DecorrelationConfig
+) -> None:
+    expected_keys = {
+        "schema_version",
+        "status",
+        "selected_candidate",
+        "test_opened",
+        "auc_floor",
+        "ks_limit",
+    }
+    if (
+        set(selection) != expected_keys
+        or selection.get("schema_version") != "1.0"
+        or type(selection.get("auc_floor")) is not float
+        or selection.get("auc_floor") != config.auc_floor
+        or type(selection.get("ks_limit")) is not float
+        or selection.get("ks_limit") != config.ks_limit
+    ):
+        raise ValueError("selection contract changes the frozen schema or gates")
 
 
 def _serialize_artifacts(
@@ -660,16 +691,18 @@ def publish_decorrelation_manifest(
     software: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Publish a complete manifest last after immediate source/output rechecks."""
-    if not isinstance(receipt, DecorrelationArtifactReceipt):
-        raise FileNotFoundError(
-            "publisher requires a DecorrelationArtifactReceipt"
-        )
-    if (
-        layout.directory_identities is None
-        or receipt._run_identity != layout.directory_identities.get(".")
-    ):
-        raise ValueError("artifact receipt does not belong to this claimed run")
     try:
+        if not isinstance(receipt, DecorrelationArtifactReceipt):
+            raise FileNotFoundError(
+                "publisher requires a DecorrelationArtifactReceipt"
+            )
+        if (
+            layout.directory_identities is None
+            or receipt._run_identity != layout.directory_identities.get(".")
+        ):
+            raise ValueError(
+                "artifact receipt does not belong to this claimed run"
+            )
         _validate_source_inventory(sources)
         _validate_software(software)
         decision = _decision_from_outcome(outcome, sources.config)
@@ -703,10 +736,10 @@ def publish_decorrelation_manifest(
             manifest_present=False,
             terminal_lock_present=True,
         )
-        _assert_selection_matches_decision(descriptors["artifacts"], decision)
-        outputs = _build_output_records(
-            layout, descriptors, selected=receipt.selected
+        _assert_selection_matches_decision(
+            descriptors["artifacts"], decision, sources.config
         )
+        outputs = _assert_output_receipt(layout, descriptors, receipt)
         manifest = {
             "schema_version": "1.0",
             "status": "complete",
@@ -744,18 +777,11 @@ def publish_decorrelation_manifest(
                 staged_identity,
                 serialized,
             )
-            if (
-                _build_output_records(
-                    layout, descriptors, selected=receipt.selected
-                )
-                != outputs
-            ):
-                raise RuntimeError(
-                    "decorrelation output changed before manifest publication"
-                )
+            if _assert_output_receipt(layout, descriptors, receipt) != outputs:
+                raise RuntimeError("decorrelation output receipt changed")
             _revalidate_named_layout(layout)
 
-        _promote_bound_manifest_no_clobber(
+        _promote_decorrelation_manifest_no_clobber(
             descriptors["artifacts"],
             layout.artifacts_dir,
             staged_manifest,
@@ -795,6 +821,32 @@ def publish_decorrelation_manifest(
         if staged_descriptor is not None:
             os.close(staged_descriptor)
         _close_descriptors(descriptors)
+
+
+def _before_decorrelation_manifest_promotion(destination: Path) -> None:
+    """Test seam before the final checks at the descriptor promotion boundary."""
+
+
+def _promote_decorrelation_manifest_no_clobber(
+    root: int,
+    parent: Path,
+    staged: str,
+    staged_descriptor: int,
+    staged_identity: tuple[int, int],
+    expected: bytes,
+    final_name: str,
+    *,
+    immediate_check,
+) -> None:
+    destination = parent / final_name
+    try:
+        _before_decorrelation_manifest_promotion(destination)
+        immediate_check()
+        _publish_descriptor_no_clobber(
+            staged_descriptor, root, final_name, destination
+        )
+    finally:
+        _cleanup_staged(root, staged)
 
 
 def _validate_source_inventory(sources: DecorrelationSources) -> None:
@@ -860,14 +912,19 @@ def _candidate_name(coefficient: float) -> str:
 
 
 def _assert_selection_matches_decision(
-    artifacts_descriptor: int, decision: Mapping[str, Any]
+    artifacts_descriptor: int,
+    decision: Mapping[str, Any],
+    config: DecorrelationConfig,
 ) -> None:
     payload, _ = _read_entry_bytes(artifacts_descriptor, "selection.json")
     try:
         selection = json.loads(payload.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("selection artifact is not valid JSON") from error
-    if not isinstance(selection, Mapping) or any(
+    if not isinstance(selection, Mapping):
+        raise ValueError("selection artifact must contain an object")
+    _validate_selection_contract(selection, config)
+    if any(
         selection.get(key) != decision[key]
         for key in ("status", "selected_candidate", "test_opened")
     ):
@@ -945,6 +1002,101 @@ def _build_output_records(
     return outputs
 
 
+def _serialized_output_records(
+    layout: TrainingOutputLayout,
+    *,
+    config_bytes: bytes,
+    artifacts: Mapping[str, Any],
+    serialized: Mapping[str, bytes],
+    selected: bool,
+) -> dict[str, dict[str, Any]]:
+    payloads: dict[str, bytes] = {
+        "config.yaml": config_bytes,
+        "artifacts/candidate_results.csv": serialized["candidate_results"],
+        "artifacts/working_point_metrics.csv": serialized[
+            "working_point_metrics"
+        ],
+        "artifacts/selection.json": serialized["selection"],
+        "predictions/oof_scores.csv.gz": serialized["oof_scores"],
+        "plots/candidate_tradeoff.png": serialized["candidate_tradeoff.png"],
+        "plots/working_point_ks.png": serialized["working_point_ks.png"],
+    }
+    row_counts = {
+        "artifacts/candidate_results.csv": len(artifacts["candidate_results"]),
+        "artifacts/working_point_metrics.csv": len(
+            artifacts["working_point_metrics"]
+        ),
+        "predictions/oof_scores.csv.gz": len(artifacts["oof_scores"]),
+    }
+    if selected:
+        payloads.update(
+            {
+                "artifacts/test_metrics.json": serialized["test_metrics"],
+                "model/flatness_model.pkl": serialized["flatness_model"],
+                "predictions/selected_oof_scores.csv.gz": serialized[
+                    "selected_oof_scores"
+                ],
+                "predictions/test_scores.csv.gz": serialized["test_scores"],
+                "plots/selected_mass_sculpting.png": serialized[
+                    "selected_mass_sculpting.png"
+                ],
+            }
+        )
+        row_counts.update(
+            {
+                "predictions/selected_oof_scores.csv.gz": len(
+                    artifacts["selected_oof_scores"]
+                ),
+                "predictions/test_scores.csv.gz": len(artifacts["test_scores"]),
+            }
+        )
+    expected_paths = {
+        "config.yaml",
+        *approved_decorrelation_artifacts(selected=selected),
+    }
+    if set(payloads) != expected_paths:
+        raise RuntimeError("serialized outputs do not match the approved contract")
+    records: dict[str, dict[str, Any]] = {}
+    for relative, payload in payloads.items():
+        record: dict[str, Any] = {
+            "path": str(layout.run_dir / relative),
+            "size_bytes": len(payload),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        }
+        if relative in row_counts:
+            record["row_count"] = row_counts[relative]
+        records[relative] = record
+    return records
+
+
+def _freeze_output_records(
+    records: Mapping[str, Mapping[str, Any]],
+) -> Mapping[str, Mapping[str, Any]]:
+    return MappingProxyType(
+        {
+            relative: MappingProxyType(dict(record))
+            for relative, record in records.items()
+        }
+    )
+
+
+def _assert_output_receipt(
+    layout: TrainingOutputLayout,
+    descriptors: Mapping[str, int],
+    receipt: DecorrelationArtifactReceipt,
+) -> dict[str, dict[str, Any]]:
+    current = _build_output_records(
+        layout, descriptors, selected=receipt.selected
+    )
+    expected = {
+        relative: dict(record)
+        for relative, record in receipt._outputs.items()
+    }
+    if current != expected:
+        raise RuntimeError("decorrelation output receipt changed")
+    return current
+
+
 def _study_manifest_exists(root: int) -> bool:
     try:
         artifacts = os.open(
@@ -955,9 +1107,64 @@ def _study_manifest_exists(root: int) -> bool:
     except OSError:
         return False
     try:
-        return _entry_exists(artifacts, "study_manifest.json")
+        try:
+            payload, _ = _read_entry_bytes(artifacts, "study_manifest.json")
+        except (OSError, ValueError, FileNotFoundError):
+            return False
+        try:
+            manifest = json.loads(payload.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return False
+        if not isinstance(manifest, Mapping) or set(manifest) != {
+            "schema_version",
+            "status",
+            "decision",
+            "software",
+            "sources",
+            "outputs",
+        }:
+            return False
+        decision = manifest.get("decision")
+        sources = manifest.get("sources")
+        outputs = manifest.get("outputs")
+        if (
+            manifest.get("schema_version") != "1.0"
+            or manifest.get("status") != "complete"
+            or not isinstance(decision, Mapping)
+            or type(decision.get("test_opened")) is not bool
+            or not isinstance(sources, Mapping)
+            or set(sources) != _SOURCE_KEYS
+            or not isinstance(outputs, Mapping)
+        ):
+            return False
+        expected_outputs = {
+            "config.yaml",
+            *approved_decorrelation_artifacts(
+                selected=decision["test_opened"]
+            ),
+        }
+        return set(outputs) == expected_outputs and all(
+            _valid_manifest_record(record)
+            for record in (*sources.values(), *outputs.values())
+        )
     finally:
         os.close(artifacts)
+
+
+def _valid_manifest_record(record: Any) -> bool:
+    if not isinstance(record, Mapping):
+        return False
+    sha256 = record.get("sha256")
+    size = record.get("size_bytes")
+    return (
+        isinstance(record.get("path"), str)
+        and isinstance(size, int)
+        and not isinstance(size, bool)
+        and size >= 0
+        and isinstance(sha256, str)
+        and len(sha256) == 64
+        and all(character in "0123456789abcdef" for character in sha256)
+    )
 
 
 def _install_decorrelation_failure_locked(

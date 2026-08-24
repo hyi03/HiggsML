@@ -171,6 +171,12 @@ def test_public_source_resolver_rejects_rebound_config(
         )
 
 
+def test_no_source_resolver_bypass_is_exposed():
+    assert not hasattr(
+        training_run, "_resolve_decorrelation_sources_with_validated_config"
+    )
+
+
 def test_partitions_expose_development_and_open_test_once(mc_frame: pd.DataFrame):
     partitions = training_run.MCStudyPartitions.from_frame(mc_frame)
 
@@ -272,6 +278,33 @@ def test_model_pickle_round_trip_preserves_verification_predictions(
     )
 
 
+def test_write_receipt_binds_exact_trusted_model_bytes(
+    tmp_path: Path, synthetic_task4a_run: Path, fitted_hep_model
+):
+    sources = _resolved_sources(tmp_path, synthetic_task4a_run)
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+    receipt = training_run.write_decorrelation_artifacts(
+        layout=layout,
+        config_bytes=sources.config_bytes,
+        artifacts=_artifacts(selected=True, model=fitted_hep_model),
+    )
+    model_path = layout.model_dir / "flatness_model.pkl"
+    original = model_path.read_bytes()
+    model_path.write_bytes(bytes([original[0] ^ 1]) + original[1:])
+
+    with pytest.raises(RuntimeError, match="output receipt changed"):
+        training_run.publish_decorrelation_manifest(
+            layout=layout,
+            sources=sources,
+            outcome=_outcome(selected=True),
+            receipt=receipt,
+            software=_software(),
+        )
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+    assert not (layout.artifacts_dir / "study_manifest.json").exists()
+
+
 def test_source_mutation_blocks_manifest(
     tmp_path: Path, synthetic_task4a_run: Path
 ):
@@ -296,6 +329,34 @@ def test_decision_artifact_contradiction_is_rejected(tmp_path: Path):
     }
 
     with pytest.raises(ValueError, match="contradicts"):
+        training_run.write_decorrelation_artifacts(
+            layout=layout,
+            config_bytes=Path(
+                "config/decorrelation_training_drop_top4.yaml"
+            ).read_bytes(),
+            artifacts=artifacts,
+        )
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+    assert not (layout.artifacts_dir / "study_manifest.json").exists()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("schema_version", "1.1"),
+        ("auc_floor", 0.79),
+        ("ks_limit", 0.11),
+    ],
+)
+def test_selection_contract_rejects_changed_schema_or_gate(
+    tmp_path: Path, field: str, value: object
+):
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+    artifacts = _artifacts(selected=False)
+    artifacts["selection"][field] = value
+
+    with pytest.raises(ValueError, match="selection contract"):
         training_run.write_decorrelation_artifacts(
             layout=layout,
             config_bytes=Path(
@@ -343,6 +404,55 @@ def test_foreign_output_receipt_is_rejected(
             receipt=receipt,
             software=_software(),
         )
+    assert (second.run_dir / ".terminal.failed").is_dir()
+    assert (second.run_dir / "failure.json").is_file()
+    assert not (second.artifacts_dir / "study_manifest.json").exists()
+
+
+def test_dangling_manifest_does_not_suppress_terminal_failure(tmp_path: Path):
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+    (layout.artifacts_dir / "study_manifest.json").symlink_to(
+        tmp_path / "missing-manifest"
+    )
+
+    training_run.record_decorrelation_failure(layout, RuntimeError("failed"))
+
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+
+
+def test_promotion_seam_substitution_fails_closed(
+    tmp_path: Path, synthetic_task4a_run: Path, monkeypatch
+):
+    sources = _resolved_sources(tmp_path, synthetic_task4a_run)
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+    receipt = training_run.write_decorrelation_artifacts(
+        layout=layout,
+        config_bytes=sources.config_bytes,
+        artifacts=_artifacts(selected=False),
+    )
+
+    def substitute_output(_destination: Path) -> None:
+        (layout.artifacts_dir / "candidate_results.csv").write_bytes(
+            b"candidate,weighted_oof_auc,eligible\nreplacement,0.99,True\n"
+        )
+
+    monkeypatch.setattr(
+        training_run,
+        "_before_decorrelation_manifest_promotion",
+        substitute_output,
+    )
+    with pytest.raises(RuntimeError, match="output receipt changed"):
+        training_run.publish_decorrelation_manifest(
+            layout=layout,
+            sources=sources,
+            outcome=_outcome(selected=False),
+            receipt=receipt,
+            software=_software(),
+        )
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+    assert not (layout.artifacts_dir / "study_manifest.json").exists()
 
 
 def test_manifest_requires_pinned_hep_ml_version(
@@ -410,7 +520,9 @@ def _bound_config(tmp_path: Path, input_run: Path) -> Path:
 
 
 def _resolved_sources(tmp_path: Path, input_run: Path):
-    config_path = _bound_config(tmp_path, input_run)
+    from src.full_training_run import resolve_training_input
+
+    training_input = resolve_training_input(input_run)
     frozen = training_run.load_decorrelation_config(
         Path("config/decorrelation_training_drop_top4.yaml")
     )
@@ -420,10 +532,31 @@ def _resolved_sources(tmp_path: Path, input_run: Path):
         input_manifest_sha256=_sha(input_run / "artifacts/run_manifest.json"),
         input_mc_sha256=_sha(input_run / "processed/mc_events.csv.gz"),
     )
-    return training_run._resolve_decorrelation_sources_with_validated_config(
-        input_run=input_run,
-        config_path=config_path,
+    config_source = training_run.StudySource.from_path(
+        "study_config",
+        Path("config/decorrelation_training_drop_top4.yaml"),
+        capture=True,
+    )
+    records = {
+        "study_config": config_source,
+        "task4a_config": training_run.StudySource.from_path(
+            "task4a_config", training_input.config_path, capture=True
+        ),
+        "task4a_mc": training_run.StudySource.from_path(
+            "task4a_mc", training_input.mc_path
+        ),
+        "task4a_summary": training_run.StudySource.from_path(
+            "task4a_summary", training_input.summary_path, capture=True
+        ),
+        "task4a_manifest": training_run.StudySource.from_path(
+            "task4a_manifest", training_input.manifest_path, capture=True
+        ),
+    }
+    return training_run.DecorrelationSources(
         config=validated,
+        config_bytes=config_source.snapshot,
+        training_input=training_input,
+        records=records,
     )
 
 
