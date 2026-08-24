@@ -244,6 +244,98 @@ def test_post_claim_error_installs_failure(tmp_path: Path, monkeypatch):
     assert (unresolved.run_dir / "failure.json").is_file()
 
 
+def test_post_claim_print_error_installs_failure(tmp_path: Path, monkeypatch):
+    from src import decorrelation_training_run as training_run
+
+    unresolved = training_run.resolve_decorrelation_output(
+        project_root=tmp_path,
+        working_directory=tmp_path,
+        input_run=tmp_path / "input",
+        run_dir=tmp_path / "study",
+    )
+    selection = SimpleNamespace(selected=None)
+    outcome = SimpleNamespace(selection=selection, evidence=None)
+    sources = SimpleNamespace(
+        training_input=SimpleNamespace(input_run=tmp_path / "input"),
+        config=object(),
+        config_bytes=b"config",
+    )
+    partitions = SimpleNamespace(development=object(), open_test=lambda: None)
+    artifacts = {
+        "selection": {
+            "status": "no_eligible_candidate",
+            "selected_candidate": None,
+            "test_opened": False,
+        }
+    }
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "resolve_decorrelation_output",
+        lambda **kwargs: unresolved,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "resolve_decorrelation_sources",
+        lambda **kwargs: sources,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "claim_decorrelation_output",
+        training_run.claim_decorrelation_output,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training, "load_training_mc_frame", lambda value: object()
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "MCStudyPartitions",
+        SimpleNamespace(from_frame=lambda frame: partitions),
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "run_development_study",
+        lambda development, config: selection,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "fit_selected_and_score_test",
+        lambda development, gate, config, observed: outcome,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "build_decorrelation_artifacts",
+        lambda observed, config: artifacts,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "write_decorrelation_artifacts",
+        lambda **kwargs: object(),
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "assert_decorrelation_sources_unchanged",
+        lambda observed: None,
+    )
+    monkeypatch.setattr(
+        run_decorrelation_training,
+        "publish_decorrelation_manifest",
+        lambda **kwargs: pytest.fail("printing must succeed before publication"),
+    )
+    monkeypatch.setattr(run_decorrelation_training, "software_versions", lambda: {})
+    monkeypatch.setattr(
+        "builtins.print",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("stdout failed")),
+    )
+
+    with pytest.raises(OSError, match="stdout failed"):
+        run_decorrelation_training.main(
+            ["--input-run", "in", "--config", "cfg", "--run-dir", "out"]
+        )
+
+    assert (unresolved.run_dir / ".terminal.failed").is_dir()
+    assert (unresolved.run_dir / "failure.json").is_file()
+
+
 def test_parser_exposes_only_frozen_paths():
     parser = run_decorrelation_training._build_parser()
 

@@ -4,6 +4,7 @@ import base64
 from dataclasses import replace
 import gzip
 import hashlib
+import io
 import json
 from pathlib import Path
 import pickle
@@ -624,10 +625,60 @@ def test_real_hep_ml_synthetic_oof_and_manifest(
         if path.is_file()
     }
     assert set(payloads) == expected_files
-    for relative, record in manifest["outputs"].items():
-        assert payloads[relative] == (layout.run_dir / relative).read_bytes()
-        assert len(payloads[relative]) == record["size_bytes"]
-        assert hashlib.sha256(payloads[relative]).hexdigest() == record["sha256"]
+    expected_outputs: dict[str, dict[str, object]] = {}
+    output_paths = ["config.yaml", *sorted(production.artifacts_no_selection)]
+    for relative in output_paths:
+        payload = payloads[relative]
+        record: dict[str, object] = {
+            "path": str(layout.run_dir / relative),
+            "size_bytes": len(payload),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        }
+        if relative.endswith(".csv") or relative.endswith(".csv.gz"):
+            record["row_count"] = len(
+                pd.read_csv(
+                    io.BytesIO(payload),
+                    compression="gzip" if relative.endswith(".gz") else None,
+                )
+            )
+        expected_outputs[relative] = record
+    expected_sources = {
+        name: {
+            "path": str(source.path),
+            "size_bytes": source.size_bytes,
+            "sha256": source.sha256,
+            **(
+                {"expected_rows": frozen_sources.training_input.expected_rows}
+                if name == "task4a_mc"
+                else {}
+            ),
+        }
+        for name, source in frozen_sources.records.items()
+    }
+    expected_manifest = {
+        "schema_version": "1.0",
+        "status": "complete",
+        "decision": {
+            "status": "no_eligible_candidate",
+            "selected_candidate": None,
+            "selected_coefficient": None,
+            "test_opened": False,
+        },
+        "software": _software(),
+        "sources": expected_sources,
+        "outputs": expected_outputs,
+    }
+    expected_manifest_bytes = (
+        json.dumps(
+            expected_manifest,
+            indent=2,
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+    assert manifest == expected_manifest
+    assert payloads["artifacts/study_manifest.json"] == expected_manifest_bytes
 
 
 def test_writer_rejects_logloss_two_tree_model(
@@ -1294,7 +1345,7 @@ def _real_hep_ml_task4a_run(tmp_path: Path) -> Path:
                         -0.75 if event_number % 13 == 0 else 1.0 + 0.25 * label
                     ),
                     "m4l": (
-                        105.0 + 55.0 * ((ordinal * 37) % 111) / 110.0
+                        105.0 + 55.0 * ((ordinal * 17) % 111) / 110.0
                         if label == 0
                         else 125.0 + 1.5 * np.sin(ordinal * 0.19)
                     ),
@@ -1328,6 +1379,23 @@ def _real_hep_ml_task4a_run(tmp_path: Path) -> Path:
 
     frame = pd.DataFrame(rows)
     assert counts == {(fold, label): 110 for fold in range(5) for label in (0, 1)}
+    background_development = frame.loc[
+        (frame["label"] == 0) & frame["split"].isin(("train", "validation"))
+    ]
+    mass_grid = background_development["m4l"].to_numpy(dtype=float)
+    unique_masses = np.unique(mass_grid)
+    assert len(unique_masses) == 111
+    np.testing.assert_allclose(unique_masses, np.linspace(105.0, 160.0, 111))
+    first_cycle_indices = np.rint((mass_grid[:111] - 105.0) * 2.0).astype(int)
+    assert set(first_cycle_indices) == set(range(111))
+    assert abs(np.corrcoef(np.arange(111), first_cycle_indices)[0, 1]) < 0.02
+    feature_mass_correlations = (
+        background_development.loc[:, [*_FEATURES, "m4l"]]
+        .corr()["m4l"]
+        .drop("m4l")
+        .abs()
+    )
+    assert float(feature_mass_correlations.max()) < 0.03
     for label in (0, 1):
         assert set(frame.loc[frame["label"] == label, "split"]) == {
             "train",

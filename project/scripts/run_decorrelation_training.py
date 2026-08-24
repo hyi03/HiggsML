@@ -101,6 +101,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             artifacts=artifacts,
         )
         assert_decorrelation_sources_unchanged(sources)
+        decision = artifacts["selection"]
+        selected = outcome.selection.selected
+        print(f"status: {decision['status']}")
+        print(
+            "selected coefficient: "
+            f"{None if selected is None else selected.coefficient}"
+        )
+        print(f"test opened: {decision['test_opened']}")
+        print(f"output: {layout.run_dir}")
         publish_decorrelation_manifest(
             layout=layout,
             sources=sources,
@@ -111,15 +120,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     except Exception as error:
         record_decorrelation_failure(layout, error)
         raise
-    decision = artifacts["selection"]
-    selected = outcome.selection.selected
-    print(f"status: {decision['status']}")
-    print(
-        "selected coefficient: "
-        f"{None if selected is None else selected.coefficient}"
-    )
-    print(f"test opened: {decision['test_opened']}")
-    print(f"output: {layout.run_dir}")
     return 0
 
 
