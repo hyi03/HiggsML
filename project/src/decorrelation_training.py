@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any
 
@@ -44,10 +44,10 @@ _MASS_BINS_GEV = (105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 155, 160)
 @dataclass(frozen=True)
 class _MetricPolicy:
     working_points: Mapping[str, float]
-    mass_bins_gev: tuple[int, ...] = _MASS_BINS_GEV
+    mass_bins_gev: tuple[int, ...] = field(init=False, default=_MASS_BINS_GEV)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class FlatnessCandidateResult:
     coefficient: float
     weighted_auc: float
@@ -120,7 +120,7 @@ class FlatnessCandidateResult:
                     reasons.append(
                         f"{name}_signal_efficiency_not_above_background"
                     )
-        return cls(
+        return _new_candidate(
             coefficient=coefficient_value,
             weighted_auc=auc_value,
             background_score_mass_correlation=correlation_value,
@@ -201,6 +201,26 @@ class SelectedFlatnessEvidence:
 class FlatnessOutcome:
     selection: FlatnessSelection
     evidence: SelectedFlatnessEvidence | None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.selection, FlatnessSelection):
+            raise ValueError("outcome selection must be a FlatnessSelection")
+        selection = FlatnessSelection(
+            results=self.selection.results,
+            selected=self.selection.selected,
+        )
+        evidence = self.evidence
+        if evidence is not None:
+            if not isinstance(evidence, SelectedFlatnessEvidence):
+                raise ValueError("outcome evidence must be selected flatness evidence")
+            if (
+                selection.selected is None
+                or evidence.candidate.coefficient != selection.selected.coefficient
+            ):
+                raise ValueError("outcome evidence must match the selected candidate")
+            evidence = replace(evidence, candidate=selection.selected)
+        object.__setattr__(self, "selection", selection)
+        object.__setattr__(self, "evidence", evidence)
 
 
 class OneShotTestGate:
@@ -291,7 +311,9 @@ def generate_flatness_oof(
             fitting["label"],
             sample_weight=weights,
         )
-        fold_scores = _positive_class_probabilities(model.predict_proba(evaluation.loc[:, fitting_columns]))
+        fold_scores = _positive_class_probabilities(
+            model.predict_proba(evaluation.loc[:, DROP_TOP4_FEATURES])
+        )
         if len(fold_scores) != len(evaluation):
             raise ValueError("classifier returned the wrong number of evaluation scores")
         if scores.loc[evaluation.index].notna().any():
@@ -423,7 +445,7 @@ def fit_selected_and_score_test(
         raise ValueError("held-out test frame must contain only test rows")
     validate_mc_frame(pd.concat([development, test], ignore_index=True))
     scores = _positive_class_probabilities(
-        model.predict_proba(test.loc[:, fitting_columns])
+        model.predict_proba(test.loc[:, DROP_TOP4_FEATURES])
     )
     test_scores = test.loc[
         :,
@@ -609,8 +631,12 @@ def _class_efficiency_metrics(
 
 
 def _snapshot_candidate(result: FlatnessCandidateResult) -> FlatnessCandidateResult:
-    return replace(
-        result,
+    return _new_candidate(
+        coefficient=result.coefficient,
+        weighted_auc=result.weighted_auc,
+        background_score_mass_correlation=(
+            result.background_score_mass_correlation
+        ),
         working_points=_freeze_value(result.working_points),
         achieved_background_efficiencies=_freeze_value(
             result.achieved_background_efficiencies
@@ -620,8 +646,48 @@ def _snapshot_candidate(result: FlatnessCandidateResult) -> FlatnessCandidateRes
             result.target_background_efficiencies
         ),
         zz_ks_distances=_freeze_value(result.zz_ks_distances),
+        eligibility_reasons=result.eligibility_reasons,
         oof_scores=result.oof_scores.copy(deep=True),
     )
+
+
+def _new_candidate(
+    *,
+    coefficient: float,
+    weighted_auc: float,
+    background_score_mass_correlation: float,
+    working_points: Mapping[str, Mapping[str, object]],
+    achieved_background_efficiencies: Mapping[str, float],
+    signal_efficiencies: Mapping[str, float],
+    target_background_efficiencies: Mapping[str, float],
+    zz_ks_distances: Mapping[str, float],
+    eligibility_reasons: tuple[str, ...],
+    oof_scores: pd.DataFrame,
+) -> FlatnessCandidateResult:
+    result = object.__new__(FlatnessCandidateResult)
+    object.__setattr__(result, "coefficient", coefficient)
+    object.__setattr__(result, "weighted_auc", weighted_auc)
+    object.__setattr__(
+        result,
+        "background_score_mass_correlation",
+        background_score_mass_correlation,
+    )
+    object.__setattr__(result, "working_points", working_points)
+    object.__setattr__(
+        result,
+        "achieved_background_efficiencies",
+        achieved_background_efficiencies,
+    )
+    object.__setattr__(result, "signal_efficiencies", signal_efficiencies)
+    object.__setattr__(
+        result,
+        "target_background_efficiencies",
+        target_background_efficiencies,
+    )
+    object.__setattr__(result, "zz_ks_distances", zz_ks_distances)
+    object.__setattr__(result, "eligibility_reasons", eligibility_reasons)
+    object.__setattr__(result, "oof_scores", oof_scores)
+    return result
 
 
 def _freeze_value(value):

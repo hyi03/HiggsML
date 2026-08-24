@@ -6,7 +6,9 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.metrics import roc_auc_score
 
+import src.decorrelation_training as decorrelation_training
 from src.features import FEATURES
 from src.full_training_policy import assign_development_folds, development_fold
 from src.decorrelation_training_run import load_decorrelation_config
@@ -27,7 +29,6 @@ from src.full_training_evaluation import (
     weighted_pearson,
     zz_mass_diagnostics,
 )
-from sklearn.metrics import roc_auc_score
 
 
 @pytest.fixture
@@ -253,6 +254,45 @@ def test_oof_rejects_duplicate_development_index_before_fold_fitting(
         )
 
 
+@pytest.mark.parametrize("stage", ("oof", "test"))
+def test_prediction_receives_only_ten_nonmass_features(
+    stage,
+    development_frame,
+    test_frame,
+    production_config,
+    eligible_selection,
+    monkeypatch,
+):
+    class FakeModel:
+        def fit(self, X, y, sample_weight):
+            assert list(X.columns) == [*DROP_TOP4_FEATURES, "m4l"]
+            return self
+
+        def predict_proba(self, X):
+            assert list(X.columns) == list(DROP_TOP4_FEATURES)
+            score = np.linspace(0.1, 0.9, len(X))
+            return np.column_stack([1.0 - score, score])
+
+    if stage == "oof":
+        generate_flatness_oof(
+            development_frame,
+            production_config,
+            0.5,
+            model_factory=lambda **kwargs: FakeModel(),
+        )
+    else:
+        monkeypatch.setattr(
+            "src.decorrelation_training.build_flatness_model",
+            lambda config, coefficient: FakeModel(),
+        )
+        fit_selected_and_score_test(
+            development_frame,
+            OneShotTestGate(lambda: test_frame),
+            production_config,
+            eligible_selection,
+        )
+
+
 def test_candidate_requires_every_frozen_gate(candidate_result):
     eligible = candidate_result(
         coefficient=1.0,
@@ -269,6 +309,32 @@ def test_candidate_requires_every_frozen_gate(candidate_result):
         signal={"loose": 0.51, "medium": 0.21, "tight": 0.11},
     )
     assert failed.eligibility_reasons == ("weighted_auc_below_floor",)
+
+
+def test_candidate_cannot_bypass_validated_factory(candidate_result):
+    valid = candidate_result(coefficient=1.0, auc=0.82)
+
+    with pytest.raises(TypeError):
+        FlatnessCandidateResult(
+            coefficient=valid.coefficient,
+            weighted_auc=valid.weighted_auc,
+            background_score_mass_correlation=(
+                valid.background_score_mass_correlation
+            ),
+            working_points={
+                name: dict(point) for name, point in valid.working_points.items()
+            },
+            achieved_background_efficiencies=dict(
+                valid.achieved_background_efficiencies
+            ),
+            signal_efficiencies=dict(valid.signal_efficiencies),
+            target_background_efficiencies=dict(
+                valid.target_background_efficiencies
+            ),
+            zz_ks_distances=dict(valid.zz_ks_distances),
+            eligibility_reasons=(),
+            oof_scores=valid.oof_scores.copy(deep=True),
+        )
 
 
 def test_candidate_reports_failed_gates_in_frozen_order(candidate_result):
@@ -407,6 +473,14 @@ def test_evaluate_candidate_matches_validated_metric_helpers(production_config):
     assert dict(result.zz_ks_distances) == expected_ks
 
 
+def test_metric_policy_rejects_alternate_mass_bins(production_config):
+    with pytest.raises(TypeError):
+        decorrelation_training._MetricPolicy(
+            production_config.working_points,
+            mass_bins_gev=(100, 125, 160),
+        )
+
+
 def test_development_study_evaluates_every_frozen_coefficient(
     development_frame, production_config, monkeypatch
 ):
@@ -512,3 +586,37 @@ def test_empty_test_working_point_is_reported_without_reselection(
     assert evidence is not None
     assert evidence.test_working_points["tight"]["threshold"] == 0.75
     assert evidence.test_zz_ks_distances["tight"] is None
+
+
+def test_outcome_snapshots_selection_before_return(
+    development_frame,
+    test_frame,
+    production_config,
+    eligible_selection,
+    monkeypatch,
+):
+    class FakeModel:
+        def fit(self, X, y, sample_weight):
+            return self
+
+        def predict_proba(self, X):
+            score = np.linspace(0.1, 0.9, len(X))
+            return np.column_stack([1.0 - score, score])
+
+    monkeypatch.setattr(
+        "src.decorrelation_training.build_flatness_model",
+        lambda config, coefficient: FakeModel(),
+    )
+    outcome = fit_selected_and_score_test(
+        development_frame,
+        OneShotTestGate(lambda: test_frame),
+        production_config,
+        eligible_selection,
+    )
+    row = eligible_selection.selected.oof_scores.index[0]
+    original_mass = float(eligible_selection.selected.oof_scores.loc[row, "m4l"])
+
+    eligible_selection.selected.oof_scores.loc[row, "m4l"] = -1.0
+
+    assert outcome.selection.selected.oof_scores.loc[row, "m4l"] == original_mass
+    assert outcome.evidence.candidate.oof_scores.loc[row, "m4l"] == original_mass
