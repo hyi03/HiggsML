@@ -10,3 +10,4 @@ tqdm
 uproot
 vector
 xgboost
+hep_ml==0.8.0
