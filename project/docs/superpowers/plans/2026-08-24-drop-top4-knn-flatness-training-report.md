@@ -15,6 +15,11 @@ path and verification gates below passed. It failed, so it was not rerun into
 the path. No protected real-data input was accessed, inventoried, hashed,
 copied, or scored.
 
+Those command-count, fresh-path, hash-command, test-command, and
+protected-input-negative statements are controller/implementer execution
+records. The committed Git diff records the report, but cannot independently
+reconstruct or prove those runtime events or negative-access assertions.
+
 Exact production command (one invocation):
 
 ```bash
@@ -123,6 +128,46 @@ Exit code `0`; complete output:
 
 The following final `git diff --check` exited `0` in less than 0.01 seconds
 with no stdout or stderr.
+
+After inserting the preceding evidence, a still later fresh completion suite
+was run:
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+Exit code `0`; complete output:
+
+```text
+........................................................................ [  8%]
+........................................................................ [ 17%]
+........................................................................ [ 26%]
+........................................................................ [ 35%]
+........................................................................ [ 44%]
+........................................................................ [ 52%]
+........................................................................ [ 61%]
+........................................................................ [ 70%]
+........................................................................ [ 79%]
+........................................................................ [ 88%]
+........................................................................ [ 96%]
+..........................                                               [100%]
+818 passed in 58.34s
+```
+
+Step 5 static evidence was rerun from the clean reviewed head before this fix
+round. The prescribed placeholder/real-data-name `rg -n` audit exited `1` with
+exact output `<empty>`; for `rg`, exit `1` means no matching line, not command
+failure. `git diff --check` exited `0` with exact output `<empty>`, and
+`git status --short` exited `0` with exact output `<empty>`.
+
+After the documentation edits, the same prescribed `rg -n` audit again exited
+`1` with exact output `<empty>`, and `git diff --check` again exited `0` with
+exact output `<empty>`. The following `git status --short` exited `0` with this
+exact expected documentation-only output:
+
+```text
+ M docs/superpowers/plans/2026-08-24-drop-top4-knn-flatness-training-report.md
+```
 
 ## Source hashes
 
@@ -296,3 +341,7 @@ directory returned no forbidden real-data-name matches.
   failure artifact, so this report does not diagnose which rows caused the
   invariant failure.
 - The authorized path is terminally failed and must never be rerun or reused.
+- The Git diff alone cannot independently establish one production invocation,
+  pre-run path absence, execution of the recorded tests and hash checks, or the
+  protected-input negative; those remain controller/implementer execution
+  records preserved in this report.
