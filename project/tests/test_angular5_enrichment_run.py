@@ -11,6 +11,7 @@ import pytest
 import uproot
 import yaml
 
+from src import angular5_enrichment_run as angular5_run
 from src.angular5_enrichment_run import (
     Angular5EnrichmentConfig,
     Angular5Sources,
@@ -94,6 +95,14 @@ def _write_yaml(path: Path, payload: dict) -> None:
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
 
 
+def _thaw(value):
+    if isinstance(value, dict) or hasattr(value, "items"):
+        return {key: _thaw(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw(item) for item in value]
+    return value
+
+
 def _fake_project(tmp_path: Path, *, special: tuple[str, str] | None = None) -> Path:
     root = tmp_path / "project"
     for name, relative in SOURCE_PATHS.items():
@@ -106,6 +115,8 @@ def _fake_project(tmp_path: Path, *, special: tuple[str, str] | None = None) -> 
             destination.symlink_to(PROJECT / relative)
         elif kind == "changed":
             destination.write_bytes(b"changed frozen input\n")
+        elif kind == "copy":
+            destination.write_bytes((PROJECT / relative).read_bytes())
         else:
             os.link(PROJECT / relative, destination)
     return root
@@ -144,7 +155,7 @@ def test_config_is_exact_mc_only_copy_of_frozen_policy() -> None:
             "sum_of_weights": 7538705.808,
         },
     }
-    assert config.selection == EXPECTED_SELECTION
+    assert _thaw(config.selection) == EXPECTED_SELECTION
     assert list(config.artifacts) == APPROVED_ARTIFACTS
 
 
@@ -186,6 +197,41 @@ def test_config_rejects_every_schema_or_frozen_policy_change(tmp_path, mutate) -
 
     with pytest.raises(ValueError, match="exact sealed schema"):
         load_angular5_enrichment_config(path)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        (
+            b"samples:\n"
+            b"  data:\n"
+            b"    path: data/raw/data16_periodA.root\n"
+            + CONFIG_PATH.read_bytes()
+        ),
+        CONFIG_PATH.read_bytes().replace(
+            b"  higgs:\n    path: data/raw/higgs.root\n",
+            b"  higgs:\n"
+            b"    path: data/raw/data16_periodA.root\n"
+            b"    path: data/raw/higgs.root\n",
+        ),
+    ],
+    ids=["top-level", "nested"],
+)
+def test_config_rejects_duplicate_mapping_keys_that_hide_real_data(tmp_path, payload) -> None:
+    path = tmp_path / "duplicate.yaml"
+    path.write_bytes(payload)
+
+    with pytest.raises(ValueError, match="duplicate"):
+        load_angular5_enrichment_config(path)
+
+
+def test_config_selection_is_deeply_immutable() -> None:
+    config = load_angular5_enrichment_config(CONFIG_PATH)
+
+    with pytest.raises(TypeError):
+        config.selection["lepton_quality"]["require_tight_id"] = False
+    with pytest.raises(AttributeError):
+        config.selection["lepton_pt_thresholds_gev"].append(5.0)
 
 
 def test_source_resolution_binds_all_six_regular_files_without_parsing_tables_or_root(
@@ -244,6 +290,70 @@ def test_source_resolution_rejects_config_outside_exact_project_path(tmp_path) -
 
     with pytest.raises(ValueError, match="exact frozen path"):
         resolve_angular5_sources(project_root=PROJECT, config_path=copied)
+
+
+def test_source_resolution_refuses_ancestor_symlink_swap_during_open(
+    tmp_path, monkeypatch
+) -> None:
+    root = _fake_project(tmp_path)
+    raw = root / "data/raw"
+    original = root / "data/raw-original"
+    attacker = root / "attacker"
+    attacker.mkdir()
+    os.link(PROJECT / SOURCE_PATHS["higgs_root"], attacker / "higgs.root")
+    os.link(PROJECT / SOURCE_PATHS["zz_root"], attacker / "zz_363490.root")
+    real_open = os.open
+    swapped = False
+
+    def swap_before_zz_open(path, flags, *args, **kwargs):
+        nonlocal swapped
+        path_text = os.fspath(path)
+        is_absolute_target = os.path.isabs(path_text) and path_text.endswith(
+            "/data/raw/zz_363490.root"
+        )
+        is_descriptor_target = (
+            path_text == "zz_363490.root" and kwargs.get("dir_fd") is not None
+        )
+        if not swapped and (is_absolute_target or is_descriptor_target):
+            raw.rename(original)
+            raw.symlink_to(attacker, target_is_directory=True)
+            swapped = True
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(angular5_run.os, "open", swap_before_zz_open)
+
+    with pytest.raises(ValueError, match="symlink|changed"):
+        resolve_angular5_sources(
+            project_root=root,
+            config_path=root / SOURCE_PATHS["enrichment_config"],
+        )
+    assert swapped
+
+
+def test_source_resolution_rejects_mutation_at_end_of_hashing(tmp_path, monkeypatch) -> None:
+    root = _fake_project(tmp_path, special=("enrichment_config", "copy"))
+    target = root / SOURCE_PATHS["enrichment_config"]
+    target_inode = target.stat().st_ino
+    real_read = os.read
+    mutated = False
+
+    def mutate_on_eof(descriptor, count):
+        nonlocal mutated
+        chunk = real_read(descriptor, count)
+        if not chunk and not mutated and os.fstat(descriptor).st_ino == target_inode:
+            with target.open("ab") as stream:
+                stream.write(b"# mutation during hash\n")
+            mutated = True
+        return chunk
+
+    monkeypatch.setattr(angular5_run.os, "read", mutate_on_eof)
+
+    with pytest.raises(RuntimeError, match="changed during hashing"):
+        resolve_angular5_sources(
+            project_root=root,
+            config_path=root / SOURCE_PATHS["enrichment_config"],
+        )
+    assert mutated
 
 
 def test_claim_is_fixed_fresh_atomic_and_creates_only_approved_directories(tmp_path) -> None:

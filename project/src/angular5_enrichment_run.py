@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 import errno
 import hashlib
 import os
@@ -13,6 +13,47 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 import yaml
+
+
+class _DuplicateKeyError(yaml.constructor.ConstructorError):
+    """A YAML mapping contains a key more than once."""
+
+
+class _UniqueKeySafeLoader(yaml.SafeLoader):
+    """Safe YAML loader which refuses duplicate keys at every depth."""
+
+
+def _construct_unique_mapping(
+    loader: _UniqueKeySafeLoader, node: yaml.nodes.MappingNode, deep: bool = False
+) -> dict[Any, Any]:
+    loader.flatten_mapping(node)
+    mapping: dict[Any, Any] = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        try:
+            duplicate = key in mapping
+        except TypeError as error:
+            raise yaml.constructor.ConstructorError(
+                "while constructing a mapping",
+                node.start_mark,
+                "found an unhashable mapping key",
+                key_node.start_mark,
+            ) from error
+        if duplicate:
+            raise _DuplicateKeyError(
+                "while constructing a mapping",
+                node.start_mark,
+                f"found duplicate mapping key {key!r}",
+                key_node.start_mark,
+            )
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+_UniqueKeySafeLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_unique_mapping,
+)
 
 
 _FROZEN_OUTPUT_RUN = "runs/angular5-mc-363490-2026-08-26"
@@ -178,9 +219,23 @@ def _exact_value(value: Any, expected: Any) -> bool:
     return value == expected
 
 
+def _deep_freeze(value: Any) -> Any:
+    if isinstance(value, dict):
+        return MappingProxyType(
+            {key: _deep_freeze(item) for key, item in value.items()}
+        )
+    if isinstance(value, list):
+        return tuple(_deep_freeze(item) for item in value)
+    return value
+
+
 def _load_config_bytes(payload: bytes) -> Angular5EnrichmentConfig:
     try:
-        raw = yaml.safe_load(payload)
+        raw = yaml.load(payload, Loader=_UniqueKeySafeLoader)
+    except _DuplicateKeyError as error:
+        raise ValueError(
+            "Angular5 enrichment config contains a duplicate mapping key"
+        ) from error
     except (UnicodeDecodeError, yaml.YAMLError) as error:
         raise ValueError("Angular5 enrichment config is not valid YAML") from error
     if not _exact_value(raw, _EXPECTED_CONFIG):
@@ -213,7 +268,7 @@ def _load_config_bytes(payload: bytes) -> Angular5EnrichmentConfig:
         chunk_size_events=50000,
         luminosity_pb=10000.0,
         samples=MappingProxyType(samples),
-        selection=MappingProxyType(deepcopy(raw["selection"])),
+        selection=_deep_freeze(deepcopy(raw["selection"])),
         artifacts=tuple(_APPROVED_ARTIFACTS),
     )
 
@@ -226,32 +281,96 @@ def load_angular5_enrichment_config(path: str | Path) -> Angular5EnrichmentConfi
     return _load_config_bytes(payload)
 
 
-def _assert_no_symlink_components(path: Path) -> None:
-    absolute = Path(os.path.abspath(path))
-    current = Path(absolute.anchor)
-    for part in absolute.parts[1:]:
-        current /= part
+def _directory_flags() -> int:
+    return os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0)
+
+
+def _open_source_parent(path: Path, name: str) -> int:
+    descriptor = os.open(path.anchor, _directory_flags())
+    try:
+        for part in path.parent.parts[1:]:
+            try:
+                child = os.open(part, _directory_flags(), dir_fd=descriptor)
+            except FileNotFoundError as error:
+                raise FileNotFoundError(
+                    f"required Angular5 source is missing: {name}"
+                ) from error
+            except OSError as error:
+                if error.errno in {errno.ELOOP, errno.ENOTDIR}:
+                    raise ValueError(
+                        f"Angular5 source path contains a symlink: {path}"
+                    ) from error
+                raise ValueError(f"Angular5 source path is unsafe: {path}") from error
+            os.close(descriptor)
+            descriptor = child
+        return descriptor
+    except Exception:
+        os.close(descriptor)
+        raise
+
+
+def _stat_signature(metadata: os.stat_result) -> tuple[int, ...]:
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_mode),
+        int(metadata.st_size),
+        int(metadata.st_mtime_ns),
+        int(metadata.st_ctime_ns),
+    )
+
+
+def _open_regular_at_path(name: str, path: Path) -> tuple[int, int]:
+    parent = _open_source_parent(path, name)
+    try:
         try:
-            if current.is_symlink():
-                raise ValueError(f"Angular5 source path contains a symlink: {current}")
+            descriptor = os.open(
+                path.name,
+                os.O_RDONLY
+                | getattr(os, "O_NONBLOCK", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=parent,
+            )
+        except FileNotFoundError as error:
+            raise FileNotFoundError(
+                f"required Angular5 source is missing: {name}"
+            ) from error
         except OSError as error:
-            raise ValueError(f"Angular5 source path is unsafe: {current}") from error
+            if error.errno in {errno.ELOOP, errno.ENOTDIR}:
+                raise ValueError(
+                    f"Angular5 source path contains a symlink: {path}"
+                ) from error
+            raise ValueError(f"required Angular5 source is unsafe: {name}") from error
+        return parent, descriptor
+    except Exception:
+        os.close(parent)
+        raise
+
+
+def _assert_path_still_bound(
+    name: str, path: Path, expected: os.stat_result
+) -> None:
+    parent: int | None = None
+    descriptor: int | None = None
+    try:
+        parent, descriptor = _open_regular_at_path(name, path)
+        current = os.fstat(descriptor)
+        if not stat.S_ISREG(current.st_mode) or _stat_signature(current) != _stat_signature(
+            expected
+        ):
+            raise RuntimeError(f"Angular5 source changed during hashing: {name}")
+    except (FileNotFoundError, ValueError) as error:
+        raise ValueError(f"Angular5 source path changed or contains a symlink: {name}") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if parent is not None:
+            os.close(parent)
 
 
 def _bind_regular(name: str, path: Path) -> tuple[Angular5SourceReceipt, bytes]:
     absolute = Path(os.path.abspath(path))
-    _assert_no_symlink_components(absolute)
-    try:
-        descriptor = os.open(
-            absolute,
-            os.O_RDONLY
-            | getattr(os, "O_NONBLOCK", 0)
-            | getattr(os, "O_NOFOLLOW", 0),
-        )
-    except FileNotFoundError as error:
-        raise FileNotFoundError(f"required Angular5 source is missing: {name}") from error
-    except OSError as error:
-        raise ValueError(f"required Angular5 source is unsafe: {name}") from error
+    parent, descriptor = _open_regular_at_path(name, absolute)
     try:
         metadata = os.fstat(descriptor)
         if not stat.S_ISREG(metadata.st_mode):
@@ -262,6 +381,10 @@ def _bind_regular(name: str, path: Path) -> tuple[Angular5SourceReceipt, bytes]:
             digest.update(chunk)
             if name == "enrichment_config":
                 chunks.append(chunk)
+        final_metadata = os.fstat(descriptor)
+        if _stat_signature(final_metadata) != _stat_signature(metadata):
+            raise RuntimeError(f"Angular5 source changed during hashing: {name}")
+        _assert_path_still_bound(name, absolute, final_metadata)
         payload = b"".join(chunks)
         return (
             Angular5SourceReceipt(
@@ -276,6 +399,7 @@ def _bind_regular(name: str, path: Path) -> tuple[Angular5SourceReceipt, bytes]:
         )
     finally:
         os.close(descriptor)
+        os.close(parent)
 
 
 def resolve_angular5_sources(
@@ -333,10 +457,6 @@ def _absolute_without_symlinks(path: Path, *, allow_final: bool = False) -> Path
 
 def _is_within(path: Path, parent: Path) -> bool:
     return path == parent or parent in path.parents
-
-
-def _directory_flags() -> int:
-    return os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0)
 
 
 def _open_claim_parent(run_dir: Path) -> int:
