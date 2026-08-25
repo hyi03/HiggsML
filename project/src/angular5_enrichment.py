@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+import csv
 from dataclasses import dataclass
 import gzip
 import hashlib
@@ -11,8 +13,9 @@ from math import pi
 import os
 from pathlib import Path
 import stat
+import tempfile
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, BinaryIO, Iterator, Mapping
 
 import numpy as np
 import pandas as pd
@@ -43,11 +46,64 @@ TABLE_NAME = "mc_events_angular5.csv.gz"
 MANIFEST_NAME = "run_manifest.json"
 
 
-@dataclass(frozen=True)
+_OUTCOME_TOKEN = object()
+
+
+@dataclass(frozen=True, init=False)
 class EnrichmentOutcome:
-    frame: pd.DataFrame
-    identity_validation: Mapping[str, Any]
-    summary: Mapping[str, Any]
+    _authoritative_payload: bytes
+    _table_payload: bytes
+    _identity_validation: Mapping[str, Any]
+    _summary: Mapping[str, Any]
+    _source_binding: tuple[tuple[Any, ...], ...]
+
+    def __new__(
+        cls,
+        token: object = None,
+        authoritative_payload: bytes | None = None,
+        table_payload: bytes | None = None,
+        identity_validation: Mapping[str, Any] | None = None,
+        summary: Mapping[str, Any] | None = None,
+        source_binding: tuple[tuple[Any, ...], ...] | None = None,
+    ):
+        if (
+            token is not _OUTCOME_TOKEN
+            or authoritative_payload is None
+            or table_payload is None
+            or identity_validation is None
+            or summary is None
+            or source_binding is None
+        ):
+            raise TypeError("EnrichmentOutcome is returned by enrich_angular5_mc")
+        return super().__new__(cls)
+
+    def __init__(
+        self,
+        token: object,
+        authoritative_payload: bytes,
+        table_payload: bytes,
+        identity_validation: Mapping[str, Any],
+        summary: Mapping[str, Any],
+        source_binding: tuple[tuple[Any, ...], ...],
+    ) -> None:
+        object.__setattr__(self, "_authoritative_payload", authoritative_payload)
+        object.__setattr__(self, "_table_payload", table_payload)
+        object.__setattr__(self, "_identity_validation", identity_validation)
+        object.__setattr__(self, "_summary", summary)
+        object.__setattr__(self, "_source_binding", source_binding)
+
+    @property
+    def frame(self) -> pd.DataFrame:
+        """Return an isolated parse of the immutable final gzip payload."""
+        return _parse_gzip_csv(self._table_payload, name="enriched Angular5 table")
+
+    @property
+    def identity_validation(self) -> Mapping[str, Any]:
+        return self._identity_validation
+
+    @property
+    def summary(self) -> Mapping[str, Any]:
+        return self._summary
 
 
 _RECEIPT_TOKEN = object()
@@ -89,6 +145,124 @@ class Angular5ArtifactReceipt:
         object.__setattr__(self, "_identities", identities)
 
 
+def _deep_freeze(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {key: _deep_freeze(item) for key, item in value.items()}
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_deep_freeze(item) for item in value)
+    return value
+
+
+def _deep_thaw(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _deep_thaw(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_deep_thaw(item) for item in value]
+    return value
+
+
+def _source_binding(sources: Angular5Sources) -> tuple[tuple[Any, ...], ...]:
+    records = tuple(
+        (
+            name,
+            str(receipt.path),
+            receipt.device,
+            receipt.inode,
+            receipt.size_bytes,
+            receipt.sha256,
+        )
+        for name, receipt in sorted(sources.receipts.items())
+    )
+    return records + (
+        ("config_bytes", hashlib.sha256(sources.config_bytes).hexdigest()),
+    )
+
+
+def _receipt_stat_matches(receipt, metadata: os.stat_result) -> bool:
+    return (
+        stat.S_ISREG(metadata.st_mode)
+        and int(metadata.st_dev) == receipt.device
+        and int(metadata.st_ino) == receipt.inode
+        and int(metadata.st_size) == receipt.size_bytes
+    )
+
+
+def _after_receipt_descriptor_opened(name: str, path: Path) -> None:
+    """Test seam after a receipt identity is bound to an open descriptor."""
+
+
+def _open_receipt_descriptor(receipt) -> int:
+    try:
+        descriptor = os.open(
+            receipt.path,
+            os.O_RDONLY
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except OSError as error:
+        raise RuntimeError(
+            f"Angular5 bound source could not be opened: {receipt.name}"
+        ) from error
+    metadata = os.fstat(descriptor)
+    if not _receipt_stat_matches(receipt, metadata):
+        os.close(descriptor)
+        raise RuntimeError(f"Angular5 bound source identity changed: {receipt.name}")
+    _after_receipt_descriptor_opened(receipt.name, receipt.path)
+    return descriptor
+
+
+def _copy_verified_receipt(receipt, destination: BinaryIO) -> None:
+    descriptor = _open_receipt_descriptor(receipt)
+    try:
+        initial = os.fstat(descriptor)
+        digest = hashlib.sha256()
+        total = 0
+        while chunk := os.read(descriptor, 1024 * 1024):
+            destination.write(chunk)
+            digest.update(chunk)
+            total += len(chunk)
+        final = os.fstat(descriptor)
+        if (
+            not _receipt_stat_matches(receipt, final)
+            or (initial.st_mtime_ns, initial.st_ctime_ns)
+            != (final.st_mtime_ns, final.st_ctime_ns)
+            or total != receipt.size_bytes
+            or digest.hexdigest() != receipt.sha256
+        ):
+            raise RuntimeError(
+                f"Angular5 bound source changed during snapshot: {receipt.name}"
+            )
+        destination.flush()
+        destination.seek(0)
+    finally:
+        os.close(descriptor)
+
+
+def _read_receipt_snapshot(receipt) -> bytes:
+    with io.BytesIO() as snapshot:
+        _copy_verified_receipt(receipt, snapshot)
+        return snapshot.getvalue()
+
+
+@contextmanager
+def _receipt_file_snapshot(receipt) -> Iterator[BinaryIO]:
+    with tempfile.TemporaryFile(mode="w+b") as snapshot:
+        _copy_verified_receipt(receipt, snapshot)
+        yield snapshot
+
+
+def _parse_gzip_csv(payload: bytes, *, name: str) -> pd.DataFrame:
+    try:
+        frame = pd.read_csv(io.BytesIO(payload), compression="gzip")
+    except Exception as error:
+        raise ValueError(f"{name} is not a valid gzip CSV") from error
+    if frame.columns.has_duplicates:
+        raise ValueError(f"{name} contains duplicate columns")
+    return frame
+
+
 def _normalization_override(sample: Mapping[str, Any]) -> MCNormalization | None:
     raw = sample.get("normalization")
     if raw is None:
@@ -106,6 +280,7 @@ def _reconstruct_sample(
     *,
     sample_key: str,
     selection: SelectionConfig,
+    root_snapshot: BinaryIO,
 ) -> pd.DataFrame:
     sample = sources.config.samples[sample_key]
     profile = resolve_input_profile(sample["input_profile"])
@@ -114,7 +289,7 @@ def _reconstruct_sample(
     rows: list[dict[str, Any]] = []
     observed_channels: set[int] = set()
     for event in iter_events(
-        path,
+        root_snapshot,
         profile.tree_name,
         is_data=False,
         entry_stop=sources.config.entry_stop,
@@ -219,6 +394,81 @@ def _validate_angles(frame: pd.DataFrame) -> dict[str, dict[str, float | bool]]:
     }
 
 
+def _split_line_ending(line: bytes) -> tuple[bytes, bytes]:
+    if line.endswith(b"\r\n"):
+        return line[:-2], b"\r\n"
+    if line.endswith(b"\n"):
+        return line[:-1], b"\n"
+    if line.endswith(b"\r"):
+        return line[:-1], b"\r"
+    return line, b""
+
+
+def _parse_single_csv_record(line: bytes, *, field_count: int) -> list[str]:
+    try:
+        text = line.decode("utf-8")
+        records = list(csv.reader([text], strict=True))
+    except (UnicodeDecodeError, csv.Error) as error:
+        raise ValueError("authoritative MC CSV has an unsupported lexical record") from error
+    if len(records) != 1 or len(records[0]) != field_count:
+        raise ValueError("authoritative MC CSV record width changed")
+    return records[0]
+
+
+def _append_angular5_preserving_authoritative_csv(
+    authoritative_payload: bytes,
+    authoritative: pd.DataFrame,
+    angles: pd.DataFrame,
+) -> bytes:
+    """Append Angular5 tokens without regenerating any authoritative token."""
+    if angles.columns.tolist() != list(ANGULAR5_FEATURES):
+        raise ValueError("Angular5 append columns do not match the frozen order")
+    if len(angles) != len(authoritative):
+        raise ValueError("Angular5 append row count mismatch")
+    _validate_angles(angles)
+    try:
+        raw = gzip.decompress(authoritative_payload)
+    except (OSError, EOFError) as error:
+        raise ValueError("authoritative MC table is not valid gzip") from error
+    lines = raw.splitlines(keepends=True)
+    if len(lines) != len(authoritative) + 1:
+        raise ValueError(
+            "authoritative MC CSV must contain one physical line per parsed row"
+        )
+    field_count = len(authoritative.columns)
+    header_content, header_ending = _split_line_ending(lines[0])
+    if _parse_single_csv_record(header_content, field_count=field_count) != list(
+        authoritative.columns
+    ):
+        raise ValueError("authoritative MC CSV header disagrees with parsed columns")
+    appended_header = ",".join(ANGULAR5_FEATURES).encode("ascii")
+    output = bytearray(header_content)
+    output.extend(b",")
+    output.extend(appended_header)
+    output.extend(header_ending)
+
+    values = angles.to_numpy(dtype=float)
+    for line, row in zip(lines[1:], values, strict=True):
+        content, ending = _split_line_ending(line)
+        _parse_single_csv_record(content, field_count=field_count)
+        tokens = ",".join(format(float(value), ".17g") for value in row).encode(
+            "ascii"
+        )
+        output.extend(content)
+        output.extend(b",")
+        output.extend(tokens)
+        output.extend(ending)
+
+    final_payload = gzip.compress(bytes(output), mtime=0)
+    final = _parse_gzip_csv(final_payload, name="final Angular5 table")
+    expected_columns = list(authoritative.columns) + list(ANGULAR5_FEATURES)
+    if final.columns.tolist() != expected_columns:
+        raise ValueError("final Angular5 table column contract mismatch")
+    _assert_old_columns_exact(authoritative, final[list(authoritative.columns)])
+    _validate_angles(final)
+    return final_payload
+
+
 def _source_records(sources: Angular5Sources) -> dict[str, dict[str, Any]]:
     return {
         name: {
@@ -237,23 +487,29 @@ def enrich_angular5_mc(sources: Angular5Sources) -> EnrichmentOutcome:
     if not isinstance(sources, Angular5Sources):
         raise TypeError("sources must be Angular5Sources")
     assert_angular5_sources_unchanged(sources)
-    authoritative = pd.read_csv(sources.receipts["task4a_mc"].path)
+    authoritative_payload = _read_receipt_snapshot(sources.receipts["task4a_mc"])
+    authoritative = _parse_gzip_csv(
+        authoritative_payload, name="authoritative MC table"
+    )
     if authoritative.empty:
         raise ValueError("authoritative MC table is empty")
-    if authoritative.columns.has_duplicates:
-        raise ValueError("authoritative MC table contains duplicate columns")
     authoritative_keys = _validate_key(authoritative, source="authoritative")
 
     selection = SelectionConfig.from_mapping(sources.config.selection)
-    reconstructed = pd.concat(
-        [
-            _reconstruct_sample(
-                sources, sample_key=sample_key, selection=selection
+    sample_frames = []
+    for sample_key in ("higgs", "zz"):
+        with _receipt_file_snapshot(
+            sources.receipts[f"{sample_key}_root"]
+        ) as root_snapshot:
+            sample_frames.append(
+                _reconstruct_sample(
+                    sources,
+                    sample_key=sample_key,
+                    selection=selection,
+                    root_snapshot=root_snapshot,
+                )
             )
-            for sample_key in ("higgs", "zz")
-        ],
-        ignore_index=True,
-    )
+    reconstructed = pd.concat(sample_frames, ignore_index=True)
     reconstructed_keys = _validate_key(reconstructed, source="reconstructed")
     if len(authoritative) != len(reconstructed) or set(authoritative_keys) != set(
         reconstructed_keys
@@ -278,11 +534,13 @@ def enrich_angular5_mc(sources: Angular5Sources) -> EnrichmentOutcome:
     )
     _assert_old_columns_exact(authoritative, parsed_reconstructed)
 
-    output = authoritative.copy(deep=True)
-    for name in ANGULAR5_FEATURES:
-        output[name] = aligned[name].to_numpy(copy=True)
-    # Expose the exact parsed values that the published CSV will contain.
-    output = pd.read_csv(io.StringIO(output.to_csv(index=False)))
+    angles = aligned[list(ANGULAR5_FEATURES)].reset_index(drop=True)
+    table_payload = _append_angular5_preserving_authoritative_csv(
+        authoritative_payload,
+        authoritative,
+        angles,
+    )
+    output = _parse_gzip_csv(table_payload, name="enriched Angular5 table")
     ranges = _validate_angles(output)
     assert_angular5_sources_unchanged(sources)
 
@@ -313,20 +571,54 @@ def enrich_angular5_mc(sources: Angular5Sources) -> EnrichmentOutcome:
         "sources": _source_records(sources),
     }
     return EnrichmentOutcome(
-        frame=output,
-        identity_validation=MappingProxyType(identity),
-        summary=MappingProxyType(summary),
+        _OUTCOME_TOKEN,
+        authoritative_payload,
+        table_payload,
+        _deep_freeze(identity),
+        _deep_freeze(summary),
+        _source_binding(sources),
     )
+
+
+def _validate_outcome_payload(
+    outcome: EnrichmentOutcome, sources: Angular5Sources
+) -> pd.DataFrame:
+    if outcome._source_binding != _source_binding(sources):
+        raise ValueError("Angular5 outcome does not belong to the bound sources")
+    authoritative = _parse_gzip_csv(
+        outcome._authoritative_payload,
+        name="bound authoritative MC table",
+    )
+    final = _parse_gzip_csv(
+        outcome._table_payload,
+        name="bound enriched Angular5 table",
+    )
+    expected_columns = list(authoritative.columns) + list(ANGULAR5_FEATURES)
+    if final.columns.tolist() != expected_columns:
+        raise ValueError("bound Angular5 payload column contract mismatch")
+    _assert_old_columns_exact(authoritative, final[list(authoritative.columns)])
+    _validate_angles(final)
+    identity = outcome.identity_validation
+    if (
+        tuple(identity["old_columns"]) != tuple(authoritative.columns)
+        or tuple(identity["appended_columns"]) != ANGULAR5_FEATURES
+        or int(identity["matched_rows"]) != len(final)
+        or identity["old_columns_exact"] is not True
+    ):
+        raise ValueError("bound Angular5 identity evidence disagrees with final payload")
+    return final
 
 
 def _json_bytes(payload: Mapping[str, Any]) -> bytes:
     return (
-        json.dumps(dict(payload), indent=2, ensure_ascii=False, allow_nan=False) + "\n"
+        json.dumps(
+            _deep_thaw(payload),
+            indent=2,
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        + "\n"
     ).encode("utf-8")
-
-
-def _csv_bytes(frame: pd.DataFrame) -> bytes:
-    return gzip.compress(frame.to_csv(index=False).encode("utf-8"), mtime=0)
 
 
 def _pending_output_record(
@@ -544,7 +836,7 @@ def _install_failure_locked(
                 }
             ),
         )
-    except Exception:
+    except BaseException:
         pass
 
 
@@ -554,14 +846,14 @@ def record_angular5_failure(
     """Best-effort terminal failure transition for an already-claimed run."""
     try:
         root = _open_verified_root(layout)
-    except Exception:
+    except BaseException:
         return
     locked = False
     try:
         _safety._terminal_lock_acquire(root)
         locked = True
         _install_failure_locked(root, layout.run_dir, error)
-    except Exception:
+    except BaseException:
         pass
     finally:
         if locked:
@@ -587,18 +879,14 @@ def write_angular5_artifacts(
         ):
             raise RuntimeError("cannot write a failed Angular5 run")
         _assert_layout(descriptors, state="empty")
-        expected_columns = list(outcome.identity_validation["old_columns"]) + list(
-            ANGULAR5_FEATURES
-        )
-        if outcome.frame.columns.tolist() != expected_columns:
-            raise ValueError("Angular5 outcome column contract changed")
-        _validate_angles(outcome.frame)
+        final_frame = _validate_outcome_payload(outcome, sources)
+        table_payload = outcome._table_payload
         serialized: dict[str, bytes] = {
             "config.yaml": sources.config_bytes,
-            TABLE_NAME: _csv_bytes(outcome.frame),
+            TABLE_NAME: table_payload,
             IDENTITY_NAME: _json_bytes(outcome.identity_validation),
         }
-        summary = dict(outcome.summary)
+        summary = _deep_thaw(outcome.summary)
         summary["output_receipts"] = {
             "config.yaml": _pending_output_record(
                 layout.config_snapshot, serialized["config.yaml"]
@@ -606,7 +894,7 @@ def write_angular5_artifacts(
             f"processed/{TABLE_NAME}": _pending_output_record(
                 layout.processed_dir / TABLE_NAME,
                 serialized[TABLE_NAME],
-                row_count=len(outcome.frame),
+                row_count=len(final_frame),
             ),
             f"artifacts/{IDENTITY_NAME}": _pending_output_record(
                 layout.artifacts_dir / IDENTITY_NAME,
@@ -645,7 +933,7 @@ def write_angular5_artifacts(
             frozen_records,
             MappingProxyType(identities),
         )
-    except Exception as error:
+    except BaseException as error:
         record_angular5_failure(layout, error)
         raise
     finally:
@@ -715,7 +1003,7 @@ def publish_angular5_manifest(
         staged = None
         _assert_layout(descriptors, state="complete", terminal_lock=True)
         return manifest
-    except Exception as error:
+    except BaseException as error:
         if descriptors is not None:
             _safety._cleanup_staged(descriptors["artifacts"], staged)
             staged = None

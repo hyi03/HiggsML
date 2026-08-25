@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import gzip
 import hashlib
+import io
 import json
 import math
 import os
@@ -28,6 +30,10 @@ from src.weights import MCNormalization
 
 PROJECT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = PROJECT / "config/angular5_mc_dsid363490.yaml"
+FROZEN_MC_PATH = (
+    PROJECT
+    / "runs/full-baseline-363490-2026-08-11-r2/processed/mc_events.csv.gz"
+)
 KEY = ["runNumber", "eventNumber", "channelNumber"]
 SUCCESS_FILES = {
     "config.yaml",
@@ -64,9 +70,9 @@ def _event(*, event_number: int, channel: int, unit_scale: float) -> dict:
     }
 
 
-def _write_release22(path: Path, event: dict) -> None:
+def _write_release22(path: Path, event: dict, *, copies: int = 1) -> None:
     branches = {
-        name: np.asarray([event[name]])
+        name: np.asarray([event[name]] * copies)
         for name in (
             "runNumber",
             "eventNumber",
@@ -79,7 +85,7 @@ def _write_release22(path: Path, event: dict) -> None:
     }
     branches.update(
         {
-            physical: ak.Array([event[canonical]])
+            physical: ak.Array([event[canonical]] * copies)
             for canonical, physical in {
                 "lep_pt": "lep_pt",
                 "lep_eta": "lep_eta",
@@ -98,10 +104,10 @@ def _write_release22(path: Path, event: dict) -> None:
     )
     branches.update(
         {
-            "xsec": np.asarray([0.5]),
-            "kfac": np.asarray([1.0]),
-            "filteff": np.asarray([1.0]),
-            "sum_of_weights": np.asarray([100.0]),
+            "xsec": np.asarray([0.5] * copies),
+            "kfac": np.asarray([1.0] * copies),
+            "filteff": np.asarray([1.0] * copies),
+            "sum_of_weights": np.asarray([100.0] * copies),
         }
     )
     with uproot.recreate(path) as root:
@@ -309,17 +315,49 @@ def test_enrichment_rejects_missing_extra_duplicate_or_semantically_changed_rows
 def test_enrichment_rejects_duplicate_reconstructed_root_keys(tmp_path) -> None:
     from src.angular5_enrichment import enrich_angular5_mc
 
-    sources, authoritative = _fixture_sources(tmp_path)
-    duplicated = pd.concat([authoritative, authoritative.iloc[[0]]], ignore_index=True)
-    table = sources.receipts["task4a_mc"].path
-    duplicated.to_csv(table, index=False)
+    sources, _ = _fixture_sources(tmp_path)
+    root = sources.receipts["higgs_root"].path
+    _write_release22(
+        root,
+        _event(event_number=101, channel=345060, unit_scale=1.0),
+        copies=2,
+    )
     sources = replace(
         sources,
-        receipts={**sources.receipts, "task4a_mc": _receipt("task4a_mc", table)},
+        receipts={**sources.receipts, "higgs_root": _receipt("higgs_root", root)},
     )
 
-    with pytest.raises(ValueError, match="duplicate"):
+    with pytest.raises(ValueError, match="reconstructed.*duplicate"):
         enrich_angular5_mc(sources)
+
+
+def test_real_frozen_csv_lexemes_survive_exact_final_gzip_parse() -> None:
+    from src import angular5_enrichment as module
+
+    authoritative_payload = FROZEN_MC_PATH.read_bytes()
+    authoritative = pd.read_csv(io.BytesIO(authoritative_payload), compression="gzip")
+    angles = pd.DataFrame(
+        np.zeros((len(authoritative), len(ANGULAR5_FEATURES))),
+        columns=ANGULAR5_FEATURES,
+    )
+
+    enriched_payload = module._append_angular5_preserving_authoritative_csv(
+        authoritative_payload,
+        authoritative,
+        angles,
+    )
+
+    enriched = pd.read_csv(io.BytesIO(enriched_payload), compression="gzip")
+    pd.testing.assert_frame_equal(
+        enriched[authoritative.columns], authoritative, check_exact=True
+    )
+    source_lines = gzip.decompress(authoritative_payload).splitlines()
+    enriched_lines = gzip.decompress(enriched_payload).splitlines()
+    assert len(source_lines) == len(enriched_lines)
+    assert all(
+        final.rsplit(b",", len(ANGULAR5_FEATURES))[0] == source
+        for source, final in zip(source_lines, enriched_lines)
+    )
 
 
 def test_event_key_rejects_lossy_noninteger_dtype_above_float_precision(
@@ -355,6 +393,75 @@ def test_selected_event_with_undefined_geometry_fails_instead_of_being_dropped(
 
     with pytest.raises(ValueError, match="undefined angular geometry"):
         module.enrich_angular5_mc(sources)
+
+
+def test_csv_swap_and_restore_cannot_redirect_bound_snapshot(
+    tmp_path, monkeypatch
+) -> None:
+    from src import angular5_enrichment as module
+
+    sources, authoritative = _fixture_sources(tmp_path)
+    table = sources.receipts["task4a_mc"].path
+    alternate = tmp_path / "alternate.csv.gz"
+    alternate.write_bytes(
+        gzip.compress(
+            authoritative.iloc[::-1].to_csv(index=False).encode("utf-8"),
+            mtime=0,
+        )
+    )
+    swapped = False
+
+    def swap_after_descriptor_open(name: str, path: Path) -> None:
+        nonlocal swapped
+        if not swapped and name == "task4a_mc":
+            swapped = True
+            backup = tmp_path / "authoritative.backup"
+            os.replace(path, backup)
+            os.replace(alternate, path)
+            os.replace(path, alternate)
+            os.replace(backup, path)
+
+    monkeypatch.setattr(module, "_after_receipt_descriptor_opened", swap_after_descriptor_open)
+
+    outcome = module.enrich_angular5_mc(sources)
+
+    assert swapped is True
+    assert outcome.frame[KEY].to_records(index=False).tolist() == authoritative[
+        KEY
+    ].to_records(index=False).tolist()
+
+
+def test_root_swap_and_restore_cannot_redirect_bound_snapshot(
+    tmp_path, monkeypatch
+) -> None:
+    from src import angular5_enrichment as module
+
+    sources, authoritative = _fixture_sources(tmp_path)
+    root = sources.receipts["higgs_root"].path
+    alternate = tmp_path / "alternate.root"
+    changed_event = _event(event_number=101, channel=345060, unit_scale=1.0)
+    changed_event["lep_phi"] = [0.2, math.pi, 1.2, -1.9]
+    _write_release22(alternate, changed_event)
+    swapped = False
+
+    def swap_after_descriptor_open(name: str, path: Path) -> None:
+        nonlocal swapped
+        if not swapped and name == "higgs_root":
+            swapped = True
+            backup = tmp_path / "higgs.backup"
+            os.replace(path, backup)
+            os.replace(alternate, path)
+            os.replace(path, alternate)
+            os.replace(backup, path)
+
+    monkeypatch.setattr(module, "_after_receipt_descriptor_opened", swap_after_descriptor_open)
+
+    outcome = module.enrich_angular5_mc(sources)
+
+    assert swapped is True
+    pd.testing.assert_frame_equal(
+        outcome.frame[authoritative.columns], authoritative, check_exact=True
+    )
 
 
 def test_manifest_is_last_and_records_exact_descriptor_bound_outputs(tmp_path) -> None:
@@ -414,6 +521,60 @@ def test_artifact_receipt_cannot_be_rebound_after_descriptor_capture(tmp_path) -
 
     with pytest.raises(TypeError):
         receipt._records["config.yaml"]["sha256"] = "0" * 64
+
+
+def test_outcome_exposure_cannot_mutate_bound_payload_or_nested_evidence(
+    tmp_path,
+) -> None:
+    from src.angular5_enrichment import enrich_angular5_mc, write_angular5_artifacts
+
+    sources, authoritative = _fixture_sources(tmp_path)
+    outcome = enrich_angular5_mc(sources)
+    exposed = outcome.frame
+    exposed.loc[0, "lep1_pt"] = 999.0
+
+    with pytest.raises(TypeError):
+        outcome.summary["angular5_ranges"]["cos_theta_star"]["minimum"] = -999.0
+
+    layout = _claimed_layout(sources)
+    write_angular5_artifacts(layout, sources=sources, outcome=outcome)
+    published = pd.read_csv(layout.processed_dir / "mc_events_angular5.csv.gz")
+    pd.testing.assert_frame_equal(
+        published[authoritative.columns], authoritative, check_exact=True
+    )
+
+
+def test_outcome_is_bound_to_the_sources_that_created_its_payload(tmp_path) -> None:
+    from src.angular5_enrichment import enrich_angular5_mc, write_angular5_artifacts
+
+    first_sources, _ = _fixture_sources(tmp_path / "first")
+    second_sources, _ = _fixture_sources(tmp_path / "second")
+    outcome = enrich_angular5_mc(first_sources)
+    layout = _claimed_layout(second_sources)
+
+    with pytest.raises(ValueError, match="bound sources"):
+        write_angular5_artifacts(layout, sources=second_sources, outcome=outcome)
+
+
+def test_writer_parses_and_rejects_corrupt_bound_gzip_before_first_promotion(
+    tmp_path,
+) -> None:
+    from src.angular5_enrichment import enrich_angular5_mc, write_angular5_artifacts
+
+    sources, _ = _fixture_sources(tmp_path)
+    outcome = enrich_angular5_mc(sources)
+    object.__setattr__(
+        outcome,
+        "_table_payload",
+        b"not a gzip payload",
+    )
+    layout = _claimed_layout(sources)
+
+    with pytest.raises(ValueError, match="bound enriched Angular5 table"):
+        write_angular5_artifacts(layout, sources=sources, outcome=outcome)
+
+    assert not layout.config_snapshot.exists()
+    assert (layout.run_dir / ".terminal.failed").is_dir()
 
 
 def test_final_source_mutation_installs_failure_terminal_without_manifest(

@@ -62,7 +62,10 @@ def test_cli_accepts_only_config_and_run_dir_and_publishes_no_data_surface(
         )
 
 
-def test_cli_records_failure_only_after_output_claim(tmp_path, monkeypatch) -> None:
+@pytest.mark.parametrize("interrupt", [KeyboardInterrupt(), SystemExit(7)])
+def test_cli_records_base_exception_failure_only_after_output_claim(
+    tmp_path, monkeypatch, interrupt
+) -> None:
     from scripts import enrich_angular5_mc as script
 
     sources, _ = _fixture_sources(tmp_path)
@@ -72,10 +75,10 @@ def test_cli_records_failure_only_after_output_claim(tmp_path, monkeypatch) -> N
     monkeypatch.setattr(
         script,
         "enrich_angular5_mc",
-        lambda sources: (_ for _ in ()).throw(ValueError("identity mismatch")),
+        lambda sources: (_ for _ in ()).throw(interrupt),
     )
 
-    with pytest.raises(ValueError, match="identity mismatch"):
+    with pytest.raises(type(interrupt)):
         script.main(["--config", "sealed.yaml", "--run-dir", "sealed-run"])
 
     assert (layout.run_dir / ".terminal.failed").is_dir()

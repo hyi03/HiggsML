@@ -58,7 +58,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 "implementation": platform.python_implementation(),
             },
         )
-    except Exception as error:
+    except BaseException as error:
         record_angular5_failure(layout, error)
         raise
     print(f"published {len(outcome.frame)} MC rows to {layout.run_dir}")
