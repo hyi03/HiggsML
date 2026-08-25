@@ -27,16 +27,29 @@ def _build_candidate_tradeoff_figure(results: Iterable[Any]):
     """Build the trade-off figure; the caller owns the figure lifecycle."""
     candidates = _validated_candidates(results)
     figure, axis = plt.subplots(figsize=(7, 4.5))
-    for candidate in candidates:
+    coordinates = [
+        (candidate["weighted_auc"], max(candidate["zz_ks_distances"].values()))
+        for candidate in candidates
+    ]
+    for candidate_index, candidate in enumerate(candidates):
         coefficient = candidate["coefficient"]
         auc = candidate["weighted_auc"]
         maximum_ks = max(candidate["zz_ks_distances"].values())
         label = _candidate_name(coefficient)
+        tied_indices = [
+            index
+            for index, coordinate in enumerate(coordinates)
+            if coordinate == (auc, maximum_ks)
+        ]
+        tie_rank = tied_indices.index(candidate_index)
+        vertical_offset = 4.0 + 10.0 * (
+            tie_rank - (len(tied_indices) - 1) / 2.0
+        )
         axis.scatter(auc, maximum_ks, label=label)
         axis.annotate(
             label,
             (auc, maximum_ks),
-            xytext=(4, 4),
+            xytext=(4.0, vertical_offset),
             textcoords="offset points",
         )
     axis.axvline(

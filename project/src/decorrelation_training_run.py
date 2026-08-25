@@ -23,7 +23,7 @@ from .external_zz_run import (
     _open_verified_staged_manifest,
     _publish_descriptor_no_clobber,
 )
-from .full_training_policy import validate_mc_frame
+from .full_training_policy import development_fold, validate_mc_frame
 from .full_training_evaluation import weighted_pearson
 from .full_training_run import (
     TrainingInput,
@@ -46,6 +46,7 @@ from .full_training_run import (
     _terminal_lock_release,
     assert_input_hashes_unchanged,
     claim_training_output,
+    load_training_mc_frame,
     resolve_training_output,
 )
 from .mass_sculpting_ablation_run import (
@@ -156,6 +157,7 @@ _WORKING_POINT_COLUMNS = (
     "zz_mass_ks_distance",
 )
 _AUDIT_COLUMNS = (
+    "source_row_id",
     "eventNumber",
     "channelNumber",
     "split",
@@ -165,6 +167,7 @@ _AUDIT_COLUMNS = (
     "development_fold",
 )
 _TEST_SCORE_COLUMNS = (
+    "source_row_id",
     "eventNumber",
     "channelNumber",
     "split",
@@ -268,6 +271,7 @@ class MCStudyPartitions:
         if not isinstance(frame, pd.DataFrame):
             raise TypeError("MC study input must be a DataFrame")
         validate_mc_frame(frame)
+        _validate_source_row_ids(frame)
         development = frame.loc[frame["split"].isin(("train", "validation"))]
         test = frame.loc[frame["split"] == "test"]
         return cls(development.copy(deep=True), test.copy(deep=True))
@@ -281,6 +285,20 @@ class MCStudyPartitions:
             raise RuntimeError("held-out test was already opened")
         self._test_opened = True
         return self._test.copy(deep=True)
+
+
+def bind_source_row_ids(frame: pd.DataFrame) -> pd.DataFrame:
+    """Bind each hash-verified CSV row to its zero-based source ordinal."""
+    if not isinstance(frame, pd.DataFrame):
+        raise TypeError("MC source must be a DataFrame")
+    if "source_row_id" in frame:
+        raise ValueError("MC source already contains source_row_id")
+    expected_index = pd.RangeIndex(start=0, stop=len(frame), step=1)
+    if not frame.index.equals(expected_index):
+        raise ValueError("MC source index must match the CSV row ordinal")
+    bound = frame.copy(deep=True)
+    bound.insert(0, "source_row_id", np.arange(len(bound), dtype=np.int64))
+    return bound
 
 
 @dataclass(frozen=True, init=False)
@@ -356,9 +374,11 @@ def _load_config_bytes(payload: bytes) -> DecorrelationConfig:
     selected = raw.get("artifacts_selected")
     if (
         not isinstance(no_selection, list)
+        or any(type(value) is not str for value in no_selection)
         or len(no_selection) != len(set(no_selection))
         or set(no_selection) != approved_decorrelation_artifacts(selected=False)
         or not isinstance(selected, list)
+        or any(type(value) is not str for value in selected)
         or len(selected) != len(set(selected))
         or set(selected) != approved_decorrelation_artifacts(selected=True)
     ):
@@ -393,19 +413,35 @@ def _matches_frozen_decisions(raw: Mapping[str, Any]) -> bool:
         == "10e0c293dd60291193019df04f4f6dd4672893dea98d23f972c8a78f21e843b8"
         and raw.get("input_mc_sha256")
         == "1c5d6a3f9a750a5eb9965241dd8947d70e790cf949a36f8fa6ec1bfd058f378e"
-        and raw.get("features") == list(_FEATURES)
+        and _exact_frozen_value(raw.get("features"), list(_FEATURES))
         and type(raw.get("folds")) is int
         and raw["folds"] == 5
-        and raw.get("model") == _MODEL
-        and raw.get("flatness") == _FLATNESS
-        and raw.get("coefficients") == list(_COEFFICIENTS)
-        and raw.get("working_points") == _WORKING_POINTS
+        and _exact_frozen_value(raw.get("model"), _MODEL)
+        and _exact_frozen_value(raw.get("flatness"), _FLATNESS)
+        and _exact_frozen_value(raw.get("coefficients"), list(_COEFFICIENTS))
+        and _exact_frozen_value(raw.get("working_points"), _WORKING_POINTS)
         and type(raw.get("auc_floor")) is float
         and raw["auc_floor"] == 0.80
         and type(raw.get("ks_limit")) is float
         and raw["ks_limit"] == 0.10
         and raw.get("require_signal_efficiency_above_background") is True
     )
+
+
+def _exact_frozen_value(actual: Any, expected: Any) -> bool:
+    if type(actual) is not type(expected):
+        return False
+    if isinstance(expected, dict):
+        return set(actual) == set(expected) and all(
+            _exact_frozen_value(actual[key], value)
+            for key, value in expected.items()
+        )
+    if isinstance(expected, list):
+        return len(actual) == len(expected) and all(
+            _exact_frozen_value(observed, frozen)
+            for observed, frozen in zip(actual, expected)
+        )
+    return actual == expected
 
 
 def resolve_decorrelation_sources(
@@ -494,6 +530,49 @@ def claim_decorrelation_output(
     layout: TrainingOutputLayout,
 ) -> TrainingOutputLayout:
     return claim_training_output(layout)
+
+
+def preflight_decorrelation_dependencies(
+    config: DecorrelationConfig,
+    software: Mapping[str, Any],
+) -> None:
+    """Validate the pinned hep_ml distribution and frozen constructor API."""
+    _validate_software(software)
+    try:
+        from hep_ml.gradientboosting import UGradientBoostingClassifier
+        from hep_ml.losses import KnnFlatnessLossFunction
+
+        from .decorrelation_training import build_flatness_model
+
+        coefficient = config.coefficients[0]
+        model = build_flatness_model(config, coefficient)
+    except Exception as error:
+        raise RuntimeError(
+            "hep_ml 0.8.0 does not expose the approved flatness API"
+        ) from error
+    loss = getattr(model, "loss", None)
+    if (
+        type(model) is not UGradientBoostingClassifier
+        or type(loss) is not KnnFlatnessLossFunction
+        or model.n_estimators != config.model["n_estimators"]
+        or model.learning_rate != config.model["learning_rate"]
+        or model.max_depth != config.model["max_depth"]
+        or model.min_samples_leaf != config.model["min_samples_leaf"]
+        or model.subsample != config.model["subsample"]
+        or model.random_state != config.model["random_seed"]
+        or tuple(model.train_features) != config.features
+        or list(loss.uniform_features) != [config.flatness["uniform_feature"]]
+        or not np.array_equal(
+            np.asarray(loss.uniform_label),
+            np.asarray([config.flatness["uniform_label"]]),
+        )
+        or loss.n_neighbours != config.flatness["n_neighbours"]
+        or loss.max_groups != config.flatness["max_groups"]
+        or loss.power != config.flatness["power"]
+        or loss.fl_coefficient != coefficient
+        or loss.allow_wrong_signs is not config.flatness["allow_wrong_signs"]
+    ):
+        raise RuntimeError("hep_ml 0.8.0 flatness API changes the frozen policy")
 
 
 def write_decorrelation_artifacts(
@@ -690,6 +769,12 @@ def _validate_artifact_values(
         config,
     )
     _validate_oof_scores(artifacts["oof_scores"], config)
+    oof_winner = _validate_candidate_metrics_from_oof(
+        artifacts["candidate_results"],
+        artifacts["working_point_metrics"],
+        artifacts["oof_scores"],
+        config,
+    )
     selected_candidate = _validate_selection_semantics(
         selection,
         config,
@@ -697,6 +782,8 @@ def _validate_artifact_values(
         selected=selected,
         decision=None,
     )
+    if selected_candidate != oof_winner:
+        raise ValueError("selection does not match the winner recomputed from OOF scores")
 
     if selected:
         _validate_finite_frame(
@@ -1955,6 +2042,176 @@ def _validate_candidate_tables(
             raise ValueError("candidate eligibility contradicts frozen gates")
 
 
+def _validate_candidate_metrics_from_oof(
+    candidates: pd.DataFrame,
+    working_points: pd.DataFrame,
+    oof_scores: pd.DataFrame,
+    config: DecorrelationConfig,
+) -> str | None:
+    """Recompute every candidate metric and winner from the published OOF table."""
+    from .decorrelation_training import (
+        evaluate_flatness_candidate,
+        select_flatness_candidate,
+    )
+
+    recomputed = []
+    for coefficient in config.coefficients:
+        candidate = _candidate_name(coefficient)
+        score_column = f"score_{candidate}"
+        audit = oof_scores.loc[:, [*_AUDIT_COLUMNS, score_column]].copy(deep=True)
+        result = evaluate_flatness_candidate(
+            audit,
+            config,
+            coefficient=coefficient,
+        )
+        recomputed.append(result)
+        candidate_row = candidates.loc[candidates["candidate"] == candidate].iloc[0]
+        expected_candidate_values = {
+            "weighted_oof_auc": result.weighted_auc,
+            "maximum_oof_zz_ks": max(result.zz_ks_distances.values()),
+            "background_score_mass_correlation": (
+                result.background_score_mass_correlation
+            ),
+        }
+        for name, expected in expected_candidate_values.items():
+            if float(candidate_row[name]) != float(expected):
+                raise ValueError(
+                    f"candidate_results {name} does not match published OOF scores"
+                )
+        expected_reasons = ",".join(result.eligibility_reasons)
+        if (
+            bool(candidate_row["eligible"]) is not (not result.eligibility_reasons)
+            or candidate_row["eligibility_reasons"] != expected_reasons
+        ):
+            raise ValueError(
+                "candidate_results eligibility does not match published OOF scores"
+            )
+        point_rows = working_points.loc[
+            working_points["candidate"] == candidate
+        ].set_index("working_point")
+        for point_name in config.working_points:
+            actual = point_rows.loc[point_name]
+            expected_point = result.working_points[point_name]
+            expected_values = {
+                "threshold": expected_point["threshold"],
+                "target_background_efficiency": (
+                    result.target_background_efficiencies[point_name]
+                ),
+                "achieved_background_efficiency": (
+                    result.achieved_background_efficiencies[point_name]
+                ),
+                "signal_efficiency": result.signal_efficiencies[point_name],
+                "zz_mass_ks_distance": result.zz_ks_distances[point_name],
+            }
+            for name, expected in expected_values.items():
+                if float(actual[name]) != float(expected):
+                    raise ValueError(
+                        f"working_point_metrics {point_name} {name} does not "
+                        "match published OOF scores"
+                    )
+    selected = select_flatness_candidate(recomputed).selected
+    return None if selected is None else _candidate_name(selected.coefficient)
+
+
+def validate_decorrelation_development_artifacts(
+    *,
+    candidate_results: pd.DataFrame,
+    working_point_metrics: pd.DataFrame,
+    oof_scores: pd.DataFrame,
+    config: DecorrelationConfig,
+    approved_development: pd.DataFrame,
+    selected_candidate: str | None,
+) -> None:
+    """Bind common development artifacts to source rows, folds, and OOF metrics."""
+    for name, frame in (
+        ("candidate_results", candidate_results),
+        ("working_point_metrics", working_point_metrics),
+        ("oof_scores", oof_scores),
+    ):
+        _validate_finite_frame(frame, name)
+    _validate_candidate_tables(candidate_results, working_point_metrics, config)
+    _validate_oof_scores(oof_scores, config)
+    _validate_artifact_rows_against_source(
+        oof_scores,
+        approved_development,
+        allowed_splits={"train", "validation"},
+        require_development_fold=True,
+    )
+    winner = _validate_candidate_metrics_from_oof(
+        candidate_results,
+        working_point_metrics,
+        oof_scores,
+        config,
+    )
+    if selected_candidate != winner:
+        raise ValueError("selected candidate does not match published OOF scores")
+
+
+def _validate_artifact_rows_against_source(
+    frame: pd.DataFrame,
+    approved_mc: pd.DataFrame,
+    *,
+    allowed_splits: set[str],
+    require_development_fold: bool,
+) -> None:
+    if not isinstance(approved_mc, pd.DataFrame) or approved_mc.empty:
+        raise ValueError("approved source rows must be a non-empty DataFrame")
+    _validate_source_row_ids(approved_mc)
+    required = {
+        "source_row_id",
+        "channelNumber",
+        "eventNumber",
+        "split",
+        "label",
+        "physical_weight",
+        "m4l",
+    }
+    if not required <= set(approved_mc):
+        raise ValueError("approved source rows are missing audit attributes")
+    approved = approved_mc.loc[approved_mc["split"].isin(allowed_splits)].copy(
+        deep=True
+    )
+    if approved.empty or set(approved["split"]) != allowed_splits:
+        raise ValueError("approved source rows do not contain the required split set")
+    artifact_ids = frame["source_row_id"].to_numpy(dtype=np.int64)
+    approved_ids = approved["source_row_id"].to_numpy(dtype=np.int64)
+    if len(artifact_ids) != len(approved_ids) or set(artifact_ids) != set(
+        approved_ids
+    ):
+        raise ValueError("artifact row set does not match approved source rows")
+    artifact_indexed = frame.set_index("source_row_id").sort_index()
+    approved_indexed = approved.set_index("source_row_id").sort_index()
+    for column in (
+        "channelNumber",
+        "eventNumber",
+        "split",
+        "label",
+        "physical_weight",
+        "m4l",
+    ):
+        if not artifact_indexed[column].equals(approved_indexed[column]):
+            raise ValueError(
+                f"artifact {column} values do not match approved source rows"
+            )
+    if require_development_fold:
+        expected_folds = np.asarray(
+            [
+                development_fold(channel, event)
+                for channel, event in zip(
+                    approved_indexed["channelNumber"],
+                    approved_indexed["eventNumber"],
+                    strict=True,
+                )
+            ],
+            dtype=int,
+        )
+        actual_folds = artifact_indexed["development_fold"].to_numpy(dtype=int)
+        if not np.array_equal(actual_folds, expected_folds):
+            raise ValueError(
+                "artifact development folds do not match approved source rows"
+            )
+
+
 def _validate_oof_scores(frame: pd.DataFrame, config: DecorrelationConfig) -> None:
     score_columns = tuple(
         f"score_{_candidate_name(value)}" for value in config.coefficients
@@ -1965,6 +2222,7 @@ def _validate_oof_scores(frame: pd.DataFrame, config: DecorrelationConfig) -> No
     _require_finite_columns(
         frame,
         (
+            "source_row_id",
             "eventNumber",
             "channelNumber",
             "label",
@@ -2000,6 +2258,7 @@ def _validate_selected_oof_scores(
     _require_finite_columns(
         frame,
         (
+            "source_row_id",
             "eventNumber",
             "channelNumber",
             "label",
@@ -2010,7 +2269,7 @@ def _validate_selected_oof_scores(
         ),
         "selected_oof_scores",
     )
-    identity = ["channelNumber", "eventNumber", "split"]
+    identity = ["source_row_id"]
     selected_indexed = frame.set_index(identity).sort_index()
     oof_indexed = oof_scores.set_index(identity).sort_index()
     if not selected_indexed.index.equals(oof_indexed.index):
@@ -2035,6 +2294,7 @@ def _validate_test_scores(frame: pd.DataFrame) -> None:
     _require_finite_columns(
         frame,
         (
+            "source_row_id",
             "eventNumber",
             "channelNumber",
             "label",
@@ -2053,13 +2313,28 @@ def _validate_test_scores(frame: pd.DataFrame) -> None:
 def _validate_audit_identity(
     frame: pd.DataFrame, *, allowed_splits: set[str]
 ) -> None:
-    identity = ["channelNumber", "eventNumber", "split"]
-    if frame.loc[:, identity].isna().any().any():
+    audit_attributes = ["channelNumber", "eventNumber", "split"]
+    if frame.loc[:, ["source_row_id", *audit_attributes]].isna().any().any():
         raise ValueError("artifact identity fields must not be missing")
-    if frame.duplicated(identity).any():
-        raise ValueError("artifact identities must be unique")
+    _validate_source_row_ids(frame)
     if not set(frame["split"]) or not set(frame["split"]) <= allowed_splits:
         raise ValueError("artifact split values do not match the contract")
+
+
+def _validate_source_row_ids(frame: pd.DataFrame) -> None:
+    if "source_row_id" not in frame:
+        raise ValueError("artifact identity requires source_row_id")
+    try:
+        values = frame["source_row_id"].to_numpy(dtype=float)
+    except (TypeError, ValueError) as error:
+        raise ValueError("source_row_id must contain integer CSV row ordinals") from error
+    if (
+        not np.isfinite(values).all()
+        or not np.equal(values, np.floor(values)).all()
+        or (values < 0).any()
+        or frame["source_row_id"].duplicated().any()
+    ):
+        raise ValueError("source_row_id must contain unique integer CSV row ordinals")
 
 
 def _validate_binary_labels(frame: pd.DataFrame, name: str) -> None:
@@ -2353,6 +2628,7 @@ def _read_json_artifact(descriptor: int, name: str) -> Mapping[str, Any]:
 def _validate_on_disk_artifacts(
     descriptors: Mapping[str, int],
     config: DecorrelationConfig,
+    approved_mc: pd.DataFrame,
     *,
     selected: bool,
     decision: Mapping[str, Any],
@@ -2369,6 +2645,18 @@ def _validate_on_disk_artifacts(
         descriptors["predictions"], "oof_scores.csv.gz", compression="gzip"
     )
     _validate_oof_scores(oof_scores, config)
+    _validate_artifact_rows_against_source(
+        oof_scores,
+        approved_mc,
+        allowed_splits={"train", "validation"},
+        require_development_fold=True,
+    )
+    oof_winner = _validate_candidate_metrics_from_oof(
+        candidates,
+        working_points,
+        oof_scores,
+        config,
+    )
     selection = _read_json_artifact(descriptors["artifacts"], "selection.json")
     selected_candidate = _validate_selection_semantics(
         selection,
@@ -2377,6 +2665,8 @@ def _validate_on_disk_artifacts(
         selected=selected,
         decision=decision,
     )
+    if selected_candidate != oof_winner:
+        raise ValueError("selection does not match the winner recomputed from OOF scores")
     plot_names = ["candidate_tradeoff.png", "working_point_ks.png"]
     if selected:
         plot_names.append("selected_mass_sculpting.png")
@@ -2400,6 +2690,18 @@ def _validate_on_disk_artifacts(
         selected_oof, oof_scores, selected_candidate
     )
     _validate_test_scores(test_scores)
+    _validate_artifact_rows_against_source(
+        selected_oof,
+        approved_mc,
+        allowed_splits={"train", "validation"},
+        require_development_fold=True,
+    )
+    _validate_artifact_rows_against_source(
+        test_scores,
+        approved_mc,
+        allowed_splits={"test"},
+        require_development_fold=False,
+    )
     selected_points = working_points.loc[
         working_points["candidate"] == selected_candidate
     ]
@@ -2445,6 +2747,7 @@ def publish_decorrelation_manifest(
     """Publish a complete manifest last after immediate source/output rechecks."""
     try:
         trusted_sources = _independently_resolve_sources(sources)
+        approved_mc = _load_approved_mc_frame(trusted_sources)
         _validate_software(software)
         decision = _decision_from_outcome(outcome, trusted_sources.config)
         verified_model_bytes = _validate_receipt_evidence(
@@ -2494,6 +2797,7 @@ def publish_decorrelation_manifest(
         _validate_on_disk_artifacts(
             descriptors,
             trusted_sources.config,
+            approved_mc,
             selected=receipt.selected,
             decision=decision,
             trusted_model_sha256=verified_model_sha256,
@@ -2528,6 +2832,7 @@ def publish_decorrelation_manifest(
             _validate_on_disk_artifacts(
                 descriptors,
                 trusted_sources.config,
+                approved_mc,
                 selected=receipt.selected,
                 decision=decision,
                 trusted_model_sha256=verified_model_sha256,
@@ -2697,6 +3002,14 @@ def _independently_resolve_sources(
             "decorrelation capability differs from independently resolved sources"
         )
     return trusted
+
+
+def _load_approved_mc_frame(sources: DecorrelationSources) -> pd.DataFrame:
+    """Load the exact hash-bound MC table and attach stable CSV row ordinals."""
+    _validate_source_inventory(sources)
+    frame = bind_source_row_ids(load_training_mc_frame(sources.training_input))
+    validate_mc_frame(frame)
+    return frame
 
 
 def _validate_software(software: Mapping[str, Any]) -> None:
@@ -3038,13 +3351,6 @@ def _study_manifest_exists(layout: TrainingOutputLayout) -> bool:
                 manifest_present=True,
                 terminal_lock_present=True,
             )
-            _validate_on_disk_artifacts(
-                descriptors,
-                config,
-                selected=selected,
-                decision=decision,
-                trusted_model_sha256=None,
-            )
             study_config = sources.get("study_config")
             if (
                 not isinstance(study_config, Mapping)
@@ -3057,11 +3363,20 @@ def _study_manifest_exists(layout: TrainingOutputLayout) -> bool:
             )
             _validate_source_inventory(resolved_sources)
             assert_decorrelation_sources_unchanged(resolved_sources)
+            approved_mc = _load_approved_mc_frame(resolved_sources)
             if (
                 resolved_sources.config_bytes != config_bytes
                 or dict(sources) != _source_manifest_records(resolved_sources)
             ):
                 return False
+            _validate_on_disk_artifacts(
+                descriptors,
+                config,
+                approved_mc,
+                selected=selected,
+                decision=decision,
+                trusted_model_sha256=None,
+            )
             current_outputs = _build_output_records(
                 layout, descriptors, selected=selected
             )

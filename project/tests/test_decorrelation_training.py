@@ -67,6 +67,7 @@ def development_frame():
             counts[(fold, label)] += 1
         event += 1
     frame = pd.DataFrame(rows)
+    frame.insert(0, "source_row_id", np.arange(len(frame), dtype=np.int64))
     for split in ("train", "validation"):
         for label in (0, 1):
             if not ((frame["split"] == split) & (frame["label"] == label)).any():
@@ -83,6 +84,7 @@ def oof_audit(development_frame):
     output = development_frame.loc[
         :,
         [
+            "source_row_id",
             "eventNumber",
             "channelNumber",
             "split",
@@ -160,6 +162,9 @@ def test_frame(development_frame):
     output = development_frame.copy(deep=True)
     output["split"] = "test"
     output["eventNumber"] = np.arange(10_000_000, 10_000_000 + len(output))
+    output["source_row_id"] = np.arange(
+        len(development_frame), 2 * len(development_frame), dtype=np.int64
+    )
     return output
 
 
@@ -209,6 +214,49 @@ def test_oof_scores_every_development_row_once_and_rebalances_each_fold(
     assert oof["development_fold"].between(0, 4).all()
     assert np.isfinite(oof["score_lambda_0p5"]).all()
     assert len(fitted_indices) == 5
+
+
+def test_oof_collision_rows_keep_source_row_identity_and_distinct_predictions(
+    development_frame, production_config
+):
+    """Dropping the CSV-row ordinal or keying by event identity must fail."""
+    development = development_frame.copy(deep=True)
+    first = development.index[development["label"] == 0][0]
+    second = development.index[development["label"] == 0][1]
+    development.loc[
+        second,
+        ["channelNumber", "eventNumber", "split"],
+    ] = development.loc[
+        first,
+        ["channelNumber", "eventNumber", "split"],
+    ].to_numpy()
+    assert development.loc[[first, second], "lep1_pt"].nunique() == 2
+
+    class FeatureScoreModel:
+        def fit(self, X, y, sample_weight):
+            return self
+
+        def predict_proba(self, X):
+            score = 1.0 / (1.0 + np.exp(-X["lep1_pt"].to_numpy(dtype=float) / 100.0))
+            return np.column_stack([1.0 - score, score])
+
+    oof = generate_flatness_oof(
+        development,
+        production_config,
+        0.5,
+        model_factory=lambda **kwargs: FeatureScoreModel(),
+    )
+
+    collision = oof.loc[
+        (oof["channelNumber"] == development.loc[first, "channelNumber"])
+        & (oof["eventNumber"] == development.loc[first, "eventNumber"])
+        & (oof["split"] == development.loc[first, "split"])
+    ]
+    assert collision["source_row_id"].tolist() == [
+        int(development.loc[first, "source_row_id"]),
+        int(development.loc[second, "source_row_id"]),
+    ]
+    assert collision["score_lambda_0p5"].nunique() == 2
 
 
 def test_oof_rejects_nonfinite_probability_in_any_predict_proba_column(
@@ -435,6 +483,7 @@ def test_selection_uses_auc_then_maximum_ks_then_lower_coefficient(
 def test_evaluate_candidate_matches_validated_metric_helpers(production_config):
     frame = pd.DataFrame(
         {
+            "source_row_id": np.arange(12, dtype=np.int64),
             "label": [0] * 6 + [1] * 6,
             "physical_weight": [1.0, -2.0, 3.0, -4.0, 5.0, 6.0,
                                 -1.5, 2.5, -3.5, 4.5, -5.5, 6.5],

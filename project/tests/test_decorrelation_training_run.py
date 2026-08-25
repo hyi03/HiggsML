@@ -48,6 +48,7 @@ _ALL_MC_FEATURES = (
     "deltaPhi_ZZ",
 )
 _AUDIT_COLUMNS = (
+    "source_row_id",
     "eventNumber",
     "channelNumber",
     "split",
@@ -85,7 +86,15 @@ def synthetic_task4a_run(tmp_path: Path) -> Path:
 
 @pytest.fixture(scope="module")
 def frozen_sources():
-    return _strict_sources()
+    sources = _strict_sources()
+    patch = pytest.MonkeyPatch()
+    patch.setattr(
+        training_run,
+        "_load_approved_mc_frame",
+        lambda observed: _approved_mc_frame(),
+    )
+    yield sources
+    patch.undo()
 
 
 @pytest.fixture
@@ -110,7 +119,9 @@ def mc_frame() -> pd.DataFrame:
             )
             rows.append(row)
             event += 1
-    return pd.DataFrame(rows)
+    frame = pd.DataFrame(rows)
+    frame.insert(0, "source_row_id", np.arange(len(frame), dtype=np.int64))
+    return frame
 
 
 @pytest.fixture(scope="module")
@@ -190,6 +201,46 @@ def test_config_rejects_changed_coefficient(tmp_path: Path):
     source = Path("config/decorrelation_training_drop_top4.yaml").read_text()
     changed = tmp_path / "changed.yaml"
     changed.write_text(source.replace("  - 3.0\n", "  - 4.0\n"))
+    with pytest.raises(ValueError, match="frozen decision"):
+        training_run.load_decorrelation_config(changed)
+
+
+def test_dependency_preflight_constructs_the_frozen_real_hep_ml_api(
+    frozen_sources,
+):
+    training_run.preflight_decorrelation_dependencies(
+        frozen_sources.config,
+        _software(),
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "replacement"),
+    (
+        (("model", "n_estimators"), 300.0),
+        (("flatness", "allow_wrong_signs"), 1),
+        (("flatness", "uniform_label"), False),
+        (("flatness", "power"), 2),
+        (("coefficients", 0), False),
+        (("coefficients", 2), 1),
+    ),
+)
+def test_config_rejects_type_changing_nested_scalar_aliases(
+    tmp_path: Path,
+    path: tuple[str | int, ...],
+    replacement: object,
+):
+    """Value-only nested comparison that accepts bool/int/float aliases must fail."""
+    raw = yaml.safe_load(
+        Path("config/decorrelation_training_drop_top4.yaml").read_text()
+    )
+    target = raw
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = replacement
+    changed = tmp_path / ("changed-" + "-".join(map(str, path)) + ".yaml")
+    changed.write_text(yaml.safe_dump(raw, sort_keys=False))
+
     with pytest.raises(ValueError, match="frozen decision"):
         training_run.load_decorrelation_config(changed)
 
@@ -340,6 +391,31 @@ def test_partitions_expose_development_and_open_test_once(mc_frame: pd.DataFrame
         partitions.open_test()
 
 
+def test_csv_row_ordinals_survive_partitioning_when_event_identities_collide(
+    mc_frame: pd.DataFrame,
+):
+    """Deduplication, cumcount keys, or event-identity keys must fail."""
+    collision = mc_frame.iloc[[0]].copy(deep=True)
+    collision.loc[:, "m4l"] = collision["m4l"] + 7.5
+    collision.loc[:, "lep1_pt"] = collision["lep1_pt"] + 3.0
+    source = pd.concat([mc_frame, collision], ignore_index=True).drop(
+        columns="source_row_id"
+    )
+
+    bound = training_run.bind_source_row_ids(source)
+    partitions = training_run.MCStudyPartitions.from_frame(bound)
+    development = partitions.development
+    collision = development.loc[
+        (development["channelNumber"] == source.loc[0, "channelNumber"])
+        & (development["eventNumber"] == source.loc[0, "eventNumber"])
+        & (development["split"] == source.loc[0, "split"])
+    ]
+
+    assert bound["source_row_id"].tolist() == list(range(len(source)))
+    assert collision["source_row_id"].tolist() == [0, len(source) - 1]
+    assert collision["m4l"].nunique() == 2
+
+
 def test_no_selection_writes_exact_common_artifacts(tmp_path: Path, frozen_sources):
     layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
     receipt = training_run.write_decorrelation_artifacts(
@@ -387,7 +463,7 @@ def test_selection_writes_exact_conditional_artifacts(
     }
 
 
-def test_writer_eligibility_uses_frozen_target_not_achieved_efficiency(
+def test_writer_rejects_changed_achieved_efficiency_even_when_gates_are_unchanged(
     tmp_path: Path, frozen_sources, fitted_hep_model
 ):
     artifacts = _artifacts(selected=True, model=fitted_hep_model)
@@ -399,13 +475,97 @@ def test_writer_eligibility_uses_frozen_target_not_achieved_efficiency(
     ] = 0.9
     layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
 
-    receipt = training_run.write_decorrelation_artifacts(
-        layout=layout,
-        config_bytes=frozen_sources.config_bytes,
-        artifacts=artifacts,
+    with pytest.raises(ValueError, match="OOF scores"):
+        training_run.write_decorrelation_artifacts(
+            layout=layout,
+            config_bytes=frozen_sources.config_bytes,
+            artifacts=artifacts,
+        )
+
+
+def test_writer_rejects_candidate_metric_not_derived_from_oof_scores(
+    tmp_path: Path,
+    frozen_sources,
+):
+    """Accepting self-consistent tables that disagree with OOF scores must fail."""
+    artifacts = _artifacts(selected=False)
+    artifacts["candidate_results"].loc[0, "weighted_oof_auc"] = 0.785
+    layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
+
+    with pytest.raises(ValueError, match="OOF scores"):
+        training_run.write_decorrelation_artifacts(
+            layout=layout,
+            config_bytes=frozen_sources.config_bytes,
+            artifacts=artifacts,
+        )
+
+
+def test_oof_score_tamper_with_rebound_manifest_hash_does_not_complete(
+    tmp_path: Path,
+    frozen_sources,
+):
+    """Rebinding a changed OOF score into the manifest must fail restart audit."""
+    layout = _publish_no_selection(tmp_path, frozen_sources)
+    oof_path = layout.predictions_dir / "oof_scores.csv.gz"
+    changed = pd.read_csv(oof_path)
+    changed.loc[0, "score_lambda_0p0"] = 0.99
+    _replace_output_and_rebind_manifest(
+        layout,
+        "predictions/oof_scores.csv.gz",
+        training_run._csv_bytes(changed),
     )
 
-    assert receipt.selected is True
+    training_run.record_decorrelation_failure(layout, RuntimeError("failed"))
+
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
+
+
+@pytest.mark.parametrize("mutation", ("source_row_id", "development_fold"))
+def test_development_artifact_validation_binds_rows_and_folds_to_source(
+    frozen_sources,
+    mutation: str,
+):
+    """Trusting artifact row ids or stored folds without source binding must fail."""
+    artifacts = _artifacts(selected=False)
+    approved = _approved_mc_frame()
+    if mutation == "source_row_id":
+        artifacts["oof_scores"].loc[0, "source_row_id"] = 999
+    else:
+        artifacts["oof_scores"].loc[0, "development_fold"] = 4
+
+    with pytest.raises(ValueError, match="approved source|development fold"):
+        training_run.validate_decorrelation_development_artifacts(
+            candidate_results=artifacts["candidate_results"],
+            working_point_metrics=artifacts["working_point_metrics"],
+            oof_scores=artifacts["oof_scores"],
+            config=frozen_sources.config,
+            approved_development=approved.loc[
+                approved["split"].isin(("train", "validation"))
+            ],
+            selected_candidate=None,
+        )
+
+
+def test_oof_source_row_tamper_with_rebound_manifest_hash_does_not_complete(
+    tmp_path: Path,
+    frozen_sources,
+):
+    """A manifest hash cannot re-authorize OOF rows outside the approved source."""
+    layout = _publish_no_selection(tmp_path, frozen_sources)
+    oof_path = layout.predictions_dir / "oof_scores.csv.gz"
+    changed = pd.read_csv(oof_path)
+    changed.loc[0, "source_row_id"] = 999
+    _replace_output_and_rebind_manifest(
+        layout,
+        "predictions/oof_scores.csv.gz",
+        training_run._csv_bytes(changed),
+    )
+
+    training_run.record_decorrelation_failure(layout, RuntimeError("failed"))
+
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert (layout.run_dir / "failure.json").is_file()
 
 
 def test_csv_gzip_is_byte_deterministic(tmp_path: Path):
@@ -510,7 +670,7 @@ def test_static_model_audit_rejects_malformed_unvisited_tree_nodes(
 
 
 def test_real_hep_ml_synthetic_oof_and_manifest(
-    tmp_path: Path, frozen_sources
+    tmp_path: Path, frozen_sources, monkeypatch
 ):
     from hep_ml.gradientboosting import UGradientBoostingClassifier
 
@@ -545,7 +705,14 @@ def test_real_hep_ml_synthetic_oof_and_manifest(
         input_run / "processed/mc_events.csv.gz"
     )
 
-    frame = load_training_mc_frame(training_input)
+    frame = training_run.bind_source_row_ids(
+        load_training_mc_frame(training_input)
+    )
+    monkeypatch.setattr(
+        training_run,
+        "_load_approved_mc_frame",
+        lambda observed: frame,
+    )
     development = frame.loc[frame["split"].isin(("train", "validation"))]
     fitted_models: list[UGradientBoostingClassifier] = []
 
@@ -703,14 +870,17 @@ def test_writer_rejects_inferior_eligible_selection(
     artifacts = _artifacts(selected=True, model=fitted_hep_model)
     candidates = artifacts["candidate_results"]
     better = candidates["candidate"] == "lambda_0p0"
-    candidates.loc[better, "weighted_oof_auc"] = 0.90
-    candidates.loc[better, "maximum_oof_zz_ks"] = 0.05
+    candidates.loc[better, "weighted_oof_auc"] = 1.0
+    candidates.loc[better, "maximum_oof_zz_ks"] = 0.0
     candidates.loc[better, "eligible"] = True
     candidates.loc[better, "eligibility_reasons"] = ""
     points = artifacts["working_point_metrics"]
     better_points = points["candidate"] == "lambda_0p0"
-    points.loc[better_points, "signal_efficiency"] = [0.8, 0.5, 0.3]
-    points.loc[better_points, "zz_mass_ks_distance"] = 0.05
+    points.loc[better_points, "threshold"] = 0.2
+    points.loc[better_points, "achieved_background_efficiency"] = 1.0
+    points.loc[better_points, "signal_efficiency"] = 1.0
+    points.loc[better_points, "zz_mass_ks_distance"] = 0.0
+    artifacts["oof_scores"].loc[:, "score_lambda_0p0"] = [0.2, 0.8]
     layout = training_run.claim_decorrelation_output(_fresh_layout(tmp_path))
 
     with pytest.raises(ValueError, match="deterministic.*winner"):
@@ -766,7 +936,7 @@ def test_writer_rejects_inconsistent_test_scores_metrics_or_thresholds(
     else:
         artifacts["test_metrics"]["working_points"]["loose"][
             "threshold"
-        ] = 0.2
+        ] = 0.3
     layout = training_run.claim_decorrelation_output(
         _fresh_layout(tmp_path, name=case)
     )
@@ -1620,14 +1790,11 @@ def _artifacts(*, selected: bool, model=None) -> dict[str, object]:
     coefficients = [0.0, 0.5, 1.0, 2.0, 3.0]
     candidates = [f"lambda_{str(value).replace('.', 'p')}" for value in coefficients]
     eligible = [False, False, selected, False, False]
-    maximum_ks = [0.2, 0.2, 0.08 if selected else 0.2, 0.2, 0.2]
-    aucs = [0.79, 0.78, 0.82 if selected else 0.79, 0.77, 0.76]
+    maximum_ks = [0.0] * 5
+    aucs = [0.0, 0.0, 1.0 if selected else 0.0, 0.0, 0.0]
     ineligible_reasons = ",".join(
         (
             "weighted_auc_below_floor",
-            "loose_zz_mass_ks_exceeds_limit",
-            "medium_zz_mass_ks_exceeds_limit",
-            "tight_zz_mass_ks_exceeds_limit",
             "loose_signal_efficiency_not_above_background",
             "medium_signal_efficiency_not_above_background",
             "tight_signal_efficiency_not_above_background",
@@ -1639,7 +1806,7 @@ def _artifacts(*, selected: bool, model=None) -> dict[str, object]:
             "coefficient": coefficients,
             "weighted_oof_auc": aucs,
             "maximum_oof_zz_ks": maximum_ks,
-            "background_score_mass_correlation": [-0.2] * 5,
+            "background_score_mass_correlation": [0.0] * 5,
             "eligible": eligible,
             "eligibility_reasons": [
                 "" if value else ineligible_reasons for value in eligible
@@ -1650,38 +1817,37 @@ def _artifacts(*, selected: bool, model=None) -> dict[str, object]:
     for candidate, coefficient, is_eligible, candidate_ks in zip(
         candidates, coefficients, eligible, maximum_ks
     ):
-        for point, threshold, target, signal_efficiency in zip(
+        for point, target in zip(
             ("loose", "medium", "tight"),
-            (0.25, 0.5, 0.75),
             (0.5, 0.2, 0.1),
-            (0.8, 0.5, 0.3) if is_eligible else (0.4, 0.1, 0.05),
         ):
             point_rows.append(
                 {
                     "candidate": candidate,
                     "coefficient": coefficient,
                     "working_point": point,
-                    "threshold": threshold,
+                    "threshold": 0.2 if is_eligible else 0.8,
                     "target_background_efficiency": target,
-                    "achieved_background_efficiency": target,
-                    "signal_efficiency": signal_efficiency,
+                    "achieved_background_efficiency": 1.0,
+                    "signal_efficiency": 1.0 if is_eligible else 0.0,
                     "zz_mass_ks_distance": candidate_ks,
                 }
             )
     oof_scores = pd.DataFrame(
         {
+            "source_row_id": [0, 1],
             "eventNumber": [1, 2],
             "channelNumber": [363490, 345060],
             "split": ["train", "validation"],
             "label": [0, 1],
             "physical_weight": [1.0, 1.0],
             "m4l": [120.0, 130.0],
-            "development_fold": [0, 1],
-            "score_lambda_0p0": [0.2, 0.8],
-            "score_lambda_0p5": [0.25, 0.75],
-            "score_lambda_1p0": [0.3, 0.7],
-            "score_lambda_2p0": [0.35, 0.65],
-            "score_lambda_3p0": [0.4, 0.6],
+            "development_fold": [0, 0],
+            "score_lambda_0p0": [0.8, 0.2],
+            "score_lambda_0p5": [0.8, 0.2],
+            "score_lambda_1p0": [0.2, 0.8] if selected else [0.8, 0.2],
+            "score_lambda_2p0": [0.8, 0.2],
+            "score_lambda_3p0": [0.8, 0.2],
         }
     )
     artifacts: dict[str, object] = {
@@ -1706,6 +1872,7 @@ def _artifacts(*, selected: bool, model=None) -> dict[str, object]:
             .assign(oof_score=oof_scores["score_lambda_1p0"]),
             test_scores=pd.DataFrame(
                 {
+                    "source_row_id": list(range(2, 10)),
                     "eventNumber": [3, 4, 5, 6, 7, 8, 9, 10],
                     "channelNumber": [363490] * 4 + [345060] * 4,
                     "split": ["test"] * 8,
@@ -1730,23 +1897,20 @@ def _artifacts(*, selected: bool, model=None) -> dict[str, object]:
                 "background_score_mass_correlation": 0.9899494936611665,
                 "working_points": {
                     name: {
-                        "threshold": threshold,
+                        "threshold": 0.2,
                         "target_background_efficiency": target,
-                        "achieved_background_efficiency": background,
-                        "signal_efficiency": signal,
+                        "achieved_background_efficiency": 1.0,
+                        "signal_efficiency": 1.0,
                     }
-                    for name, threshold, target, background, signal in zip(
+                    for name, target in zip(
                         ("loose", "medium", "tight"),
-                        (0.25, 0.5, 0.75),
                         (0.5, 0.2, 0.1),
-                        (0.75, 0.5, 0.25),
-                        (1.0, 0.75, 0.5),
                     )
                 },
                 "zz_ks_distances": {
-                    "loose": 0.25,
-                    "medium": 0.5,
-                    "tight": 0.75,
+                    "loose": 0.0,
+                    "medium": 0.0,
+                    "tight": 0.0,
                 },
             },
         )
@@ -1762,6 +1926,24 @@ def _outcome(*, selected: bool):
         selection=SimpleNamespace(selected=candidate),
         evidence=object() if selected else None,
     )
+
+
+def _approved_mc_frame() -> pd.DataFrame:
+    artifacts = _artifacts(selected=True)
+    development = artifacts["oof_scores"].loc[
+        :,
+        [
+            "source_row_id",
+            "eventNumber",
+            "channelNumber",
+            "split",
+            "label",
+            "physical_weight",
+            "m4l",
+        ],
+    ]
+    test = artifacts["test_scores"].drop(columns="score")
+    return pd.concat([development, test], ignore_index=True)
 
 
 def _verification_matrix() -> pd.DataFrame:

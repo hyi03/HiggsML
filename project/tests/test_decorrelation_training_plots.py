@@ -104,6 +104,29 @@ def test_tradeoff_figure_contains_frozen_scientific_artists():
         plt.close(figure)
 
 
+def test_tradeoff_figure_staggers_annotations_for_exact_ties():
+    """Restoring one fixed text offset for tied points must fail."""
+    tied = tuple(
+        SimpleNamespace(
+            coefficient=coefficient,
+            weighted_auc=0.81,
+            zz_ks_distances={"loose": 0.04, "medium": 0.05, "tight": 0.06},
+        )
+        for coefficient in (0.0, 0.5, 1.0)
+    )
+    figure, axis = _build_candidate_tradeoff_figure(tied)
+    try:
+        annotations = [
+            artist
+            for artist in axis.texts
+            if artist.get_text().startswith("lambda_")
+        ]
+        assert len(annotations) == 3
+        assert len({artist.get_position() for artist in annotations}) == 3
+    finally:
+        plt.close(figure)
+
+
 def test_working_point_figure_contains_three_ks_series_and_limit():
     """A blank or collapsed plot cannot satisfy the three working-point series."""
     figure, axis = _build_working_point_ks_figure(_candidate_results())

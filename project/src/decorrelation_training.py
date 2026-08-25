@@ -295,6 +295,7 @@ def generate_flatness_oof(
 ) -> pd.DataFrame:
     if not development.index.is_unique:
         raise ValueError("out-of-fold scoring requires a unique DataFrame index")
+    _validate_source_row_ids(development)
     validate_development_frame(development)
     development_folds = assign_development_folds(development, folds=config.folds)
     fitting_columns = [*DROP_TOP4_FEATURES, "m4l"]
@@ -329,6 +330,7 @@ def generate_flatness_oof(
             "out-of-fold predictions must cover every development event exactly once"
         )
     columns = [
+        "source_row_id",
         "eventNumber",
         "channelNumber",
         "split",
@@ -454,6 +456,7 @@ def fit_selected_and_score_test(
     test_scores = test.loc[
         :,
         [
+            "source_row_id",
             "eventNumber",
             "channelNumber",
             "split",
@@ -566,6 +569,7 @@ def _validated_oof_audit(
     if not isinstance(frame, pd.DataFrame) or frame.empty:
         raise ValueError("OOF audit must be a non-empty DataFrame")
     required = {
+        "source_row_id",
         "label",
         "physical_weight",
         "m4l",
@@ -576,6 +580,7 @@ def _validated_oof_audit(
         raise ValueError(f"OOF audit is missing columns: {missing}")
     if not frame.index.is_unique:
         raise ValueError("OOF audit requires a unique DataFrame index")
+    _validate_source_row_ids(frame)
     try:
         values = frame[
             ["label", "physical_weight", "m4l", _score_column_name(coefficient)]
@@ -751,6 +756,22 @@ def _positive_class_probabilities(predicted: object) -> np.ndarray:
         raise ValueError("classifier returned non-finite evaluation scores")
     scores = values[:, 1]
     return scores
+
+
+def _validate_source_row_ids(frame: pd.DataFrame) -> None:
+    if "source_row_id" not in frame:
+        raise ValueError("MC rows require source_row_id")
+    try:
+        values = frame["source_row_id"].to_numpy(dtype=float)
+    except (TypeError, ValueError) as error:
+        raise ValueError("source_row_id must contain integer CSV row ordinals") from error
+    if (
+        not np.isfinite(values).all()
+        or not np.equal(values, np.floor(values)).all()
+        or (values < 0).any()
+        or frame["source_row_id"].duplicated().any()
+    ):
+        raise ValueError("source_row_id must contain unique integer CSV row ordinals")
 
 
 def _score_column_name(coefficient: float) -> str:

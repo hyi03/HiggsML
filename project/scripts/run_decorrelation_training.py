@@ -12,6 +12,7 @@ import pandas as pd
 
 from src.decorrelation_training import (
     FlatnessOutcome,
+    FlatnessSelection,
     OneShotTestGate,
     fit_selected_and_score_test,
     run_development_study,
@@ -25,11 +26,14 @@ from src.decorrelation_training_run import (
     DecorrelationConfig,
     MCStudyPartitions,
     assert_decorrelation_sources_unchanged,
+    bind_source_row_ids,
     claim_decorrelation_output,
+    preflight_decorrelation_dependencies,
     publish_decorrelation_manifest,
     record_decorrelation_failure,
     resolve_decorrelation_output,
     resolve_decorrelation_sources,
+    validate_decorrelation_development_artifacts,
     write_decorrelation_artifacts,
 )
 from src.full_training_run import load_training_mc_frame
@@ -38,6 +42,7 @@ from src.provenance import software_versions
 
 _WORKING_POINTS = ("loose", "medium", "tight")
 _AUDIT_COLUMNS = (
+    "source_row_id",
     "eventNumber",
     "channelNumber",
     "split",
@@ -46,7 +51,7 @@ _AUDIT_COLUMNS = (
     "m4l",
     "development_fold",
 )
-_IDENTITY_COLUMNS = ("channelNumber", "eventNumber", "split")
+_IDENTITY_COLUMNS = ("source_row_id",)
 _MASS_BINS_GEV = (105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 155, 160)
 
 
@@ -80,13 +85,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         input_run=sources.training_input.input_run,
         run_dir=args.run_dir,
     )
+    software = software_versions()
+    preflight_decorrelation_dependencies(sources.config, software)
     layout = claim_decorrelation_output(layout)
     try:
-        frame = load_training_mc_frame(sources.training_input)
+        frame = bind_source_row_ids(load_training_mc_frame(sources.training_input))
         partitions = MCStudyPartitions.from_frame(frame)
         selection = run_development_study(
             partitions.development,
             sources.config,
+        )
+        development_artifacts = build_decorrelation_development_artifacts(
+            selection,
+            sources.config,
+        )
+        validate_decorrelation_development_artifacts(
+            candidate_results=development_artifacts["candidate_results"],
+            working_point_metrics=development_artifacts[
+                "working_point_metrics"
+            ],
+            oof_scores=development_artifacts["oof_scores"],
+            config=sources.config,
+            approved_development=partitions.development,
+            selected_candidate=(
+                None
+                if selection.selected is None
+                else _candidate_name(selection.selected.coefficient)
+            ),
         )
         outcome = fit_selected_and_score_test(
             partitions.development,
@@ -115,7 +140,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             sources=sources,
             outcome=outcome,
             receipt=receipt,
-            software=software_versions(),
+            software=software,
         )
     except Exception as error:
         record_decorrelation_failure(layout, error)
@@ -129,56 +154,18 @@ def build_decorrelation_artifacts(
     """Convert one immutable domain outcome into deterministic artifact values."""
     if not isinstance(outcome, FlatnessOutcome):
         raise ValueError("decorrelation artifacts require a FlatnessOutcome")
+    development = build_decorrelation_development_artifacts(
+        outcome.selection,
+        config,
+    )
     results = tuple(outcome.selection.results)
-    if tuple(result.coefficient for result in results) != tuple(config.coefficients):
-        raise ValueError("candidate results must match the frozen coefficient order")
-
-    candidate_rows: list[dict[str, Any]] = []
-    working_point_rows: list[dict[str, Any]] = []
-    for result in results:
-        candidate = _candidate_name(result.coefficient)
-        candidate_rows.append(
-            {
-                "candidate": candidate,
-                "coefficient": float(result.coefficient),
-                "weighted_oof_auc": float(result.weighted_auc),
-                "maximum_oof_zz_ks": max(
-                    float(result.zz_ks_distances[name]) for name in _WORKING_POINTS
-                ),
-                "background_score_mass_correlation": float(
-                    result.background_score_mass_correlation
-                ),
-                "eligible": not result.eligibility_reasons,
-                "eligibility_reasons": ",".join(result.eligibility_reasons),
-            }
-        )
-        for name in _WORKING_POINTS:
-            point = result.working_points[name]
-            working_point_rows.append(
-                {
-                    "candidate": candidate,
-                    "coefficient": float(result.coefficient),
-                    "working_point": name,
-                    "threshold": float(point["threshold"]),
-                    "target_background_efficiency": float(
-                        result.target_background_efficiencies[name]
-                    ),
-                    "achieved_background_efficiency": float(
-                        result.achieved_background_efficiencies[name]
-                    ),
-                    "signal_efficiency": float(result.signal_efficiencies[name]),
-                    "zz_mass_ks_distance": float(result.zz_ks_distances[name]),
-                }
-            )
 
     plot_artifacts = {
         "candidate_tradeoff.png": plot_candidate_tradeoff(results),
         "working_point_ks.png": plot_working_point_ks(results),
     }
     artifacts: dict[str, Any] = {
-        "candidate_results": pd.DataFrame(candidate_rows),
-        "working_point_metrics": pd.DataFrame(working_point_rows),
-        "oof_scores": _wide_oof_audit(results),
+        **development,
         "selection": {
             "schema_version": "1.0",
             "status": "no_eligible_candidate",
@@ -229,9 +216,65 @@ def build_decorrelation_artifacts(
     return artifacts
 
 
+def build_decorrelation_development_artifacts(
+    selection: FlatnessSelection,
+    config: DecorrelationConfig,
+) -> dict[str, pd.DataFrame]:
+    """Build the common development tables before any held-out test opening."""
+    if not isinstance(selection, FlatnessSelection):
+        raise ValueError("development artifacts require a FlatnessSelection")
+    results = tuple(selection.results)
+    if tuple(result.coefficient for result in results) != tuple(config.coefficients):
+        raise ValueError("candidate results must match the frozen coefficient order")
+
+    candidate_rows: list[dict[str, Any]] = []
+    working_point_rows: list[dict[str, Any]] = []
+    for result in results:
+        candidate = _candidate_name(result.coefficient)
+        candidate_rows.append(
+            {
+                "candidate": candidate,
+                "coefficient": float(result.coefficient),
+                "weighted_oof_auc": float(result.weighted_auc),
+                "maximum_oof_zz_ks": max(
+                    float(result.zz_ks_distances[name]) for name in _WORKING_POINTS
+                ),
+                "background_score_mass_correlation": float(
+                    result.background_score_mass_correlation
+                ),
+                "eligible": not result.eligibility_reasons,
+                "eligibility_reasons": ",".join(result.eligibility_reasons),
+            }
+        )
+        for name in _WORKING_POINTS:
+            point = result.working_points[name]
+            working_point_rows.append(
+                {
+                    "candidate": candidate,
+                    "coefficient": float(result.coefficient),
+                    "working_point": name,
+                    "threshold": float(point["threshold"]),
+                    "target_background_efficiency": float(
+                        result.target_background_efficiencies[name]
+                    ),
+                    "achieved_background_efficiency": float(
+                        result.achieved_background_efficiencies[name]
+                    ),
+                    "signal_efficiency": float(result.signal_efficiencies[name]),
+                    "zz_mass_ks_distance": float(result.zz_ks_distances[name]),
+                }
+            )
+
+    return {
+        "candidate_results": pd.DataFrame(candidate_rows),
+        "working_point_metrics": pd.DataFrame(working_point_rows),
+        "oof_scores": _wide_oof_audit(results),
+    }
+
+
 def _wide_oof_audit(results) -> pd.DataFrame:
     base: pd.DataFrame | None = None
-    identity_index: pd.MultiIndex | None = None
+    identity_index: pd.Index | None = None
     for result in results:
         score_column = _score_column(result.coefficient)
         frame = result.oof_scores
@@ -241,6 +284,20 @@ def _wide_oof_audit(results) -> pd.DataFrame:
         candidate = frame.loc[:, [*_AUDIT_COLUMNS, score_column]].copy(deep=True)
         if candidate.loc[:, _IDENTITY_COLUMNS].isna().any().any():
             raise ValueError("candidate OOF audit identity must not contain missing values")
+        try:
+            source_row_ids = candidate["source_row_id"].to_numpy(dtype=float)
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                "candidate OOF source_row_id must contain integer row ordinals"
+            ) from error
+        if (
+            not np.isfinite(source_row_ids).all()
+            or not np.equal(source_row_ids, np.floor(source_row_ids)).all()
+            or (source_row_ids < 0).any()
+        ):
+            raise ValueError(
+                "candidate OOF source_row_id must contain integer row ordinals"
+            )
         if candidate.duplicated(list(_IDENTITY_COLUMNS)).any():
             raise ValueError("candidate OOF audit identity must be unique")
         indexed = candidate.set_index(list(_IDENTITY_COLUMNS), drop=False)
@@ -266,6 +323,7 @@ def _wide_oof_audit(results) -> pd.DataFrame:
     numeric = base.loc[
         :,
         [
+            "source_row_id",
             "eventNumber",
             "channelNumber",
             "label",
