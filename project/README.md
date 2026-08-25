@@ -1,5 +1,17 @@
 # H → ZZ* → 4ℓ XGBoost Demo
 
+## DropTop4 原生平坦度训练结论（2026-08-25）
+
+预先设计的 MC-only `hep_ml` KNN flatness 研究已完成，冻结 run 为
+`runs/decorrelation-drop-top4-363490-2026-08-24`。五个系数候选均未通过既定的
+OOF AUC >= 0.80 与三个工作点 KS <= 0.10 门槛，终态为
+`no_eligible_candidate`、`selected_candidate: null`、`test_opened: false`。
+因此没有最终模型，held-out MC test 和真实数据均未开启。完整证据见
+[执行报告](docs/superpowers/plans/2026-08-24-drop-top4-knn-flatness-training-report.md)。
+
+下一步不是下载更多数据、补扫系数或放宽门槛，而是为新的去相关目标或
+template/sideband 统计方案另行预注册设计、配置和 run path。
+
 ## Full14 封存决定（2026-08-23）
 
 Full14 XGBoost 已封存为失败的历史参考；不是可部署模型，也不是未来真实数据候选。

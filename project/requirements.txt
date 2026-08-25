@@ -1,4 +1,5 @@
 awkward
+hep_ml==0.8.0
 matplotlib
 mplhep
 numpy

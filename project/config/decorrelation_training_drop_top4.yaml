@@ -1,0 +1,64 @@
+schema_version: "1.0"
+input_run: runs/full-baseline-363490-2026-08-11-r2
+input_manifest_sha256: 10e0c293dd60291193019df04f4f6dd4672893dea98d23f972c8a78f21e843b8
+input_mc_sha256: 1c5d6a3f9a750a5eb9965241dd8947d70e790cf949a36f8fa6ec1bfd058f378e
+features:
+  - lep1_pt
+  - lep2_pt
+  - lep1_eta
+  - lep2_eta
+  - lep3_eta
+  - lep4_eta
+  - pt4l
+  - deltaR_Z1
+  - deltaR_Z2
+  - deltaPhi_ZZ
+folds: 5
+model:
+  type: hep_ml.UGradientBoostingClassifier
+  n_estimators: 300
+  learning_rate: 0.05
+  max_depth: 3
+  min_samples_leaf: 50
+  subsample: 0.8
+  random_seed: 42
+flatness:
+  type: hep_ml.losses.KnnFlatnessLossFunction
+  uniform_feature: m4l
+  uniform_label: 0
+  n_neighbours: 100
+  max_groups: 5000
+  power: 2.0
+  allow_wrong_signs: true
+coefficients:
+  - 0.0
+  - 0.5
+  - 1.0
+  - 2.0
+  - 3.0
+working_points:
+  loose: 0.50
+  medium: 0.20
+  tight: 0.10
+auc_floor: 0.80
+ks_limit: 0.10
+require_signal_efficiency_above_background: true
+artifacts_no_selection:
+  - artifacts/candidate_results.csv
+  - artifacts/working_point_metrics.csv
+  - artifacts/selection.json
+  - predictions/oof_scores.csv.gz
+  - plots/candidate_tradeoff.png
+  - plots/working_point_ks.png
+artifacts_selected:
+  - artifacts/candidate_results.csv
+  - artifacts/working_point_metrics.csv
+  - artifacts/selection.json
+  - artifacts/test_metrics.json
+  - model/flatness_model.pkl
+  - predictions/oof_scores.csv.gz
+  - predictions/selected_oof_scores.csv.gz
+  - predictions/test_scores.csv.gz
+  - plots/candidate_tradeoff.png
+  - plots/working_point_ks.png
+  - plots/selected_mass_sculpting.png

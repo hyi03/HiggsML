@@ -400,6 +400,7 @@ def test_software_versions_uses_distribution_metadata(monkeypatch):
         "uproot": "version-of-uproot",
         "xgboost": "unavailable",
         "scikit-learn": "version-of-scikit-learn",
+        "hep_ml": "version-of-hep-ml",
     }
     assert requested == [
         "numpy",
@@ -408,6 +409,7 @@ def test_software_versions_uses_distribution_metadata(monkeypatch):
         "uproot",
         "xgboost",
         "scikit-learn",
+        "hep-ml",
     ]
 
 
