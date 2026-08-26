@@ -1,5 +1,53 @@
 # H → ZZ* → 4ℓ XGBoost Demo 项目总览
 
+## 当前 ARM64 Angular5 + DropTop4 终态（2026-08-26）
+
+在原生 Apple Silicon ARM64（Python `3.12.13`、NumPy `2.5.1`、pandas `3.0.5`、
+scikit-learn `1.9.0`、XGBoost `3.3.0`）中，预先冻结的一次性 MC-only 质量分箱迭代
+ZZ 重加权研究已完成。它保留 DropTop4 的十个模型特征，只追加五个 Angular5 角变量；
+`m4l`、标识/provenance 字段和权重均未作为模型特征。R2 在 x86_64/Rosetta 上因重新计算
+浮点量与 ARM 冻结表不完全相等而停止：`mZ1` 的最大绝对差异为 `9.66e-13`（其他派生量为
+约 `1e-15`–`1.83e-12`）。这确认是 CPU/运行架构差异，而不是 source identity、CSV
+解析、selection 或 ROOT 输入损坏；R3 使用独立的原生 ARM64 路径，没有采用容差方案。
+
+identity 与 enrichment 都保留 `199104` 行和权威旧列的词法记录/行序。旧 legacy key 有
+2 个重复组、4 行，但 canonical `(source_sample, source_entry)` 是完整一对一且唯一的。
+绑定的生产收据为 identity manifest
+`74ebc01ee452bf2f6a7a792d14ed1a62eefefffc6bb090a498fb76abe20273a0`、identity table
+`a3ffd8c53aca90dc1813d4f88f9d12113b1918a6f193b8f8ee792cdfd4621f94`、enrichment manifest
+`ab5e283f4b6a2038a100a2a9d4e6745cccc3ee7f400ef056bcd05d3c22f28ad5`、enrichment table
+`bc31f4e65ccecc0a1962648cfe240b67d8ecc6df8eda2478b3f46c93d2f34f09`，以及 training config
+`3b771cc739947d7feb4bb0f2f92a2a34b572bd0c78da8d20a4bf477964c285de`。
+
+冻结资格条件是 weighted OOF AUC >= `0.80`、每个 loose/medium/tight OOF ZZ KS <=
+`0.10`，且三个工作点的 signal efficiency 都严格高于 achieved ZZ efficiency。六轮中
+所有 signal-efficiency gate 都通过：iteration 0 通过 AUC 但三个 KS 均失败；iteration 5
+通过全部 KS 但 AUC 失败。因此选择记录为 `no_eligible_iteration`、
+`selected_iteration: null`、`test_opened: false`，且精确 8-file no-selection allowlist
+审计通过：没有模型、test 指标或预测 artifact。
+
+| 迭代 | 候选 / 树数 | weighted OOF AUC | ZZ KS（loose / medium / tight） | 资格与原因 |
+|---:|---|---:|---:|---|
+| 0 | `depth4_child20` / 907 | 0.805150881259955 | 0.1645048771773192 / 0.2871440397452666 / 0.333771961215733 | 否；loose、medium、tight KS |
+| 1 | `depth3_child20` / 980 | 0.7969512716122573 | 0.1331765017253415 / 0.20697354210107244 / 0.24956891177813523 | 否；AUC、loose、medium、tight KS |
+| 2 | `depth4_child20` / 882 | 0.7910393793089066 | 0.11802005736915522 / 0.1779058575996429 / 0.21232784339918892 | 否；AUC、loose、medium、tight KS |
+| 3 | `depth4_child20` / 731 | 0.7777583601726561 | 0.0897799588703656 / 0.12320645298202404 / 0.12778560765808394 | 否；AUC、medium、tight KS |
+| 4 | `depth4_child20` / 835 | 0.7705509060126216 | 0.07725381616480781 / 0.10586890011029743 / 0.10377348918175572 | 否；AUC、medium、tight KS |
+| 5 | `depth4_child20` / 879 | 0.7665404021047497 | 0.07381807828236636 / 0.090638729937013 / 0.08836325258185229 | 否；AUC |
+
+iteration 5 相对于冻结的十特征 DropTop4 + 重加权 iteration 5（AUC
+`0.7588712973047708`、最大 KS `0.09720271279351`）略提高 AUC 并降低最大 KS，但仍不合格。
+它也优于 KNN flatness 的最终候选（AUC `0.7566586485761435`、最大 KS
+`0.20566162971445773`）的质量形状，但没有改变选择结论。Full14（AUC
+`0.8852959102354316`、最大 KS `0.4579540115915921`）和 Full14 + 重加权 iteration 5
+（AUC `0.8523982143190011`、最大 KS `0.24583464407366806`）仍是仅供比较的冻结历史参考。
+完整 signal/ZZ efficiencies、收据和审计见
+[ARM64 Angular5 执行报告](../superpowers/plans/2026-08-26-drop-top4-angular5-r3-arm64-report.md)。
+
+这是一项教育/技术性 MC-only 研究，不是 ATLAS 结果、Higgs 发现或物理测量。本报告不
+授权下一阶段训练、额外 iteration、放宽门槛、held-out test-opening 或真实数据访问；
+任何后续工作必须采用新的预注册设计、配置和 run path。
+
 ## DropTop4 KNN flatness 终态（2026-08-25）
 
 一次性 MC-only 原生平坦度训练已经完成。五个预声明系数的 weighted OOF AUC 为
