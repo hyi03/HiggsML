@@ -99,6 +99,12 @@ _DROP_TOP4_FEATURES = approved_reweighting_features((
     "lep1_pt", "lep2_pt", "lep1_eta", "lep2_eta", "lep3_eta",
     "lep4_eta", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ",
 ))
+_ANGULAR5_R3_ARM64_FEATURES = approved_reweighting_features((
+    "lep1_pt", "lep2_pt", "lep1_eta", "lep2_eta", "lep3_eta",
+    "lep4_eta", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ",
+    "cos_theta_star", "cos_theta_1", "cos_theta_2", "phi_decay_planes",
+    "phi_production_plane",
+))
 _EDGES = tuple(float(value) for value in range(105, 161, 5))
 _INPUT_HASH = "10e0c293dd60291193019df04f4f6dd4672893dea98d23f972c8a78f21e843b8"
 _REFERENCE_HASH = "da015d0a00bb002e69dc98eb9631c1b561af65f8da44b78a641d4e013558bf65"
@@ -133,6 +139,8 @@ class MassBinReweightingConfig:
     require_signal_efficiency_above_zz: bool
     artifacts_no_selection: tuple[str, ...]
     artifacts_selected: tuple[str, ...]
+    input_table_path: str | None = None
+    input_table_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -221,6 +229,7 @@ def _load_config_bytes(payload: bytes) -> MassBinReweightingConfig:
     new = common | {
         "reweighting_reference_run", "reweighting_reference_manifest_sha256",
     }
+    angular5 = new | {"input_table_path", "input_table_sha256"}
     if not isinstance(raw, dict):
         raise ValueError("mass-bin reweighting config does not match an approved schema")
     schema_version = raw.get("schema_version")
@@ -232,6 +241,10 @@ def _load_config_bytes(payload: bytes) -> MassBinReweightingConfig:
         expected_features = _DROP_TOP4_FEATURES
         reference_run = "runs/mass-reweighting-363490-2026-08-11"
         reference_hash = "145e38478dfd12310a82f4ed544c6cf0b09204cbc1c7d08e6e485941c00f9e38"
+    elif schema_version == "1.2" and set(raw) == angular5:
+        expected_features = _ANGULAR5_R3_ARM64_FEATURES
+        reference_run = "runs/mass-reweighting-363490-2026-08-11"
+        reference_hash = "145e38478dfd12310a82f4ed544c6cf0b09204cbc1c7d08e6e485941c00f9e38"
     else:
         raise ValueError("mass-bin reweighting config does not match an approved schema")
     raw_features = raw.get("features")
@@ -241,9 +254,22 @@ def _load_config_bytes(payload: bytes) -> MassBinReweightingConfig:
         features = approved_reweighting_features(tuple(raw_features))
     except ValueError as error:
         raise ValueError("mass-bin reweighting config changes a frozen decision") from error
+    expected_input_run = (
+        "runs/angular5-mc-363490-2026-08-26-r3-arm64"
+        if schema_version == "1.2"
+        else "runs/full-baseline-363490-2026-08-11-r2"
+    )
+    expected_input_hash = (
+        "ab5e283f4b6a2038a100a2a9d4e6745cccc3ee7f400ef056bcd05d3c22f28ad5"
+        if schema_version == "1.2" else _INPUT_HASH
+    )
+    expected_table_path = (
+        "runs/angular5-mc-363490-2026-08-26-r3-arm64/processed/mc_events_angular5.csv.gz"
+    )
+    expected_table_hash = "bc31f4e65ccecc0a1962648cfe240b67d8ecc6df8eda2478b3f46c93d2f34f09"
     exact = (
-        raw.get("input_run") == "runs/full-baseline-363490-2026-08-11-r2"
-        and raw.get("input_manifest_sha256") == _INPUT_HASH
+        raw.get("input_run") == expected_input_run
+        and raw.get("input_manifest_sha256") == expected_input_hash
         and raw.get("reference_run") == "runs/full-training-363490-2026-08-11-r2"
         and raw.get("reference_manifest_sha256") == _REFERENCE_HASH
         and raw.get("ablation_run") == "runs/mass-ablation-363490-2026-08-11"
@@ -263,6 +289,13 @@ def _load_config_bytes(payload: bytes) -> MassBinReweightingConfig:
         and raw.get("require_signal_efficiency_above_zz") is True
         and raw.get("reweighting_reference_run", reference_run) == reference_run
         and raw.get("reweighting_reference_manifest_sha256", reference_hash) == reference_hash
+        and (
+            schema_version != "1.2"
+            or (
+                raw.get("input_table_path") == expected_table_path
+                and raw.get("input_table_sha256") == expected_table_hash
+            )
+        )
     )
     if not exact:
         raise ValueError("mass-bin reweighting config changes a frozen decision")
@@ -280,7 +313,7 @@ def _load_config_bytes(payload: bytes) -> MassBinReweightingConfig:
     return MassBinReweightingConfig(
         schema_version=schema_version,
         input_run=raw["input_run"],
-        input_manifest_sha256=_INPUT_HASH,
+        input_manifest_sha256=expected_input_hash,
         reference_run=raw["reference_run"],
         reference_manifest_sha256=_REFERENCE_HASH,
         ablation_run=raw["ablation_run"],
@@ -302,6 +335,8 @@ def _load_config_bytes(payload: bytes) -> MassBinReweightingConfig:
         require_signal_efficiency_above_zz=True,
         artifacts_no_selection=tuple(no_selection),
         artifacts_selected=tuple(selected),
+        input_table_path=(expected_table_path if schema_version == "1.2" else None),
+        input_table_sha256=(expected_table_hash if schema_version == "1.2" else None),
     )
 
 
@@ -356,10 +391,18 @@ def resolve_reweighting_sources(
         raise ValueError("--input-run does not match the frozen reweighting config")
     if requested_reference != Path(config.reference_run).resolve():
         raise ValueError("--reference-run does not match the frozen reweighting config")
-    training_input, task4a = _resolve_task4a_sources_without_table_load(requested_input)
+    if config.schema_version == "1.2":
+        training_input, task4a = _resolve_angular5_r3_arm64_sources(
+            requested_input, config
+        )
+    else:
+        training_input, task4a = _resolve_task4a_sources_without_table_load(requested_input)
     if training_input.hashes["manifest"] != config.input_manifest_sha256:
         raise ValueError("Task 4A manifest does not match the frozen reweighting config")
-    reference, _ = _resolve_reference_run(requested_reference, training_input, config)
+    if config.schema_version == "1.2":
+        reference = _resolve_angular5_r3_arm64_reference(requested_reference, config)
+    else:
+        reference, _ = _resolve_reference_run(requested_reference, training_input, config)
     ablation_manifest = StudySource.from_path(
         "ablation_manifest", requested_ablation / "artifacts/study_manifest.json"
     )
@@ -404,6 +447,71 @@ def resolve_reweighting_sources(
         ),
         records=MappingProxyType(records),
     )
+
+
+def _resolve_angular5_r3_arm64_sources(
+    input_run: Path, config: MassBinReweightingConfig,
+) -> tuple[TrainingInput, dict[str, StudySource]]:
+    table_path = Path(config.input_table_path or "")
+    if table_path.resolve() != (input_run / "processed/mc_events_angular5.csv.gz").resolve():
+        raise ValueError("R3-ARM64 Angular5 table path does not match the frozen config")
+    records = {
+        "task4a_config": StudySource.from_path("task4a_config", input_run / "config.yaml"),
+        "task4a_mc": StudySource.from_path("task4a_mc", table_path),
+        "task4a_summary": StudySource.from_path(
+            "task4a_summary", input_run / "artifacts/angular5_summary.json", capture=True
+        ),
+        "task4a_manifest": StudySource.from_path(
+            "task4a_manifest", input_run / "artifacts/run_manifest.json", capture=True
+        ),
+    }
+    if (
+        records["task4a_mc"].sha256 != config.input_table_sha256
+        or records["task4a_manifest"].sha256 != config.input_manifest_sha256
+    ):
+        raise ValueError("R3-ARM64 Angular5 input does not match the frozen reweighting config")
+    try:
+        summary = json.loads(records["task4a_summary"].snapshot or b"")
+        expected_rows = summary["row_count"]
+    except (TypeError, KeyError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("R3-ARM64 Angular5 summary is invalid") from error
+    if isinstance(expected_rows, bool) or not isinstance(expected_rows, int) or expected_rows <= 0:
+        raise ValueError("R3-ARM64 Angular5 summary row count is invalid")
+    hashes = MappingProxyType({
+        "config": records["task4a_config"].sha256,
+        "mc": records["task4a_mc"].sha256,
+        "summary": records["task4a_summary"].sha256,
+        "manifest": records["task4a_manifest"].sha256,
+    })
+    return TrainingInput(
+        input_run=input_run,
+        config_path=records["task4a_config"].path,
+        mc_path=records["task4a_mc"].path,
+        summary_path=records["task4a_summary"].path,
+        manifest_path=records["task4a_manifest"].path,
+        hashes=hashes,
+        expected_rows=expected_rows,
+    ), records
+
+
+def _resolve_angular5_r3_arm64_reference(
+    reference_run: Path, config: MassBinReweightingConfig,
+) -> dict[str, StudySource]:
+    records = {
+        "reference_config": StudySource.from_path("reference_config", reference_run / "config.yaml"),
+        "reference_manifest": StudySource.from_path(
+            "reference_manifest", reference_run / "artifacts/training_manifest.json"
+        ),
+        "reference_model": StudySource.from_path(
+            "reference_model", reference_run / "model/xgboost_model.json"
+        ),
+        "reference_metrics": StudySource.from_path(
+            "reference_metrics", reference_run / "artifacts/metrics.json"
+        ),
+    }
+    if records["reference_manifest"].sha256 != config.reference_manifest_sha256:
+        raise ValueError("reference manifest does not match the frozen reweighting config")
+    return records
 
 
 def assert_reweighting_sources_unchanged(sources: ReweightingSources) -> None:

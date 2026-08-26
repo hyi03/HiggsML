@@ -19,6 +19,14 @@ from .full_training_policy import (
 )
 
 
+_ANGULAR5_R3_ARM64_FEATURES = (
+    "lep1_pt", "lep2_pt", "lep1_eta", "lep2_eta", "lep3_eta",
+    "lep4_eta", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ",
+    "cos_theta_star", "cos_theta_1", "cos_theta_2", "phi_decay_planes",
+    "phi_production_plane",
+)
+
+
 @dataclass(frozen=True)
 class FoldMetric:
     fold: int
@@ -251,7 +259,7 @@ def score_model(
 
 
 def validate_model_features(features: Sequence[object]) -> tuple[str, ...]:
-    """Validate an ordered, non-empty subset of the frozen model features."""
+    """Validate a legacy subset or the exact sealed R3-ARM64 feature profile."""
     try:
         selected = tuple(features)
     except TypeError as error:
@@ -262,7 +270,7 @@ def validate_model_features(features: Sequence[object]) -> tuple[str, ...]:
         raise ValueError("model features must be strings")
     if len(set(selected)) != len(selected):
         raise ValueError("model features must be unique")
-    if any(feature not in FEATURES for feature in selected):
+    if selected != _ANGULAR5_R3_ARM64_FEATURES and any(feature not in FEATURES for feature in selected):
         raise ValueError("model features must be an ordered subset of FEATURES")
     return selected
 

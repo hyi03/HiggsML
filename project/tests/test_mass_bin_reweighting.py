@@ -32,6 +32,12 @@ DROP_TOP4 = (
     "lep1_pt", "lep2_pt", "lep1_eta", "lep2_eta", "lep3_eta",
     "lep4_eta", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ",
 )
+ANGULAR5_R3_ARM64 = (
+    "lep1_pt", "lep2_pt", "lep1_eta", "lep2_eta", "lep3_eta",
+    "lep4_eta", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ",
+    "cos_theta_star", "cos_theta_1", "cos_theta_2", "phi_decay_planes",
+    "phi_production_plane",
+)
 
 
 @pytest.fixture
@@ -84,8 +90,10 @@ def _study_frame(
     ) -> None:
         nonlocal event_number
         features = {feature: 0.4 for feature in FEATURES}
+        features.update({feature: 0.4 for feature in ANGULAR5_R3_ARM64})
         for iteration, score in enumerate(scores):
             features[FEATURES[iteration]] = score
+            features[ANGULAR5_R3_ARM64[iteration]] = score
         features[FEATURES[6]] = test_score
         if split == "test":
             features["lep1_pt"] = test_score
@@ -197,7 +205,10 @@ class _StudyClassifier:
             score = x["lep1_pt"].to_numpy(dtype=float)
         else:
             iteration = self.ordinal // 30
-            score = x[FEATURES[iteration]].to_numpy(dtype=float)
+            column = FEATURES[iteration]
+            if column not in x.columns:
+                column = x.columns[iteration]
+            score = x[column].to_numpy(dtype=float)
         return np.column_stack([1.0 - score, score])
 
 
@@ -522,7 +533,7 @@ def test_study_refits_all_candidates_and_applies_the_exact_first_update(
     pd.testing.assert_frame_equal(frame, before)
 
 
-@pytest.mark.parametrize("features", [DROP_TOP4, tuple(FEATURES)])
+@pytest.mark.parametrize("features", [DROP_TOP4, tuple(FEATURES), ANGULAR5_R3_ARM64])
 def test_study_passes_only_approved_features_to_every_fit_and_predict(features):
     """Using a broader or reordered profile would invalidate the sealed study."""
     factory = _StudyFactory()
@@ -552,6 +563,22 @@ def test_study_passes_only_approved_features_to_every_fit_and_predict(features):
         for record in factory.records
         for columns in record["predict_columns"]
     )
+
+
+def test_angular5_r3_arm64_profile_is_literal_and_excludes_all_non_model_columns():
+    """A widened or substituted ARM64 profile must never reach a model input."""
+    assert mass_bin_reweighting.approved_reweighting_features(ANGULAR5_R3_ARM64) == (
+        "lep1_pt", "lep2_pt", "lep1_eta", "lep2_eta", "lep3_eta",
+        "lep4_eta", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ",
+        "cos_theta_star", "cos_theta_1", "cos_theta_2", "phi_decay_planes",
+        "phi_production_plane",
+    )
+    forbidden = {
+        "m4l", "lep3_pt", "lep4_pt", "mZ1", "mZ2", "eventNumber",
+        "channelNumber", "runNumber", "mcChannelNumber", "source_sample",
+        "source_entry", "split", "label", "physical_weight", "train_weight",
+    }
+    assert forbidden.isdisjoint(ANGULAR5_R3_ARM64)
 
 
 @pytest.mark.parametrize(
@@ -730,8 +757,9 @@ def _poison_test_analysis_columns(frame: pd.DataFrame) -> pd.DataFrame:
     return poisoned
 
 
+@pytest.mark.parametrize("features", [tuple(FEATURES), ANGULAR5_R3_ARM64])
 def test_no_eligible_iteration_never_validates_or_scores_poisoned_test(
-    policy, training_policy, monkeypatch
+    policy, training_policy, monkeypatch, features
 ):
     """Opening test after six failed iterations would make NaN test values observable."""
     factory = _StudyFactory()
@@ -745,6 +773,7 @@ def test_no_eligible_iteration_never_validates_or_scores_poisoned_test(
         _poison_test_analysis_columns(_study_frame(("sculpted",) * 6)),
         training_policy,
         policy,
+        features=features,
         model_factory=factory,
     )
 
@@ -810,14 +839,16 @@ def test_empty_fixed_bin_preserves_all_effective_count_gate_evidence(
     assert outcome.fixed_bin_statistics.loc[BIN_NAMES[0], "effective_count"] == 0.0
 
 
+@pytest.mark.parametrize("features", [tuple(FEATURES), ANGULAR5_R3_ARM64])
 def test_eligible_study_fits_once_scores_test_once_and_uses_oof_frozen_thresholds(
-    policy, training_policy
+    policy, training_policy, features
 ):
     """A refit retry or test-derived cut would violate the one-time terminal."""
     factory = _StudyFactory()
 
     outcome = mass_bin_reweighting.run_mass_bin_reweighting_study(
-        _study_frame(("flat",)), training_policy, policy, model_factory=factory
+        _study_frame(("flat",)), training_policy, policy,
+        features=features, model_factory=factory,
     )
 
     final_records = [record for record in factory.records if record["is_final"]]

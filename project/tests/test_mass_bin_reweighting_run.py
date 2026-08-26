@@ -33,6 +33,12 @@ DROP_TOP4 = (
     "lep1_pt", "lep2_pt", "lep1_eta", "lep2_eta", "lep3_eta",
     "lep4_eta", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ",
 )
+ANGULAR5_R3_ARM64 = (
+    "lep1_pt", "lep2_pt", "lep1_eta", "lep2_eta", "lep3_eta",
+    "lep4_eta", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ",
+    "cos_theta_star", "cos_theta_1", "cos_theta_2", "phi_decay_planes",
+    "phi_production_plane",
+)
 
 
 NO_SELECTION = {
@@ -101,6 +107,37 @@ def test_drop_top4_config_changes_only_the_approved_feature_profile():
         "artifacts_selected",
     ):
         assert getattr(reduced, name) == getattr(full, name)
+
+
+def test_angular5_r3_arm64_config_binds_the_exact_sealed_table_and_profile():
+    config = load_mass_bin_reweighting_config(
+        "config/mass_bin_reweighting_drop_top4_angular5_r3_arm64.yaml"
+    )
+    assert config.schema_version == "1.2"
+    assert config.input_run == "runs/angular5-mc-363490-2026-08-26-r3-arm64"
+    assert config.input_table_path == (
+        "runs/angular5-mc-363490-2026-08-26-r3-arm64/processed/"
+        "mc_events_angular5.csv.gz"
+    )
+    assert config.input_table_sha256 == (
+        "bc31f4e65ccecc0a1962648cfe240b67d8ecc6df8eda2478b3f46c93d2f34f09"
+    )
+    assert config.features == ANGULAR5_R3_ARM64
+
+
+def test_angular5_r3_arm64_source_binding_hashes_only_the_sealed_mc_table(monkeypatch):
+    monkeypatch.setattr(pd, "read_csv", lambda *args, **kwargs: pytest.fail("source binding must not parse CSV"))
+    sources = resolve_reweighting_sources(
+        input_run="runs/angular5-mc-363490-2026-08-26-r3-arm64",
+        reference_run="runs/full-training-363490-2026-08-11-r2",
+        config_path="config/mass_bin_reweighting_drop_top4_angular5_r3_arm64.yaml",
+    )
+    assert sources.training_input.mc_path == Path(
+        "runs/angular5-mc-363490-2026-08-26-r3-arm64/processed/mc_events_angular5.csv.gz"
+    ).resolve()
+    assert sources.training_input.hashes["mc"] == (
+        "bc31f4e65ccecc0a1962648cfe240b67d8ecc6df8eda2478b3f46c93d2f34f09"
+    )
 
 
 def test_policy_manifest_record_uses_bound_drop_top4_profile():

@@ -30,6 +30,12 @@ DROP_TOP4 = (
     "lep1_pt", "lep2_pt", "lep1_eta", "lep2_eta", "lep3_eta",
     "lep4_eta", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ",
 )
+ANGULAR5_R3_ARM64 = (
+    "lep1_pt", "lep2_pt", "lep1_eta", "lep2_eta", "lep3_eta",
+    "lep4_eta", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ",
+    "cos_theta_star", "cos_theta_1", "cos_theta_2", "phi_decay_planes",
+    "phi_production_plane",
+)
 
 
 def test_cli_module_exposes_main():
@@ -158,6 +164,43 @@ def test_drop_top4_cli_uses_exact_profile_and_protects_reference_run(monkeypatch
     }]
     assert resolver_calls[1]["reweighting_reference_run"] == Path("reweighting-reference")
     assert writer_calls[0]["features"] == DROP_TOP4
+
+
+def test_angular5_r3_arm64_cli_passes_only_the_sealed_15_feature_profile(monkeypatch):
+    unresolved = SimpleNamespace(run_dir="out", directory_identities=None)
+    claimed = SimpleNamespace(run_dir="out", directory_identities={".": (1, 2)})
+    config_path = Path("config/mass_bin_reweighting_drop_top4_angular5_r3_arm64.yaml")
+    config = load_mass_bin_reweighting_config(config_path)
+    sources = ReweightingSources(
+        config=config,
+        config_bytes=config_path.read_bytes(),
+        training_input=SimpleNamespace(
+            input_run="input", expected_rows=3,
+            mc_path=Path(config.input_table_path),
+        ),
+        reference_run=Path("reference"), ablation_run=Path("ablation"),
+        raw_zz_path=Path("raw-zz"), reweighting_reference_run=Path("reweighting-reference"),
+        policy="training-policy", reweighting_policy="reweighting-policy",
+        records={"study_config": SimpleNamespace(path="cfg")},
+    )
+    calls: list[tuple[str, object]] = []
+    resolves = iter((unresolved, unresolved))
+    monkeypatch.setattr(run_mass_bin_reweighting, "resolve_reweighting_output", lambda **_: next(resolves))
+    monkeypatch.setattr(run_mass_bin_reweighting, "resolve_reweighting_sources", lambda **_: sources)
+    monkeypatch.setattr(run_mass_bin_reweighting, "claim_reweighting_output", lambda _: claimed)
+    monkeypatch.setattr(run_mass_bin_reweighting, "load_training_mc_frame", lambda value: calls.append(("load", value)) or object())
+    monkeypatch.setattr(run_mass_bin_reweighting, "summarize_mc_source_rows", lambda *_: {"row_count": 3, "rows_by_split": {"train": 1, "validation": 1, "test": 1}})
+    outcome = SimpleNamespace(status="no_eligible_iteration", selected_iteration=None, model=None, test_scores=None)
+    monkeypatch.setattr(run_mass_bin_reweighting, "run_mass_bin_reweighting_study", lambda *_, features: calls.append(("features", features)) or outcome)
+    monkeypatch.setattr(run_mass_bin_reweighting, "build_reweighting_artifacts", lambda _: {"selection": {"status": "no_eligible_iteration", "selected_iteration": None, "test_opened": False}})
+    monkeypatch.setattr(run_mass_bin_reweighting, "write_reweighting_artifacts", lambda *_, **__: object())
+    monkeypatch.setattr(run_mass_bin_reweighting, "assert_reweighting_sources_unchanged", lambda _: None)
+    monkeypatch.setattr(run_mass_bin_reweighting, "publish_reweighting_manifest", lambda *_, **__: {})
+    monkeypatch.setattr(run_mass_bin_reweighting, "policy_manifest_record", lambda _: {})
+    monkeypatch.setattr(run_mass_bin_reweighting, "software_versions", lambda: {})
+
+    assert run_mass_bin_reweighting.main(["--input-run", "in", "--reference-run", "ref", "--config", "cfg", "--run-dir", "out"]) == 0
+    assert calls == [("load", sources.training_input), ("features", ANGULAR5_R3_ARM64)]
 
 
 def test_occupied_output_refuses_before_csv_model_or_plot(monkeypatch):
