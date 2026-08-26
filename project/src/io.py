@@ -117,7 +117,13 @@ def iter_events(
             step_size=int(chunk_size_events),
             library="ak",
         ):
-            for index in range(len(arrays)):
+            chunk_length = len(arrays)
+            if entry_stop is not None:
+                remaining = int(entry_stop) - source_entry
+                if remaining <= 0:
+                    break
+                chunk_length = min(chunk_length, remaining)
+            for index in range(chunk_length):
                 event = {}
                 for canonical, physical in zip(requested_canonical, requested):
                     value = arrays[physical][index]
