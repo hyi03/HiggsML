@@ -195,3 +195,13 @@ def test_identity_baseline_reports_legacy_duplicates_without_rejecting_them():
 
     assert outcome.evidence["legacy_duplicate_groups"] == 1
     assert outcome.evidence["legacy_duplicate_rows"] == 2
+    detail = outcome.evidence["legacy_duplicate_details"][0]
+    assert dict(detail["legacy_key"]) == {
+        "runNumber": 284500,
+        "eventNumber": 102001,
+        "channelNumber": 345060,
+    }
+    assert [dict(identity) for identity in detail["canonical_identities"]] == [
+        {"source_sample": "higgs_345060", "source_entry": 17},
+        {"source_sample": "higgs_345060", "source_entry": 29},
+    ]

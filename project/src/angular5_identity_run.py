@@ -306,9 +306,11 @@ def claim_identity_output(
 
     parent = _binding._open_claim_parent(target)
     root_descriptor: int | None = None
+    claimed = False
     try:
         try:
             os.mkdir(target.name, dir_fd=parent)
+            claimed = True
         except FileExistsError as error:
             raise FileExistsError(
                 f"Angular5 identity run directory already exists: {logical}"
@@ -329,6 +331,27 @@ def claim_identity_output(
             artifacts_dir=target / "artifacts",
             directory_identities=MappingProxyType(identities),
         )
+    except BaseException as error:
+        if claimed:
+            if root_descriptor is None:
+                try:
+                    root_descriptor = os.open(
+                        target.name, _binding._directory_flags(), dir_fd=parent
+                    )
+                except BaseException:
+                    root_descriptor = None
+            if root_descriptor is not None:
+                locked = False
+                try:
+                    _safety._terminal_lock_acquire(root_descriptor)
+                    locked = True
+                    _install_failure_locked(root_descriptor, target, error)
+                except BaseException:
+                    pass
+                finally:
+                    if locked:
+                        _safety._terminal_lock_release(root_descriptor)
+        raise
     finally:
         if root_descriptor is not None:
             os.close(root_descriptor)

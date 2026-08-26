@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 
 import awkward as ak
+import gzip
 import numpy as np
 import pandas as pd
 import pytest
@@ -16,7 +17,9 @@ import uproot
 import yaml
 
 from src import angular5_enrichment as enrichment_safety
+from src import angular5_identity_run as identity_run
 from src.angular5_enrichment_run import Angular5SourceReceipt
+from src.angular5_identity import build_source_identity_baseline
 from src.angular5_identity_run import (
     IdentityConfig,
     IdentitySources,
@@ -343,6 +346,34 @@ def test_identity_claim_rejects_non_frozen_or_protected_path(tmp_path):
             )
 
 
+@pytest.mark.parametrize("failed_child", ["processed", "artifacts"])
+def test_identity_claim_records_terminal_when_child_creation_is_interrupted(
+    tmp_path, monkeypatch, failed_child
+):
+    sources = _fixture_sources(tmp_path)
+    real_mkdir = identity_run.os.mkdir
+
+    def interrupt_child(path, *args, **kwargs):
+        if os.fspath(path) == failed_child:
+            raise KeyboardInterrupt()
+        return real_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(identity_run.os, "mkdir", interrupt_child)
+
+    with pytest.raises(KeyboardInterrupt):
+        claim_identity_output(
+            sources=sources,
+            project_root=sources.project_root,
+            working_directory=sources.project_root,
+            run_dir=OUTPUT_RUN,
+        )
+
+    run_dir = sources.project_root / OUTPUT_RUN
+    assert (run_dir / ".terminal.failed").is_dir()
+    assert json.loads((run_dir / "failure.json").read_text())["status"] == "failed"
+    assert not (run_dir / "artifacts/run_manifest.json").exists()
+
+
 def test_build_identity_keeps_distinct_entries_for_duplicate_legacy_keys(tmp_path):
     sources = _fixture_sources(tmp_path)
 
@@ -360,6 +391,86 @@ def test_build_identity_keeps_distinct_entries_for_duplicate_legacy_keys(tmp_pat
     ]
     assert outcome.evidence["legacy_duplicate_groups"] == 1
     assert outcome.evidence["legacy_duplicate_rows"] == 2
+
+
+@pytest.mark.skipif(
+    not (PROJECT / SOURCE_PATHS["task4a_mc"]).exists()
+    or not (PROJECT / SOURCE_PATHS["higgs_root"]).exists(),
+    reason="frozen MC inputs are transferred outside Git",
+)
+def test_real_frozen_table_reports_exact_duplicate_source_entries_and_tokens():
+    payload = (PROJECT / SOURCE_PATHS["task4a_mc"]).read_bytes()
+    authoritative = pd.read_csv(
+        PROJECT / SOURCE_PATHS["task4a_mc"], compression="gzip"
+    )
+    assert len(authoritative) == 199_104
+    duplicate_rows = authoritative.loc[
+        authoritative.duplicated(
+            ["runNumber", "eventNumber", "channelNumber"], keep=False
+        )
+    ]
+    assert duplicate_rows[
+        ["runNumber", "eventNumber", "channelNumber"]
+    ].drop_duplicates().values.tolist() == [
+        [284500, 102001, 345060],
+        [284500, 1136001, 345060],
+    ]
+
+    expected_entries = {
+        102001: [173348, 345900],
+        1136001: [340911, 342358],
+    }
+    with uproot.open(PROJECT / SOURCE_PATHS["higgs_root"]) as root:
+        tree = root["analysis"]
+        for event_number, entries in expected_entries.items():
+            for entry in entries:
+                values = tree.arrays(
+                    ["runNumber", "eventNumber", "channelNumber"],
+                    entry_start=entry,
+                    entry_stop=entry + 1,
+                    library="np",
+                )
+                assert [
+                    int(values["runNumber"][0]),
+                    int(values["eventNumber"][0]),
+                    int(values["channelNumber"][0]),
+                ] == [284500, event_number, 345060]
+
+    reconstructed = {}
+    for sample_name, channel, offset in (
+        ("higgs_345060", 345060, 1_000_000),
+        ("zz_363490", 363490, 2_000_000),
+    ):
+        sample = authoritative.loc[authoritative["channelNumber"] == channel].copy()
+        sample["source_sample"] = sample_name
+        sample["source_entry"] = np.arange(len(sample), dtype=np.int64) + offset
+        if channel == 345060:
+            for event_number, entries in expected_entries.items():
+                positions = sample.index[sample["eventNumber"] == event_number]
+                assert len(positions) == 2
+                sample.loc[positions, "source_entry"] = entries
+        reconstructed[sample_name] = sample.reset_index(drop=True)
+
+    outcome = build_source_identity_baseline(payload, reconstructed)
+
+    assert outcome.evidence["legacy_duplicate_groups"] == 2
+    assert outcome.evidence["legacy_duplicate_rows"] == 4
+    details = outcome.evidence["legacy_duplicate_details"]
+    assert [detail["legacy_key"]["eventNumber"] for detail in details] == [
+        102001,
+        1136001,
+    ]
+    assert [
+        [identity["source_entry"] for identity in detail["canonical_identities"]]
+        for detail in details
+    ] == [[173348, 345900], [340911, 342358]]
+    old_records = gzip.decompress(payload).splitlines()
+    final_records = gzip.decompress(outcome.table_payload).splitlines()
+    assert len(old_records) == len(final_records)
+    assert all(
+        final.startswith(old + b",")
+        for old, final in zip(old_records[1:], final_records[1:], strict=True)
+    )
 
 
 def test_build_identity_rejects_authoritative_row_order_swap(tmp_path):

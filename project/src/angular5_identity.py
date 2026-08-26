@@ -219,11 +219,52 @@ def _validated_sample(
     ):
         raise ValueError(f"{sample_name} contains an invalid source_entry")
 
-    parsed_old = pd.read_csv(
-        io.StringIO(reconstructed[list(authoritative.columns)].to_csv(index=False))
-    )
-    _assert_old_columns_exact(authoritative, parsed_old)
+    reconstructed_old = reconstructed[list(authoritative.columns)]
+    try:
+        _assert_old_columns_exact(authoritative, reconstructed_old)
+    except ValueError:
+        parsed_old = pd.read_csv(io.StringIO(reconstructed_old.to_csv(index=False)))
+        _assert_old_columns_exact(authoritative, parsed_old)
     return reconstructed.reset_index(drop=True)
+
+
+def _legacy_duplicate_evidence(
+    authoritative: pd.DataFrame,
+    identities: list[tuple[str, int]],
+) -> tuple[int, int, list[dict[str, Any]]]:
+    if not all(name in authoritative for name in LEGACY_EVENT_KEY):
+        return 0, 0, []
+    duplicate_mask = authoritative.duplicated(list(LEGACY_EVENT_KEY), keep=False)
+    duplicate_rows = int(duplicate_mask.sum())
+    keys = authoritative.loc[
+        duplicate_mask, list(LEGACY_EVENT_KEY)
+    ].drop_duplicates()
+    details: list[dict[str, Any]] = []
+    for key_values in keys.itertuples(index=False, name=None):
+        row_mask = pd.Series(True, index=authoritative.index)
+        for name, value in zip(LEGACY_EVENT_KEY, key_values, strict=True):
+            row_mask &= authoritative[name].eq(value)
+        positions = [
+            index for index, matches in enumerate(row_mask.tolist()) if matches
+        ]
+        details.append(
+            {
+                "legacy_key": {
+                    name: int(value)
+                    for name, value in zip(
+                        LEGACY_EVENT_KEY, key_values, strict=True
+                    )
+                },
+                "canonical_identities": [
+                    {
+                        "source_sample": identities[position][0],
+                        "source_entry": identities[position][1],
+                    }
+                    for position in positions
+                ],
+            }
+        )
+    return len(details), duplicate_rows, details
 
 
 def build_source_identity_baseline(
@@ -293,19 +334,9 @@ def build_source_identity_baseline(
     ]:
         raise ValueError("final source identity disagrees with reconstructed values")
 
-    if all(name in authoritative for name in LEGACY_EVENT_KEY):
-        duplicate_mask = authoritative.duplicated(
-            list(LEGACY_EVENT_KEY), keep=False
-        )
-        duplicate_rows = int(duplicate_mask.sum())
-        duplicate_groups = int(
-            authoritative.loc[duplicate_mask, list(LEGACY_EVENT_KEY)]
-            .drop_duplicates()
-            .shape[0]
-        )
-    else:
-        duplicate_rows = 0
-        duplicate_groups = 0
+    duplicate_groups, duplicate_rows, duplicate_details = _legacy_duplicate_evidence(
+        authoritative, concrete_identities
+    )
     evidence = _deep_freeze(
         {
             "schema_version": "1.0",
@@ -321,6 +352,7 @@ def build_source_identity_baseline(
             "appended_columns": list(SOURCE_IDENTITY),
             "legacy_duplicate_groups": duplicate_groups,
             "legacy_duplicate_rows": duplicate_rows,
+            "legacy_duplicate_details": duplicate_details,
         }
     )
     return IdentityOutcome(_OUTCOME_TOKEN, table_payload, evidence)
