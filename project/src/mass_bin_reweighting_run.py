@@ -111,6 +111,10 @@ _REFERENCE_HASH = "da015d0a00bb002e69dc98eb9631c1b561af65f8da44b78a641d4e013558b
 _ABLATION_HASH = "5120e6080e82b14f66917ba731c98715fa5d6190c25c396d8c675200e9ca52df"
 _RAW_ZZ_HASH = "76503d0cb2a015b814b43e5bc1887ea53a62b057e9ac2f812eaaec1efb1a3f07"
 _MAXIMUM_CORRECTIONS = 5
+_ANGULAR5_R3_ARM64_CONFIG = (
+    Path(__file__).resolve().parents[1]
+    / "config/mass_bin_reweighting_drop_top4_angular5_r3_arm64.yaml"
+).resolve()
 
 
 @dataclass(frozen=True)
@@ -379,6 +383,11 @@ def resolve_reweighting_sources(
     if config_source.snapshot is None:
         raise RuntimeError("study config snapshot is unavailable")
     config = _load_config_bytes(config_source.snapshot)
+    if (
+        config.schema_version == "1.2"
+        and config_source.path != _ANGULAR5_R3_ARM64_CONFIG
+    ):
+        raise ValueError("R3-ARM64 reweighting requires the canonical R3-ARM64 config")
     requested_input = Path(input_run).resolve()
     requested_reference = Path(reference_run).resolve()
     requested_ablation = Path(config.ablation_run).resolve()

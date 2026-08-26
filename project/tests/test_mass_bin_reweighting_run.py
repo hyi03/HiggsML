@@ -140,6 +140,29 @@ def test_angular5_r3_arm64_source_binding_hashes_only_the_sealed_mc_table(monkey
     )
 
 
+def test_angular5_r3_arm64_rejects_copied_config_before_protected_sources(
+    tmp_path, monkeypatch
+):
+    copied = tmp_path / "copied-r3.yaml"
+    copied.write_bytes(Path(
+        "config/mass_bin_reweighting_drop_top4_angular5_r3_arm64.yaml"
+    ).read_bytes())
+    original = StudySource.from_path
+
+    def config_only(cls, name, path, *, capture=False):
+        if name != "study_config":
+            pytest.fail("copied R3 config reached a protected source")
+        return original(name, path, capture=capture)
+
+    monkeypatch.setattr(StudySource, "from_path", classmethod(config_only))
+    with pytest.raises(ValueError, match="canonical R3-ARM64 config"):
+        resolve_reweighting_sources(
+            input_run="runs/angular5-mc-363490-2026-08-26-r3-arm64",
+            reference_run="runs/full-training-363490-2026-08-11-r2",
+            config_path=copied,
+        )
+
+
 def test_policy_manifest_record_uses_bound_drop_top4_profile():
     config = load_mass_bin_reweighting_config(
         "config/mass_bin_reweighting_drop_top4.yaml"
