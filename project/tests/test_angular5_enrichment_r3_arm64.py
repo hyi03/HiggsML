@@ -3,6 +3,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import io
+import os
 from dataclasses import replace
 from pathlib import Path
 
@@ -192,8 +193,49 @@ def test_identity_snapshot_cannot_be_redirected_by_swap_and_restore(tmp_path, mo
             os.replace(opened, alternate)
             os.replace(backup, opened)
 
-    import os
     monkeypatch.setattr(module, "_after_receipt_descriptor_opened", swap)
     assert len(module.enrich_angular5_r3_arm64_mc(sources).frame) == 3
     assert swapped is True
     assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("replacement", ["directory", "symlink"])
+def test_manifest_rejects_a_claimed_output_directory_swap_before_promotion(
+    tmp_path, monkeypatch, replacement
+) -> None:
+    from src import angular5_enrichment as publication
+    from src import angular5_enrichment_r3_arm64 as module
+    from src import angular5_enrichment_r3_arm64_run as run
+
+    sources = _sources(tmp_path)
+    monkeypatch.setattr(run, "assert_native_arm64", lambda: None)
+    layout = run.claim_angular5_r3_arm64_output(
+        sources=sources,
+        project_root=tmp_path,
+        working_directory=tmp_path,
+        run_dir=tmp_path / sources.config.output_run,
+    )
+    outcome = module.enrich_angular5_r3_arm64_mc(sources)
+    receipt = module.write_angular5_r3_arm64_artifacts(
+        layout, sources=sources, outcome=outcome
+    )
+    displaced = tmp_path / "displaced-run"
+
+    def replace_claimed_directory() -> None:
+        os.replace(layout.run_dir, displaced)
+        if replacement == "directory":
+            layout.run_dir.mkdir()
+        else:
+            attacker = tmp_path / "attacker-run"
+            attacker.mkdir()
+            layout.run_dir.symlink_to(attacker, target_is_directory=True)
+
+    monkeypatch.setattr(publication, "_before_final_source_revalidation", replace_claimed_directory)
+
+    with pytest.raises(ValueError):
+        module.publish_angular5_r3_arm64_manifest(
+            layout, sources=sources, receipt=receipt, software={"python": "test"}
+        )
+
+    assert not (displaced / "artifacts" / "run_manifest.json").exists()
+    assert (displaced / ".terminal.failed").is_dir()

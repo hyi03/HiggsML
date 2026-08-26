@@ -293,11 +293,16 @@ def publish_angular5_r3_arm64_manifest(layout, *, sources: Angular5R3Arm64Source
             raise RuntimeError("R3 Angular5 output changed before manifest publication")
         manifest = {"schema_version": "1.0", "status": "complete", "role": "MC-only R3-ARM64 Angular5 enrichment", "join_key": list(SOURCE_IDENTITY), "appended_columns": list(ANGULAR5_FEATURES), "software": dict(software), "inputs": _source_records(sources), "outputs": records}
         staged = _base._stage_bytes(descriptors["artifacts"], MANIFEST_NAME, _base._json_bytes(manifest))
+        _base._before_final_source_revalidation()
+
         def final_check() -> None:
             assert_angular5_r3_arm64_sources_unchanged(sources)
             current_records, current_identities = _base._output_records(layout, descriptors)
             if current_records != records or current_identities != identities:
                 raise RuntimeError("R3 Angular5 output changed before manifest publication")
+            current = _base._open_claimed(layout)
+            _base._close_descriptors(current)
+
         _base._promote_no_clobber(descriptors["artifacts"], layout.artifacts_dir, staged, MANIFEST_NAME, immediate_check=final_check)
         staged = None
         _base._assert_layout(descriptors, state="complete", terminal_lock=True)
@@ -305,7 +310,13 @@ def publish_angular5_r3_arm64_manifest(layout, *, sources: Angular5R3Arm64Source
     except BaseException as error:
         if descriptors is not None:
             _safety._cleanup_staged(descriptors["artifacts"], staged)
-        _base.record_angular5_failure(layout, error)
+            staged = None
+            if locked:
+                _base._install_failure_locked(descriptors["."], layout.run_dir, error)
+            else:
+                _base.record_angular5_failure(layout, error)
+        else:
+            _base.record_angular5_failure(layout, error)
         raise
     finally:
         if descriptors is not None:
