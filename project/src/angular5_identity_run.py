@@ -326,6 +326,8 @@ def claim_identity_output(
 ) -> Angular5OutputLayout:
     if not isinstance(sources, IdentitySources):
         raise TypeError("sources must be IdentitySources")
+    if sources.config.output_run == _FROZEN_OUTPUT_RUN:
+        raise ValueError("Angular5 identity burned R2 output path cannot be claimed")
     if sources.config.native_arm64_required:
         assert_native_arm64()
     root = Path(project_root).resolve(strict=True)

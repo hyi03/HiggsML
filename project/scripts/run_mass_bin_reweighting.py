@@ -19,6 +19,7 @@ from src.mass_bin_reweighting_plots import (
     build_zz_efficiency_by_mass_png,
 )
 from src.mass_bin_reweighting_run import (
+    assert_reweighting_execution_gate,
     assert_reweighting_sources_unchanged,
     claim_reweighting_output,
     policy_manifest_record,
@@ -64,6 +65,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         reweighting_reference_run=sources.reweighting_reference_run,
         run_dir=Path(args.run_dir),
     )
+    assert_reweighting_execution_gate(
+        config=sources.config,
+        project_root=project_root,
+        layout=layout,
+    )
     layout = claim_reweighting_output(layout)
     try:
         frame = _load_bound_mc_frame(sources)
@@ -90,7 +96,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             policy=policy_manifest_record(sources.config),
             software=software_versions(),
         )
-    except Exception as error:
+    except BaseException as error:
         record_reweighting_failure(layout, error)
         raise
     _display_summary(artifacts["selection"], layout.run_dir)

@@ -5,10 +5,8 @@ import json
 import pytest
 
 from test_angular5_identity_run import (
-    OUTPUT_RUN,
     R3_OUTPUT_RUN,
     SUCCESS_FILES,
-    _fixture_sources,
     _r3_fixture_sources,
 )
 
@@ -18,8 +16,11 @@ def test_identity_cli_accepts_only_config_and_run_dir_and_has_no_data_surface(
 ):
     from scripts import build_angular5_identity_mc as script
 
-    sources = _fixture_sources(tmp_path)
+    sources = _r3_fixture_sources(tmp_path)
     real_claim = script.claim_identity_output
+    monkeypatch.setattr(
+        "src.angular5_identity_run.assert_native_arm64", lambda: None
+    )
     monkeypatch.setattr(script, "resolve_identity_sources", lambda **kwargs: sources)
     monkeypatch.setattr(
         script,
@@ -28,13 +29,13 @@ def test_identity_cli_accepts_only_config_and_run_dir_and_has_no_data_surface(
             sources=sources,
             project_root=sources.project_root,
             working_directory=sources.project_root,
-            run_dir=OUTPUT_RUN,
+            run_dir=R3_OUTPUT_RUN,
         ),
     )
 
-    script.main(["--config", "sealed.yaml", "--run-dir", OUTPUT_RUN])
+    script.main(["--config", "sealed.yaml", "--run-dir", R3_OUTPUT_RUN])
 
-    run_dir = sources.project_root / OUTPUT_RUN
+    run_dir = sources.project_root / R3_OUTPUT_RUN
     files = {
         path.relative_to(run_dir).as_posix()
         for path in run_dir.rglob("*")
@@ -52,7 +53,7 @@ def test_identity_cli_accepts_only_config_and_run_dir_and_has_no_data_surface(
                 "--config",
                 "sealed.yaml",
                 "--run-dir",
-                OUTPUT_RUN,
+                R3_OUTPUT_RUN,
                 "--data",
                 "data16_periodA.root",
             ]
@@ -92,8 +93,11 @@ def test_identity_cli_records_control_exception_after_claim(
 ):
     from scripts import build_angular5_identity_mc as script
 
-    sources = _fixture_sources(tmp_path)
+    sources = _r3_fixture_sources(tmp_path)
     real_claim = script.claim_identity_output
+    monkeypatch.setattr(
+        "src.angular5_identity_run.assert_native_arm64", lambda: None
+    )
     monkeypatch.setattr(script, "resolve_identity_sources", lambda **kwargs: sources)
     monkeypatch.setattr(
         script,
@@ -102,7 +106,7 @@ def test_identity_cli_records_control_exception_after_claim(
             sources=sources,
             project_root=sources.project_root,
             working_directory=sources.project_root,
-            run_dir=OUTPUT_RUN,
+            run_dir=R3_OUTPUT_RUN,
         ),
     )
     monkeypatch.setattr(
@@ -110,9 +114,9 @@ def test_identity_cli_records_control_exception_after_claim(
     )
 
     with pytest.raises(type(interrupt)):
-        script.main(["--config", "sealed.yaml", "--run-dir", OUTPUT_RUN])
+        script.main(["--config", "sealed.yaml", "--run-dir", R3_OUTPUT_RUN])
 
-    run_dir = sources.project_root / OUTPUT_RUN
+    run_dir = sources.project_root / R3_OUTPUT_RUN
     assert (run_dir / ".terminal.failed").is_dir()
     assert json.loads((run_dir / "failure.json").read_text())["status"] == "failed"
     assert not (run_dir / "artifacts/run_manifest.json").exists()

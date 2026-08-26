@@ -11,6 +11,44 @@ at most `0.10` at loose, medium, and tight working points; and signal
 efficiency must be strictly greater than achieved ZZ efficiency at every
 working point.
 
+The literal ordered model feature list was:
+
+```text
+lep1_pt
+lep2_pt
+lep1_eta
+lep2_eta
+lep3_eta
+lep4_eta
+pt4l
+deltaR_Z1
+deltaR_Z2
+deltaPhi_ZZ
+cos_theta_star
+cos_theta_1
+cos_theta_2
+phi_decay_planes
+phi_production_plane
+```
+
+The Angular5 convention uses the existing deterministic `Z1`/`Z2` pairing and
+the negatively charged lepton to orient each decay. In concise terms:
+
+- `cos_theta_star` is the signed cosine between `Z1` and the boosted laboratory
+  `+z` beam direction in the four-lepton (`X = Z1 + Z2`) rest frame.
+- `cos_theta_1` is the signed helicity cosine of the negative `Z1` lepton
+  against the direction opposite boosted `Z2`, evaluated in the `Z1` rest
+  frame.
+- `cos_theta_2` is the analogous negative-`Z2`-lepton helicity cosine against
+  the direction opposite boosted `Z1`, evaluated in the `Z2` rest frame.
+- `phi_decay_planes` is the signed `atan2` angle between the charge-ordered
+  `Z1` and `Z2` decay-plane normals in the `X` rest frame.
+- `phi_production_plane` is the signed `atan2` angle from the plane spanned by
+  the boosted `+z` beam and `Z1` to the charge-ordered `Z1` decay plane.
+
+The three cosine observables are in `[-1, 1]`; both signed azimuthal angles use
+`[-pi, pi)`, with `+pi` represented as `-pi`.
+
 The native Apple Silicon ARM64 environment was Python `3.12.13`, NumPy
 `2.5.1`, pandas `3.0.5`, PyYAML `6.0.3`, uproot `5.7.5`, scikit-learn `1.9.0`,
 XGBoost `3.3.0`, and hep_ml `0.8.0`. The earlier R2 identity terminal was kept
@@ -27,6 +65,18 @@ old lexical columns and row order are preserved; canonical
 `(source_sample, source_entry)` identity is complete and one-to-one. The legacy
 `(runNumber, eventNumber, channelNumber)` key has 2 duplicate groups covering
 4 rows, which is why it is not used as the canonical identity.
+
+The raw duplicate evidence is:
+
+| Legacy event (`runNumber`, `eventNumber`, `channelNumber`) | `source_sample` | Zero-based raw `source_entry` values |
+|---|---|---|
+| `(284500, 102001, 345060)` | `higgs_345060` | `173348`, `345900` |
+| `(284500, 1136001, 345060)` | `higgs_345060` | `340911`, `342358` |
+
+`source_entry` is specifically the zero-based TTree entry before selection. It
+is stable only for the exact ROOT bytes, selected tree, and entry ordering
+sealed by this run; it is not a portable event identifier across rewritten
+ROOT files, different trees, or reordered entries.
 
 ## Production receipts
 
@@ -53,6 +103,12 @@ After the documentation update, the native-ARM64 command
 The five warnings are the known scikit-learn `NearestNeighbors` feature-name
 warning emitted by the real `hep_ml` synthetic OOF test. `git diff --check`
 also completed with exit code `0`.
+
+The final hardening wave also ran the focused command
+`.venv-arm64/bin/python -m pytest tests/test_angular5_identity_run.py
+tests/test_mass_bin_reweighting_run.py
+tests/test_run_mass_bin_reweighting_script.py -q`; it completed with exit code
+`0` and `162 passed in 39.75s`.
 
 ## Complete development-OOF trajectory
 
@@ -123,3 +179,7 @@ it does not permit extending this run, adding iterations, changing bins or
 features, relaxing AUC >= `0.80` or any KS <= `0.10` gate, opening the held-out
 test, or accessing real data. Any future work requires a new predeclared design,
 configuration, and run path.
+
+The explicitly recorded future `Angular5 + ZTopology` idea was not implemented
+or executed. It remains only a possible separately designed and approved study;
+it was not a fallback branch of this run and receives no authorization here.

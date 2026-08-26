@@ -418,20 +418,22 @@ def test_r3_claim_rejects_the_failed_r2_output_path(tmp_path, monkeypatch):
     assert not (sources.project_root / OUTPUT_RUN).exists()
 
 
-def test_r2_identity_profile_remains_historically_compatible_on_non_arm64(
+def test_r2_identity_profile_is_parseable_but_its_burned_output_cannot_be_claimed(
     tmp_path, monkeypatch
 ):
     sources = _fixture_sources(tmp_path)
     monkeypatch.setattr(identity_run.platform, "machine", lambda: "x86_64")
 
-    layout = claim_identity_output(
-        sources=sources,
-        project_root=sources.project_root,
-        working_directory=sources.project_root,
-        run_dir=OUTPUT_RUN,
-    )
+    with pytest.raises(ValueError, match="burned R2 output path"):
+        claim_identity_output(
+            sources=sources,
+            project_root=sources.project_root,
+            working_directory=sources.project_root,
+            run_dir=OUTPUT_RUN,
+        )
 
-    assert layout.run_dir == sources.project_root / OUTPUT_RUN
+    assert sources.config.output_run == OUTPUT_RUN
+    assert not (sources.project_root / OUTPUT_RUN).exists()
 
 
 def test_r3_identity_old_column_comparison_remains_exact(tmp_path):
@@ -585,13 +587,14 @@ def test_identity_source_resolution_rejects_symlink(tmp_path):
         )
 
 
-def test_identity_claim_is_atomic_fresh_and_fixed(tmp_path):
-    sources = _fixture_sources(tmp_path)
+def test_identity_claim_is_atomic_fresh_and_fixed(tmp_path, monkeypatch):
+    sources = _r3_fixture_sources(tmp_path)
+    monkeypatch.setattr(identity_run, "assert_native_arm64", lambda: None)
     kwargs = {
         "sources": sources,
         "project_root": sources.project_root,
         "working_directory": sources.project_root,
-        "run_dir": OUTPUT_RUN,
+        "run_dir": R3_OUTPUT_RUN,
     }
 
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -615,8 +618,9 @@ def _claim_result(kwargs):
         return error
 
 
-def test_identity_claim_rejects_non_frozen_or_protected_path(tmp_path):
-    sources = _fixture_sources(tmp_path)
+def test_identity_claim_rejects_non_frozen_or_protected_path(tmp_path, monkeypatch):
+    sources = _r3_fixture_sources(tmp_path)
+    monkeypatch.setattr(identity_run, "assert_native_arm64", lambda: None)
     for run_dir in ("runs/other", "config/new"):
         with pytest.raises(ValueError, match="frozen output path|protected"):
             claim_identity_output(
@@ -631,7 +635,8 @@ def test_identity_claim_rejects_non_frozen_or_protected_path(tmp_path):
 def test_identity_claim_records_terminal_when_child_creation_is_interrupted(
     tmp_path, monkeypatch, failed_child
 ):
-    sources = _fixture_sources(tmp_path)
+    sources = _r3_fixture_sources(tmp_path)
+    monkeypatch.setattr(identity_run, "assert_native_arm64", lambda: None)
     real_mkdir = identity_run.os.mkdir
 
     def interrupt_child(path, *args, **kwargs):
@@ -646,10 +651,10 @@ def test_identity_claim_records_terminal_when_child_creation_is_interrupted(
             sources=sources,
             project_root=sources.project_root,
             working_directory=sources.project_root,
-            run_dir=OUTPUT_RUN,
+            run_dir=R3_OUTPUT_RUN,
         )
 
-    run_dir = sources.project_root / OUTPUT_RUN
+    run_dir = sources.project_root / R3_OUTPUT_RUN
     assert (run_dir / ".terminal.failed").is_dir()
     assert json.loads((run_dir / "failure.json").read_text())["status"] == "failed"
     assert not (run_dir / "artifacts/run_manifest.json").exists()
@@ -799,13 +804,14 @@ def test_build_identity_refuses_root_swap_even_if_original_path_is_restored(
     assert swapped
 
 
-def test_identity_publication_is_manifest_last_and_exact(tmp_path):
-    sources = _fixture_sources(tmp_path)
+def test_identity_publication_is_manifest_last_and_exact(tmp_path, monkeypatch):
+    sources = _r3_fixture_sources(tmp_path)
+    monkeypatch.setattr(identity_run, "assert_native_arm64", lambda: None)
     layout = claim_identity_output(
         sources=sources,
         project_root=sources.project_root,
         working_directory=sources.project_root,
-        run_dir=OUTPUT_RUN,
+        run_dir=R3_OUTPUT_RUN,
     )
     outcome = build_identity_mc(sources)
 
