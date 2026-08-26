@@ -62,6 +62,32 @@ def test_identity_baseline_preserves_old_tokens_and_appends_stable_identity():
     )
 
 
+def test_identity_baseline_preserves_quoted_newline_inside_csv_record():
+    multiline = OLD_ROWS[0].replace(b",train\r\n", b',"train\nnote"\r\n')
+    payload = gzip.compress(
+        OLD_HEADER + multiline + OLD_ROWS[1] + OLD_ROWS[2], mtime=0
+    )
+    authoritative = pd.read_csv(io.BytesIO(payload), compression="gzip")
+    higgs = authoritative.loc[authoritative["channelNumber"] == 345060].copy()
+    higgs["source_sample"] = "higgs_345060"
+    higgs["source_entry"] = [17, 29]
+    zz = authoritative.loc[authoritative["channelNumber"] == 363490].copy()
+    zz["source_sample"] = "zz_363490"
+    zz["source_entry"] = [4]
+
+    outcome = build_source_identity_baseline(
+        payload,
+        {
+            "higgs_345060": higgs.reset_index(drop=True),
+            "zz_363490": zz.reset_index(drop=True),
+        },
+    )
+
+    final_raw = gzip.decompress(outcome.table_payload)
+    assert multiline[:-2] + b",higgs_345060,17\r\n" in final_raw
+    assert outcome.frame.loc[0, "split"] == "train\nnote"
+
+
 def test_identity_outcome_is_opaque_isolated_and_deeply_immutable():
     with pytest.raises(TypeError, match="returned by build_source_identity_baseline"):
         IdentityOutcome()

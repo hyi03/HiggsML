@@ -82,6 +82,47 @@ def _csv_tokens(values: tuple[str, int]) -> bytes:
     return stream.getvalue().encode("utf-8")
 
 
+def _scan_csv_records(raw: bytes) -> list[bytes]:
+    """Split complete CSV records without losing embedded quoted newlines."""
+    records: list[bytes] = []
+    start = 0
+    index = 0
+    in_quotes = False
+    at_field_start = True
+    while index < len(raw):
+        value = raw[index]
+        if in_quotes:
+            if value == ord('"'):
+                if index + 1 < len(raw) and raw[index + 1] == ord('"'):
+                    index += 2
+                    continue
+                in_quotes = False
+            index += 1
+            continue
+        if value == ord('"') and at_field_start:
+            in_quotes = True
+            at_field_start = False
+        elif value == ord(","):
+            at_field_start = True
+        elif value in (ord("\r"), ord("\n")):
+            end = index + 1
+            if value == ord("\r") and end < len(raw) and raw[end] == ord("\n"):
+                end += 1
+            records.append(raw[start:end])
+            start = end
+            index = end
+            at_field_start = True
+            continue
+        else:
+            at_field_start = False
+        index += 1
+    if in_quotes:
+        raise ValueError("authoritative MC CSV contains an unterminated quoted field")
+    if start < len(raw):
+        records.append(raw[start:])
+    return records
+
+
 def _append_identity_tokens(
     authoritative_payload: bytes,
     authoritative: pd.DataFrame,
@@ -91,11 +132,9 @@ def _append_identity_tokens(
         raw = gzip.decompress(authoritative_payload)
     except (EOFError, OSError) as error:
         raise ValueError("authoritative MC table is not valid gzip") from error
-    lines = raw.splitlines(keepends=True)
+    lines = _scan_csv_records(raw)
     if len(lines) != len(authoritative) + 1:
-        raise ValueError(
-            "authoritative MC CSV must contain one physical line per parsed row"
-        )
+        raise ValueError("authoritative MC CSV record count mismatch")
     field_count = len(authoritative.columns)
     header, header_ending = _split_line_ending(lines[0])
     if _parse_single_record(header, field_count=field_count) != list(
