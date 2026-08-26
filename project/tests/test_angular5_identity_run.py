@@ -306,7 +306,7 @@ def test_r3_arm64_claim_accepts_missing_translation_sysctl_key(tmp_path, monkeyp
     def missing_sysctl(command, **kwargs):
         calls.append((command, kwargs))
         return subprocess.CompletedProcess(
-            args=command, returncode=1, stdout="", stderr="unknown oid"
+            args=command, returncode=0, stdout="", stderr=""
         )
 
     monkeypatch.setattr(identity_run.subprocess, "run", missing_sysctl)
@@ -324,6 +324,52 @@ def test_r3_arm64_claim_accepts_missing_translation_sysctl_key(tmp_path, monkeyp
         "-in",
         "sysctl.proc_translated",
     ]
+
+
+def test_r3_arm64_claim_rejects_failed_translation_sysctl_before_output_claim(
+    tmp_path, monkeypatch
+):
+    sources = _r3_fixture_sources(tmp_path)
+    monkeypatch.setattr(identity_run.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(
+        identity_run.subprocess,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            args=command, returncode=1, stdout="", stderr="permission denied"
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="could not verify Rosetta state"):
+        claim_identity_output(
+            sources=sources,
+            project_root=sources.project_root,
+            working_directory=sources.project_root,
+            run_dir=R3_OUTPUT_RUN,
+        )
+
+    assert not (sources.project_root / R3_OUTPUT_RUN).exists()
+
+
+def test_r3_arm64_claim_rejects_missing_sysctl_binary_before_output_claim(
+    tmp_path, monkeypatch
+):
+    sources = _r3_fixture_sources(tmp_path)
+    monkeypatch.setattr(identity_run.platform, "machine", lambda: "arm64")
+
+    def missing_sysctl_binary(command, **kwargs):
+        raise FileNotFoundError(command[0])
+
+    monkeypatch.setattr(identity_run.subprocess, "run", missing_sysctl_binary)
+
+    with pytest.raises(RuntimeError, match="could not verify Rosetta state"):
+        claim_identity_output(
+            sources=sources,
+            project_root=sources.project_root,
+            working_directory=sources.project_root,
+            run_dir=R3_OUTPUT_RUN,
+        )
+
+    assert not (sources.project_root / R3_OUTPUT_RUN).exists()
 
 
 def test_r3_claim_rejects_the_failed_r2_output_path(tmp_path, monkeypatch):

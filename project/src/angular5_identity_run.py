@@ -288,14 +288,16 @@ def assert_native_arm64() -> None:
             text=True,
             check=False,
         )
-    except FileNotFoundError:
-        return
+    except FileNotFoundError as error:
+        raise RuntimeError(
+            "R3 identity production could not verify Rosetta state"
+        ) from error
     if result.returncode != 0:
-        return
+        raise RuntimeError("R3 identity production could not verify Rosetta state")
     translated = result.stdout.strip()
     if translated == "1":
         raise RuntimeError("R3 identity production is forbidden under Rosetta")
-    if translated != "0":
+    if translated not in {"", "0"}:
         raise RuntimeError("R3 identity production could not verify Rosetta state")
 
 
