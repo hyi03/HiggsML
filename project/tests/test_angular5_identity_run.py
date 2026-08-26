@@ -350,6 +350,30 @@ def test_r3_arm64_claim_rejects_failed_translation_sysctl_before_output_claim(
     assert not (sources.project_root / R3_OUTPUT_RUN).exists()
 
 
+def test_r3_arm64_claim_rejects_unknown_translation_state_before_output_claim(
+    tmp_path, monkeypatch
+):
+    sources = _r3_fixture_sources(tmp_path)
+    monkeypatch.setattr(identity_run.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(
+        identity_run.subprocess,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            args=command, returncode=0, stdout="unexpected\n", stderr=""
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="could not verify Rosetta state"):
+        claim_identity_output(
+            sources=sources,
+            project_root=sources.project_root,
+            working_directory=sources.project_root,
+            run_dir=R3_OUTPUT_RUN,
+        )
+
+    assert not (sources.project_root / R3_OUTPUT_RUN).exists()
+
+
 def test_r3_arm64_claim_rejects_missing_sysctl_binary_before_output_claim(
     tmp_path, monkeypatch
 ):
