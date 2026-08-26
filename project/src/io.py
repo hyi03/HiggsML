@@ -66,6 +66,7 @@ def iter_events(
     chunk_size_events: int = 50_000,
     profile: InputProfile | str = "release22",
     extra_canonical_branches: Iterable[str] = (),
+    include_source_entry: bool = False,
 ) -> Iterable[dict[str, Any]]:
     if (
         isinstance(chunk_size_events, bool)
@@ -78,6 +79,8 @@ def iter_events(
         profile if isinstance(profile, InputProfile) else resolve_input_profile(profile)
     )
     extra = tuple(extra_canonical_branches)
+    if "source_entry" in extra:
+        raise ValueError("source_entry is a generated identity, not a ROOT branch")
     unknown = [name for name in extra if name not in resolved_profile.branches]
     if unknown:
         raise KeyError(f"unknown canonical branches: {unknown}")
@@ -107,6 +110,7 @@ def iter_events(
         missing = [name for name in requested if name not in available]
         if missing:
             raise KeyError(f"missing required branches: {missing}")
+        source_entry = 0
         for arrays in tree.iterate(
             requested,
             entry_stop=entry_stop,
@@ -120,6 +124,9 @@ def iter_events(
                     event[canonical] = (
                         value.to_list() if hasattr(value, "to_list") else value
                     )
+                if include_source_entry:
+                    event["source_entry"] = source_entry
+                source_entry += 1
                 yield event
 
 

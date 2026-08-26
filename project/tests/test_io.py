@@ -79,6 +79,84 @@ def install_fake_uproot(monkeypatch, tree):
     monkeypatch.setattr(io, "_import_uproot", lambda: module)
 
 
+def write_five_entry_root(path):
+    uproot = pytest.importorskip("uproot")
+    with uproot.recreate(path) as root_file:
+        root_file["analysis"] = event_columns([10, 11, 12, 13, 14], is_data=False)
+
+
+@pytest.mark.parametrize("chunk_size", [1, 2, 5])
+def test_iter_events_exposes_stable_zero_based_source_entries(tmp_path, chunk_size):
+    path = tmp_path / "five.root"
+    write_five_entry_root(path)
+
+    rows = list(
+        io.iter_events(
+            path,
+            "analysis",
+            is_data=False,
+            chunk_size_events=chunk_size,
+            include_source_entry=True,
+        )
+    )
+
+    assert [row["source_entry"] for row in rows] == [0, 1, 2, 3, 4]
+
+
+def test_iter_events_source_entries_respect_entry_stop_and_repeat(tmp_path):
+    path = tmp_path / "five.root"
+    write_five_entry_root(path)
+
+    first = list(
+        io.iter_events(
+            path,
+            "analysis",
+            is_data=False,
+            entry_stop=3,
+            chunk_size_events=2,
+            include_source_entry=True,
+        )
+    )
+    second = list(
+        io.iter_events(
+            path,
+            "analysis",
+            is_data=False,
+            entry_stop=3,
+            chunk_size_events=1,
+            include_source_entry=True,
+        )
+    )
+
+    assert [row["source_entry"] for row in first] == [0, 1, 2]
+    assert [row["source_entry"] for row in second] == [0, 1, 2]
+
+
+def test_iter_events_default_schema_omits_source_entry(tmp_path):
+    path = tmp_path / "five.root"
+    write_five_entry_root(path)
+
+    rows = list(io.iter_events(path, "analysis", is_data=False))
+
+    assert all("source_entry" not in row for row in rows)
+
+
+def test_iter_events_rejects_physical_source_entry_spoof(tmp_path):
+    path = tmp_path / "five.root"
+    write_five_entry_root(path)
+
+    with pytest.raises(ValueError, match="source_entry.*generated identity"):
+        list(
+            io.iter_events(
+                path,
+                "analysis",
+                is_data=False,
+                include_source_entry=True,
+                extra_canonical_branches=("source_entry",),
+            )
+        )
+
+
 def test_iter_events_preserves_order_across_chunks(monkeypatch):
     chunks = [
         FakeChunk(event_columns([10, 11], is_data=False)),
