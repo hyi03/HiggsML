@@ -1,4 +1,4 @@
-"""Sealed source binding, identity reconstruction, and publication for R2."""
+"""Sealed source binding, identity reconstruction, and publication."""
 
 from __future__ import annotations
 
@@ -8,7 +8,9 @@ import hashlib
 import io
 import os
 from pathlib import Path
+import platform
 import stat
+import subprocess
 from types import MappingProxyType
 from typing import Any, Mapping
 
@@ -36,6 +38,9 @@ TABLE_NAME = "mc_events_source_identity.csv.gz"
 IDENTITY_NAME = "identity_validation.json"
 MANIFEST_NAME = "run_manifest.json"
 _FROZEN_OUTPUT_RUN = "runs/angular5-identity-mc-363490-2026-08-26-r2"
+_R3_ARM64_OUTPUT_RUN = (
+    "runs/angular5-identity-mc-363490-2026-08-26-r3-arm64"
+)
 _SOURCE_RELATIVE_PATHS = {
     "identity_config": "config/angular5_identity_mc_dsid363490_r2.yaml",
     "frozen_config": "config/dsid363490.yaml",
@@ -47,6 +52,10 @@ _SOURCE_RELATIVE_PATHS = {
     ),
     "higgs_root": "data/raw/higgs.root",
     "zz_root": "data/raw/zz_363490.root",
+}
+_R3_ARM64_SOURCE_RELATIVE_PATHS = {
+    **_SOURCE_RELATIVE_PATHS,
+    "identity_config": "config/angular5_identity_mc_dsid363490_r3_arm64.yaml",
 }
 _EXPECTED_SOURCE_HASHES = {
     "frozen_config": "0282cfa965228e036f4ada3c010bd7d40b1b14e56c2aa33551784683237cd320",
@@ -132,6 +141,8 @@ _EXPECTED_CONFIG = {
     "selection": deepcopy(_binding._EXPECTED_SELECTION),
     "artifacts": _APPROVED_ARTIFACTS,
 }
+_R3_ARM64_EXPECTED_CONFIG = deepcopy(_EXPECTED_CONFIG)
+_R3_ARM64_EXPECTED_CONFIG["output_run"] = _R3_ARM64_OUTPUT_RUN
 
 
 @dataclass(frozen=True)
@@ -148,6 +159,7 @@ class IdentityConfig:
     samples: Mapping[str, Mapping[str, Any]]
     selection: Mapping[str, Any]
     artifacts: tuple[str, ...]
+    native_arm64_required: bool
 
 
 @dataclass(frozen=True)
@@ -165,7 +177,13 @@ def _load_config_bytes(payload: bytes) -> IdentityConfig:
         raise ValueError("Angular5 identity config contains a duplicate mapping key") from error
     except (UnicodeDecodeError, yaml.YAMLError) as error:
         raise ValueError("Angular5 identity config is not valid YAML") from error
-    if not _binding._exact_value(raw, _EXPECTED_CONFIG):
+    if _binding._exact_value(raw, _EXPECTED_CONFIG):
+        output_run = _FROZEN_OUTPUT_RUN
+        native_arm64_required = False
+    elif _binding._exact_value(raw, _R3_ARM64_EXPECTED_CONFIG):
+        output_run = _R3_ARM64_OUTPUT_RUN
+        native_arm64_required = True
+    else:
         raise ValueError("Angular5 identity config does not match the exact sealed schema")
     samples: dict[str, Mapping[str, Any]] = {}
     for key in ("higgs", "zz"):
@@ -176,7 +194,7 @@ def _load_config_bytes(payload: bytes) -> IdentityConfig:
         samples[key] = MappingProxyType(sample)
     return IdentityConfig(
         schema_version="1.0",
-        output_run=_FROZEN_OUTPUT_RUN,
+        output_run=output_run,
         frozen_reference=MappingProxyType(dict(raw["frozen_reference"])),
         authoritative_mc=MappingProxyType(dict(raw["authoritative_mc"])),
         tree_name="analysis",
@@ -187,6 +205,7 @@ def _load_config_bytes(payload: bytes) -> IdentityConfig:
         samples=MappingProxyType(samples),
         selection=_binding._deep_freeze(deepcopy(raw["selection"])),
         artifacts=tuple(_APPROVED_ARTIFACTS),
+        native_arm64_required=native_arm64_required,
     )
 
 
@@ -223,17 +242,31 @@ def resolve_identity_sources(
     root = Path(project_root).resolve(strict=True)
     if not root.is_dir():
         raise ValueError("Angular5 identity project root is not a directory")
-    expected_config = root / _SOURCE_RELATIVE_PATHS["identity_config"]
-    if Path(os.path.abspath(config_path)) != expected_config:
+    requested_config = Path(os.path.abspath(config_path))
+    profiles = {
+        root / _SOURCE_RELATIVE_PATHS["identity_config"]: (
+            _SOURCE_RELATIVE_PATHS,
+            _FROZEN_OUTPUT_RUN,
+        ),
+        root / _R3_ARM64_SOURCE_RELATIVE_PATHS["identity_config"]: (
+            _R3_ARM64_SOURCE_RELATIVE_PATHS,
+            _R3_ARM64_OUTPUT_RUN,
+        ),
+    }
+    profile = profiles.get(requested_config)
+    if profile is None:
         raise ValueError("Angular5 identity config must use the exact frozen path")
+    source_relative_paths, expected_output_run = profile
     receipts: dict[str, Angular5SourceReceipt] = {}
     config_bytes = b""
-    for name, relative in _SOURCE_RELATIVE_PATHS.items():
+    for name, relative in source_relative_paths.items():
         receipt, snapshot = _bind_source(name, root / relative)
         receipts[name] = receipt
         if name == "identity_config":
             config_bytes = snapshot
     config = _load_config_bytes(config_bytes)
+    if config.output_run != expected_output_run:
+        raise ValueError("Angular5 identity config does not match its exact frozen path")
     for name, expected in _EXPECTED_SOURCE_HASHES.items():
         if receipts[name].sha256 != expected:
             raise ValueError(f"Angular5 identity source SHA-256 mismatch: {name}")
@@ -243,6 +276,27 @@ def resolve_identity_sources(
         project_root=root,
         receipts=MappingProxyType(dict(receipts)),
     )
+
+
+def assert_native_arm64() -> None:
+    if platform.machine() != "arm64":
+        raise RuntimeError("R3 identity production requires native arm64")
+    try:
+        result = subprocess.run(
+            ["/usr/sbin/sysctl", "-in", "sysctl.proc_translated"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return
+    if result.returncode != 0:
+        return
+    translated = result.stdout.strip()
+    if translated == "1":
+        raise RuntimeError("R3 identity production is forbidden under Rosetta")
+    if translated != "0":
+        raise RuntimeError("R3 identity production could not verify Rosetta state")
 
 
 def assert_identity_sources_unchanged(sources: IdentitySources) -> None:
@@ -270,6 +324,8 @@ def claim_identity_output(
 ) -> Angular5OutputLayout:
     if not isinstance(sources, IdentitySources):
         raise TypeError("sources must be IdentitySources")
+    if sources.config.native_arm64_required:
+        assert_native_arm64()
     root = Path(project_root).resolve(strict=True)
     if root != sources.project_root:
         raise ValueError("Angular5 identity output project does not match sources")

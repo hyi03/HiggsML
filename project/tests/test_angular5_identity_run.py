@@ -7,6 +7,7 @@ import json
 import math
 import os
 from pathlib import Path
+import subprocess
 
 import awkward as ak
 import gzip
@@ -40,6 +41,10 @@ from test_angular5_enrichment import _event, _write_open_data
 PROJECT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = PROJECT / "config/angular5_identity_mc_dsid363490_r2.yaml"
 OUTPUT_RUN = "runs/angular5-identity-mc-363490-2026-08-26-r2"
+R3_CONFIG_PATH = (
+    PROJECT / "config/angular5_identity_mc_dsid363490_r3_arm64.yaml"
+)
+R3_OUTPUT_RUN = "runs/angular5-identity-mc-363490-2026-08-26-r3-arm64"
 SOURCE_PATHS = {
     "identity_config": "config/angular5_identity_mc_dsid363490_r2.yaml",
     "frozen_config": "config/dsid363490.yaml",
@@ -190,6 +195,21 @@ def _fixture_sources(tmp_path: Path) -> IdentitySources:
     )
 
 
+def _r3_fixture_sources(tmp_path: Path) -> IdentitySources:
+    sources = _fixture_sources(tmp_path)
+    config_path = sources.receipts["identity_config"].path
+    config_path.write_bytes(R3_CONFIG_PATH.read_bytes())
+    return IdentitySources(
+        config=load_identity_config(R3_CONFIG_PATH),
+        config_bytes=config_path.read_bytes(),
+        project_root=sources.project_root,
+        receipts={
+            **sources.receipts,
+            "identity_config": _receipt("identity_config", config_path),
+        },
+    )
+
+
 def _fake_project(tmp_path: Path, *, changed: str | None = None) -> Path:
     root = tmp_path / "project"
     for name, relative in SOURCE_PATHS.items():
@@ -226,6 +246,176 @@ def test_identity_config_is_exact_deeply_immutable_and_mc_only():
         config.selection["lepton_quality"]["require_tight_id"] = False
     with pytest.raises(FrozenInstanceError):
         config.output_run = "runs/changed"
+
+
+def test_r3_arm64_identity_config_is_exact_and_has_no_tolerance_surface():
+    config = load_identity_config(R3_CONFIG_PATH)
+
+    assert config.schema_version == "1.0"
+    assert config.output_run == R3_OUTPUT_RUN
+    assert config.native_arm64_required is True
+    serialized = R3_CONFIG_PATH.read_text(encoding="utf-8").lower()
+    assert "tolerance" not in serialized
+    assert "rtol" not in serialized
+    assert "atol" not in serialized
+
+    changed = yaml.safe_load(R3_CONFIG_PATH.read_bytes())
+    changed["old_column_tolerance"] = 5e-12
+    with pytest.raises(ValueError, match="exact sealed schema"):
+        identity_run._load_config_bytes(
+            yaml.safe_dump(changed, sort_keys=False).encode("utf-8")
+        )
+
+
+@pytest.mark.parametrize(
+    ("machine", "translated", "message"),
+    [
+        ("x86_64", "0\n", "native arm64"),
+        ("arm64", "1\n", "Rosetta"),
+    ],
+)
+def test_r3_arm64_claim_rejects_wrong_architecture_before_output_claim(
+    tmp_path, monkeypatch, machine, translated, message
+):
+    sources = _r3_fixture_sources(tmp_path)
+    monkeypatch.setattr(identity_run.platform, "machine", lambda: machine)
+    monkeypatch.setattr(
+        identity_run.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args[0], returncode=0, stdout=translated, stderr=""
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match=message):
+        claim_identity_output(
+            sources=sources,
+            project_root=sources.project_root,
+            working_directory=sources.project_root,
+            run_dir=R3_OUTPUT_RUN,
+        )
+
+    assert not (sources.project_root / R3_OUTPUT_RUN).exists()
+
+
+def test_r3_arm64_claim_accepts_missing_translation_sysctl_key(tmp_path, monkeypatch):
+    sources = _r3_fixture_sources(tmp_path)
+    monkeypatch.setattr(identity_run.platform, "machine", lambda: "arm64")
+    calls = []
+
+    def missing_sysctl(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(
+            args=command, returncode=1, stdout="", stderr="unknown oid"
+        )
+
+    monkeypatch.setattr(identity_run.subprocess, "run", missing_sysctl)
+
+    layout = claim_identity_output(
+        sources=sources,
+        project_root=sources.project_root,
+        working_directory=sources.project_root,
+        run_dir=R3_OUTPUT_RUN,
+    )
+
+    assert layout.run_dir == sources.project_root / R3_OUTPUT_RUN
+    assert calls[0][0] == [
+        "/usr/sbin/sysctl",
+        "-in",
+        "sysctl.proc_translated",
+    ]
+
+
+def test_r3_claim_rejects_the_failed_r2_output_path(tmp_path, monkeypatch):
+    sources = _r3_fixture_sources(tmp_path)
+    monkeypatch.setattr(identity_run.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(
+        identity_run.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args[0], returncode=0, stdout="0\n", stderr=""
+        ),
+    )
+
+    with pytest.raises(ValueError, match="frozen output path"):
+        claim_identity_output(
+            sources=sources,
+            project_root=sources.project_root,
+            working_directory=sources.project_root,
+            run_dir=OUTPUT_RUN,
+        )
+
+    assert not (sources.project_root / OUTPUT_RUN).exists()
+
+
+def test_r2_identity_profile_remains_historically_compatible_on_non_arm64(
+    tmp_path, monkeypatch
+):
+    sources = _fixture_sources(tmp_path)
+    monkeypatch.setattr(identity_run.platform, "machine", lambda: "x86_64")
+
+    layout = claim_identity_output(
+        sources=sources,
+        project_root=sources.project_root,
+        working_directory=sources.project_root,
+        run_dir=OUTPUT_RUN,
+    )
+
+    assert layout.run_dir == sources.project_root / OUTPUT_RUN
+
+
+def test_r3_identity_old_column_comparison_remains_exact(tmp_path):
+    sources = _r3_fixture_sources(tmp_path)
+    table = sources.receipts["task4a_mc"].path
+    frame = pd.read_csv(table)
+    frame.loc[0, "mZ1"] = float(frame.loc[0, "mZ1"]) + 1e-12
+    frame.to_csv(table, index=False)
+    sources = IdentitySources(
+        config=sources.config,
+        config_bytes=sources.config_bytes,
+        project_root=sources.project_root,
+        receipts={
+            **sources.receipts,
+            "task4a_mc": _receipt("task4a_mc", table),
+        },
+    )
+
+    with pytest.raises(ValueError, match="old-column mismatch: mZ1"):
+        build_identity_mc(sources)
+
+
+def test_r3_identity_evidence_contains_no_tolerance_policy(tmp_path, monkeypatch):
+    sources = _r3_fixture_sources(tmp_path)
+    monkeypatch.setattr(identity_run.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(
+        identity_run.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args[0], returncode=0, stdout="0\n", stderr=""
+        ),
+    )
+    layout = claim_identity_output(
+        sources=sources,
+        project_root=sources.project_root,
+        working_directory=sources.project_root,
+        run_dir=R3_OUTPUT_RUN,
+    )
+    outcome = build_identity_mc(sources)
+    receipt = write_identity_artifacts(layout, sources=sources, outcome=outcome)
+    publish_identity_manifest(
+        layout,
+        sources=sources,
+        receipt=receipt,
+        software={"python": "test"},
+    )
+
+    evidence = (
+        (layout.artifacts_dir / "identity_validation.json").read_text()
+        + (layout.artifacts_dir / "run_manifest.json").read_text()
+    ).lower()
+    assert "tolerance" not in evidence
+    assert "rtol" not in evidence
+    assert "atol" not in evidence
 
 
 @pytest.mark.parametrize(
@@ -274,6 +464,27 @@ def test_identity_source_resolution_binds_six_files_without_parsing(monkeypatch)
     } == FROZEN_HASHES
     with pytest.raises(TypeError):
         sources.receipts["extra"] = sources.receipts["higgs_root"]
+
+
+def test_r3_identity_source_resolution_requires_exact_r3_config_path(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(pd, "read_csv", lambda *a, **k: pytest.fail("parsed CSV"))
+    monkeypatch.setattr(uproot, "open", lambda *a, **k: pytest.fail("parsed ROOT"))
+
+    sources = resolve_identity_sources(
+        project_root=PROJECT,
+        config_path=R3_CONFIG_PATH,
+    )
+
+    assert sources.config.output_run == R3_OUTPUT_RUN
+    assert sources.config.native_arm64_required is True
+    assert sources.receipts["identity_config"].path == R3_CONFIG_PATH.resolve()
+
+    copied = tmp_path / R3_CONFIG_PATH.name
+    copied.write_bytes(R3_CONFIG_PATH.read_bytes())
+    with pytest.raises(ValueError, match="exact frozen path"):
+        resolve_identity_sources(project_root=PROJECT, config_path=copied)
 
 
 def test_identity_source_resolution_rejects_hash_mismatch_and_wrong_config_path(

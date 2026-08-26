@@ -1,4 +1,4 @@
-"""Build and publish the sealed Angular5 R2 source-identity baseline."""
+"""Build and publish a sealed Angular5 source-identity baseline."""
 
 from __future__ import annotations
 

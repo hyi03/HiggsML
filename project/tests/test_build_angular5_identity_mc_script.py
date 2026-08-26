@@ -4,7 +4,13 @@ import json
 
 import pytest
 
-from test_angular5_identity_run import OUTPUT_RUN, SUCCESS_FILES, _fixture_sources
+from test_angular5_identity_run import (
+    OUTPUT_RUN,
+    R3_OUTPUT_RUN,
+    SUCCESS_FILES,
+    _fixture_sources,
+    _r3_fixture_sources,
+)
 
 
 def test_identity_cli_accepts_only_config_and_run_dir_and_has_no_data_surface(
@@ -51,6 +57,33 @@ def test_identity_cli_accepts_only_config_and_run_dir_and_has_no_data_surface(
                 "data16_periodA.root",
             ]
         )
+
+
+def test_r3_identity_cli_rejects_non_arm64_before_creating_output(
+    tmp_path, monkeypatch
+):
+    from scripts import build_angular5_identity_mc as script
+    from src import angular5_identity_run as identity_run
+
+    sources = _r3_fixture_sources(tmp_path)
+    real_claim = script.claim_identity_output
+    monkeypatch.setattr(script, "resolve_identity_sources", lambda **kwargs: sources)
+    monkeypatch.setattr(
+        script,
+        "claim_identity_output",
+        lambda **kwargs: real_claim(
+            sources=sources,
+            project_root=sources.project_root,
+            working_directory=sources.project_root,
+            run_dir=R3_OUTPUT_RUN,
+        ),
+    )
+    monkeypatch.setattr(identity_run.platform, "machine", lambda: "x86_64")
+
+    with pytest.raises(RuntimeError, match="native arm64"):
+        script.main(["--config", "sealed.yaml", "--run-dir", R3_OUTPUT_RUN])
+
+    assert not (sources.project_root / R3_OUTPUT_RUN).exists()
 
 
 @pytest.mark.parametrize("interrupt", [KeyboardInterrupt(), SystemExit(7)])
