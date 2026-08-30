@@ -1,5 +1,21 @@
 # H → ZZ* → 4ℓ XGBoost Demo
 
+## Angular5 + DropTop4 重加权终态（ARM64，2026-08-26）
+
+原生 ARM64 的一次性、MC-only 15 特征研究已经完成；它在 DropTop4 的十个特征上仅追加
+五个 Angular5 角变量。六个 development-OOF iteration 没有任何一个同时满足冻结的
+weighted AUC >= 0.80 与 loose/medium/tight 三个 ZZ KS 均 <= 0.10 门槛，终态为
+`no_eligible_iteration`、`selected_iteration: null`、`test_opened: false`。iteration 0 的
+AUC `0.805150881259955` 通过，但三个 KS 都失败；iteration 5 的三个 KS 都通过（最大
+`0.090638729937013`），但 AUC `0.7665404021047497` 失败。所有信号效率门槛均通过，
+却不能替代 AUC/KS 资格条件。
+
+因此没有最终模型、held-out MC test 指标或预测，也没有读取、哈希、评分、绘图或盘点
+真实数据。完整的 six-iteration 数值、证据收据、ARM64 环境与历史比较见
+[执行报告](docs/superpowers/plans/2026-08-26-drop-top4-angular5-r3-arm64-report.md)。这项
+工作是教育/技术性的 MC-only 方法研究，不是 ATLAS 结果、Higgs 发现或物理测量；本报告
+不授权下一阶段训练、test-opening 或真实数据访问。
+
 ## DropTop4 原生平坦度训练结论（2026-08-25）
 
 预先设计的 MC-only `hep_ml` KNN flatness 研究已完成，冻结 run 为

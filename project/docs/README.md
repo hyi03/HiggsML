@@ -25,6 +25,7 @@ Codex 接手入口。本页负责连接详细说明、物理标准、路线图�
 | [Task 4B 实施计划](superpowers/plans/2026-08-10-task-4b-full-mc-training.md) | Task 4B 分步实现、运行和收尾记录 |
 | [DropTop4 + 重加权设计](superpowers/specs/2026-08-12-drop-top4-mass-bin-reweighting-design.md) | 冻结的十特征、质量分箱重加权和 test-sealing 契约 |
 | [DropTop4 + 重加权计划](superpowers/plans/2026-08-12-drop-top4-mass-bin-reweighting.md) | 1.2 MC-only 方法比较、审计和交接记录 |
+| [Angular5 + DropTop4 ARM64 执行报告](superpowers/plans/2026-08-26-drop-top4-angular5-r3-arm64-report.md) | 当前一次性 15 特征 MC-only 训练的 OOF 轨迹、终态和冻结比较 |
 
 ## 历史与开发记录
 

@@ -1,5 +1,29 @@
 # H → ZZ* → 4ℓ Demo 下一阶段路线图
 
+## ARM64 Angular5 + DropTop4 结论（2026-08-26）
+
+预先批准的一次性 MC-only 15 特征研究（DropTop4 加五个 Angular5 角变量）已经在原生
+ARM64 完成。R2 因 x86_64/Rosetta 重新计算的浮点量与 ARM 权威表不精确相同而停止
+（`mZ1` 最大绝对差异 `9.66e-13`）；R3 使用独立 ARM64 path 且不引入容差。identity 和
+enrichment 保留 `199104` 行、2 个 legacy duplicate groups/4 行和唯一的 canonical
+identity。
+
+六个 development-OOF iterations 都没有同时满足 AUC >= `0.80` 与 loose/medium/tight
+三个 KS <= `0.10`。iteration 0 的 AUC `0.805150881259955` 合格但三个 KS 失败；iteration
+5 的 AUC `0.7665404021047497` 失败但三项 KS `0.07381807828236636` / `0.090638729937013` /
+`0.08836325258185229` 合格。所有 signal-efficiency gates 都通过，却不能绕过 AUC/KS
+政策。终态为 `no_eligible_iteration`、`selected_iteration: null`、`test_opened: false`；
+8-file no-selection allowlist 已审计，故没有模型、test 指标或预测 artifact，也没有访问
+真实数据。
+
+相对冻结的十特征 DropTop4 + 重加权最终轮（AUC `0.7588712973047708`、最大 KS
+`0.09720271279351`），Angular5 最终轮略有改善（AUC `0.7665404021047497`、最大 KS
+`0.090638729937013`），但仍不可选择。完整轨迹、效率、收据和历史 Full14/重加权/KNN
+比较见 [执行报告](../superpowers/plans/2026-08-26-drop-top4-angular5-r3-arm64-report.md)。
+
+本报告不授权下一阶段训练。不得追加 iteration、改变 features/bins、放宽 AUC/KS、打开
+held-out test 或读取真实数据；下一项工作只能是新的、结构不同且预注册的 MC-only 设计。
+
 ## DropTop4 KNN flatness 决定（2026-08-25）
 
 预先批准的一次 MC-only 原生平坦度训练已在新 run

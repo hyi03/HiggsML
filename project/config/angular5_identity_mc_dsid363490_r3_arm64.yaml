@@ -1,0 +1,76 @@
+schema_version: "1.0"
+output_run: runs/angular5-identity-mc-363490-2026-08-26-r3-arm64
+
+frozen_reference:
+  path: config/dsid363490.yaml
+  sha256: 0282cfa965228e036f4ada3c010bd7d40b1b14e56c2aa33551784683237cd320
+
+authoritative_mc:
+  manifest_path: runs/full-baseline-363490-2026-08-11-r2/artifacts/run_manifest.json
+  manifest_sha256: 10e0c293dd60291193019df04f4f6dd4672893dea98d23f972c8a78f21e843b8
+  table_path: runs/full-baseline-363490-2026-08-11-r2/processed/mc_events.csv.gz
+  table_sha256: 1c5d6a3f9a750a5eb9965241dd8947d70e790cf949a36f8fa6ec1bfd058f378e
+
+tree_name: analysis
+momentum_unit: GeV
+entry_stop: null
+chunk_size_events: 50000
+luminosity_pb: 10000.0
+
+samples:
+  higgs:
+    source_sample: higgs_345060
+    path: data/raw/higgs.root
+    sha256: 5b9628ccd88547cda07bb1b2ccd88c153d9b2e53bd119416df496ba11aa925a0
+    channel_numbers: [345060]
+    label: 1
+    input_profile: release22
+  zz:
+    source_sample: zz_363490
+    path: data/raw/zz_363490.root
+    sha256: 76503d0cb2a015b814b43e5bc1887ea53a62b057e9ac2f812eaaec1efb1a3f07
+    channel_numbers: [363490]
+    label: 0
+    input_profile: open_data_2020
+    normalization:
+      source: official_metadata
+      xsec_pb: 1.2564
+      k_factor: 1.0
+      filter_efficiency: 1.0
+      sum_of_weights: 7538705.808
+
+selection:
+  require_exactly_four_leptons: true
+  allowed_lepton_types: [11, 13]
+  lepton_pt_thresholds_gev: [20.0, 15.0, 10.0, 7.0]
+  electron_max_abs_eta: 2.47
+  muon_max_abs_eta: 2.7
+  require_zero_charge: true
+  min_all_sfos_mass_gev: 5.0
+  z1_mass_window_gev: [50.0, 106.0]
+  z2_mass:
+    min_mode: fixed
+    fixed_min_gev: 12.0
+    max_gev: 115.0
+    sliding:
+      low_m4l_gev: 140.0
+      high_m4l_gev: 190.0
+      low_min_gev: 12.0
+      high_min_gev: 50.0
+  m4l_window_gev: [105.0, 160.0]
+  lepton_quality:
+    enabled: true
+    require_event_trigger: true
+    require_trigger_match: true
+    require_tight_id: true
+    track_isolation_max: 0.3
+    calo_isolation_max: 0.3
+    electron_d0sig_max: 5.0
+    muon_d0sig_max: 3.0
+    z0_sintheta_max_mm: 0.5
+
+artifacts:
+  - config.yaml
+  - processed/mc_events_source_identity.csv.gz
+  - artifacts/identity_validation.json
+  - artifacts/run_manifest.json

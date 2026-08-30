@@ -23,12 +23,19 @@ from src.mass_bin_reweighting_run import (
     StudySource,
     approved_reweighting_artifacts,
     load_mass_bin_reweighting_config,
+    resolve_reweighting_output,
 )
 
 
 DROP_TOP4 = (
     "lep1_pt", "lep2_pt", "lep1_eta", "lep2_eta", "lep3_eta",
     "lep4_eta", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ",
+)
+ANGULAR5_R3_ARM64 = (
+    "lep1_pt", "lep2_pt", "lep1_eta", "lep2_eta", "lep3_eta",
+    "lep4_eta", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ",
+    "cos_theta_star", "cos_theta_1", "cos_theta_2", "phi_decay_planes",
+    "phi_production_plane",
 )
 
 
@@ -158,6 +165,174 @@ def test_drop_top4_cli_uses_exact_profile_and_protects_reference_run(monkeypatch
     }]
     assert resolver_calls[1]["reweighting_reference_run"] == Path("reweighting-reference")
     assert writer_calls[0]["features"] == DROP_TOP4
+
+
+def test_angular5_r3_arm64_cli_passes_only_the_sealed_15_feature_profile(monkeypatch):
+    unresolved = SimpleNamespace(run_dir="out", directory_identities=None)
+    claimed = SimpleNamespace(run_dir="out", directory_identities={".": (1, 2)})
+    config_path = Path("config/mass_bin_reweighting_drop_top4_angular5_r3_arm64.yaml")
+    config = load_mass_bin_reweighting_config(config_path)
+    sources = ReweightingSources(
+        config=config,
+        config_bytes=config_path.read_bytes(),
+        training_input=SimpleNamespace(
+            input_run="input", expected_rows=3,
+            mc_path=Path(config.input_table_path),
+        ),
+        reference_run=Path("reference"), ablation_run=Path("ablation"),
+        raw_zz_path=Path("raw-zz"), reweighting_reference_run=Path("reweighting-reference"),
+        policy="training-policy", reweighting_policy="reweighting-policy",
+        records={"study_config": SimpleNamespace(path="cfg")},
+    )
+    calls: list[tuple[str, object]] = []
+    resolves = iter((unresolved, unresolved))
+    monkeypatch.setattr(run_mass_bin_reweighting, "resolve_reweighting_output", lambda **_: next(resolves))
+    monkeypatch.setattr(run_mass_bin_reweighting, "resolve_reweighting_sources", lambda **_: sources)
+    monkeypatch.setattr(
+        run_mass_bin_reweighting,
+        "assert_reweighting_execution_gate",
+        lambda **kwargs: calls.append(("execution_gate", kwargs["layout"])),
+    )
+    monkeypatch.setattr(
+        run_mass_bin_reweighting,
+        "claim_reweighting_output",
+        lambda value: calls.append(("claim", value)) or claimed,
+    )
+    monkeypatch.setattr(run_mass_bin_reweighting, "load_training_mc_frame", lambda value: calls.append(("load", value)) or object())
+    monkeypatch.setattr(run_mass_bin_reweighting, "summarize_mc_source_rows", lambda *_: {"row_count": 3, "rows_by_split": {"train": 1, "validation": 1, "test": 1}})
+    outcome = SimpleNamespace(status="no_eligible_iteration", selected_iteration=None, model=None, test_scores=None)
+    monkeypatch.setattr(run_mass_bin_reweighting, "run_mass_bin_reweighting_study", lambda *_, features: calls.append(("features", features)) or outcome)
+    monkeypatch.setattr(run_mass_bin_reweighting, "build_reweighting_artifacts", lambda _: {"selection": {"status": "no_eligible_iteration", "selected_iteration": None, "test_opened": False}})
+    monkeypatch.setattr(run_mass_bin_reweighting, "write_reweighting_artifacts", lambda *_, **__: object())
+    monkeypatch.setattr(run_mass_bin_reweighting, "assert_reweighting_sources_unchanged", lambda _: None)
+    monkeypatch.setattr(run_mass_bin_reweighting, "publish_reweighting_manifest", lambda *_, **__: {})
+    monkeypatch.setattr(run_mass_bin_reweighting, "policy_manifest_record", lambda _: {})
+    monkeypatch.setattr(run_mass_bin_reweighting, "software_versions", lambda: {})
+
+    assert run_mass_bin_reweighting.main(["--input-run", "in", "--reference-run", "ref", "--config", "cfg", "--run-dir", "out"]) == 0
+    assert calls == [
+        ("execution_gate", unresolved),
+        ("claim", unresolved),
+        ("load", sources.training_input),
+        ("features", ANGULAR5_R3_ARM64),
+    ]
+
+
+def test_angular5_execution_gate_failure_prevents_claim(monkeypatch):
+    unresolved = SimpleNamespace(run_dir=Path("wrong"), directory_identities=None)
+    config_path = Path(
+        "config/mass_bin_reweighting_drop_top4_angular5_r3_arm64.yaml"
+    )
+    config = load_mass_bin_reweighting_config(config_path)
+    sources = ReweightingSources(
+        config=config,
+        config_bytes=config_path.read_bytes(),
+        training_input=SimpleNamespace(input_run="input", expected_rows=3),
+        reference_run=Path("reference"),
+        ablation_run=Path("ablation"),
+        raw_zz_path=Path("raw-zz"),
+        reweighting_reference_run=Path("reweighting-reference"),
+        policy="training-policy",
+        reweighting_policy="reweighting-policy",
+        records={"study_config": SimpleNamespace(path="cfg")},
+    )
+    monkeypatch.setattr(
+        run_mass_bin_reweighting,
+        "resolve_reweighting_output",
+        lambda **kwargs: unresolved,
+    )
+    monkeypatch.setattr(
+        run_mass_bin_reweighting,
+        "resolve_reweighting_sources",
+        lambda **kwargs: sources,
+    )
+    monkeypatch.setattr(
+        run_mass_bin_reweighting,
+        "assert_reweighting_execution_gate",
+        lambda **kwargs: (_ for _ in ()).throw(ValueError("wrong R3 output")),
+    )
+    monkeypatch.setattr(
+        run_mass_bin_reweighting,
+        "claim_reweighting_output",
+        lambda value: pytest.fail("execution gate must run before claim"),
+    )
+
+    with pytest.raises(ValueError, match="wrong R3 output"):
+        run_mass_bin_reweighting.main(
+            [
+                "--input-run", "in",
+                "--reference-run", "ref",
+                "--config", "cfg",
+                "--run-dir", "wrong",
+            ]
+        )
+
+
+@pytest.mark.parametrize(
+    "control_error",
+    [KeyboardInterrupt("stop"), SystemExit(17)],
+    ids=("keyboard-interrupt", "system-exit"),
+)
+def test_postclaim_control_exception_installs_exclusive_failure_terminal(
+    tmp_path, monkeypatch, control_error
+):
+    layout = resolve_reweighting_output(
+        project_root=tmp_path,
+        working_directory=tmp_path,
+        input_run=tmp_path / "input",
+        reference_run=tmp_path / "reference",
+        run_dir=tmp_path / "study",
+    )
+    config_path = Path("config/mass_bin_reweighting.yaml")
+    config = load_mass_bin_reweighting_config(config_path)
+    sources = ReweightingSources(
+        config=config,
+        config_bytes=config_path.read_bytes(),
+        training_input=SimpleNamespace(input_run="input", expected_rows=3),
+        reference_run=Path("reference"),
+        ablation_run=Path("ablation"),
+        raw_zz_path=Path("raw-zz"),
+        reweighting_reference_run=None,
+        policy="training-policy",
+        reweighting_policy="reweighting-policy",
+        records={"study_config": SimpleNamespace(path="cfg")},
+    )
+    monkeypatch.setattr(
+        run_mass_bin_reweighting,
+        "resolve_reweighting_output",
+        lambda **kwargs: layout,
+    )
+    monkeypatch.setattr(
+        run_mass_bin_reweighting,
+        "resolve_reweighting_sources",
+        lambda **kwargs: sources,
+    )
+
+    def interrupt(_training_input):
+        raise control_error
+
+    monkeypatch.setattr(
+        run_mass_bin_reweighting, "load_training_mc_frame", interrupt
+    )
+
+    with pytest.raises(type(control_error)):
+        run_mass_bin_reweighting.main(
+            [
+                "--input-run", "in",
+                "--reference-run", "ref",
+                "--config", "cfg",
+                "--run-dir", str(layout.run_dir),
+            ]
+        )
+
+    failure = json.loads((layout.run_dir / "failure.json").read_text())
+    assert failure == {
+        "status": "failed",
+        "error_type": type(control_error).__name__,
+        "message": str(control_error),
+    }
+    assert (layout.run_dir / ".terminal.failed").is_dir()
+    assert not (layout.artifacts_dir / "study_manifest.json").exists()
 
 
 def test_occupied_output_refuses_before_csv_model_or_plot(monkeypatch):

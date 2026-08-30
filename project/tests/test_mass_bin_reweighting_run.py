@@ -3,7 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
+import platform
+import subprocess
 from types import MappingProxyType, SimpleNamespace
 
 import numpy as np
@@ -33,6 +36,38 @@ DROP_TOP4 = (
     "lep1_pt", "lep2_pt", "lep1_eta", "lep2_eta", "lep3_eta",
     "lep4_eta", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ",
 )
+ANGULAR5_R3_ARM64 = (
+    "lep1_pt", "lep2_pt", "lep1_eta", "lep2_eta", "lep3_eta",
+    "lep4_eta", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ",
+    "cos_theta_star", "cos_theta_1", "cos_theta_2", "phi_decay_planes",
+    "phi_production_plane",
+)
+ANGULAR5_R3_ARM64_OUTPUT = (
+    "runs/mass-reweighting-drop-top4-angular5-363490-2026-08-26-r3-arm64"
+)
+ANGULAR5_ENRICHMENT_OUTPUTS = {
+    "config.yaml",
+    "processed/mc_events_angular5.csv.gz",
+    "artifacts/identity_validation.json",
+    "artifacts/angular5_summary.json",
+}
+REFERENCE_TRAINING_OUTPUTS = {
+    "config.yaml",
+    "model/xgboost_model.json",
+    "artifacts/weight_summary.json",
+    "artifacts/metrics.json",
+    "artifacts/working_points.json",
+    "artifacts/cv_results.csv",
+    "predictions/oof_scores.csv.gz",
+    "predictions/test_scores.csv.gz",
+    "plots/roc_curve.png",
+    "plots/score_distributions.png",
+    "plots/cv_stability.png",
+    "plots/feature_importance.png",
+    "plots/mc_mass_sculpting.png",
+    "plots/mc_mass_signal_background.png",
+    "plots/mc_mass_working_points.png",
+}
 
 
 NO_SELECTION = {
@@ -101,6 +136,302 @@ def test_drop_top4_config_changes_only_the_approved_feature_profile():
         "artifacts_selected",
     ):
         assert getattr(reduced, name) == getattr(full, name)
+
+
+def test_angular5_r3_arm64_config_binds_the_exact_sealed_table_and_profile():
+    config = load_mass_bin_reweighting_config(
+        "config/mass_bin_reweighting_drop_top4_angular5_r3_arm64.yaml"
+    )
+    assert config.schema_version == "1.2"
+    assert config.input_run == "runs/angular5-mc-363490-2026-08-26-r3-arm64"
+    assert config.input_table_path == (
+        "runs/angular5-mc-363490-2026-08-26-r3-arm64/processed/"
+        "mc_events_angular5.csv.gz"
+    )
+    assert config.input_table_sha256 == (
+        "bc31f4e65ccecc0a1962648cfe240b67d8ecc6df8eda2478b3f46c93d2f34f09"
+    )
+    assert config.features == ANGULAR5_R3_ARM64
+
+
+def test_angular5_r3_arm64_source_binding_hashes_only_the_sealed_mc_table(monkeypatch):
+    monkeypatch.setattr(pd, "read_csv", lambda *args, **kwargs: pytest.fail("source binding must not parse CSV"))
+    sources = resolve_reweighting_sources(
+        input_run="runs/angular5-mc-363490-2026-08-26-r3-arm64",
+        reference_run="runs/full-training-363490-2026-08-11-r2",
+        config_path="config/mass_bin_reweighting_drop_top4_angular5_r3_arm64.yaml",
+    )
+    assert sources.training_input.mc_path == Path(
+        "runs/angular5-mc-363490-2026-08-26-r3-arm64/processed/mc_events_angular5.csv.gz"
+    ).resolve()
+    assert sources.training_input.hashes["mc"] == (
+        "bc31f4e65ccecc0a1962648cfe240b67d8ecc6df8eda2478b3f46c93d2f34f09"
+    )
+
+
+def test_angular5_manifest_seals_summary_and_table_before_mc_parse(
+    tmp_path, monkeypatch
+):
+    input_run, config, _manifest = _angular5_input_fixture(tmp_path)
+    monkeypatch.setattr(
+        pd,
+        "read_csv",
+        lambda *args, **kwargs: pytest.fail("MC table must remain unparsed"),
+    )
+
+    training_input, _records = (
+        mass_bin_reweighting_run._resolve_angular5_r3_arm64_sources(
+            input_run, config
+        )
+    )
+
+    assert training_input.expected_rows == 3
+    assert training_input.mc_path.read_bytes() == b"not-a-parseable-mc-table"
+
+
+@pytest.mark.parametrize(
+    ("name", "mutate"),
+    [
+        ("schema", lambda manifest: manifest.update(schema_version="9.9")),
+        ("status", lambda manifest: manifest.update(status="failed")),
+        (
+            "allowlist",
+            lambda manifest: manifest["outputs"].pop(
+                "artifacts/angular5_summary.json"
+            ),
+        ),
+        (
+            "table-hash",
+            lambda manifest: manifest["outputs"][
+                "processed/mc_events_angular5.csv.gz"
+            ].update(sha256="0" * 64),
+        ),
+        (
+            "table-rows",
+            lambda manifest: manifest["outputs"][
+                "processed/mc_events_angular5.csv.gz"
+            ].update(row_count=4),
+        ),
+        (
+            "summary-size",
+            lambda manifest: manifest["outputs"][
+                "artifacts/angular5_summary.json"
+            ].update(size_bytes=1),
+        ),
+    ],
+)
+def test_angular5_manifest_mutation_fails_before_mc_parse(
+    tmp_path, monkeypatch, name, mutate
+):
+    input_run, config, manifest = _angular5_input_fixture(tmp_path)
+    mutate(manifest)
+    config = _write_angular5_manifest(input_run, config, manifest)
+    monkeypatch.setattr(
+        pd,
+        "read_csv",
+        lambda *args, **kwargs: pytest.fail("MC table must remain unparsed"),
+    )
+
+    with pytest.raises(ValueError, match="Angular5 (manifest|output|summary)"):
+        mass_bin_reweighting_run._resolve_angular5_r3_arm64_sources(
+            input_run, config
+        )
+
+
+def test_angular5_summary_row_count_must_match_manifest_table_receipt_before_parse(
+    tmp_path, monkeypatch
+):
+    input_run, config, manifest = _angular5_input_fixture(
+        tmp_path, summary_rows=4
+    )
+    config = _write_angular5_manifest(input_run, config, manifest)
+    monkeypatch.setattr(
+        pd,
+        "read_csv",
+        lambda *args, **kwargs: pytest.fail("MC table must remain unparsed"),
+    )
+
+    with pytest.raises(ValueError, match="summary row count.*table receipt"):
+        mass_bin_reweighting_run._resolve_angular5_r3_arm64_sources(
+            input_run, config
+        )
+
+
+def test_reference_training_manifest_seals_consumed_outputs_without_model_parse(
+    tmp_path
+):
+    reference_run, config, _manifest = _reference_training_fixture(tmp_path)
+
+    records = mass_bin_reweighting_run._resolve_angular5_r3_arm64_reference(
+        reference_run, config
+    )
+
+    assert set(records) == {
+        "reference_config",
+        "reference_manifest",
+        "reference_model",
+        "reference_metrics",
+    }
+    assert records["reference_model"].path.read_bytes() == b"not-an-xgboost-model"
+
+
+@pytest.mark.parametrize(
+    ("name", "mutate"),
+    [
+        ("schema", lambda manifest: manifest.update(schema_version="2.0")),
+        ("status", lambda manifest: manifest.update(status="failed")),
+        (
+            "allowlist",
+            lambda manifest: manifest["outputs"].pop("plots/roc_curve.png"),
+        ),
+        *[
+            (
+                relative,
+                lambda manifest, relative=relative: manifest["outputs"][
+                    relative
+                ].update(sha256="f" * 64),
+            )
+            for relative in (
+                "config.yaml",
+                "model/xgboost_model.json",
+                "artifacts/metrics.json",
+            )
+        ],
+    ],
+)
+def test_reference_training_manifest_mutation_fails_before_model_use(
+    tmp_path, name, mutate
+):
+    reference_run, config, manifest = _reference_training_fixture(tmp_path)
+    mutate(manifest)
+    config = _write_reference_manifest(reference_run, config, manifest)
+
+    with pytest.raises(ValueError, match="reference training (manifest|output)"):
+        mass_bin_reweighting_run._resolve_angular5_r3_arm64_reference(
+            reference_run, config
+        )
+
+
+def test_angular5_r3_arm64_rejects_copied_config_before_protected_sources(
+    tmp_path, monkeypatch
+):
+    copied = tmp_path / "copied-r3.yaml"
+    copied.write_bytes(Path(
+        "config/mass_bin_reweighting_drop_top4_angular5_r3_arm64.yaml"
+    ).read_bytes())
+    original = StudySource.from_path
+
+    def config_only(cls, name, path, *, capture=False):
+        if name != "study_config":
+            pytest.fail("copied R3 config reached a protected source")
+        return original(name, path, capture=capture)
+
+    monkeypatch.setattr(StudySource, "from_path", classmethod(config_only))
+    with pytest.raises(ValueError, match="canonical R3-ARM64 config"):
+        resolve_reweighting_sources(
+            input_run="runs/angular5-mc-363490-2026-08-26-r3-arm64",
+            reference_run="runs/full-training-363490-2026-08-11-r2",
+            config_path=copied,
+        )
+
+
+def test_angular5_r3_arm64_execution_gate_rejects_wrong_output_before_claim(
+    tmp_path, monkeypatch
+):
+    config = load_mass_bin_reweighting_config(
+        "config/mass_bin_reweighting_drop_top4_angular5_r3_arm64.yaml"
+    )
+    wrong = tmp_path / "runs/wrong-r3-output"
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+
+    with pytest.raises(ValueError, match="exact frozen output path"):
+        mass_bin_reweighting_run.assert_reweighting_execution_gate(
+            config=config,
+            project_root=tmp_path,
+            layout=SimpleNamespace(run_dir=wrong),
+        )
+
+    assert not wrong.exists()
+
+
+@pytest.mark.parametrize(
+    ("machine", "returncode", "stdout", "error", "message"),
+    [
+        ("x86_64", 0, "0\n", None, "native arm64"),
+        ("arm64", 0, "1\n", None, "Rosetta"),
+        ("arm64", 1, "", None, "could not verify Rosetta state"),
+        ("arm64", 0, "unknown\n", None, "could not verify Rosetta state"),
+        ("arm64", 0, "", FileNotFoundError("sysctl"), "could not verify Rosetta state"),
+    ],
+)
+def test_angular5_r3_arm64_execution_gate_fails_closed_before_output_creation(
+    tmp_path, monkeypatch, machine, returncode, stdout, error, message
+):
+    config = load_mass_bin_reweighting_config(
+        "config/mass_bin_reweighting_drop_top4_angular5_r3_arm64.yaml"
+    )
+    target = tmp_path / ANGULAR5_R3_ARM64_OUTPUT
+    monkeypatch.setattr(platform, "machine", lambda: machine)
+
+    def sysctl(command, **kwargs):
+        if error is not None:
+            raise error
+        return subprocess.CompletedProcess(
+            args=command, returncode=returncode, stdout=stdout, stderr=""
+        )
+
+    monkeypatch.setattr(subprocess, "run", sysctl)
+
+    with pytest.raises(RuntimeError, match=message):
+        mass_bin_reweighting_run.assert_reweighting_execution_gate(
+            config=config,
+            project_root=tmp_path,
+            layout=SimpleNamespace(run_dir=target),
+        )
+
+    assert not target.exists()
+
+
+@pytest.mark.parametrize("translated", ["0\n", ""])
+def test_angular5_r3_arm64_execution_gate_accepts_documented_native_states(
+    tmp_path, monkeypatch, translated
+):
+    config = load_mass_bin_reweighting_config(
+        "config/mass_bin_reweighting_drop_top4_angular5_r3_arm64.yaml"
+    )
+    target = tmp_path / ANGULAR5_R3_ARM64_OUTPUT
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            args=command, returncode=0, stdout=translated, stderr=""
+        ),
+    )
+
+    mass_bin_reweighting_run.assert_reweighting_execution_gate(
+        config=config,
+        project_root=tmp_path,
+        layout=SimpleNamespace(run_dir=target),
+    )
+    assert not target.exists()
+
+
+def test_legacy_execution_gate_preserves_arbitrary_fresh_output_behavior(
+    tmp_path, monkeypatch
+):
+    config = load_mass_bin_reweighting_config("config/mass_bin_reweighting.yaml")
+    monkeypatch.setattr(
+        platform,
+        "machine",
+        lambda: pytest.fail("legacy execution must not inspect architecture"),
+    )
+
+    mass_bin_reweighting_run.assert_reweighting_execution_gate(
+        config=config,
+        project_root=tmp_path,
+        layout=SimpleNamespace(run_dir=tmp_path / "arbitrary-legacy-output"),
+    )
 
 
 def test_policy_manifest_record_uses_bound_drop_top4_profile():
@@ -1153,6 +1484,136 @@ def _fresh_layout(tmp_path: Path) -> TrainingOutputLayout:
         input_run=tmp_path / "input",
         reference_run=tmp_path / "reference",
         run_dir=tmp_path / "study",
+    )
+
+
+def _source_output_receipt(path: Path, *, row_count: int | None = None) -> dict:
+    payload = path.read_bytes()
+    receipt = {
+        "path": str(path),
+        "size_bytes": len(payload),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+    }
+    if row_count is not None:
+        receipt["row_count"] = row_count
+    return receipt
+
+
+def _angular5_input_fixture(
+    tmp_path: Path, *, summary_rows: int = 3
+) -> tuple[Path, object, dict]:
+    input_run = tmp_path / "angular5-input"
+    table = input_run / "processed/mc_events_angular5.csv.gz"
+    identity = input_run / "artifacts/identity_validation.json"
+    summary = input_run / "artifacts/angular5_summary.json"
+    snapshot = input_run / "config.yaml"
+    for path in (table, identity, summary, snapshot):
+        path.parent.mkdir(parents=True, exist_ok=True)
+    table.write_bytes(b"not-a-parseable-mc-table")
+    identity.write_text('{"status":"validated"}\n', encoding="utf-8")
+    summary.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "status": "complete",
+                "row_count": summary_rows,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    snapshot.write_text("schema_version: '1.0'\n", encoding="utf-8")
+    outputs = {
+        "config.yaml": _source_output_receipt(snapshot),
+        "processed/mc_events_angular5.csv.gz": _source_output_receipt(
+            table, row_count=3
+        ),
+        "artifacts/identity_validation.json": _source_output_receipt(identity),
+        "artifacts/angular5_summary.json": _source_output_receipt(summary),
+    }
+    assert set(outputs) == ANGULAR5_ENRICHMENT_OUTPUTS
+    manifest = {
+        "schema_version": "1.0",
+        "status": "complete",
+        "role": "MC-only R3-ARM64 Angular5 enrichment",
+        "join_key": ["source_sample", "source_entry"],
+        "appended_columns": list(ANGULAR5_R3_ARM64[-5:]),
+        "software": {},
+        "inputs": {},
+        "outputs": outputs,
+    }
+    base = load_mass_bin_reweighting_config(
+        "config/mass_bin_reweighting_drop_top4_angular5_r3_arm64.yaml"
+    )
+    config = replace(
+        base,
+        input_run=str(input_run),
+        input_table_path=str(table),
+        input_table_sha256=outputs[
+            "processed/mc_events_angular5.csv.gz"
+        ]["sha256"],
+    )
+    config = _write_angular5_manifest(input_run, config, manifest)
+    return input_run, config, manifest
+
+
+def _write_angular5_manifest(input_run: Path, config, manifest: dict):
+    path = input_run / "artifacts/run_manifest.json"
+    path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+    return replace(
+        config,
+        input_manifest_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+    )
+
+
+def _reference_training_fixture(tmp_path: Path) -> tuple[Path, object, dict]:
+    reference_run = tmp_path / "reference-training"
+    row_count_outputs = {
+        "artifacts/cv_results.csv",
+        "predictions/oof_scores.csv.gz",
+        "predictions/test_scores.csv.gz",
+    }
+    outputs = {}
+    for relative in sorted(REFERENCE_TRAINING_OUTPUTS):
+        path = reference_run / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = (
+            b"not-an-xgboost-model"
+            if relative == "model/xgboost_model.json"
+            else f"fixture:{relative}\n".encode("utf-8")
+        )
+        path.write_bytes(payload)
+        outputs[relative] = _source_output_receipt(
+            path, row_count=1 if relative in row_count_outputs else None
+        )
+    manifest = {
+        "schema_version": "1.0",
+        "status": "complete",
+        "input_task4a": {},
+        "sampling_fractions": {},
+        "features": list(FEATURES),
+        "weight_policy": {},
+        "cross_validation": {},
+        "selected_model": {},
+        "working_points": {},
+        "software": {},
+        "warnings": {},
+        "outputs": outputs,
+    }
+    base = load_mass_bin_reweighting_config(
+        "config/mass_bin_reweighting_drop_top4_angular5_r3_arm64.yaml"
+    )
+    config = replace(base, reference_run=str(reference_run))
+    config = _write_reference_manifest(reference_run, config, manifest)
+    return reference_run, config, manifest
+
+
+def _write_reference_manifest(reference_run: Path, config, manifest: dict):
+    path = reference_run / "artifacts/training_manifest.json"
+    path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+    return replace(
+        config,
+        reference_manifest_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
     )
 
 

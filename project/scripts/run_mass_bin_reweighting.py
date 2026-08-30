@@ -19,6 +19,7 @@ from src.mass_bin_reweighting_plots import (
     build_zz_efficiency_by_mass_png,
 )
 from src.mass_bin_reweighting_run import (
+    assert_reweighting_execution_gate,
     assert_reweighting_sources_unchanged,
     claim_reweighting_output,
     policy_manifest_record,
@@ -64,9 +65,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         reweighting_reference_run=sources.reweighting_reference_run,
         run_dir=Path(args.run_dir),
     )
+    assert_reweighting_execution_gate(
+        config=sources.config,
+        project_root=project_root,
+        layout=layout,
+    )
     layout = claim_reweighting_output(layout)
     try:
-        frame = load_training_mc_frame(sources.training_input)
+        frame = _load_bound_mc_frame(sources)
         source_rows = summarize_mc_source_rows(frame, sources.training_input.expected_rows)
         outcome = run_mass_bin_reweighting_study(
             frame, sources.policy, sources.reweighting_policy,
@@ -90,11 +96,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             policy=policy_manifest_record(sources.config),
             software=software_versions(),
         )
-    except Exception as error:
+    except BaseException as error:
         record_reweighting_failure(layout, error)
         raise
     _display_summary(artifacts["selection"], layout.run_dir)
     return 0
+
+
+def _load_bound_mc_frame(sources):
+    if sources.config.schema_version == "1.2":
+        expected = Path(sources.config.input_table_path or "").resolve()
+        if (
+            sources.config.features != (
+                "lep1_pt", "lep2_pt", "lep1_eta", "lep2_eta", "lep3_eta",
+                "lep4_eta", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ",
+                "cos_theta_star", "cos_theta_1", "cos_theta_2", "phi_decay_planes",
+                "phi_production_plane",
+            )
+            or sources.training_input.mc_path.resolve() != expected
+        ):
+            raise ValueError("R3-ARM64 Angular5 input is not bound to the sealed profile")
+    return load_training_mc_frame(sources.training_input)
 
 
 def build_reweighting_artifacts(outcome: ReweightingStudyOutcome) -> dict[str, Any]:

@@ -56,6 +56,12 @@ _DROP_TOP4_FEATURES = (
     "lep1_pt", "lep2_pt", "lep1_eta", "lep2_eta", "lep3_eta",
     "lep4_eta", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ",
 )
+_ANGULAR5_R3_ARM64_FEATURES = (
+    "lep1_pt", "lep2_pt", "lep1_eta", "lep2_eta", "lep3_eta",
+    "lep4_eta", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ",
+    "cos_theta_star", "cos_theta_1", "cos_theta_2", "phi_decay_planes",
+    "phi_production_plane",
+)
 
 
 @dataclass(frozen=True)
@@ -104,9 +110,10 @@ def approved_reweighting_features(
     approved: tuple[tuple[str, ...], ...] = (
         _FULL14_FEATURES,
         _DROP_TOP4_FEATURES,
+        _ANGULAR5_R3_ARM64_FEATURES,
     ),
 ) -> tuple[str, ...]:
-    """Return one of the two immutable, predeclared training profiles."""
+    """Return one of the immutable, predeclared training profiles."""
     if (
         type(value) is not tuple
         or not all(type(item) is str for item in value)
