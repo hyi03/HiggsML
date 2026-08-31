@@ -72,6 +72,92 @@ MC-only 方法学 1.0 已完成。官方 DSID 363490 连续 ZZ MC 经完整 sele
 
 Demo 只验证分析链，不代表 ATLAS 官方测量，也不能用于声称重新发现希格斯玻色子。
 
+## 通用 XGBoost 实验入口
+
+面向新的技术实验，项目提供统一命令：
+
+```bash
+python -m scripts.higgsml <train|predict|evaluate-test> ...
+```
+
+它读取已经完成 selection、权重计算和数据集划分的 processed MC CSV/CSV.GZ；不读取
+ROOT、不生成新的 split，也不会自动处理真实数据。历史封存研究仍使用各自原有命令、
+配置和 manifest；通用入口不会修改或替代这些冻结流程。
+
+### 训练与调参
+
+```bash
+python -m scripts.higgsml train \
+  --input runs/<prepared-run>/processed/mc_events.csv.gz \
+  --output-dir runs/<new-experiment> \
+  --config config/experiment_training.yaml \
+  --feature-profile base14 \
+  --feature lep4_pt=off \
+  --max-depth 2 --max-depth 3 \
+  --min-child-weight 5 --min-child-weight 20 \
+  --learning-rate 0.05
+```
+
+输入表必须包含 `label`、`split`、`physical_weight`、`channelNumber`、
+`eventNumber`、`m4l` 和全部启用的 feature。配置优先级为内置默认值、YAML、命令行；
+后者优先级最高。以下参数既可在 YAML 中配置，也可使用同名命令行参数覆盖：
+
+- `n_estimators`、`early_stopping_rounds`、`random_seed`、`n_jobs`、`tree_method`、`folds`；
+- `learning_rate`、`max_depth`、`min_child_weight`、`subsample`、
+  `colsample_bytree`、`reg_alpha`、`reg_lambda`。
+
+第二组参数可重复传入。每项只有一个值时运行单个候选；任一参数有多个值时按笛卡尔积
+运行网格，并以 mean weighted development-OOF AUC 选择候选，相同时保留配置展开顺序
+中的第一个候选。训练权重继续使用按类别归一化的 `abs(physical_weight)`。
+
+`base14` 包含现有 14 个基础 feature；`angular19` 在其后追加五个 Angular5 feature。
+Profile 内所有 feature 默认开启，可以重复使用 `--feature NAME=on|off` 覆盖。最终列顺序
+始终由 profile 决定。`m4l`、事件/样本标识、来源字段和权重字段永远不能作为模型输入。
+
+`train` 只使用 train/validation development 行完成 OOF、参数与工作点选择，再在全部
+development 行拟合固定模型；不会评分 held-out test。输出目录包含：
+
+```text
+model.json
+effective_config.yaml
+manifest.json
+metrics.json
+cv_results.csv
+oof_scores.csv.gz
+plots/
+```
+
+### 固定模型预测
+
+```bash
+python -m scripts.higgsml predict \
+  --input data/new_events.csv.gz \
+  --model-dir runs/<experiment> \
+  --output-dir runs/<new-prediction>
+```
+
+`predict` 从训练 manifest 读取固定 feature 及顺序，生成 `predictions.csv.gz`。输入若包含
+任何 `split=test` 行会失败，避免绕过独立 test 入口。
+
+### 独立 test 评价
+
+模型方案固定后，显式运行：
+
+```bash
+python -m scripts.higgsml evaluate-test \
+  --input runs/<prepared-run>/processed/mc_events.csv.gz \
+  --model-dir runs/<experiment> \
+  --output-dir runs/<new-test-evaluation>
+```
+
+该命令只评分 `split=test`，不允许覆盖 feature、参数或工作点，输出
+`test_scores.csv.gz`、`metrics.json`、`manifest.json` 和 `plots/`。
+
+所有子命令默认拒绝已有输出目录。`--overwrite` 只接受已有 manifest 明确标记为通用
+实验产物的目录，并在新产物完整生成后原子替换；未知目录、软链接、源码/配置/数据目录
+和封存研究输出均拒绝覆盖。每份 manifest 都记录输入、模型和输出 SHA-256、软件版本、
+最终 feature、有效参数和 test 是否开启。
+
 ## 1. 安装
 
 建议使用 Python 3.11 或更新版本：
