@@ -98,6 +98,20 @@ python -m scripts.higgsml train \
   --learning-rate 0.05
 ```
 
+训练命令默认显示 XGBoost boosting round 进度。交叉验证阶段会分别显示每个候选参数和
+fold（例如 `Candidate 1/4 fold 2/5`）的完成比例及最新 validation AUC；候选选择完成后
+再显示 `Final model` 的训练进度。early stopping 提前终止时，进度条保留实际完成轮数。
+在 CI、日志重定向或不需要交互输出时可关闭进度条：
+
+```bash
+python -m scripts.higgsml train \
+  --input runs/<prepared-run>/processed/mc_events.csv.gz \
+  --output-dir runs/<new-experiment> \
+  --config config/experiment_training.yaml \
+  --feature-profile base14 \
+  --no-progress
+```
+
 输入表必须包含 `label`、`split`、`physical_weight`、`channelNumber`、
 `eventNumber`、`m4l` 和全部启用的 feature。配置优先级为内置默认值、YAML、命令行；
 后者优先级最高。以下参数既可在 YAML 中配置，也可使用同名命令行参数覆盖：
@@ -160,18 +174,44 @@ python -m scripts.higgsml evaluate-test \
 
 ## 1. 安装
 
-建议使用 Python 3.11 或更新版本：
+建议使用 Python 3.11 或更新版本。从本项目根目录（即包含
+`requirements.txt` 的 `project/` 目录）创建并激活独立虚拟环境：
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+```
+
+每次打开新的终端后，都需要在 `project/` 目录重新执行：
+
+```bash
+source .venv/bin/activate
 ```
 
 macOS 上的 XGBoost 还需要 OpenMP 运行库：
 
 ```bash
 brew install libomp
+```
+
+安装后检查当前 `python` 是否确实来自项目虚拟环境，并验证核心依赖：
+
+```bash
+which python
+python -c "import xgboost, uproot; print(xgboost.__version__, uproot.__version__)"
+python -m pip check
+```
+
+`which python` 应该指向当前项目的 `.venv/bin/python`。如果它仍指向
+Anaconda、pyenv 或系统 Python，说明项目虚拟环境没有正确激活；请重新执行
+`source .venv/bin/activate` 后再检查。也可以显式使用虚拟环境解释器，
+避免受当前 shell 的 Python 配置影响：
+
+```bash
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m scripts.higgsml --help
 ```
 
 ## 2. 先运行核心测试

@@ -24,6 +24,7 @@ from .full_training_policy import (
     class_balanced_training_weights,
     identity_collision_summary,
 )
+from .progress import TrainingProgress
 from .provenance import software_versions
 from .validation import weighted_ks_distance
 
@@ -72,6 +73,7 @@ class TrainingOutcome:
 
 
 ModelFactory = Callable[..., Any]
+ProgressFactory = Callable[..., object]
 
 
 def load_training_frame(path: str | Path) -> pd.DataFrame:
@@ -119,32 +121,49 @@ def train_experiment(
     config: ExperimentConfig,
     *,
     model_factory: ModelFactory | None = None,
+    show_progress: bool = False,
+    progress_factory: ProgressFactory | None = None,
 ) -> TrainingOutcome:
     validate_training_frame(frame, config.features)
     development = frame.loc[frame["split"] != "test"]
     folds = assign_development_folds(development, folds=config.folds)
     factory = model_factory or _xgboost_factory
     results: list[CandidateResult] = []
-    for index, candidate in enumerate(config.candidates()):
+    candidates = config.candidates()
+    for index, candidate in enumerate(candidates):
         oof = pd.Series(np.nan, index=development.index, dtype=float, name="oof_score")
         fold_results: list[FoldResult] = []
         for fold in range(config.folds):
             fitting = development.loc[folds != fold]
             evaluation = development.loc[folds == fold]
             parameters = _model_parameters(config, candidate, final=False)
-            classifier = factory(**parameters)
+            progress = _fit_progress(
+                config.n_estimators,
+                f"Candidate {index + 1}/{len(candidates)} fold {fold + 1}/{config.folds}",
+                leave=False,
+                show_progress=show_progress,
+                progress_factory=progress_factory,
+            )
+            classifier_parameters = dict(parameters)
+            if progress is not None:
+                classifier_parameters["callbacks"] = [progress]
             fitting_weights = class_balanced_training_weights(fitting)
             evaluation_weights = np.abs(
                 evaluation["physical_weight"].to_numpy(dtype=float)
             )
-            classifier.fit(
-                fitting.loc[:, config.features],
-                fitting["label"],
-                sample_weight=fitting_weights,
-                eval_set=[(evaluation.loc[:, config.features], evaluation["label"])],
-                sample_weight_eval_set=[evaluation_weights],
-                verbose=False,
-            )
+            try:
+                classifier = factory(**classifier_parameters)
+                classifier.fit(
+                    fitting.loc[:, config.features],
+                    fitting["label"],
+                    sample_weight=fitting_weights,
+                    eval_set=[(evaluation.loc[:, config.features], evaluation["label"])],
+                    sample_weight_eval_set=[evaluation_weights],
+                    verbose=False,
+                )
+            finally:
+                if progress is not None:
+                    progress.close()
             scores = _positive_scores(classifier, evaluation, config.features)
             oof.loc[evaluation.index] = scores
             best_iteration = getattr(classifier, "best_iteration", None)
@@ -184,13 +203,27 @@ def train_experiment(
     selected = max(results, key=lambda item: item.mean_weighted_auc)
     final_parameters = _model_parameters(config, selected.parameters, final=True)
     final_parameters["n_estimators"] = _final_tree_count(selected)
-    model = factory(**final_parameters)
-    model.fit(
-        development.loc[:, config.features],
-        development["label"],
-        sample_weight=class_balanced_training_weights(development),
-        verbose=False,
+    progress = _fit_progress(
+        int(final_parameters["n_estimators"]),
+        "Final model",
+        leave=True,
+        show_progress=show_progress,
+        progress_factory=progress_factory,
     )
+    classifier_parameters = dict(final_parameters)
+    if progress is not None:
+        classifier_parameters["callbacks"] = [progress]
+    try:
+        model = factory(**classifier_parameters)
+        model.fit(
+            development.loc[:, config.features],
+            development["label"],
+            sample_weight=class_balanced_training_weights(development),
+            verbose=False,
+        )
+    finally:
+        if progress is not None:
+            progress.close()
 
     audit_columns = [
         name
@@ -230,6 +263,8 @@ def run_training(
     overwrite: bool = False,
     project_root: str | Path | None = None,
     cli_overrides: Mapping[str, object] | None = None,
+    show_progress: bool = False,
+    progress_factory: ProgressFactory | None = None,
 ) -> Path:
     source = _regular_file(input_path, "training input")
     with OutputTransaction(
@@ -237,7 +272,12 @@ def run_training(
     ) as output:
         source_record = _source_record(source)
         frame = pd.read_csv(source)
-        outcome = train_experiment(frame, config)
+        outcome = train_experiment(
+            frame,
+            config,
+            show_progress=show_progress,
+            progress_factory=progress_factory,
+        )
         _assert_source_unchanged(source, source_record, "training input")
         outcome.model.save_model(output / "model.json")
         (output / "effective_config.yaml").write_text(
@@ -455,6 +495,27 @@ def _positive_scores(model: Any, frame: pd.DataFrame, features: Sequence[str]) -
     if not np.isfinite(scores).all():
         raise ValueError("classifier returned NaN or infinity")
     return scores
+
+
+def _fit_progress(
+    total_rounds: int,
+    description: str,
+    *,
+    leave: bool,
+    show_progress: bool,
+    progress_factory: ProgressFactory | None,
+) -> TrainingProgress | None:
+    if not show_progress:
+        return None
+    options: dict[str, object] = {}
+    if progress_factory is not None:
+        options["progress_factory"] = progress_factory
+    return TrainingProgress(
+        total_rounds,
+        description=description,
+        leave=leave,
+        **options,
+    )
 
 
 def _final_tree_count(result: CandidateResult) -> int:

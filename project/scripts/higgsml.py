@@ -36,6 +36,13 @@ def _parser() -> argparse.ArgumentParser:
     train.add_argument("--feature-profile", choices=("base14", "angular19"))
     train.add_argument("--feature", action="append", type=_feature_toggle, default=[])
     train.add_argument("--overwrite", action="store_true")
+    train.add_argument(
+        "--no-progress",
+        dest="show_progress",
+        action="store_false",
+        default=True,
+        help="disable XGBoost training progress bars",
+    )
     for name in GRID_PARAMETERS:
         option = f"--{name.replace('_', '-')}"
         value_type = int if name == "max_depth" else float
@@ -96,6 +103,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             overwrite=args.overwrite,
             project_root=project_root,
             cli_overrides=cli_overrides,
+            show_progress=args.show_progress,
         )
     elif args.command == "predict":
         destination = run_prediction(

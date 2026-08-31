@@ -28,6 +28,22 @@ def test_train_cli_collects_feature_and_grid_overrides():
     assert args.feature == [("lep4_pt", False)]
     assert args.max_depth == [2, 3]
     assert args.learning_rate == [0.05]
+    assert args.show_progress is True
+
+
+def test_train_cli_can_disable_progress():
+    args = _parser().parse_args(
+        [
+            "train",
+            "--input",
+            "mc.csv.gz",
+            "--output-dir",
+            "run",
+            "--no-progress",
+        ]
+    )
+
+    assert args.show_progress is False
 
 
 @pytest.mark.parametrize("value", ["lep1_pt", "=off", "lep1_pt=yes"])
@@ -68,6 +84,7 @@ def test_train_main_resolves_cli_precedence_and_dispatches(monkeypatch, tmp_path
                 "20",
                 "--n-estimators",
                 "12",
+                "--no-progress",
             ]
         )
         == 0
@@ -78,6 +95,7 @@ def test_train_main_resolves_cli_precedence_and_dispatches(monkeypatch, tmp_path
     assert config.n_estimators == 12
     assert len(config.candidates()) == 4
     assert calls[0]["cli_overrides"]["grid"]["max_depth"] == [2, 3]
+    assert calls[0]["show_progress"] is False
 
 
 @pytest.mark.parametrize(
