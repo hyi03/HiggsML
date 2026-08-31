@@ -12,15 +12,20 @@ class TrainingProgress(TrainingCallback):
     def __init__(
         self,
         total_rounds: int,
+        description: str = "Training",
+        leave: bool | None = None,
         progress_factory: Callable[..., object] = tqdm,
     ) -> None:
         self.total_rounds = int(total_rounds)
-        self._progress = progress_factory(
-            total=self.total_rounds,
-            desc="Training",
-            unit="round",
-            dynamic_ncols=True,
-        )
+        progress_options = {
+            "total": self.total_rounds,
+            "desc": description,
+            "unit": "round",
+            "dynamic_ncols": True,
+        }
+        if leave is not None:
+            progress_options["leave"] = leave
+        self._progress = progress_factory(**progress_options)
         self._closed = False
 
     def after_iteration(self, model, epoch: int, evals_log: dict) -> bool:

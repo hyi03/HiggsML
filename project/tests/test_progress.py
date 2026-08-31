@@ -68,6 +68,30 @@ def test_training_progress_uses_configured_total_and_closes():
     assert bar.closed is True
 
 
+def test_training_progress_uses_stage_description_and_leave_setting():
+    bar = FakeProgressBar()
+    captured = {}
+
+    def factory(**kwargs):
+        captured.update(kwargs)
+        return bar
+
+    TrainingProgress(
+        17,
+        description="Candidate 1/2 fold 1/5",
+        leave=False,
+        progress_factory=factory,
+    )
+
+    assert captured == {
+        "total": 17,
+        "desc": "Candidate 1/2 fold 1/5",
+        "unit": "round",
+        "dynamic_ncols": True,
+        "leave": False,
+    }
+
+
 def test_training_progress_close_is_idempotent():
     bar = FakeProgressBar()
     close_calls = 0

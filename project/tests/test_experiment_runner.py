@@ -89,6 +89,22 @@ class RecordingModel:
         return np.column_stack([1.0 - score, score])
 
 
+class RecordingProgressBar:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.n = 0
+        self.closed = False
+
+    def update(self, amount):
+        self.n += amount
+
+    def set_postfix(self, values, refresh=False):
+        pass
+
+    def close(self):
+        self.closed = True
+
+
 def test_training_grid_never_fits_or_scores_test_and_uses_fixed_feature_order():
     config = load_experiment_config(
         None,
@@ -121,6 +137,55 @@ def test_training_grid_never_fits_or_scores_test_and_uses_fixed_feature_order():
     assert final_weights[final_labels == 0].sum() == pytest.approx(
         final_weights[final_labels == 1].sum()
     )
+
+
+def test_real_xgboost_training_reports_each_fold_and_final_fit_progress(tmp_path):
+    root = tmp_path / "project"
+    (root / "runs").mkdir(parents=True)
+    source = root / "mc.csv.gz"
+    _frame().to_csv(source, index=False)
+    config = load_experiment_config(
+        None,
+        ExperimentOverrides(
+            grid={
+                "max_depth": (2,),
+                "learning_rate": (0.2,),
+                "min_child_weight": (1.0,),
+            },
+            scalars={
+                "n_estimators": 3,
+                "early_stopping_rounds": 1,
+                "n_jobs": 1,
+            },
+        ),
+    )
+    bars = []
+
+    def progress_factory(**kwargs):
+        bar = RecordingProgressBar(**kwargs)
+        bars.append(bar)
+        return bar
+
+    run_training(
+        input_path=source,
+        output_dir=root / "runs" / "training",
+        config=config,
+        project_root=root,
+        show_progress=True,
+        progress_factory=progress_factory,
+    )
+
+    assert [bar.kwargs["desc"] for bar in bars] == [
+        "Candidate 1/1 fold 1/5",
+        "Candidate 1/1 fold 2/5",
+        "Candidate 1/1 fold 3/5",
+        "Candidate 1/1 fold 4/5",
+        "Candidate 1/1 fold 5/5",
+        "Final model",
+    ]
+    assert [bar.kwargs["leave"] for bar in bars] == [False] * 5 + [True]
+    assert all(0 < bar.n <= bar.kwargs["total"] for bar in bars)
+    assert all(bar.closed for bar in bars)
 
 
 def test_output_transaction_refuses_unknown_overwrite_and_protected_paths(tmp_path):
