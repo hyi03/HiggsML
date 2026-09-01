@@ -86,12 +86,13 @@ neural/
 ├── README.md
 ├── pyproject.toml
 ├── environment.yml
-├── conda-lock.yml
+├── osx.yml
+├── win.yml
 ├── config/
 │   ├── preprocess_protocol_v1.yaml
 │   ├── preprocess_run.example.yaml
 │   └── adversarial_mlp_protocol_v1.yaml
-├── src/higgsml_v2/
+├── src/
 │   ├── cli/
 │   │   ├── preprocess.py
 │   │   └── train.py
@@ -139,14 +140,14 @@ neural/
 
 ```toml
 [project.scripts]
-higgsml-preprocess = "higgsml_v2.cli.preprocess:main"
-higgsml-train = "higgsml_v2.cli.train:main"
+higgsml-preprocess = "src.cli.preprocess:main"
+higgsml-train = "src.cli.train:main"
 ```
 
 ### 6.1 预处理
 
 ```bash
-conda run -n higgsml-v2 higgsml-preprocess \
+conda run -n pytorch higgsml-preprocess \
   --protocol config/preprocess_protocol_v1.yaml \
   --run-config config/preprocess_run.local.yaml \
   --run-dir runs/preprocess-<unique-id>
@@ -157,7 +158,7 @@ conda run -n higgsml-v2 higgsml-preprocess \
 ### 6.2 Development 训练
 
 ```bash
-conda run -n higgsml-v2 higgsml-train develop \
+conda run -n pytorch higgsml-train develop \
   --input-run runs/preprocess-<id> \
   --protocol config/adversarial_mlp_protocol_v1.yaml \
   --run-dir runs/mlp-development-<unique-id>
@@ -170,7 +171,7 @@ conda run -n higgsml-v2 higgsml-train develop \
 ### 6.3 显式 test-opening
 
 ```bash
-conda run -n higgsml-v2 higgsml-train open-test \
+conda run -n pytorch higgsml-train open-test \
   --development-run runs/mlp-development-<id> \
   --run-dir runs/mlp-test-<unique-id>
 ```
@@ -409,7 +410,7 @@ Test 使用 OOF 冻结阈值，报告相同 AUC、KS 和效率指标。它只产
 
 ## 11. Conda 与精确复现
 
-独立环境名称固定为 `higgsml-v2`，目标平台固定为 `osx-arm64`。`environment.yml` 声明直接依赖，`conda-lock.yml` 锁定全部传递依赖和构建。首个权威环境以以下已验证基线为起点：
+独立环境名称固定为 `pytorch`。`environment.yml` 声明跨平台直接依赖，`osx.yml` 锁定权威 `osx-arm64` 环境，`win.yml` 锁定 `win-64` 开发与测试环境。首个权威环境以以下已验证基线为起点：
 
 ```text
 Python 3.12.13
@@ -431,9 +432,17 @@ conda-lock
 创建与验证命令：
 
 ```bash
-conda-lock install --name higgsml-v2 conda-lock.yml
-conda run -n higgsml-v2 python -m pip check
-conda run -n higgsml-v2 python -m pytest -q
+conda-lock install --name pytorch osx.yml
+conda run -n pytorch python -m pip check
+conda run -n pytorch python -m pytest -q
+```
+
+Windows 开发与测试环境使用：
+
+```powershell
+conda-lock install --name pytorch win.yml
+conda run -n pytorch python -m pip check
+conda run -n pytorch python -m pytest -q
 ```
 
 权威训练强制 CPU、单线程数据加载、固定随机种子和 `torch.use_deterministic_algorithms(True)`；禁用 MPS/CUDA。Manifest 记录 CPU 架构、操作系统、PyTorch build、线程数和 deterministic 标志。跨平台运行可用于开发测试，但不得声明与 ARM64 权威 run 精确等价。

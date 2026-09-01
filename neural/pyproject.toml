@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "higgsml-neural"
+version = "0.1.0"
+description = "MC-only adversarial MLP workflow for the HiggsML technical demo"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "awkward==2.12.0",
+  "matplotlib==3.11.1",
+  "mplhep==1.3.2",
+  "numpy==2.5.1",
+  "pandas==3.0.5",
+  "PyYAML==6.0.3",
+  "scikit-learn==1.9.0",
+  "torch==2.7.1",
+  "tqdm==4.70.0",
+  "uproot==5.7.5",
+  "vector==1.8.1",
+]
+
+[project.scripts]
+higgsml-preprocess = "src.cli.preprocess:main"
+higgsml-train = "src.cli.train:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers"
