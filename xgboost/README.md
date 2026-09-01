@@ -175,7 +175,7 @@ python -m scripts.higgsml evaluate-test \
 ## 1. 安装
 
 建议使用 Python 3.11 或更新版本。从本项目根目录（即包含
-`requirements.txt` 的 `project/` 目录）创建并激活独立虚拟环境：
+`requirements.txt` 的 `xgboost/` 目录）创建并激活独立虚拟环境：
 
 ```bash
 python3 -m venv .venv
@@ -184,7 +184,7 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-每次打开新的终端后，都需要在 `project/` 目录重新执行：
+每次打开新的终端后，都需要在 `xgboost/` 目录重新执行：
 
 ```bash
 source .venv/bin/activate

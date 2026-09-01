@@ -1,24 +1,24 @@
-# HiggsML `project_v2` 对抗式 MLP 重构设计与实施计划
+# HiggsML `neural` 对抗式 MLP 重构设计与实施计划
 
 **文档状态：** 已确认方案  
 **日期：** 2026-09-01  
-**目标目录：** `project_v2/`  
-**原工程：** `project/`，保持原状，不作为新程序的运行时依赖
+**目标目录：** `neural/`
+**原工程：** `xgboost/`，保持原状，不作为新程序的运行时依赖
 
 ## 1. 方案摘要
 
-在仓库根目录新建独立工程 `project_v2/`，把现有多代 Demo、专用研究脚本和通用训练入口收敛为两个可执行程序：
+在仓库根目录新建独立工程 `neural/`，把现有多代 Demo、专用研究脚本和通用训练入口收敛为两个可执行程序：
 
 1. `higgsml-preprocess`：完成严格 MC-only 的 ROOT 读取、四轻子重建、selection、权重、稳定划分、Base14 与 Angular5 特征构造以及审计产物发布。
 2. `higgsml-train`：使用 PyTorch 对抗式多层感知机完成 development OOF 训练、质量去相关资格判断，以及经过显式授权的 held-out MC test-opening。
 
-预处理的科学行为保持不变，但重新实现为职责清晰、可测试的模块；不复制现有千行级 run 模块，也不调用旧 `project/`。预处理表输出完整 19 项特征，训练协议固定使用 DropTop4 后的 10 项基础特征与 5 项 Angular5 特征，共 15 项。
+预处理的科学行为保持不变，但重新实现为职责清晰、可测试的模块；不复制现有千行级 run 模块，也不调用旧 `xgboost/`。预处理表输出完整 19 项特征，训练协议固定使用 DropTop4 后的 10 项基础特征与 5 项 Angular5 特征，共 15 项。
 
 神经网络采用约 9,228 个可训练参数的紧凑结构。其规模依据 199,104 条 MC、其中仅 11,976 条 ZZ 背景的实际数据瓶颈确定。模型通过背景质量分箱对抗器直接抑制 score 对 `m4l` 的依赖，不使用 OmniLearn/PET 这类面向大规模 jet constituent 点云的模型。
 
 ## 2. 当前工程事实与重构动机
 
-当前 `project/` 同时存在三类流程：
+当前 `xgboost/` 同时存在三类流程：
 
 - 早期 Demo：`prepare_demo`、`train_demo`、`evaluate_data`；
 - Full14、消融、质量分箱重加权、KNN flatness、Angular5 等专用冻结研究；
@@ -81,7 +81,7 @@ OmniLearn 的 PET 适合含大量、变长 jet constituents 的点云输入，�
 ## 5. 目标工程结构
 
 ```text
-project_v2/
+neural/
 ├── AGENTS.md
 ├── README.md
 ├── pyproject.toml
@@ -195,7 +195,7 @@ conda run -n higgsml-v2 higgsml-train open-test \
   - Higgs：`5b9628ccd88547cda07bb1b2ccd88c153d9b2e53bd119416df496ba11aa925a0`；
   - ZZ：`76503d0cb2a015b814b43e5bc1887ea53a62b057e9ac2f812eaaec1efb1a3f07`。
 
-`project_v2` 不复制大 ROOT 文件，也不依赖旧工程 Python 代码。只读数据路径是可配置的；输入内容由 SHA-256 绑定。
+`neural` 不复制大 ROOT 文件，也不依赖旧工程 Python 代码。只读数据路径是可配置的；输入内容由 SHA-256 绑定。
 
 ### 7.2 保持不变的处理行为
 
@@ -484,9 +484,9 @@ conda run -n higgsml-v2 python -m pytest -q
 
 ### 阶段 1：工程骨架与环境
 
-- 创建 `project_v2/`、`pyproject.toml`、独立 Conda lock、两个空 CLI 和基础测试；
+- 创建 `neural/`、`pyproject.toml`、独立 Conda lock、两个空 CLI 和基础测试；
 - 配置源码安装、日志、异常退出码、不可覆盖 run 事务；
-- 验证新 package 不导入 `project/src`。
+- 验证新 package 不导入 `xgboost/src`。
 
 **阶段验收：** 两个 `--help` 可运行，环境可从 lock 重建，空测试套件通过。
 
@@ -536,8 +536,8 @@ conda run -n higgsml-v2 python -m pytest -q
 
 重构只有在以下条件全部满足时才算完成：
 
-1. 原 `project/` 的代码、配置、数据和冻结 runs 未被修改；用户现有未提交修改被保留。
-2. `project_v2` 可仅凭 README、Conda lock、两个 MC ROOT 和配置从零恢复。
+1. 原 `xgboost/` 的代码、配置、数据和冻结 runs 未被修改；用户现有未提交修改被保留。
+2. `neural` 可仅凭 README、Conda lock、两个 MC ROOT 和配置从零恢复。
 3. 对外只有 `higgsml-preprocess` 与 `higgsml-train` 两个程序。
 4. 预处理生成 199,104 行、19 项特征和完整 provenance，科学行为与旧最终方案等价。
 5. 分类器固定为约 9k 参数的对抗式 MLP，训练只使用固定 15 项特征。
@@ -547,7 +547,7 @@ conda run -n higgsml-v2 python -m pytest -q
 
 ## 15. 已采用的默认决定
 
-- 新目录：`project_v2/`；
+- 新目录：`neural/`；
 - 原工程：完全保留；
 - 数据边界：严格 MC-only；
 - 原始 ROOT：通过外部只读路径使用，并用 SHA-256 绑定，不复制进 v2；

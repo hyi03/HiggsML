@@ -343,12 +343,12 @@ Expected: the count check exits `0`; each `rg -L` prints nothing, indicating no 
 Run `test -f` separately for:
 
 ```text
-/Users/xuhongyi/Code/HiggsML/project/AGENTS.md
-/Users/xuhongyi/Code/HiggsML/project/README.md
-/Users/xuhongyi/Code/HiggsML/project/docs/project/overview.md
-/Users/xuhongyi/Code/HiggsML/project/docs/roadmap/next-stage.md
-/Users/xuhongyi/Code/HiggsML/project/docs/physics/physics-principles.md
-/Users/xuhongyi/Code/HiggsML/project/docs/physics/selection-standard.md
+/Users/xuhongyi/Code/HiggsML/xgboost/AGENTS.md
+/Users/xuhongyi/Code/HiggsML/xgboost/README.md
+/Users/xuhongyi/Code/HiggsML/xgboost/docs/project/overview.md
+/Users/xuhongyi/Code/HiggsML/xgboost/docs/roadmap/next-stage.md
+/Users/xuhongyi/Code/HiggsML/xgboost/docs/physics/physics-principles.md
+/Users/xuhongyi/Code/HiggsML/xgboost/docs/physics/selection-standard.md
 ```
 
 Expected: every check exits `0`; stop if a target moved.
