@@ -221,6 +221,10 @@ __marimo__/
 xgboost/data
 xgboost/runs
 xgboost/tmp
+neural/data/*
+!neural/data/.gitkeep
+neural/runs/*
+!neural/runs/.gitkeep
 .worktrees/
 
 .DS_Store
