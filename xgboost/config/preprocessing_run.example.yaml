@@ -1,0 +1,4 @@
+schema_version: "1.0"
+higgs_root: data/raw/higgs.root
+zz_root: data/raw/zz_363490.root
+chunk_size_events: 50000
