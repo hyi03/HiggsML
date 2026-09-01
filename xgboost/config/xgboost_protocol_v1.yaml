@@ -1,0 +1,46 @@
+schema_version: "1.0"
+role: xgboost_development
+features:
+  - lep1_pt
+  - lep2_pt
+  - lep3_pt
+  - lep4_pt
+  - lep1_eta
+  - lep2_eta
+  - lep3_eta
+  - lep4_eta
+  - mZ1
+  - mZ2
+  - pt4l
+  - deltaR_Z1
+  - deltaR_Z2
+  - deltaPhi_ZZ
+  - cos_theta_star
+  - cos_theta_1
+  - cos_theta_2
+  - phi_decay_planes
+  - phi_production_plane
+candidate:
+  learning_rate: 0.05
+  max_depth: 3
+  min_child_weight: 5.0
+  subsample: 0.8
+  colsample_bytree: 0.8
+  reg_alpha: 0.1
+  reg_lambda: 2.0
+common:
+  n_estimators: 1000
+  early_stopping_rounds: 50
+  random_seed: 42
+  n_jobs: 1
+  tree_method: hist
+  folds: 5
+working_points:
+  loose: 0.50
+  medium: 0.20
+  tight: 0.10
+qualification:
+  minimum_weighted_oof_auc: 0.80
+  maximum_background_ks: 0.10
+  require_signal_efficiency_above_background: true
+

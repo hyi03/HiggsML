@@ -1,5 +1,16 @@
 # H → ZZ* → 4ℓ Demo 下一阶段路线图
 
+## 当前工程阶段说明（2026-09-01）
+
+用户已批准
+[XGBoost 科学行为等价重构设计](../superpowers/specs/2026-09-01-xgboost-refactor-design.md)
+及 FR-001/Sprint M1-01 至 M1-06。当前先执行该工程重构；它固定使用现有 Angular19 与
+既有 XGBoost 科学行为，不构成新的去相关训练研究，也不授权调参、放宽资格门槛、
+真实规模训练、held-out test-opening 或真实数据访问。
+
+本文以下去相关方法建议继续作为未来科学研究路线保留，不应被解释为否定当前已批准的
+工程重构，也不应被工程重构解释为相应科学研究已经完成。
+
 ## ARM64 Angular5 + DropTop4 结论（2026-08-26）
 
 预先批准的一次性 MC-only 15 特征研究（DropTop4 加五个 Angular5 角变量）已经在原生

@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "higgsml-xgboost"
+version = "0.1.0"
+description = "MC-only H to ZZ to four-lepton XGBoost technical demo"
+requires-python = ">=3.12"
+dependencies = [
+  "awkward",
+  "matplotlib",
+  "mplhep",
+  "numpy",
+  "pandas",
+  "PyYAML",
+  "scikit-learn",
+  "tqdm",
+  "uproot",
+  "vector",
+  "xgboost",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+higgsml-preprocess = "src.cli.preprocess:main"
+higgsml-xgboost = "src.cli.xgboost:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src", "src.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
