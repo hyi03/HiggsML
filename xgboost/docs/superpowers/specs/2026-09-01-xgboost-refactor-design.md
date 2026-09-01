@@ -3,9 +3,10 @@
 ## 1. 方案摘要
 
 本设计在 `xgboost/` 内重建一个结构清晰、MC-only、产物可审计的 XGBoost 工程。
-重构保持现有科学行为等价：selection、特征定义、权重、稳定数据划分、development
-五折 OOF、XGBoost 参数与候选选择语义均不得改变。允许改变的是代码架构、CLI、配置
-封装、产物布局和生命周期门控。
+重构保持现有科学行为等价：selection、Base14 与 Angular5 特征定义、权重、稳定数据
+划分、development 五折 OOF、XGBoost 参数与候选选择语义均不得改变。最终模型输入固定
+为 Base14 + Angular5 共 19 项。允许改变的是代码架构、CLI、配置封装、产物布局和
+生命周期门控。
 
 重构完成后仅保留两个可执行程序：
 
@@ -45,6 +46,7 @@ higgsml-xgboost develop|open-test
 8. 对外提供 `higgsml-preprocess` 与 `higgsml-xgboost` 两个程序。
 9. Development 不合格时不发布最终模型，也不得开启 test。
 10. 合格 development run 的 held-out test 只能显式开启一次。
+11. V1 最终模型输入固定为现有 `angular19` profile 的 19 项特征。
 
 ## 4. 范围与非目标
 
@@ -64,7 +66,7 @@ higgsml-xgboost develop|open-test
 
 - 不改变 XGBoost 模型家族、损失或训练器；
 - 不改变 selection、特征数学定义、权重、split、fold 或候选选择语义；
-- 不新增、删除或事后挑选模型特征；
+- 除明确采用现有 `angular19` profile 外，不新增、删除或事后挑选模型特征；
 - 不修改 XGBoost 参数、候选网格、工作点或资格门槛；
 - 不读取、哈希、预处理、评分、绘制或盘点真实数据；
 - 不打开任何现有冻结 run 的 held-out test；
@@ -98,6 +100,7 @@ xgboost/
 │   │   ├── reconstruction.py
 │   │   ├── selection.py
 │   │   ├── features.py
+│   │   ├── angular5.py
 │   │   ├── weights.py
 │   │   └── splitting.py
 │   ├── preprocessing/
@@ -210,7 +213,7 @@ higgsml-xgboost open-test \
 - ROOT tree 与字段 profile；
 - 单位转换；
 - selection 配置；
-- 特征定义和列顺序；
+- Base14、Angular5 特征定义和 19 项模型列顺序；
 - signed `physical_weight` 与训练权重语义；
 - canonical event identity；
 - train/validation/test 稳定划分算法与 seed；
@@ -233,14 +236,19 @@ higgsml-xgboost open-test \
 - 最终树数规则；
 - 允许生成的产物及 schema version。
 
-V1 的唯一迁移权威是当前通用入口 `scripts/higgsml.py`、`src/experiment_config.py`、
-`src/experiment_runner.py` 和 `config/experiment_training.yaml`，不是任何历史专用研究流。
-V1 固定当前通用配置的 Base14：
+V1 的训练迁移权威是当前通用入口 `scripts/higgsml.py`、`src/experiment_config.py`、
+`src/experiment_runner.py`、`config/experiment_training.yaml`，以及通用入口已经支持的
+`ANGULAR19_PROFILE`；Angular5 数学定义的迁移权威是 `src/angular5.py`。历史 enrichment
+run、重加权 run 及其执行政策不是 V1 权威。
+
+V1 最终模型输入固定为 Base14 + Angular5，共 19 项，并严格保持以下顺序：
 
 ```text
 lep1_pt, lep2_pt, lep3_pt, lep4_pt,
 lep1_eta, lep2_eta, lep3_eta, lep4_eta,
-mZ1, mZ2, pt4l, deltaR_Z1, deltaR_Z2, deltaPhi_ZZ
+mZ1, mZ2, pt4l, deltaR_Z1, deltaR_Z2, deltaPhi_ZZ,
+cos_theta_star, cos_theta_1, cos_theta_2,
+phi_decay_planes, phi_production_plane
 ```
 
 V1 固定一个当前默认候选：`learning_rate=0.05`、`max_depth=3`、
@@ -249,9 +257,10 @@ V1 固定一个当前默认候选：`learning_rate=0.05`、`max_depth=3`、
 `early_stopping_rounds=50`、`random_seed=42`、`n_jobs=1`、`tree_method=hist`、
 `folds=5`。Loose、medium、tight 目标背景效率分别为 `0.50`、`0.20`、`0.10`。
 
-这些值必须从当前实现逐项转录，并先由 characterization tests 证明等价。转录过程中
-不得“顺便”修正、优化或现代化科学参数。未来增加候选、Angular5 或改变任一参数均需
-新 protocol 版本、新设计和新 run path。
+这些值必须从当前实现逐项转录，并先由 characterization tests 证明等价。选择现有
+`angular19` profile 是本设计明确批准的 V1 决定；不得借此改变任一 Base14/Angular5
+公式或列顺序。转录过程中不得“顺便”修正、优化或现代化科学参数。未来增加候选、
+改变特征集合或改变任一参数均需新 protocol 版本、新设计和新 run path。
 
 ### 7.3 配置优先级
 
@@ -278,7 +287,7 @@ profile、官方 normalization metadata、selection 和 lepton-quality 规则从
 - 当前 MeV/GeV 处理；
 - 当前四轻子重建、SFOS 配对和 Z1/Z2 决策；
 - 当前逐级 selection 与 cutflow；
-- 当前特征数学定义、名称和列顺序；
+- 当前 Base14 与 Angular5 数学定义、符号约定、名称和 19 项列顺序；
 - 当前 MC normalization；
 - signed `physical_weight` 用于物理产额；
 - XGBoost 使用按类别归一化的 `abs(physical_weight)`；
@@ -414,7 +423,7 @@ Manifest 记录 protocol/config、输入与输出哈希、代码版本、软件�
 在迁移前锁定：
 
 - selection 边界、cutflow 和事件计数；
-- SFOS 配对、Z1/Z2、四动量和特征值；
+- SFOS 配对、Z1/Z2、四动量、Base14 和 Angular5 特征值；
 - signed/absolute 权重及类别归一化；
 - canonical identity、split 和 fold；
 - protocol V1 与当前配置的逐项对应；
@@ -472,11 +481,12 @@ JSON schema 和 protocol 内容必须精确相等。浮点特征、OOF 分数、
 ### 阶段 3：Domain 与预处理迁移
 
 - 迁移四动量、重建、selection、特征、权重和 split；
+- 将现有 Angular5 计算直接并入 domain 与主预处理 pipeline，不保留独立 enrichment run；
 - 迁移 MC ROOT reader 与 pipeline；
 - 发布分离的 development/test 文件；
 - 用 characterization、微型 ROOT 和现有权威计数验证等价。
 
-验收：事件、cutflow、列、特征、权重和 split 满足等价政策。
+验收：事件、cutflow、19 项模型特征、列序、权重和 split 满足等价政策。
 
 ### 阶段 4：XGBoost development 迁移
 
@@ -522,13 +532,14 @@ JSON schema 和 protocol 内容必须精确相等。浮点特征、OOF 分数、
 3. 新系统只接受 Higgs/ZZ MC，不包含真实数据或通用 predict 执行面。
 4. 普通 CLI 不能覆盖任何科学参数。
 5. 现有 selection、特征、权重、split、fold 和 XGBoost 训练语义通过等价验证。
-6. Development 不读取 test 文件，test 不参与训练、选择、工作点或资格判断。
-7. 不合格 run 发布完整证据但不发布模型，也不能开启 test。
-8. 合格 run 的 test 只能显式开启一次，篡改或重复开启均被拒绝。
-9. run 不可覆盖，成功、失败和科学不合格终态均有明确收据。
-10. 历史专用代码已删除，必要冻结结论保留为只读文档。
-11. 现有冻结 runs、models、predictions、plots、manifests 和用户未提交修改未被改变。
-12. 所有结论都注明测试、环境、输入和未执行验证的边界。
+6. 最终模型输入恰好为固定顺序的 Base14 + Angular5 共 19 项，且禁止字段未进入模型。
+7. Development 不读取 test 文件，test 不参与训练、选择、工作点或资格判断。
+8. 不合格 run 发布完整证据但不发布模型，也不能开启 test。
+9. 合格 run 的 test 只能显式开启一次，篡改或重复开启均被拒绝。
+10. run 不可覆盖，成功、失败和科学不合格终态均有明确收据。
+11. 历史专用代码已删除，必要冻结结论保留为只读文档。
+12. 现有冻结 runs、models、predictions、plots、manifests 和用户未提交修改未被改变。
+13. 所有结论都注明测试、环境、输入和未执行验证的边界。
 
 ## 16. 实施前门禁
 
