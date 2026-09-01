@@ -218,9 +218,9 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-project/data
-project/runs
-project/tmp
+xgboost/data
+xgboost/runs
+xgboost/tmp
 .worktrees/
 
 .DS_Store

@@ -221,7 +221,7 @@ A weekly review should take about 15 minutes:
 ## 8. Repository integration and scientific provenance
 
 `08 Project Reference` records the local repository root and links to canonical
-files such as `project/AGENTS.md`, `project/README.md`, the project overview, the
+files such as `xgboost/AGENTS.md`, `xgboost/README.md`, the project overview, the
 roadmap, physics standards, and current design documents.
 
 The vault does not copy repository documentation and does not symlink the repository
