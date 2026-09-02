@@ -156,7 +156,7 @@ def test_success_publication_is_deterministic_and_manifest_complete(
     }
 
 
-@pytest.mark.parametrize("mutation", ["missing", "extra", "source_entry"])
+@pytest.mark.parametrize("mutation", ["missing", "source_entry"])
 def test_root_schema_rejections_are_fail_closed(
     tmp_path: Path, mutation: str
 ) -> None:
@@ -171,8 +171,6 @@ def test_root_schema_rejections_are_fail_closed(
     events["lep_topoetcone20"] = events.pop("lep_calo_iso")
     if mutation == "missing":
         events.pop("lep_phi")
-    elif mutation == "extra":
-        events["unexpected"] = [1, 1]
     else:
         events["source_entry"] = [0, 1]
     path = tmp_path / f"{mutation}.root"
@@ -181,6 +179,28 @@ def test_root_schema_rejections_are_fail_closed(
 
     with pytest.raises(InputBindingError):
         list(iter_events(path, sample, 1, verify_entry_count=False))
+
+
+def test_root_reader_ignores_unmapped_branches(tmp_path: Path) -> None:
+    protocol = load_preprocess_protocol(PROJECT / "config/preprocess_protocol_v1.yaml")
+    sample = protocol.samples["higgs"]
+    events = _canonical_events(345060, mev=False)
+    events.update(
+        xsec=[28.3, 28.3], kfac=[1.717, 1.717], filteff=[0.000124, 0.000124],
+        sum_of_weights=[45231011.19517517, 45231011.19517517],
+    )
+    events["lep_ptvarcone30"] = events.pop("lep_track_iso")
+    events["lep_topoetcone20"] = events.pop("lep_calo_iso")
+    events["unexpected"] = [1, 1]
+    path = tmp_path / "extra.root"
+    with uproot.recreate(path) as root:
+        root["analysis"] = events
+
+    loaded = list(iter_events(path, sample, 1, verify_entry_count=False))
+
+    assert len(loaded) == 2
+    assert "unexpected" not in loaded[0]
+    assert set(loaded[0]) == set(sample.branches) | {"source_entry"}
 
 
 def test_root_reader_releases_file_handle(tmp_path: Path) -> None:

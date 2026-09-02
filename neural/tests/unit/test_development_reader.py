@@ -84,6 +84,22 @@ def test_input_run_missing_allowed_root_maps_to_binding_error(tmp_path: Path) ->
         _bound_input_run(tmp_path / "missing" / "run", tmp_path / "missing")
 
 
+def test_input_run_missing_below_existing_root_maps_to_binding_error(tmp_path: Path) -> None:
+    root = tmp_path / "runs"
+    root.mkdir()
+    with pytest.raises(InputBindingError, match="input run does not exist"):
+        _bound_input_run(root / "missing", root)
+
+
+def test_reader_reports_missing_manifest_for_failed_preprocess_run(tmp_path: Path) -> None:
+    root = tmp_path / "runs"
+    run = root / "failed"
+    run.mkdir(parents=True)
+    (run / "failure.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(InputBindingError, match="preprocess output is missing"):
+        _read(run, root)
+
+
 def test_input_run_rejects_symlink_component_when_supported(tmp_path: Path) -> None:
     root = tmp_path / "runs"
     target = root / "target"
