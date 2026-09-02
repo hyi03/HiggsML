@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
-from typing import NoReturn
+import sys
+
+from ..preprocessing.application import run_preprocessing
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -16,9 +18,26 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> NoReturn:
-    build_parser().parse_args(argv)
-    raise SystemExit("preprocessing implementation is delivered by Sprint M1-02")
+def main(argv: Sequence[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        manifest = run_preprocessing(
+            protocol_path=args.protocol,
+            run_config_path=args.run_config,
+            run_dir=args.run_dir,
+        )
+    except Exception as exc:
+        print(
+            f"higgsml-preprocess failed: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return 1
+    print(
+        "preprocessing complete: "
+        f"{manifest['counts']['development']} development, "
+        f"{manifest['counts']['test']} test events"
+    )
+    return 0
 
 
 if __name__ == "__main__":

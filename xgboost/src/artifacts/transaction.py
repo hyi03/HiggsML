@@ -86,12 +86,14 @@ class RunTransaction:
             raise ValueError("symlink output paths are not allowed")
         return destination
 
-    def publish_manifest(self, payload: Any) -> Path:
+    def publish_manifest(
+        self, payload: Any, relative_path: str | PurePath = "manifest.json"
+    ) -> Path:
         if not self._claimed:
             raise RuntimeError("run directory has not been claimed")
         if self._published:
             raise RuntimeError("manifest has already been published")
-        destination = self._safe_destination("manifest.json", terminal=True)
+        destination = self._safe_destination(relative_path, terminal=True)
         with destination.open("xb") as handle:
             handle.write(canonical_json_bytes(payload))
         self._published = True
