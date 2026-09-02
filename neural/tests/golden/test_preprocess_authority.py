@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
+import src.preprocessing.authority as authority
 from src.config import load_preprocess_protocol
 from src.preprocessing.authority import (
     AuthorityGateError,
     compare_tables,
     require_authority_platform,
+    run_authority_gate,
 )
 
 
@@ -90,3 +93,79 @@ def test_table_comparator_uses_exact_structure_and_approved_float_tolerance(
             new_path, golden_path, protocol.output_columns,
             rtol=1e-12, atol=1e-12,
         )
+
+
+def test_authority_gate_orchestrates_and_exclusively_creates_synthetic_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = tmp_path / "runs" / "preprocess-synthetic"
+    (run / "processed").mkdir(parents=True)
+    (run / "artifacts").mkdir()
+    (run / "processed/mc_events.csv.gz").write_bytes(b"synthetic-table")
+    (run / "artifacts/mc_summary.json").write_text(
+        json.dumps({"synthetic": "summary"}), encoding="utf-8"
+    )
+    (run / "artifacts/cutflow.json").write_text(
+        json.dumps({"synthetic": "new-cutflow"}), encoding="utf-8"
+    )
+    legacy_cutflow = tmp_path / "legacy-cutflow.json"
+    legacy_cutflow.write_text(
+        json.dumps({"synthetic": "legacy-cutflow"}), encoding="utf-8"
+    )
+    lineage: dict[str, Path] = {}
+    for name in (
+        "identity_manifest", "identity_table", "enrichment_manifest",
+        "baseline_manifest", "table",
+    ):
+        path = tmp_path / f"{name}.synthetic"
+        path.write_bytes(f"synthetic-{name}".encode("ascii"))
+        lineage[name] = path
+
+    calls: list[str] = []
+    monkeypatch.setattr(authority, "require_authority_platform", lambda: calls.append("platform"))
+    monkeypatch.setattr(
+        authority,
+        "verify_lineage",
+        lambda repository, golden: calls.append("lineage") or lineage,
+    )
+    monkeypatch.setattr(
+        authority,
+        "compare_tables",
+        lambda *args, **kwargs: calls.append("table") or 199104,
+    )
+    monkeypatch.setattr(
+        authority,
+        "_verify_counts",
+        lambda summary, golden: calls.append("counts"),
+    )
+    monkeypatch.setattr(
+        authority,
+        "bound_legacy_cutflow",
+        lambda manifest: calls.append("bound_cutflow") or legacy_cutflow,
+    )
+    monkeypatch.setattr(
+        authority,
+        "compare_cutflows",
+        lambda *args, **kwargs: calls.append("cutflow"),
+    )
+
+    evidence_path = tmp_path / "runs/authority-evidence-synthetic/evidence.json"
+    evidence = run_authority_gate(
+        repository_root=REPOSITORY,
+        new_run_dir=run,
+        evidence_path=evidence_path,
+    )
+
+    assert calls == ["platform", "lineage", "table", "counts", "bound_cutflow", "cutflow"]
+    assert evidence["status"] == "passed"
+    assert evidence["rows_compared"] == 199104
+    assert json.loads(evidence_path.read_text(encoding="utf-8")) == evidence
+    first_bytes = evidence_path.read_bytes()
+
+    with pytest.raises(FileExistsError):
+        run_authority_gate(
+            repository_root=REPOSITORY,
+            new_run_dir=run,
+            evidence_path=evidence_path,
+        )
+    assert evidence_path.read_bytes() == first_bytes
