@@ -15,8 +15,13 @@ from torch import Tensor
 
 from src.config import InputBindingError
 from src.training.config import TARGET_LAMBDAS, TrainingProtocol
-from src.training.dataset import FEATURE_COLUMNS, ValidatedFold
-from src.training.losses import adversarial_loss_components, binary_loss_components
+from src.training.dataset import FEATURE_COLUMNS, FoldLocalScaler, ValidatedDevelopment, ValidatedFold
+from src.training.losses import (
+    adversarial_bin_weights,
+    adversarial_loss_components,
+    binary_loss_components,
+    mass_bin_indices,
+)
 from src.training.network import AdversarialMLP
 
 
@@ -42,6 +47,14 @@ class TrainingResult:
     best_epoch: int
     best_validation_weighted_auc: float
     validation_scores: tuple[float, ...]
+    environment: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class FinalTrainingResult:
+    model_payload: dict[str, Any]
+    epochs: tuple[dict[str, float | int], ...]
+    scaler: FoldLocalScaler
     environment: dict[str, Any]
 
 
@@ -253,3 +266,113 @@ def train_fold(fold: ValidatedFold, protocol: TrainingProtocol, *, target_lambda
         int(best_checkpoint["best_epoch"]), float(best_checkpoint["best_validation_weighted_auc"]),
         best_scores, _environment(),
     )
+
+
+def train_fixed_epochs(
+    development: ValidatedDevelopment,
+    protocol: TrainingProtocol,
+    *,
+    target_lambda: float,
+    epochs: int,
+) -> FinalTrainingResult:
+    if (
+        target_lambda not in protocol.target_lambdas
+        or type(epochs) is not int
+        or epochs < 1
+        or epochs > protocol.maximum_epochs
+        or development.protocol_sha256 != protocol.sha256
+    ):
+        raise InputBindingError("final-fit binding changed")
+    frame = development.frame
+    scaler = FoldLocalScaler.fit(frame[list(FEATURE_COLUMNS)].to_numpy(dtype=np.float64))
+    features = torch.from_numpy(
+        scaler.transform(frame[list(FEATURE_COLUMNS)].to_numpy(dtype=np.float64))
+    )
+    labels = torch.tensor(frame["label"].to_numpy(), dtype=torch.int64)
+    class_weights = torch.tensor(frame["train_weight"].to_numpy(), dtype=torch.float32)
+    background = labels == 0
+    masses = torch.tensor(frame.loc[background.numpy(), "m4l"].to_numpy(), dtype=torch.float64)
+    physical = torch.tensor(
+        frame.loc[background.numpy(), "physical_weight"].to_numpy(), dtype=torch.float32
+    )
+    bins = mass_bin_indices(masses)
+    background_weights = adversarial_bin_weights(bins, physical)
+    mass_bins = torch.full_like(labels, -1)
+    adversarial_weights = torch.zeros_like(class_weights)
+    mass_bins[background] = bins
+    adversarial_weights[background] = background_weights
+
+    seed = int(protocol.raw["final_fit"]["seed"])
+    _seed(seed)
+    model = AdversarialMLP().cpu().to(torch.float32)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=float(protocol.raw["optimization"]["learning_rate"]),
+        weight_decay=float(protocol.raw["optimization"]["weight_decay"]),
+    )
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    metrics: list[dict[str, float | int]] = []
+    rows = len(frame)
+    for epoch in range(1, epochs + 1):
+        model.train()
+        effective = lambda_for_epoch(
+            epoch,
+            target_lambda,
+            warmup_epochs=protocol.warmup_epochs,
+            ramp_epochs=protocol.ramp_epochs,
+        )
+        order = torch.randperm(rows, generator=generator)
+        cls_num = cls_den = adv_num = adv_den = 0.0
+        for offset in range(0, rows, protocol.batch_size):
+            index = order[offset : offset + protocol.batch_size]
+            optimizer.zero_grad(set_to_none=True)
+            logits = model.classifier(features[index])
+            cls_numerator, cls_denominator = binary_loss_components(
+                logits, labels[index], class_weights[index]
+            )
+            cls_loss = cls_numerator / cls_denominator
+            cls_num += float(cls_numerator.item())
+            cls_den += float(cls_denominator.item())
+            adv_loss = 0.0 * logits.sum()
+            if effective > 0.0:
+                batch_background = labels[index] == 0
+                adv_weights = adversarial_weights[index][batch_background]
+                if torch.any(batch_background) and adv_weights.sum().item() > 0.0:
+                    adv_logits = model.adversary(
+                        logits[batch_background], lambda_effective=effective
+                    )
+                    adv_numerator, adv_denominator = adversarial_loss_components(
+                        adv_logits, mass_bins[index][batch_background], adv_weights
+                    )
+                    adv_loss = adv_numerator / adv_denominator
+                    adv_num += float(adv_numerator.item())
+                    adv_den += float(adv_denominator.item())
+            (cls_loss + adv_loss).backward()
+            optimizer.step()
+        cls_epoch = cls_num / cls_den
+        adv_epoch = adv_num / adv_den if adv_den > 0 else 0.0
+        if not np.isfinite(cls_epoch) or not np.isfinite(adv_epoch):
+            raise RuntimeError("non-finite final-fit metric")
+        metrics.append(
+            {
+                "epoch": epoch,
+                "lambda_effective": effective,
+                "train_cls_loss": cls_epoch,
+                "train_adv_loss": adv_epoch,
+                "train_total_loss": cls_epoch + adv_epoch,
+            }
+        )
+    environment = _environment()
+    payload = {
+        "schema_version": "adversarial-mlp-final-v1",
+        "protocol_sha256": protocol.sha256,
+        "feature_tuple": FEATURE_COLUMNS,
+        "scaler": scaler.to_dict(),
+        "target_lambda": float(target_lambda),
+        "seed": seed,
+        "epochs": epochs,
+        "classifier_state_dict": _state(model.classifier),
+        "adversary_state_dict": _state(model.adversary),
+        "environment": environment,
+    }
+    return FinalTrainingResult(payload, tuple(metrics), scaler, environment)

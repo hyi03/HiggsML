@@ -126,3 +126,33 @@ result:
   epoch_fields: [epoch, lambda_effective, train_cls_loss, train_adv_loss, train_total_loss, validation_weighted_auc, is_best, duration_seconds, events_per_second]
   summary_fields: [epochs_completed, stopped_early, best_epoch, best_validation_weighted_auc]
   environment_fields: [os, architecture, python, pytorch, device, dtype, threads, data_loader_workers, deterministic_algorithms]
+folding:
+  count: 5
+  algorithm: sha256_identity_v1
+  encoding: utf-8
+  separator_hex: "00"
+  digest_prefix_bytes: 8
+  byte_order: big
+  modulo: 5
+working_points:
+  loose: 0.50
+  medium: 0.20
+  tight: 0.10
+qualification:
+  auc_minimum: 0.80
+  ks_maximum: 0.10
+  signal_efficiency_strictly_greater: true
+  auc_tie_rtol: 0.0
+  auc_tie_atol: 1.0e-6
+final_fit:
+  scaler_scope: full_development
+  seed: 42
+  epochs_rule: median_fold_best_epoch
+  early_stopping: false
+development_artifacts:
+  oof_columns: [target_lambda, source_sample, source_entry, fold_index, label, m4l, physical_weight, train_weight, score]
+  fold_metric_columns: [target_lambda, fold_index, fold_seed, epoch, lambda_effective, train_cls_loss, train_adv_loss, train_total_loss, validation_weighted_auc, is_best, duration_seconds, events_per_second, best_epoch, best_validation_weighted_auc, epochs_completed, stopped_early]
+  candidate_metric_columns: [target_lambda, weighted_oof_auc, loose_threshold, loose_target_background_efficiency, loose_achieved_background_efficiency, loose_signal_efficiency, loose_ks, medium_threshold, medium_target_background_efficiency, medium_achieved_background_efficiency, medium_signal_efficiency, medium_ks, tight_threshold, tight_target_background_efficiency, tight_achieved_background_efficiency, tight_signal_efficiency, tight_ks, eligible, rejection_reasons_json]
+  required_paths: [config.yaml, artifacts/candidate_metrics.csv, artifacts/fold_metrics.csv, artifacts/qualification.json, artifacts/working_points.json, predictions/oof_scores.csv.gz, plots/auc_vs_lambda.png, plots/ks_vs_lambda.png, plots/oof_roc.png, plots/oof_mass_sculpting.png, artifacts/manifest.json]
+  eligible_only_paths: [model/model.pt, model/scaler.json]
+  canonical_json_files: [artifacts/qualification.json, artifacts/working_points.json, artifacts/manifest.json]

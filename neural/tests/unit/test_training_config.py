@@ -27,6 +27,8 @@ def test_checked_in_training_protocol_is_sealed_and_hashed() -> None:
     assert protocol.target_lambdas == TARGET_LAMBDAS
     assert protocol.warmup_epochs == protocol.raw["schedule"]["warmup_epochs"]
     assert protocol.ramp_epochs == protocol.raw["schedule"]["ramp_epochs"]
+    assert protocol.fold_count == 5
+    assert protocol.working_points == (("loose", 0.5), ("medium", 0.2), ("tight", 0.1))
 
 
 @pytest.mark.parametrize(
@@ -44,6 +46,11 @@ def test_checked_in_training_protocol_is_sealed_and_hashed() -> None:
         (("early_stopping", "patience"), 19),
         (("checkpoint", "fields"), []),
         (("result", "summary_fields"), []),
+        (("folding", "algorithm"), "blake2b"),
+        (("working_points", "medium"), 0.25),
+        (("qualification", "auc_minimum"), 0.79),
+        (("final_fit", "seed"), 43),
+        (("development_artifacts", "eligible_only_paths"), []),
     ],
 )
 def test_training_protocol_rejects_frozen_value_drift(
