@@ -5,19 +5,21 @@ from collections.abc import Sequence
 import sys
 
 from ..training.trainer import run_development
+from ..training.test_opening import run_open_test
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="higgsml-xgboost",
         description="Develop or open the held-out test for a frozen XGBoost model",
+        allow_abbrev=False,
     )
     commands = parser.add_subparsers(dest="command", required=True)
-    develop = commands.add_parser("develop")
+    develop = commands.add_parser("develop", allow_abbrev=False)
     develop.add_argument("--input-run", required=True)
     develop.add_argument("--protocol", required=True)
     develop.add_argument("--run-dir", required=True)
-    open_test = commands.add_parser("open-test")
+    open_test = commands.add_parser("open-test", allow_abbrev=False)
     open_test.add_argument("--development-run", required=True)
     open_test.add_argument("--run-dir", required=True)
     return parser
@@ -25,23 +27,27 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.command == "develop":
-        try:
+    try:
+        if args.command == "develop":
             manifest = run_development(
                 input_run=args.input_run,
                 protocol_path=args.protocol,
                 run_dir=args.run_dir,
                 show_progress=True,
             )
-        except Exception as exc:
-            print(
-                f"higgsml-xgboost failed: {type(exc).__name__}: {exc}",
-                file=sys.stderr,
+        else:
+            manifest = run_open_test(
+                development_run=args.development_run,
+                run_dir=args.run_dir,
             )
-            return 1
-        print(manifest["status"])
-        return 0
-    raise SystemExit("open-test implementation is delivered by Sprint M1-04")
+    except Exception as exc:
+        print(
+            f"higgsml-xgboost failed: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return 1
+    print(manifest["status"])
+    return 0
 
 
 if __name__ == "__main__":
