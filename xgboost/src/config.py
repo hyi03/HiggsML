@@ -7,8 +7,8 @@ from typing import Any, Mapping
 
 import yaml
 
-from .angular5 import ANGULAR5_FEATURES
-from .features import FEATURES
+from .domain.angular5 import ANGULAR5_FEATURES
+from .domain.features import FEATURES
 
 
 ANGULAR19 = (*tuple(FEATURES), *tuple(ANGULAR5_FEATURES))
@@ -338,6 +338,8 @@ def _validate_preprocessing_sections(raw: Mapping[str, Any]) -> None:
 
 
 def load_preprocessing_protocol(path: str | Path) -> PreprocessingProtocol:
+    # This is a sealed V1 loader, not a generic protocol loader. Any future
+    # schema change requires a version bump and a correspondingly reviewed validator.
     source, raw = _load_mapping(path)
     allowed = {
         "schema_version", "role", "samples", "selection", "weighting", "identity",
