@@ -12,7 +12,13 @@ from src.config import InputBindingError
 from src.training.config import TrainingProtocol, load_training_protocol
 from src.training.dataset import build_validated_fold, validate_development_frame
 from src.training.network import Adversary
-from src.training.trainer import EarlyStoppingState, lambda_for_epoch, train_fold, validate_checkpoint
+from src.training.trainer import (
+    EarlyStoppingState,
+    lambda_for_epoch,
+    train_fixed_epochs,
+    train_fold,
+    validate_checkpoint,
+)
 from tests.training_fixtures import synthetic_development_frame
 
 
@@ -232,3 +238,23 @@ def test_runtime_nonfinite_metric_is_internal_failure(
 
     with pytest.raises(RuntimeError, match="non-finite training metric"):
         train_fold(fold, protocol, target_lambda=0.0)
+
+
+def test_final_fit_uses_all_development_and_exact_fixed_epoch_count() -> None:
+    protocol, fold = _fold()
+    frame = synthetic_development_frame()
+    development = validate_development_frame(frame, protocol_sha256=protocol.sha256)
+
+    first = train_fixed_epochs(development, protocol, target_lambda=0.50, epochs=6)
+    second = train_fixed_epochs(development, protocol, target_lambda=0.50, epochs=6)
+
+    assert first.scaler.fitting_rows == len(frame)
+    assert len(first.epochs) == 6
+    assert first.epochs[-1]["lambda_effective"] == 0.05
+    assert first.model_payload["epochs"] == 6
+    assert "validation_weighted_auc" not in first.epochs[-1]
+    for key in ("classifier_state_dict", "adversary_state_dict"):
+        assert all(
+            torch.equal(tensor, second.model_payload[key][name])
+            for name, tensor in first.model_payload[key].items()
+        )

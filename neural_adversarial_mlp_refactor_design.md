@@ -111,6 +111,8 @@ neural/
 │   │   └── outputs.py
 │   ├── training/
 │   │   ├── dataset.py
+│   │   ├── development_reader.py
+│   │   ├── development.py
 │   │   ├── network.py
 │   │   ├── losses.py
 │   │   ├── folds.py
@@ -331,6 +333,8 @@ min_adversary  L_adv
 | PyTorch device | CPU/ARM64 authority |
 
 每个 fold 使用 `seed = 42 + fold_index`；不同 λ 候选在同一 fold 复用相同初始化种子和 batch 顺序，以降低候选比较噪声。Checkpoint 仅按该 fold validation weighted AUC 早停，不使用 test。
+最终 eligible 模型在全部 development 上使用 base seed `42` 重新初始化，并按五折最佳 epoch
+中位数固定训练，不重新早停。
 
 ## 9. OOF、候选选择与资格门槛
 

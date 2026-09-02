@@ -29,12 +29,37 @@ def json_bytes(value: Any) -> bytes:
     return (json.dumps(value, indent=2, ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
 
 
+def canonical_json_bytes(value: Any) -> bytes:
+    return (
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
 def write_json(path: str | Path, value: Any) -> dict[str, Any]:
     payload = json_bytes(value)
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_bytes(payload)
     return {"path": destination.as_posix(), "sha256": hashlib.sha256(payload).hexdigest(), "size_bytes": len(payload)}
+
+
+def write_canonical_json(path: str | Path, value: Any) -> dict[str, Any]:
+    payload = canonical_json_bytes(value)
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(payload)
+    return {
+        "path": destination.as_posix(),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "size_bytes": len(payload),
+    }
 
 
 def software_record() -> dict[str, Any]:

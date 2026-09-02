@@ -1,0 +1,74 @@
+# Sprint M1-04 Code Review Report
+
+**Reviewer:** opencode-go / kimi-k2.7-code
+**Review Date:** 2026-09-02
+**Base Commit:** `9e492f5` (`feat: complete sprint-m1-03 code and change base on reviews`)
+**Scope:** M1-04 implementation change set under `D:\code\HiggsML`
+
+## Review Method
+
+- Independently read `AGENTS.md`, `neural/AGENTS.md`, `neural/docs/FR-001-adversarial-mlp-refactor.md`, `neural/docs/sprint-m1-04.md`, `neural/docs/development-protocol-v1.md`, `neural_adversarial_mlp_refactor_design.md`, and `docs/4-Reviews/sprint-m1-04-review-confirm.md`.
+- Inspected the working-tree diff against `9e492f5` and all modified/new files listed in the review request.
+- Ran focused tests and the full `pytest` suite from `neural/` using the locked `pytorch` Conda environment.
+- Verified exit codes, artifact layouts, hash binding, reader isolation, OOF completeness, qualification math, and final-fit semantics.
+
+## Verification Results
+
+| Check | Command | Result |
+|---|---|---|
+| Focused M1-04 tests | `conda run -n pytorch python -m pytest -q tests/unit/test_folds.py tests/unit/test_qualification.py tests/integration/test_development_run.py tests/unit/test_training_config.py tests/integration/test_cli_help.py tests/integration/test_deterministic_training.py` | 56 passed |
+| Full suite | `conda run -n pytorch python -m pytest -q` | 149 passed, 1 skipped |
+| Whitespace | `git diff --check` from `neural/` | clean |
+
+The counts were reproduced independently, but the review below does not rely on them.
+
+## Overall Conclusion
+
+The M1-04 implementation correctly enforces the core scientific safety boundaries: it is strictly MC-only, never decodes held-out test feature tokens, binds input runs and tables by SHA-256, produces exact 5×5 OOF evidence, applies the sealed qualification rules with the correct `1e-6` best-AUC-relative tie-break, and uses the median fold best epoch for the final full-development fit. The normal (`eligible` / `no_eligible_candidate`) and abnormal run layouts are implemented, and the `develop` CLI correctly refuses to perform or authorize `open-test`.
+
+The primary weaknesses are **missing tests** and **minor schema completeness gaps** in the development manifest. The integration test for the full orchestration monkeypatches all scientific computation, so the real `train_fold` → OOF → qualification → `train_fixed_epochs` pipeline is not exercised end-to-end. Several security/integrity checks in `development_reader.py` also lack direct test coverage. No critical correctness or data-leakage bugs were found in the implementation itself.
+
+## Detailed Findings
+
+| Severity | Type | Location | Issue | Evidence | Recommendation |
+|---|---|---|---|---|---|
+| High | Missing tests | `neural/tests/integration/test_development_run.py`, `neural/tests/unit/` | The orchestration integration test replaces `train_fold`, `evaluate_candidate`, `train_fixed_epochs`, and `write_development_plots` with fakes. The real training → OOF → qualification → final-fit pipeline is therefore not exercised end-to-end. | `_install_fast_pipeline` in `test_development_run.py` monkeypatches all scientific functions; the test only checks artifact layout and call counts. | Add at least one small but real end-to-end test (or a slow CLI smoke test) that runs actual `train_fold` and `train_fixed_epochs` for a few epochs on a tiny deterministic fixture, asserting real model/scaler payloads and qualification state. |
+| High | Missing tests | `neural/src/training/development_reader.py` | No dedicated tests cover the input binder's security/integrity checks: path traversal, symlink/junction/reparse-point rejection, manifest SHA-256 mismatch, output file SHA-256 mismatch, canonical-content hash mismatch, unknown/empty `split` token, row-count mismatch, or duplicate canonical identity. | `_bound_input_run`, `_plain_descendant`, `_read_manifest`, `_output_records`, `_canonical_content_sha256`, and `_development_frame` contain these checks, but `test_development_run.py` only exercises the happy path and one poison-token case. | Add `tests/unit/test_development_reader.py` with parameterized tests for each failure branch, including a symlink/junction fixture and a manifest whose declared hashes differ from actual bytes. |
+| Medium | Schema completeness | `neural/src/training/development.py` (`execute_development`, manifest construction) | The development manifest does not include a `schema` block (e.g., OOF column order/dtypes, metric CSV column schemas) even though Development Protocol V1 §9 says the manifest records "schema/counts". | Manifest is built with `counts`, `input`, `protocol`, `outputs`, `selection`, `environment`, `software`, `performance`, and `boundaries`, but no `schema` key. | Add a `schema` section to the development manifest that records `oof_columns`, `oof_dtypes`, `candidate_metric_columns`, and `fold_metric_columns`, consistent with the sealed protocol. |
+| Medium | Hash binding | `neural/src/training/development.py` (manifest `input` block) | The development manifest does not explicitly record the preprocess protocol and preprocess run-config SHA-256s. Development Protocol V1 §2 requires the development manifest to reference preprocess protocol/config by file-payload SHA-256. | `manifest["input"]` only contains `manifest_sha256`, `table_sha256`, and `canonical_content_sha256`. | Extend `manifest["input"]` to include `preprocess_protocol_sha256` and `preprocess_config_sha256` (or bind them through the manifest output records), and verify them in `development_reader.py`. |
+| Medium | Missing tests | `neural/tests/unit/test_qualification.py`, `neural/tests/integration/test_development_run.py` | No test verifies the exact published OOF row ordering (lambda order, then `source_sample` UTF-8 bytes ascending, then `source_entry` ascending) or the stability of the canonical CSV content hash. | `test_oof_contract_rejects_missing_duplicate_nonfinite_and_wrong_fold` only tests rejection cases; `test_development_run_publishes_exact_normal_terminal_layouts` checks row count and column names but not order or canonical hash. | Add an OOF-order test that reads the published gzip, asserts row order against the protocol rule, and verifies `canonical_content_sha256` in the manifest. |
+| Medium | Missing tests | `neural/tests/integration/test_development_run.py` | The final-fit epoch count (`median_fold_best_epoch`) is not tested with real fold best-epoch values. | `execute_development` computes `final_epochs = int(ordered_epochs[2])`, but the integration test monkeypatches `train_fixed_epochs`, so the median path is never executed. | Add a unit or integration test that supplies real fold results with known best epochs and asserts the selected median, including the odd-count case. |
+| Medium | Missing tests | `neural/tests/development_fixtures.py`, `neural/tests/integration/test_development_run.py` | Preprocess manifest validation branches (`status != "success"`, wrong `run_type`, wrong `protocol_id`, missing/extra keys, changed schema keys) are not exercised. | `_read_manifest` in `development_reader.py` rejects these conditions, but no test creates malformed manifest fixtures. | Add parameterized tests for each manifest validation branch using fixtures that mutate one field at a time. |
+| Medium | Code duplication | `neural/src/training/trainer.py` (`train_fixed_epochs`) | `train_fixed_epochs` duplicates tensor construction logic (scaler fit, feature/label/weight tensors, background mass bins, adversarial weights) that already exists in `build_validated_fold` / `dataset.py`. | Lines 287–303 of `trainer.py` inline the same construction performed by `build_validated_fold`. | Refactor to a shared helper such as `build_full_development_tensors(development)` or extend `ValidatedFold` for the full-development case, ensuring consistency with fold training. |
+| Low | Test weakness | `neural/tests/integration/test_development_run.py:118` | The poison-token test only asserts the poison string is absent from `DataFrame.to_string()`; this does not prove the numeric decoder never parsed the token. | `assert "this-test-feature-must-never-be-decoded" not in loaded.development.frame.to_string()` is indirect. | Strengthen the test by monkeypatching/spying `pd.read_csv` or `_field_token` to assert that test-row tokens are skipped before any numeric DataFrame construction. |
+| Low | Documentation | `neural/README.md:7` | README status line is stale and still reports M1-02 as the implemented state. | Line 7: "当前状态：Sprint M1-02 MC-only 预处理已实现". | Update the status line to reflect M1-04 development OOF, qualification, and final-fit implementation. |
+| Low | Missing tests | `neural/tests/unit/test_folds.py` | Fold hash edge cases (boundary values near modulo 5, exact payload encoding for `source_entry=0`, rejection of non-string/non-int inputs) are covered lightly. | `test_fold_hash_known_vectors_include_zero_entry` tests three vectors and a few rejections, but does not assert the exact byte payload or near-boundary behavior. | Add explicit payload-byte assertions and boundary cases (e.g., entries producing digest prefix close to `2**64 - 1`) to lock the algorithm. |
+| Low | Missing tests | `neural/tests/unit/test_qualification.py` | `working_point_metrics` threshold boundary cases are not fully covered. | Only the protocol hand-example is tested. | Add tests for `target * total` exactly equal to a cumulative value and for a background population where all events share the same score. |
+| Low | Missing tests | `neural/tests/integration/test_development_run.py` | Eligible-run model artifact schema and manifest hash records are not verified. | The layout test checks that `model/` exists but does not inspect `model.pt` payload keys or the manifest output records for `model/model.pt` and `model/scaler.json`. | Add assertions for the saved model payload schema, scaler schema, and that the manifest `outputs` list contains the eligible-only paths with matching SHA-256s. |
+| Low | Missing tests | `neural/tests/unit/test_qualification.py` | `qualification_reasons` field validation (missing/extra working-point fields) is not tested. | The function checks `required_fields` and rejects malformed points, but no test exercises this. | Add a test that passes a points dict missing `threshold` and another with an extra field, asserting `InputBindingError`. |
+| Low | Missing tests | `neural/tests/unit/test_folds.py` | No test verifies that `assign_folds` populates all five folds on a non-trivial frame. | The existing test checks `set(original.values()) == set(range(5))` on a small fixture. | Add a larger synthetic test to verify all folds are non-empty and roughly balanced. |
+| Info | CLI usability | `neural/src/cli/train.py` | The `develop` subcommand does not expose `--input-allowed-root`, even though `execute_development` supports it. Input and output runs must therefore share the same `runs/` root. | `execute_development` accepts `input_allowed_root`, but `main()` always passes the output `allowed_root`. | Either expose `--input-allowed-root` in the CLI or document that the input preprocess run must live under the same `runs/` directory as the output development run. |
+| Info | Manifest naming | `neural/src/training/development.py` | The development manifest uses `environment` where the preprocess manifest uses `determinism`; terminology differs although the content includes deterministic flags. | `manifest["environment"]` records `deterministic_algorithms`, threads, device, etc. | Consider aligning the key name with the preprocess manifest (`determinism`) or explicitly document the difference in the artifact schema. |
+| Info | Type strictness | `neural/src/training/qualification.py:110` | `working_point_metrics` rejects numpy float targets via `type(target) is not float`. The internal protocol path passes Python floats, but the function is fragile to direct callers. | `if type(target) is not float`. | Use `isinstance(target, (float, np.floating))` or add a docstring noting that callers must supply a Python `float`. |
+| Info | Error hygiene | `neural/src/training/development_reader.py:198` | Generic `except (OSError, EOFError)` wraps gzip iteration failures without context, which may complicate debugging of corrupt inputs. | Lines 198–199 raise a generic `InputBindingError("preprocess table cannot be routed")`. | Include the failing line number or byte offset in the message while continuing to avoid event/feature values. |
+| Info | Performance | `neural/src/training/development.py:266–271` | `identity_order` recomputes `frame.iloc[index][...]` inside the sort key, giving O(n²) DataFrame indexing for large development sets. | Sort key lambda calls `iloc` twice per comparison. | Pre-extract `source_sample` and `source_entry` arrays before sorting. |
+
+## Scientific Safety Assessment
+
+- **MC-only / test isolation:** Satisfied. `development_reader.py` routes rows by `split` token before any numeric decode; test rows are counted and skipped. The poison-token test and the absence of `open-test` in M1-04 confirm the boundary.
+- **Feature leakage:** Satisfied. The 15-feature whitelist is enforced by `FEATURES`/`FORBIDDEN_FEATURES`, `validate_development_frame`, and `build_validated_fold`. `m4l` is used only for adversarial labels and KS/efficiency audit, never as a classifier input.
+- **Held-out test usage:** Satisfied. Test rows are never scored, never enter the scaler, and never influence thresholds, epochs, or candidate selection.
+- **Qualification rules:** Satisfied. AUC uses `train_weight`; efficiencies and KS use `abs(physical_weight)`; signal efficiency is strictly greater than achieved background efficiency; thresholds use inclusive `score >= threshold` with stable descending sort.
+- **Final fit:** Satisfied. Full-development scaler, seed 42, exact fixed epoch count equal to the median of five fold best epochs, no validation or early stopping.
+- **Artifact immutability:** Satisfied. `RunTransaction` prevents overwrites, publishes atomically, and writes `failure.json` for abnormal runs.
+
+## Action Summary
+
+1. Add dedicated `development_reader.py` unit tests covering path traversal, symlink/junction rejection, and all hash/schema failure branches.
+2. Add a real (non-monkeypatched) end-to-end smoke test on a tiny fixture that exercises actual training, OOF, qualification, and final fit.
+3. Extend the development manifest to include a `schema` block and explicit preprocess protocol/config SHA-256s.
+4. Refactor `train_fixed_epochs` to reuse the tensor construction logic from `dataset.py`.
+5. Update `README.md` to reflect M1-04 status.
+6. Strengthen the poison-token test to spy on the decoder rather than inspect string output.
+
+No changes to scientific rules, thresholds, or data boundaries are recommended.

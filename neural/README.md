@@ -4,7 +4,8 @@
 
 完整需求、科学边界和实施阶段见[对抗式 MLP 重构设计](../neural_adversarial_mlp_refactor_design.md)。
 
-> 当前状态：Sprint M1-02 MC-only 预处理已实现；权威 r3-ARM64 full-data gate 尚未在本机运行。
+> 当前状态：Sprint M1-04 MC-only development 五折 OOF、资格判断与 eligible final fit 已实现；
+> Windows/synthetic 验证不替代尚未执行的 locked native `osx-arm64` full-data gate。
 
 ## 1. Conda 环境配置
 
