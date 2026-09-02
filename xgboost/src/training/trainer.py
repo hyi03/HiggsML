@@ -300,18 +300,14 @@ def _git_identity(project_root: Path) -> dict[str, object]:
 
 def _code_sha256(project_root: Path) -> str:
     digest = hashlib.sha256()
-    sources = [
+    sources = {
         project_root / "src" / "__init__.py",
         project_root / "src" / "config.py",
-        *(project_root / "src" / "artifacts").glob("*.py"),
-        project_root / "src" / "cli" / "__init__.py",
-        project_root / "src" / "cli" / "xgboost.py",
-        project_root / "src" / "preprocessing" / "__init__.py",
-        project_root / "src" / "preprocessing" / "pipeline.py",
-        *(project_root / "src" / "domain").glob("*.py"),
-        *(project_root / "src" / "training").glob("*.py"),
+        project_root / "src" / "progress.py",
         project_root / "src" / "validation.py",
-    ]
+    }
+    for package in ("artifacts", "cli", "domain", "preprocessing", "training"):
+        sources.update((project_root / "src" / package).glob("*.py"))
     for path in sorted(sources, key=lambda item: item.as_posix()):
         relative = path.relative_to(project_root).as_posix().encode("utf-8")
         content = path.read_bytes()
@@ -324,7 +320,7 @@ def _code_sha256(project_root: Path) -> str:
 
 def _software_versions() -> dict[str, str]:
     distributions = {
-        "numpy": "numpy", "pandas": "pandas", "pyyaml": "PyYAML",
+        "matplotlib": "matplotlib", "numpy": "numpy", "pandas": "pandas", "pyyaml": "PyYAML",
         "scikit_learn": "scikit-learn", "xgboost": "xgboost",
     }
     versions = {"python": platform.python_version()}
@@ -337,6 +333,9 @@ def _software_versions() -> dict[str, str]:
 
 
 def _plot_bytes(evidence: DevelopmentEvidence) -> dict[str, bytes]:
+    import matplotlib
+
+    matplotlib.use("Agg")
     from matplotlib import pyplot as plt
 
     output: dict[str, bytes] = {}

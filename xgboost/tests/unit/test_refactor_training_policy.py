@@ -141,11 +141,14 @@ def test_code_hash_reads_schema_defining_preprocessing_and_domain_sources(
 
     assert len(digest) == 64
     expected = {
-        (PROJECT / "src/preprocessing/__init__.py").resolve(),
-        (PROJECT / "src/preprocessing/pipeline.py").resolve(),
-        *((path.resolve()) for path in (PROJECT / "src/domain").glob("*.py")),
+        (PROJECT / "src/__init__.py").resolve(),
+        (PROJECT / "src/config.py").resolve(),
+        (PROJECT / "src/progress.py").resolve(),
+        (PROJECT / "src/validation.py").resolve(),
     }
-    assert expected <= set(opened)
+    for package in ("artifacts", "cli", "domain", "preprocessing", "training"):
+        expected.update(path.resolve() for path in (PROJECT / "src" / package).glob("*.py"))
+    assert set(opened) == expected
 
 
 def test_progress_factory_is_used_for_five_folds_and_final_fit() -> None:
