@@ -104,10 +104,10 @@ ZZ 使用 `open_data_2020`：TTree `mini`，动量单位 MeV，normalization 不
 | `lep_z0` | `lep_z0` |
 | `mcWeight` | `mcWeight` |
 
-缺少 branch、出现任何未在协议 mapping 中声明的物理 branch、数组长度不一致或
-channelNumber 不等于绑定 DSID 时失败。`source_entry` 由 reader 在读取后生成，ROOT 中
-不得存在或伪造同名物理 branch。MeV profile 的 `lep_pt`、`lep_e` 除以 1000 转为 GeV；
-其他字段不缩放。
+缺少协议声明的 branch、声明分支数组长度不一致或 channelNumber 不等于绑定 DSID 时失败。
+ROOT 可以包含协议 mapping 之外的分支；reader 不读取这些分支，也不会把它们加入 canonical
+event、输出表或模型特征。`source_entry` 由 reader 在读取后生成，ROOT 中不得存在或伪造同名
+物理 branch。MeV profile 的 `lep_pt`、`lep_e` 除以 1000 转为 GeV；其他字段不缩放。
 
 ## 3. Selection 协议
 

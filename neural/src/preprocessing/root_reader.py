@@ -29,11 +29,6 @@ def iter_events(
                 )
             if "source_entry" in available:
                 raise InputBindingError("source_entry must be generated, not read from ROOT")
-            extra = available - set(physical)
-            if extra:
-                raise InputBindingError(
-                    f"undeclared ROOT branches for {sample.source_sample}: {sorted(extra)}"
-                )
             source_entry = 0
             for arrays in tree.iterate(
                 expressions=list(physical), step_size=chunk_size_events, library="ak"

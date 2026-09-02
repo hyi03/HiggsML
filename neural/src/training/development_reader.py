@@ -40,6 +40,8 @@ def _is_link_or_reparse(path: Path) -> bool:
         return True
     try:
         return bool(getattr(path.lstat(), "st_file_attributes", 0) & _REPARSE_POINT)
+    except FileNotFoundError:
+        return False
     except OSError as error:
         raise InputBindingError("input run path cannot be inspected") from error
 
