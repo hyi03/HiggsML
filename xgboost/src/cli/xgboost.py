@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
-from typing import NoReturn
+import sys
+
+from ..training.trainer import run_development
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -21,10 +23,25 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> NoReturn:
+def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    sprint = "M1-03" if args.command == "develop" else "M1-04"
-    raise SystemExit(f"{args.command} implementation is delivered by Sprint {sprint}")
+    if args.command == "develop":
+        try:
+            manifest = run_development(
+                input_run=args.input_run,
+                protocol_path=args.protocol,
+                run_dir=args.run_dir,
+                show_progress=True,
+            )
+        except Exception as exc:
+            print(
+                f"higgsml-xgboost failed: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
+            return 1
+        print(manifest["status"])
+        return 0
+    raise SystemExit("open-test implementation is delivered by Sprint M1-04")
 
 
 if __name__ == "__main__":
