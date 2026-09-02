@@ -151,9 +151,11 @@ conda run -n pytorch higgsml-train develop \
 ```bash
 conda run -n pytorch higgsml-train open-test \
   --development-run runs/mlp-development-<id> \
-  --run-dir runs/mlp-test-<unique-id>
+  --run-dir runs/mlp-test-<unique-id> \
+  --authorization-reference <external-approval-reference>
 ```
 
+authorization reference 只保存公开、非敏感的外部批准审计引用，软件不能据此证明已经取得授权。
 Test 只评价已经冻结的模型和工作点，不得触发重新训练、重新选阈值或放宽资格门槛。
 
 ## 3. 稳定退出码

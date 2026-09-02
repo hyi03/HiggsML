@@ -67,3 +67,15 @@ def test_train_develop_requires_input_protocol_and_run_dir() -> None:
     assert "--input-run" in completed.stderr
     assert "--protocol" in completed.stderr
     assert "--run-dir" in completed.stderr
+
+
+def test_train_help_lists_open_test() -> None:
+    completed = subprocess.run(
+        [sys.executable, "-m", "src.cli.train", "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0
+    assert "open-test" in completed.stdout

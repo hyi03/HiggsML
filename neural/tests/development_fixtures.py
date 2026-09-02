@@ -40,7 +40,13 @@ def development_with_test_rows() -> pd.DataFrame:
         development[feature] = (
             development["label"].astype("float64") * 10.0 + index / 100.0
         )
-    held_out = development.iloc[:6].copy(deep=True)
+    held_out = pd.concat(
+        [
+            development.loc[development["label"] == 0].iloc[:3],
+            development.loc[development["label"] == 1].iloc[:3],
+        ],
+        ignore_index=True,
+    ).copy(deep=True)
     held_out["split"] = "test"
     held_out["source_entry"] = held_out["source_entry"] + 100_000
     held_out["runNumber"] = held_out["runNumber"] + 100_000

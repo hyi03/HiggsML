@@ -21,6 +21,7 @@ from src.training import development_reader
 from src.training.development_reader import read_development_input
 from src.training.qualification import weighted_auc
 from src.training.trainer import EpochMetric, FinalTrainingResult
+from src.training.network import AdversarialMLP
 from tests.development_fixtures import write_synthetic_preprocess_run
 
 
@@ -51,7 +52,7 @@ def _candidate(target_lambda: float, *, eligible_lambda: float | None):
             "target_background_efficiency": target,
             "achieved_background_efficiency": 0.1,
             "signal_efficiency": 0.9,
-            "ks": 0.05,
+            "ks": 0.05 if eligible else 0.20,
         }
         for name, target in (("loose", 0.5), ("medium", 0.2), ("tight", 0.1))
     }
@@ -60,7 +61,13 @@ def _candidate(target_lambda: float, *, eligible_lambda: float | None):
         "weighted_oof_auc": 0.9 - target_lambda / 100.0,
         "working_points": points,
         "eligible": eligible,
-        "rejection_reasons": [] if eligible else ["synthetic_no_eligible"],
+        "rejection_reasons": []
+        if eligible
+        else [
+            "loose_ks_above_maximum",
+            "medium_ks_above_maximum",
+            "tight_ks_above_maximum",
+        ],
     }
 
 
@@ -81,8 +88,26 @@ def _install_fast_pipeline(monkeypatch: pytest.MonkeyPatch, *, eligible_lambda: 
         scaler = FoldLocalScaler.fit(
             development.frame[list(FEATURE_COLUMNS)].to_numpy(dtype="float64")
         )
+        model = AdversarialMLP().cpu().to(torch.float32)
         return FinalTrainingResult(
-            {"schema_version": "synthetic-final", "tensor": torch.tensor([1.0])},
+            {
+                "schema_version": "adversarial-mlp-final-v1",
+                "protocol_sha256": protocol.sha256,
+                "feature_tuple": FEATURE_COLUMNS,
+                "scaler": scaler.to_dict(),
+                "target_lambda": target_lambda,
+                "seed": 42,
+                "epochs": epochs,
+                "classifier_state_dict": {
+                    name: tensor.detach().cpu().clone()
+                    for name, tensor in model.classifier.state_dict().items()
+                },
+                "adversary_state_dict": {
+                    name: tensor.detach().cpu().clone()
+                    for name, tensor in model.adversary.state_dict().items()
+                },
+                "environment": {"device": "cpu"},
+            },
             ({"epoch": 1, "train_total_loss": 0.1},),
             scaler,
             {"device": "cpu"},
@@ -229,7 +254,7 @@ def test_development_run_publishes_exact_normal_terminal_layouts(
     assert hashlib.sha256(oof_payload).hexdigest() == oof_record["canonical_content_sha256"]
     if eligible_lambda is not None:
         payload = torch.load(output / "model" / "model.pt", weights_only=False)
-        assert payload["schema_version"] == "synthetic-final"
+        assert payload["schema_version"] == "adversarial-mlp-final-v1"
         for relative in ("model/model.pt", "model/scaler.json"):
             record = next(item for item in manifest["outputs"] if item["path"] == relative)
             assert sha256_file(output / relative) == record["sha256"]

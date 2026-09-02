@@ -157,6 +157,57 @@ def working_point_metrics(frame: pd.DataFrame, *, target: float) -> dict[str, fl
     }
 
 
+def frozen_working_point_metrics(
+    frame: pd.DataFrame, *, target: float, threshold: float
+) -> dict[str, float | bool]:
+    if (
+        type(threshold) is not float
+        or not np.isfinite(threshold)
+        or not 0.0 <= threshold <= 1.0
+    ):
+        raise InputBindingError("frozen threshold is invalid")
+    labels = frame["label"].to_numpy(dtype=np.int64)
+    scores = frame["score"].to_numpy(dtype=np.float64)
+    absolute = np.abs(frame["physical_weight"].to_numpy(dtype=np.float64))
+    masses = frame["m4l"].to_numpy(dtype=np.float64)
+    background, signal = labels == 0, labels == 1
+    if (
+        type(target) is not float
+        or not 0.0 < target < 1.0
+        or set(labels.tolist()) != {0, 1}
+        or not np.isfinite(scores).all()
+        or np.any(scores < 0.0)
+        or np.any(scores > 1.0)
+        or not np.isfinite(absolute).all()
+        or not np.isfinite(masses).all()
+        or absolute[background].sum() <= 0
+        or absolute[signal].sum() <= 0
+    ):
+        raise InputBindingError("frozen working-point inputs are invalid")
+    selected = scores >= threshold
+    achieved = float(absolute[background & selected].sum() / absolute[background].sum())
+    signal_efficiency = float(absolute[signal & selected].sum() / absolute[signal].sum())
+    selected_background = background & selected
+    empty_selected_background = absolute[selected_background].sum() <= 0
+    if empty_selected_background:
+        ks = 1.0
+    else:
+        ks = weighted_ks_distance(
+            masses[background],
+            masses[selected_background],
+            absolute[background],
+            absolute[selected_background],
+        )
+    return {
+        "threshold": threshold,
+        "target_background_efficiency": target,
+        "achieved_background_efficiency": achieved,
+        "signal_efficiency": signal_efficiency,
+        "ks": ks,
+        "empty_selected_background": bool(empty_selected_background),
+    }
+
+
 def evaluate_candidate(frame: pd.DataFrame, protocol: TrainingProtocol) -> dict[str, Any]:
     candidate_lambda = float(frame["target_lambda"].iloc[0])
     auc = weighted_auc(frame["label"], frame["score"], frame["train_weight"])

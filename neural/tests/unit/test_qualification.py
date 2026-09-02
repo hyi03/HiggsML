@@ -12,6 +12,7 @@ from src.training.dataset import validate_development_frame
 from src.training.folds import assign_folds
 from src.training.qualification import (
     OOF_COLUMNS,
+    frozen_working_point_metrics,
     qualification_reasons,
     select_candidate,
     validate_candidate_oof,
@@ -81,6 +82,26 @@ def test_working_point_all_background_scores_tied_selects_full_tie() -> None:
     point = working_point_metrics(frame, target=0.20)
     assert point["threshold"] == 0.5
     assert point["achieved_background_efficiency"] == 1.0
+
+
+def test_frozen_working_point_uses_exact_threshold_and_handles_empty_background() -> None:
+    frame = pd.DataFrame(
+        {
+            "label": [0, 0, 1, 1],
+            "score": [0.2, 0.3, 0.8, 0.9],
+            "physical_weight": [-1.0, 3.0, -2.0, 2.0],
+            "m4l": [110.0, 130.0, 120.0, 140.0],
+        }
+    )
+    point = frozen_working_point_metrics(frame, target=0.20, threshold=0.5)
+    assert point == {
+        "threshold": 0.5,
+        "target_background_efficiency": 0.2,
+        "achieved_background_efficiency": 0.0,
+        "signal_efficiency": 1.0,
+        "ks": 1.0,
+        "empty_selected_background": True,
+    }
 
 
 def test_qualification_boundaries_and_best_auc_relative_tie_break() -> None:

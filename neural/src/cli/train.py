@@ -6,9 +6,15 @@ from pathlib import Path
 from collections.abc import Sequence
 
 from src.artifacts.transaction import RunPathError
-from src.config import ExitCode, InputBindingError
+from src.config import (
+    ExitCode,
+    InputBindingError,
+    TestOpeningFailure,
+    TestOpeningRefused,
+)
 from src.logging_config import configure_logging
 from src.training.development import execute_development
+from src.training.test_opening import execute_test_opening
 
 
 LOGGER = logging.getLogger(__name__)
@@ -26,6 +32,13 @@ def build_parser() -> argparse.ArgumentParser:
     develop.add_argument("--input-run", required=True)
     develop.add_argument("--protocol", required=True)
     develop.add_argument("--run-dir", required=True)
+    open_test = subcommands.add_parser(
+        "open-test",
+        help="Open an eligible held-out MC test once after separate external authorization.",
+    )
+    open_test.add_argument("--development-run", required=True)
+    open_test.add_argument("--run-dir", required=True)
+    open_test.add_argument("--authorization-reference", required=True)
     return parser
 
 
@@ -41,8 +54,39 @@ def main(argv: Sequence[str] | None = None) -> int:
                 run_dir=arguments.run_dir,
                 allowed_root=allowed_root,
             )
+        elif arguments.command == "open-test":
+            execute_test_opening(
+                development_run=arguments.development_run,
+                run_dir=arguments.run_dir,
+                authorization_reference=arguments.authorization_reference,
+                allowed_root=allowed_root,
+            )
+    except TestOpeningRefused as error:
+        LOGGER.error("test-opening refused: %s", error)
+        return int(ExitCode.REFUSED)
+    except TestOpeningFailure as error:
+        if error.stage == "terminal_receipt":
+            LOGGER.error(
+                "test-opening failed: stage=%s run_dir=%s; "
+                "output may be published; manual audit required",
+                error.stage,
+                arguments.run_dir,
+            )
+        else:
+            LOGGER.error(
+                "test-opening failed: stage=%s run_dir=%s",
+                error.stage,
+                arguments.run_dir,
+            )
+        return int(error.exit_code)
     except InputBindingError as error:
-        LOGGER.error("development input binding failed: %s", error)
+        if arguments.command == "open-test":
+            LOGGER.error(
+                "test-opening failed: stage=input_binding run_dir=%s",
+                arguments.run_dir,
+            )
+        else:
+            LOGGER.error("development input binding failed: %s", error)
         return int(ExitCode.INPUT_BINDING)
     except RunPathError as error:
         LOGGER.error("development run transaction failed: %s", error)

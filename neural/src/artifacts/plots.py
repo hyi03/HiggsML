@@ -97,3 +97,59 @@ def write_development_plots(
     mass_path = destination / "oof_mass_sculpting.png"
     _save(mass_path)
     return auc_path, ks_path, roc_path, mass_path
+
+
+def write_test_plots(
+    directory: str | Path,
+    frame: pd.DataFrame,
+    *,
+    roc_points: tuple[np.ndarray, np.ndarray],
+    medium_threshold: float,
+    mass_edges: tuple[float, ...],
+) -> tuple[Path, Path]:
+    false_positive, true_positive = roc_points
+    bins = np.asarray(mass_edges, dtype=np.float64)
+    if (
+        tuple(frame.columns) != (
+            "source_sample", "source_entry", "label", "m4l",
+            "physical_weight", "train_weight", "score",
+        )
+        or false_positive.ndim != 1
+        or true_positive.shape != false_positive.shape
+        or not np.isfinite(false_positive).all()
+        or not np.isfinite(true_positive).all()
+        or type(medium_threshold) is not float
+        or not np.isfinite(medium_threshold)
+        or bins.ndim != 1
+        or bins.size < 2
+        or not np.all(np.diff(bins) > 0)
+    ):
+        raise InputBindingError("test plot input changed")
+    destination = Path(directory)
+    destination.mkdir(parents=True, exist_ok=True)
+    plt.figure()
+    plt.plot(false_positive, true_positive)
+    plt.plot([0, 1], [0, 1], linestyle="--")
+    plt.xlabel("background efficiency")
+    plt.ylabel("signal efficiency")
+    roc_path = destination / "test_roc.png"
+    _save(roc_path)
+
+    labels = frame["label"].to_numpy(dtype=np.int64)
+    scores = frame["score"].to_numpy(dtype=np.float64)
+    masses = frame["m4l"].to_numpy(dtype=np.float64)
+    absolute = np.abs(frame["physical_weight"].to_numpy(dtype=np.float64))
+    background = labels == 0
+    selected = background & (scores >= medium_threshold)
+    plt.figure()
+    plt.hist(masses[background], bins=bins, weights=absolute[background], histtype="step", density=True, label="all ZZ")
+    if absolute[selected].sum() > 0:
+        plt.hist(masses[selected], bins=bins, weights=absolute[selected], histtype="step", density=True, label="medium selected ZZ")
+    else:
+        plt.plot([], [], label="medium selected ZZ (empty)")
+    plt.xlabel("m4l [GeV]")
+    plt.ylabel("normalized absolute-weight density")
+    plt.legend()
+    mass_path = destination / "test_mass_sculpting.png"
+    _save(mass_path)
+    return roc_path, mass_path

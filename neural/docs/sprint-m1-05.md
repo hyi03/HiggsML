@@ -13,6 +13,7 @@
 
 - Sprint M1-04 已完成并能生成冻结 eligible/no-eligible development run。
 - [`FR-001`](FR-001-adversarial-mlp-refactor.md) R5、R6、R7。
+- 自包含实现规范：[`Test-opening Protocol V1`](test-opening-protocol-v1.md)。
 - 实际执行 `open-test` 前另有用户明确授权；本 Sprint 的实现与测试本身不构成该授权。
 
 协同说明：
@@ -28,9 +29,23 @@
 涉及包和目录：
 
 - `neural/src/training/test_opening.py`
+- `neural/src/training/test_reader.py`
 - `neural/src/cli/train.py` 的 `open-test` 子命令
 - test artifact/manifest/plot 发布模块
 - claim、篡改、重复调用和 CLI integration tests
+
+协议内容门：
+
+- `open-test` 只接受 development run、新 output run 与非空 external authorization reference；
+  reference 只做审计留痕，软件不得伪称它能证明用户批准。
+- 所有 development/preprocess/artifact/hash/model/scaler/threshold 校验在 claim 与 test feature decode
+  前完成。
+- claim 以 `O_CREAT|O_EXCL` 原子创建；任何 `claimed` 或 terminal state 均永久拒绝重试，硬崩溃
+  保留 indeterminate claim。
+- Test reader 只解析 test 行；评价只消费冻结 model/scaler/threshold，不得调用任何训练、拟合、
+  threshold/candidate selection 路径。
+- 冻结阈值选中零背景绝对权重时，不重选阈值；KS 保守记为 `1.0` 并形成正常
+  `test_nonreproduction`。
 
 ## 4. 暂不纳入范围
 
@@ -52,15 +67,21 @@
 
 实现任务清单：
 
-- [ ] 校验 development status、manifest、protocol、输入表、模型、scaler、工作点与 OOF 哈希。
-- [ ] 校验输出目录不存在且位于允许的 `runs/` 根下。
-- [ ] 以原子操作创建唯一 claim，并定义并发/崩溃语义。
-- [ ] 成功或失败均持久化不可歧义的 test-opening 收据。
+- [x] 校验 development status、manifest、protocol、输入表、模型、scaler、工作点与 OOF 哈希。
+- [x] 校验输出目录不存在且位于允许的 `runs/` 根下。
+- [x] 以原子操作创建唯一 claim，并定义并发/崩溃语义。
+- [x] 成功或失败均持久化不可歧义的 test-opening 收据。
+- [x] Claim file/directory 完成平台等价 durable flush 后才允许 test decode；pre-claim refusal 必须
+  abort staging，post-claim failure 才发布 sanitized failure run。
+- [x] 正常 run 已发布但 terminal receipt 无法 durable replace 时返回 exit 4，并永久保留
+  indeterminate claim 与不可覆盖 output。
 
 测试要求：
 
-- [ ] 无资格、缺 artifact、哈希变化、已有 claim、路径逃逸和并发竞争全部拒绝。
-- [ ] 失败后收据能够区分“未读 test”与“claim 后评价失败”。
+- [x] 无资格、缺 artifact、哈希变化、已有 claim、路径逃逸和并发竞争全部拒绝。
+- [x] 失败后收据能够区分“未读 test”与“claim 后评价失败”。
+- [x] 覆盖 empty/partial state、missing/blank authorization、post-claim 3/4/70 exit 与 tree-only-state
+  mutation。
 
 ### 5.2 工作包：冻结 test 评价与发布
 
@@ -70,15 +91,15 @@
 
 实现任务清单：
 
-- [ ] 加载冻结 scaler/model/working points 并对 test 行评分。
-- [ ] 计算 frozen-threshold AUC、KS 与效率。
-- [ ] 发布 test metrics、scores、ROC、mass-sculpting 图和 manifest。
-- [ ] 仅产生 `test_reproduced` 或 `test_nonreproduction` 结论。
+- [x] 加载冻结 scaler/model/working points 并对 test 行评分。
+- [x] 计算 frozen-threshold AUC、KS 与效率。
+- [x] 发布 test metrics、scores、ROC、mass-sculpting 图和 manifest。
+- [x] 仅产生 `test_reproduced` 或 `test_nonreproduction` 结论。
 
 测试要求：
 
-- [ ] 验证 test 评价不调用 trainer、optimizer、scaler fit 或阈值选择。
-- [ ] 验证重复调用永久拒绝，test 非复现不会触发任何修正路径。
+- [x] 验证 test 评价不调用 trainer、optimizer、scaler fit 或阈值选择。
+- [x] 验证重复调用永久拒绝，test 非复现不会触发任何修正路径。
 
 ## 6. 验收标准
 
@@ -93,11 +114,18 @@
 项目声明的验证命令：
 
 - `conda run -n pytorch python -m pytest -q`
+- `conda run -n pytorch python -m pip check`
 
 专项验证：
 
 - `conda run -n pytorch python -m pytest -q tests/unit/test_test_opening.py tests/integration/test_open_test_cli.py`
 - 仅对 fixtures 运行 `higgsml-train open-test` smoke；不得在无单独授权时指向权威 development run。
+- `conda run -n pytorch higgsml-preprocess --help`
+- `conda run -n pytorch higgsml-train --help`
+- `git diff --check`
+
+路径解析：`FR_DIR=SPRINT_DIR=neural/docs/`，`REVIEW_DIR=docs/4-Reviews/`；验证命令来自
+`neural/AGENTS.md`，fixture-only CLI smoke 由本 Sprint 补充。工作流不创建额外 state 文件。
 
 ## 8. 实施顺序
 
@@ -115,4 +143,26 @@
 
 ## 10. 交付结论
 
-待实施、评审确认和验证后填写；权威 test 是否开启须单独记录授权与收据。
+M1-05 实现、文档双模型评审、review-confirm、代码双模型评审与 code-review-confirm 已完成。
+代码评审确认中的 Accept/Partial 项已应用，包括 claim ownership 竞态、pre-claim exit 4、
+post-publish terminal receipt、fd ownership、exact dtype、deterministic opening、README/CLI 文案与
+覆盖缺口修订。
+
+验证证据（均在 Windows `pytorch` 环境，非权威）：
+
+- focused opening：`50 passed`；扩大相关回归：`80 passed, 1 skipped`；
+- 完整 suite：`227 passed, 2 skipped`；skip 精确为
+  `authoritative_gate_not_run: external r3-ARM64 table is absent` 与
+  `directory symlinks are unavailable on this platform`；
+- `python -m pip check`：`No broken requirements found.`；
+- `higgsml-preprocess --help` 与 `higgsml-train --help`：exit 0；
+- `git diff --check`：通过；
+- 新建 ignored fixture-only CLI smoke：
+  `neural/runs/m1-05-synthetic-cli-smoke-20260902-02`，authorization reference 固定为
+  `synthetic-fixture-only`，实际 `higgsml-train open-test` exit 0，终态
+  `test_nonreproduction`，terminal receipt 完整。
+
+本 Sprint 未读取、哈希、探测、预处理、评分、绘图或发布任何真实数据；未对任何权威 development
+run 执行 `open-test`，也未打开权威 held-out test。fixture-only smoke 打开的只是 synthetic test
+rows，不构成权威授权或科学结论。Windows/synthetic 结果不能替代 locked native `osx-arm64` full-data
+gate；全部输出仅为 educational/technical demo。

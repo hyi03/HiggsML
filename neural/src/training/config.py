@@ -171,6 +171,13 @@ def _strict_equal(actual: Any, expected: Any) -> bool:
     return bool(actual == expected)
 
 
+def validate_training_protocol_snapshot(raw: Any) -> dict[str, Any]:
+    """Validate an already hash-bound raw protocol without reading a repository file."""
+    if not _strict_equal(raw, _EXPECTED):
+        raise InputBindingError("sealed adversarial MLP protocol changed")
+    return raw
+
+
 def load_training_protocol(path: str | Path) -> TrainingProtocol:
     try:
         payload = Path(path).read_bytes()
@@ -179,8 +186,7 @@ def load_training_protocol(path: str | Path) -> TrainingProtocol:
         raise
     except (OSError, UnicodeError, yaml.YAMLError) as exc:
         raise InputBindingError("unable to load sealed adversarial MLP protocol") from exc
-    if not _strict_equal(raw, _EXPECTED):
-        raise InputBindingError("sealed adversarial MLP protocol changed")
+    validate_training_protocol_snapshot(raw)
     return TrainingProtocol(
         protocol_id=str(raw["protocol_id"]),
         features=tuple(raw["features"]),
