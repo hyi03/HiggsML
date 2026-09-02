@@ -54,10 +54,10 @@ conda-lock install --name pytorch win.yml
 conda activate pytorch
 ```
 
-也可以不激活环境，统一通过 `conda run` 执行命令：
+后续命令均默认已激活 `pytorch` 环境：
 
 ```bash
-conda run -n pytorch python --version
+python --version
 ```
 
 ### 1.4 验证环境
@@ -65,19 +65,19 @@ conda run -n pytorch python --version
 检查依赖一致性：
 
 ```bash
-conda run -n pytorch python -m pip check
+python -m pip check
 ```
 
 安装本项目的两个 console entry point（依赖已经由 lock 安装）：
 
 ```bash
-conda run -n pytorch python -m pip install --no-deps -e .
+python -m pip install --no-deps -e .
 ```
 
 检查 PyTorch 版本、平台和可用设备：
 
 ```bash
-conda run -n pytorch python -c "import platform, torch; print('platform:', platform.platform()); print('torch:', torch.__version__); print('cuda:', torch.cuda.is_available()); print('mps:', torch.backends.mps.is_available())"
+python -c "import platform, torch; print('platform:', platform.platform()); print('torch:', torch.__version__); print('cuda:', torch.cuda.is_available()); print('mps:', torch.backends.mps.is_available())"
 ```
 
 权威训练即使检测到 MPS 可用，也必须由程序固定使用 CPU。运行配置和 manifest 必须记录 PyTorch build、CPU 架构、线程数和 deterministic 标志。
@@ -85,14 +85,14 @@ conda run -n pytorch python -c "import platform, torch; print('platform:', platf
 运行测试：
 
 ```bash
-conda run -n pytorch python -m pytest -q
+python -m pytest -q
 ```
 
 基础 CLI smoke：
 
 ```bash
-conda run -n pytorch higgsml-preprocess --help
-conda run -n pytorch higgsml-train --help
+higgsml-preprocess --help
+higgsml-train --help
 ```
 
 ### 1.5 生成或更新锁文件
@@ -120,7 +120,7 @@ conda-lock lock `
 ### 2.1 MC 预处理
 
 ```bash
-conda run -n pytorch higgsml-preprocess \
+higgsml-preprocess \
   --protocol config/preprocess_protocol_v1.yaml \
   --run-config config/preprocess_run.local.yaml \
   --run-dir runs/preprocess-<unique-id>
@@ -129,6 +129,25 @@ conda run -n pytorch higgsml-preprocess \
 先复制 `config/preprocess_run.example.yaml` 为不提交的本地配置，只填写 Higgs 345060、
 ZZ 363490 的只读 ROOT 路径和 `chunk_size_events`。输出路径只由 `--run-dir` 指定。
 Selection、DSID、输入哈希、特征定义、权重和 split 算法由版本化 protocol 固定。
+
+Windows PowerShell 可按以下方式创建本地配置：
+
+```powershell
+Copy-Item -LiteralPath config/preprocess_run.example.yaml `
+  -Destination config/preprocess_run.local.yaml
+```
+
+编辑 `config/preprocess_run.local.yaml`，将两个占位路径替换为已批准的只读 Higgs 345060
+和 ZZ 363490 ROOT 文件路径。文件名中的下划线不需要转义；不要把
+`preprocess_protocol_v1.yaml` 或 `preprocess_run.local.yaml` 写成包含 `\_` 的路径。
+
+在已激活 `pytorch` 环境的 PowerShell 中运行：
+
+```powershell
+higgsml-preprocess --protocol config/preprocess_protocol_v1.yaml --run-config config/preprocess_run.local.yaml --run-dir runs/preprocess-<unique-id>
+```
+
+`--run-dir` 必须指向尚不存在的新路径；失败或已发布的 run 路径不得复用。
 
 确认本地配置不会被 Git 收集：
 
@@ -143,7 +162,7 @@ git check-ignore config/preprocess_run.local.yaml
 ### 2.2 Development 训练
 
 ```bash
-conda run -n pytorch higgsml-train develop \
+higgsml-train develop \
   --input-run runs/preprocess-<id> \
   --protocol config/adversarial_mlp_protocol_v1.yaml \
   --run-dir runs/mlp-development-<unique-id>
@@ -156,7 +175,7 @@ conda run -n pytorch higgsml-train develop \
 只有 development run 合格、已经封存且另有明确授权时，才可执行：
 
 ```bash
-conda run -n pytorch higgsml-train open-test \
+higgsml-train open-test \
   --development-run runs/mlp-development-<id> \
   --run-dir runs/mlp-test-<unique-id> \
   --authorization-reference <external-approval-reference>
