@@ -1,0 +1,8 @@
+schema_version: "1.0"
+samples:
+  higgs:
+    path: /read-only/path/to/higgs.root
+  zz:
+    path: /read-only/path/to/zz_363490.root
+resources:
+  chunk_size_events: 50000

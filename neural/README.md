@@ -4,7 +4,7 @@
 
 完整需求、科学边界和实施阶段见[对抗式 MLP 重构设计](../neural_adversarial_mlp_refactor_design.md)。
 
-> 当前状态：Sprint M1-01 工程骨架已建立；科学预处理与训练能力由后续 Sprint 实现。
+> 当前状态：Sprint M1-02 MC-only 预处理已实现；权威 r3-ARM64 full-data gate 尚未在本机运行。
 
 ## 1. Conda 环境配置
 
@@ -124,7 +124,13 @@ conda run -n pytorch higgsml-preprocess \
   --run-dir runs/preprocess-<unique-id>
 ```
 
-`preprocess_run.local.yaml` 只配置本机 ROOT 路径、输出路径、chunk size 和资源参数。Selection、DSID、输入哈希、特征定义、权重和 split 算法必须由版本化 protocol 固定。
+先复制 `config/preprocess_run.example.yaml` 为不提交的本地配置，只填写 Higgs 345060、
+ZZ 363490 的只读 ROOT 路径和 `chunk_size_events`。输出路径只由 `--run-dir` 指定。
+Selection、DSID、输入哈希、特征定义、权重和 split 算法由版本化 protocol 固定。
+
+成功 run 发布 `processed/mc_events.csv.gz`、`artifacts/cutflow.json`、
+`artifacts/mc_summary.json` 和最后写入的 `artifacts/manifest.json`。完整字段、canonical CSV
+与 ARM64 golden 规则见 [`Preprocess Protocol V1`](docs/preprocess-protocol-v1.md)。
 
 ### 2.2 Development 训练
 

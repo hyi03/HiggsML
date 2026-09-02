@@ -4,7 +4,7 @@
 - `标题`: 对抗式 MLP 独立工程重构
 - `文档状态`: 已确认，实施中
 - `日期`: 2026-09-01
-- `版本`: 1.1
+- `版本`: 1.2
 - `所属阶段`: 阶段 1 - Neural MC-only 主线建设
 - `开发顺序`: 1
 - `优先级`: P0
@@ -52,6 +52,15 @@
 - 预处理必须保持已确认设计中的单位转换、trigger、ID、isolation、impact parameter、四轻子重建、SFOS、Z1/Z2、`m4l` selection、MC normalization、canonical identity 与稳定 split 行为。
 - 输出必须包含设计规定的 19 项模型候选特征和全部非模型字段，并保持确定的列顺序和行顺序。
 - 必须同时保留 signed `physical_weight` 与按类别归一化的 `abs(physical_weight)` 训练权重语义。
+- M1-02 的 ROOT profile、selection、重建、Base14/Angular5、归一化、identity、split、
+  输出 schema、序列化、artifact schema 与 golden 规则以
+  [`Preprocess Protocol V1`](preprocess-protocol-v1.md) 为规范来源；运行参数不得改变它们。
+- 权威逐列 golden 固定为 legacy r3-ARM64 enrichment table
+  `xgboost/runs/angular5-mc-363490-2026-08-26-r3-arm64/processed/mc_events_angular5.csv.gz`，
+  SHA-256 `bc31f4e65ccecc0a1962648cfe240b67d8ecc6df8eda2478b3f46c93d2f34f09`。
+- Golden 的结构字段、整数、枚举、identity、列/行顺序 exact；浮点逐元素采用
+  `rtol=1e-12, atol=1e-12, equal_nan=false`。权威 gate 仅在锁定的原生
+  `osx-arm64` 环境执行；其他平台只能提供开发验证。
 
 ### FR-001-R3 固定对抗式 MLP
 
@@ -142,6 +151,8 @@
 - 两个 CLI 的 `--help` smoke test。
 - 微型 ROOT 全链、确定性小型训练和 test-opening 关闭式失败集成测试。
 - 在具备权威只读 ROOT 时执行全量预处理 golden；development 全量训练须作为独立、可审计运行。
+- 全量预处理逐列 gate 只在 `osx.yml` 恢复的原生 `osx-arm64` 环境执行，并使用
+  [`Preprocess Protocol V1`](preprocess-protocol-v1.md) 第 7 节预注册的 exact/tolerance 谓词。
 
 ## 验收要点
 
@@ -157,4 +168,6 @@
 
 - 本 FR 的实施拆分为 `sprint-m1-01` 至 `sprint-m1-06`，必须按顺序完成。
 - `open-test` 不因本 FR 或任一 Sprint 文档的存在而获得授权；届时仍须用户单独明确批准。
-- 文档路径按本次任务显式解析为 `FR_DIR=SPRINT_DIR=neural/docs/`；当前只完成文档编写，尚未完成评审确认、实现、验证或交付。
+- 文档路径按本次任务显式解析为 `FR_DIR=SPRINT_DIR=neural/docs/`；M1-02 的 golden 与
+  等价策略已由所有者于 2026-09-01 明确批准，仍须完成修订文档评审、实现、代码评审、
+  验证和 Sprint 提交门。

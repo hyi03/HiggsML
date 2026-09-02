@@ -46,11 +46,11 @@ def test_failed_transaction_publishes_failure_receipt(tmp_path: Path) -> None:
             raise ValueError("bad input")
 
     receipt = json.loads(target.joinpath("failure.json").read_text(encoding="utf-8"))
-    assert receipt == {
-        "error_type": "ValueError",
-        "message": "bad input",
-        "status": "failed",
-    }
+    assert receipt["error_type"] == "ValueError"
+    assert receipt["message"] == "bad input"
+    assert receipt["status"] == "failed"
+    assert receipt["exit_code"] == 70
+    assert receipt["failed_at_utc"].endswith("+00:00")
 
 
 def test_transaction_supports_nested_target(tmp_path: Path) -> None:
