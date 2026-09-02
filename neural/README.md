@@ -4,8 +4,9 @@
 
 完整需求、科学边界和实施阶段见[对抗式 MLP 重构设计](../neural_adversarial_mlp_refactor_design.md)。
 
-> 当前状态：Sprint M1-04 MC-only development 五折 OOF、资格判断与 eligible final fit 已实现；
-> Windows/synthetic 验证不替代尚未执行的 locked native `osx-arm64` full-data gate。
+> 当前状态：Sprint M1-06 已按用户 2026-09-02 的明确验证豁免完成交付；未要求或执行 authority/full-data/
+> `open-test`。locked native `osx-arm64` full-data preprocess golden 与完整 development OOF 仍为
+> `not_run`，因此本次完成不构成 authority verification。Windows/synthetic 证据不能替代该 gate。
 
 ## 1. Conda 环境配置
 
@@ -129,6 +130,12 @@ conda run -n pytorch higgsml-preprocess \
 ZZ 363490 的只读 ROOT 路径和 `chunk_size_events`。输出路径只由 `--run-dir` 指定。
 Selection、DSID、输入哈希、特征定义、权重和 split 算法由版本化 protocol 固定。
 
+确认本地配置不会被 Git 收集：
+
+```bash
+git check-ignore config/preprocess_run.local.yaml
+```
+
 成功 run 发布 `processed/mc_events.csv.gz`、`artifacts/cutflow.json`、
 `artifacts/mc_summary.json` 和最后写入的 `artifacts/manifest.json`。完整字段、canonical CSV
 与 ARM64 golden 规则见 [`Preprocess Protocol V1`](docs/preprocess-protocol-v1.md)。
@@ -170,3 +177,14 @@ Test 只评价已经冻结的模型和工作点，不得触发重新训练、重
 | `70` | 未预期内部错误 |
 
 完整科学安全与开发约束见 [`AGENTS.md`](AGENTS.md)。
+
+## 4. 恢复、artifact 与验证证据
+
+- [运行手册](docs/runbook.md)：从锁定环境恢复到 authority preprocess/development 的顺序、命令与停止条件。
+- [Artifact Schema](docs/artifact-schema.md)：preprocess、development、test-opening、failure receipt 与
+  authority comparator 的发布契约索引。
+- [M1-06 验证证据](docs/m1-06-verification-evidence.md)：实际执行命令、平台、数据范围、结果与 blocker。
+- [最终技术报告](docs/final-technical-report.md)：仅转录已获得证据的技术结论和明确 non-claims。
+
+这些文档只描述 educational/technical demo。它们不构成 ATLAS 结果、Higgs discovery 或 physics
+measurement，也不授予 `open-test` 权限。

@@ -223,6 +223,7 @@ xgboost/runs
 xgboost/tmp
 neural/data/*
 !neural/data/.gitkeep
+/neural/config/preprocess_run.local.yaml
 neural/runs/*
 !neural/runs/.gitkeep
 .worktrees/
