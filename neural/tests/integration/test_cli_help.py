@@ -35,4 +35,21 @@ def test_cli_usage_error_returns_two(module: str) -> None:
     )
 
     assert completed.returncode == 2
-    assert "unrecognized arguments" in completed.stderr
+    assert (
+        "unrecognized arguments" in completed.stderr
+        or "the following arguments are required" in completed.stderr
+    )
+
+
+def test_preprocess_requires_protocol_run_config_and_run_dir() -> None:
+    completed = subprocess.run(
+        [sys.executable, "-m", "src.cli.preprocess"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert "--protocol" in completed.stderr
+    assert "--run-config" in completed.stderr
+    assert "--run-dir" in completed.stderr

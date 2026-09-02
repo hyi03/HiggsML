@@ -4,12 +4,15 @@ import json
 import os
 import shutil
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from types import TracebackType
 
 
 class RunPathError(ValueError):
     """Raised when a requested run path violates the publication contract."""
+
+    exit_code = 4
 
 
 class RunTransaction:
@@ -61,7 +64,7 @@ class RunTransaction:
             return False
 
         try:
-            self._write_failure_receipt(exc_type.__name__, str(exc))
+            self._write_failure_receipt(exc_type.__name__, str(exc), self._exit_code(exc))
             self._publish()
         except BaseException as audit_error:
             preserved_path = self._preserve_failed_staging()
@@ -72,9 +75,17 @@ class RunTransaction:
                 )
         return False
 
-    def _write_failure_receipt(self, error_type: str, message: str) -> None:
+    @staticmethod
+    def _exit_code(error: BaseException | None) -> int:
+        if error is not None and hasattr(error, "exit_code"):
+            return int(error.exit_code)
+        return 70
+
+    def _write_failure_receipt(self, error_type: str, message: str, exit_code: int) -> None:
         receipt = {
             "error_type": error_type,
+            "exit_code": exit_code,
+            "failed_at_utc": datetime.now(UTC).isoformat(),
             "message": message,
             "status": "failed",
         }
@@ -96,7 +107,9 @@ class RunTransaction:
 
     def _record_publish_failure(self, error: BaseException) -> None:
         try:
-            self._write_failure_receipt(type(error).__name__, str(error))
+            self._write_failure_receipt(
+                type(error).__name__, str(error), self._exit_code(error)
+            )
         finally:
             self._preserve_failed_staging()
 

@@ -153,7 +153,10 @@ conda run -n pytorch higgsml-preprocess \
   --run-dir runs/preprocess-<unique-id>
 ```
 
-运行配置只允许指定 ROOT 路径、输出路径、chunk size 和资源参数。Selection、输入 profile、DSID、归一化、特征定义、split 算法与预期 SHA-256 位于版本化 protocol 中；普通命令行不能覆盖这些科学规则。
+运行配置只允许指定两个 ROOT 路径、chunk size 和资源参数；输出路径只通过必填
+`--run-dir` 提供。Selection、输入 profile、DSID、归一化、特征定义、split 算法与预期
+SHA-256 位于版本化 protocol 中；普通命令行不能覆盖这些科学规则。M1-02 的精确白名单
+以 `neural/docs/preprocess-protocol-v1.md` 第 2.2 节为准。
 
 ### 6.2 Development 训练
 
