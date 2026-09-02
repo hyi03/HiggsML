@@ -23,6 +23,21 @@ class InputBindingError(ValueError):
     exit_code = ExitCode.INPUT_BINDING
 
 
+class TestOpeningRefused(RuntimeError):
+    """Raised when the one-shot test-opening gate refuses an invocation."""
+
+    exit_code = ExitCode.REFUSED
+
+
+class TestOpeningFailure(RuntimeError):
+    """Sanitized post-claim failure safe for receipts and logs."""
+
+    def __init__(self, stage: str, exit_code: ExitCode) -> None:
+        self.stage = stage
+        self.exit_code = exit_code
+        super().__init__(f"test-opening failed at stage: {stage}")
+
+
 class _UniqueLoader(yaml.SafeLoader):
     pass
 

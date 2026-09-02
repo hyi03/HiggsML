@@ -37,6 +37,29 @@ def test_transaction_rejects_path_outside_allowed_root(tmp_path: Path) -> None:
         RunTransaction(outside, allowed_root=root)
 
 
+def test_transaction_rejects_parent_traversal_even_when_it_resolves_inside(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "runs"
+
+    with pytest.raises(RunPathError, match="outside allowed root"):
+        RunTransaction(root / "campaign" / ".." / "run-001", allowed_root=root)
+
+
+def test_transaction_rejects_symlink_component_when_supported(tmp_path: Path) -> None:
+    root = tmp_path / "runs"
+    target = root / "target"
+    target.mkdir(parents=True)
+    link = root / "link"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks are unavailable on this platform")
+
+    with pytest.raises(RunPathError, match="symlink or reparse point"):
+        RunTransaction(link / "run-001", allowed_root=root)
+
+
 def test_failed_transaction_publishes_failure_receipt(tmp_path: Path) -> None:
     root = tmp_path / "runs"
     target = root / "run-failed"

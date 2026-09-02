@@ -118,6 +118,7 @@ neural/
 │   │   ├── folds.py
 │   │   ├── trainer.py
 │   │   ├── qualification.py
+│   │   ├── test_reader.py
 │   │   └── test_opening.py
 │   └── artifacts/
 │       ├── manifest.py
@@ -178,7 +179,8 @@ conda run -n pytorch higgsml-train develop \
 ```bash
 conda run -n pytorch higgsml-train open-test \
   --development-run runs/mlp-development-<id> \
-  --run-dir runs/mlp-test-<unique-id>
+  --run-dir runs/mlp-test-<unique-id> \
+  --authorization-reference <external-approval-reference>
 ```
 
 `open-test` 是同一个训练可执行程序的独立子命令。它必须验证：
@@ -188,7 +190,11 @@ conda run -n pytorch higgsml-train open-test \
 - development run 尚无 test-opening 收据；
 - 输出目录不存在且位于允许的 `runs/` 根下。
 
-命令通过原子 claim 文件占用唯一 test-opening 槽位。成功或失败均写入收据，后续重复开启被拒绝。Test 结果只评价已冻结模型，不影响任何模型或阈值。
+authorization reference 只记录外部批准，不代表软件能够自行证明批准；权威调用仍须先取得用户
+针对该 run 的另行明确授权。命令通过原子 claim 文件占用唯一 test-opening 槽位。成功或失败均
+写入收据，后续重复开启被拒绝；崩溃留下的 claimed 状态也永久禁止重试。Test 结果只评价已冻结
+模型与阈值，不影响任何训练或选择决策。exact 行为见
+[`Test-opening Protocol V1`](neural/docs/test-opening-protocol-v1.md)。
 
 ## 7. 预处理数据契约
 
@@ -404,6 +410,7 @@ runs/mlp-development-<id>/
 
 ```text
 runs/mlp-test-<id>/
+├── config.yaml
 ├── artifacts/
 │   ├── test_metrics.json
 │   └── manifest.json
