@@ -32,6 +32,11 @@ def build_parser() -> argparse.ArgumentParser:
     develop.add_argument("--input-run", required=True)
     develop.add_argument("--protocol", required=True)
     develop.add_argument("--run-dir", required=True)
+    develop.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable epoch progress bars.",
+    )
     open_test = subcommands.add_parser(
         "open-test",
         help="Open an eligible held-out MC test once after separate external authorization.",
@@ -53,6 +58,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 protocol_path=arguments.protocol,
                 run_dir=arguments.run_dir,
                 allowed_root=allowed_root,
+                show_progress=not arguments.no_progress,
             )
         elif arguments.command == "open-test":
             execute_test_opening(

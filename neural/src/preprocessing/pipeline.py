@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yaml
+from tqdm.auto import tqdm
 
 from src.artifacts.manifest import peak_memory_bytes, sha256_file, software_record, write_json
 from src.artifacts.transaction import RunTransaction
@@ -41,7 +42,13 @@ def _normalization(event: dict[str, Any], sample: SampleProtocol, previous: dict
     return current
 
 
-def prepare_table(protocol: PreprocessProtocol, config: PreprocessRunConfig, *, verify_hashes: bool = True):
+def prepare_table(
+    protocol: PreprocessProtocol,
+    config: PreprocessRunConfig,
+    *,
+    verify_hashes: bool = True,
+    show_progress: bool = False,
+):
     selection = _selection(protocol)
     frames: list[pd.DataFrame] = []
     cutflows: dict[str, Any] = {}
@@ -57,23 +64,32 @@ def prepare_table(protocol: PreprocessProtocol, config: PreprocessRunConfig, *, 
         rows = []
         observed_channels = set()
         try:
-            for event in iter_events(
+            events = iter_events(
                 path, sample, config.chunk_size_events, verify_entry_count=verify_hashes
-            ):
-                observed_channels.add(int(event["channelNumber"]))
-                normalization = _normalization(event, sample, normalization)
-                weight = physical_event_weight(mc_weight=float(event["mcWeight"]), luminosity_pb=protocol.luminosity_pb, **normalization)
-                accumulator.record(None, weight)
-                result = select_event(event, selection, sample.momentum_unit)
-                accumulator.record(result, weight)
-                if not result.accepted:
-                    continue
-                if result.candidate is None:
-                    raise InputBindingError("selected event has no candidate")
-                row = build_candidate_features(event, result.candidate)
-                row.update(build_angular5(result.candidate))
-                row.update(label=sample.label, split=event_split(event["eventNumber"], event["channelNumber"]), physical_weight=weight, source_sample=sample.source_sample, source_entry=int(event["source_entry"]))
-                rows.append(row)
+            )
+            with tqdm(
+                total=sample.expected_entry_count,
+                desc=f"preprocess {sample.source_sample}",
+                unit="event",
+                dynamic_ncols=True,
+                disable=not show_progress,
+            ) as progress:
+                for event in events:
+                    progress.update(1)
+                    observed_channels.add(int(event["channelNumber"]))
+                    normalization = _normalization(event, sample, normalization)
+                    weight = physical_event_weight(mc_weight=float(event["mcWeight"]), luminosity_pb=protocol.luminosity_pb, **normalization)
+                    accumulator.record(None, weight)
+                    result = select_event(event, selection, sample.momentum_unit)
+                    accumulator.record(result, weight)
+                    if not result.accepted:
+                        continue
+                    if result.candidate is None:
+                        raise InputBindingError("selected event has no candidate")
+                    row = build_candidate_features(event, result.candidate)
+                    row.update(build_angular5(result.candidate))
+                    row.update(label=sample.label, split=event_split(event["eventNumber"], event["channelNumber"]), physical_weight=weight, source_sample=sample.source_sample, source_entry=int(event["source_entry"]))
+                    rows.append(row)
         except InputBindingError:
             raise
         except (KeyError, TypeError, ValueError, OverflowError) as error:
@@ -96,13 +112,22 @@ def prepare_table(protocol: PreprocessProtocol, config: PreprocessRunConfig, *, 
     return combined, cutflows, summaries, inputs
 
 
-def execute_preprocess(*, protocol_path: str | Path, run_config_path: str | Path, run_dir: str | Path, allowed_root: str | Path) -> None:
+def execute_preprocess(
+    *,
+    protocol_path: str | Path,
+    run_config_path: str | Path,
+    run_dir: str | Path,
+    allowed_root: str | Path,
+    show_progress: bool = False,
+) -> None:
     protocol = load_preprocess_protocol(protocol_path)
     config = load_preprocess_run_config(run_config_path)
     started = time.perf_counter()
     started_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     with RunTransaction(run_dir, allowed_root=allowed_root) as transaction:
-        frame, cutflows, summaries, inputs = prepare_table(protocol, config)
+        frame, cutflows, summaries, inputs = prepare_table(
+            protocol, config, show_progress=show_progress
+        )
         processed, artifacts = transaction.path / "processed", transaction.path / "artifacts"
         processed.mkdir(); artifacts.mkdir()
         snapshot = {"protocol_sha256": hashlib.sha256(protocol.payload).hexdigest(), "run_config_sha256": hashlib.sha256(config.payload).hexdigest(), "protocol": protocol.raw, "run_config": yaml.safe_load(config.payload)}

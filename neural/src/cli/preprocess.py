@@ -22,6 +22,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--protocol", required=True)
     parser.add_argument("--run-config", required=True)
     parser.add_argument("--run-dir", required=True)
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable event progress bars.",
+    )
     return parser
 
 
@@ -35,6 +40,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             run_config_path=arguments.run_config,
             run_dir=arguments.run_dir,
             allowed_root=allowed_root,
+            show_progress=not arguments.no_progress,
         )
     except InputBindingError as error:
         LOGGER.error("preprocess input binding failed: %s", error)
