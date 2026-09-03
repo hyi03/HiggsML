@@ -18,7 +18,7 @@ from tests.development_fixtures import write_synthetic_preprocess_run
 
 
 PROJECT = Path(__file__).resolve().parents[2]
-PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_v1.yaml"
+PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal.yaml"
 
 
 def _manifest_path(run: Path) -> Path:

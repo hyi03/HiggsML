@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 import hashlib
+import math
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +27,9 @@ INPUT_COLUMNS = (
 FORBIDDEN_FEATURES = tuple(column for column in INPUT_COLUMNS if column not in FEATURES)
 TARGET_LAMBDAS = (0.0, 0.05, 0.10, 0.20, 0.50)
 BASE_SEED = 42
+NORMAL_PROTOCOL_ID = "adversarial-mlp-protocol-normal"
+DEBUG_PROTOCOL_ID = "adversarial-mlp-protocol-debug"
+DEBUG_MUTABLE_QUALIFICATION_FIELDS = ("auc_minimum", "ks_maximum")
 
 
 class _UniqueLoader(yaml.SafeLoader):
@@ -44,9 +49,9 @@ def _mapping(loader: _UniqueLoader, node: yaml.MappingNode, deep: bool = False) 
 _UniqueLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _mapping)
 
 
-_EXPECTED: dict[str, Any] = {
+_NORMAL_EXPECTED: dict[str, Any] = {
     "schema_version": "1.0",
-    "protocol_id": "adversarial-mlp-protocol-v1",
+    "protocol_id": NORMAL_PROTOCOL_ID,
     "features": list(FEATURES),
     "input_columns": list(INPUT_COLUMNS),
     "forbidden_features": list(FORBIDDEN_FEATURES),
@@ -173,8 +178,35 @@ def _strict_equal(actual: Any, expected: Any) -> bool:
 
 def validate_training_protocol_snapshot(raw: Any) -> dict[str, Any]:
     """Validate an already hash-bound raw protocol without reading a repository file."""
-    if not _strict_equal(raw, _EXPECTED):
+    if not isinstance(raw, dict):
         raise InputBindingError("sealed adversarial MLP protocol changed")
+
+    protocol_id = raw.get("protocol_id")
+    if protocol_id == NORMAL_PROTOCOL_ID:
+        expected = _NORMAL_EXPECTED
+    elif protocol_id == DEBUG_PROTOCOL_ID:
+        expected = copy.deepcopy(_NORMAL_EXPECTED)
+        expected["protocol_id"] = DEBUG_PROTOCOL_ID
+        qualification = raw.get("qualification")
+        if not isinstance(qualification, dict):
+            raise InputBindingError("debug adversarial MLP protocol changed")
+        for field in DEBUG_MUTABLE_QUALIFICATION_FIELDS:
+            value = qualification.get(field)
+            if type(value) is not float or not math.isfinite(value) or not 0.0 <= value <= 1.0:
+                raise InputBindingError(
+                    f"debug protocol qualification.{field} must be a finite float in [0, 1]"
+                )
+            expected["qualification"][field] = value
+    else:
+        raise InputBindingError("unknown adversarial MLP protocol_id")
+
+    if not _strict_equal(raw, expected):
+        message = (
+            "debug adversarial MLP protocol changed"
+            if protocol_id == DEBUG_PROTOCOL_ID
+            else "sealed adversarial MLP protocol changed"
+        )
+        raise InputBindingError(message)
     return raw
 
 

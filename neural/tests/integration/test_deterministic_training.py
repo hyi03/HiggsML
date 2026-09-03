@@ -26,7 +26,7 @@ PROJECT = Path(__file__).resolve().parents[2]
 
 
 def _fold():
-    protocol = load_training_protocol(PROJECT / "config/adversarial_mlp_protocol_v1.yaml")
+    protocol = load_training_protocol(PROJECT / "config/adversarial_mlp_protocol_normal.yaml")
     frame = synthetic_development_frame()
     development = validate_development_frame(frame, protocol_sha256=protocol.sha256)
     fitting = np.flatnonzero(frame["split"].to_numpy() == "train")

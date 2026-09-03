@@ -9,10 +9,7 @@
 命令为：
 
 ```text
-higgsml-train open-test
-  --development-run <eligible-frozen-run>
-  --run-dir <new-test-run>
-  --authorization-reference <non-empty-audit-reference>
+higgsml-train open-test --development-run <eligible-frozen-run> --run-dir <new-test-run> --authorization-reference <non-empty-audit-reference>
 ```
 
 `authorization-reference` 必须 `strip()` 后非空；strip 后的 Unicode code point 数至多 256，
@@ -42,8 +39,10 @@ held-out test feature token。
    `state/test_opening.json` 已存在，立即按 exit 5 拒绝。该 cheap probe 不读取 manifest/artifact，
    `O_CREAT|O_EXCL` 仍是并发竞争的权威 guard。
 3. 读取 development canonical manifest bytes，exact 验证 manifest schema/version、
-   `run_type=development`、`status=eligible`、
+   `run_type=development`、`status=eligible`、Normal protocol ID、
    selected lambda/final epochs、boundary flags、schema/counts/OOF completeness。
+   Debug protocol 即使状态为 `eligible` 且存在模型，也必须在 claim 和 test feature decode 前按
+   exit 5 拒绝。
 4. 遍历 manifest `outputs`，验证 exact path set、ordinary file、size 与 SHA-256；eligible-only
    `model/model.pt`、`model/scaler.json` 必须存在。manifest 自身 SHA-256 单独计算。
 5. 解析并相互绑定 `config.yaml`、`qualification.json`、`working_points.json`、scaler 与 model

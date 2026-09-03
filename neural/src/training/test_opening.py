@@ -27,7 +27,13 @@ from src.artifacts.plots import write_test_plots
 from src.artifacts.transaction import RunPathError, RunTransaction
 from src.config import ExitCode, InputBindingError, TestOpeningFailure, TestOpeningRefused
 from src.preprocessing.outputs import canonical_csv_bytes, write_canonical_table
-from src.training.config import INPUT_COLUMNS, TARGET_LAMBDAS, validate_training_protocol_snapshot
+from src.training.config import (
+    DEBUG_PROTOCOL_ID,
+    INPUT_COLUMNS,
+    NORMAL_PROTOCOL_ID,
+    TARGET_LAMBDAS,
+    validate_training_protocol_snapshot,
+)
 from src.training.dataset import FEATURE_COLUMNS, FoldLocalScaler
 from src.training.development_reader import (
     _bound_input_run,
@@ -171,6 +177,8 @@ def _development_manifest(run: Path) -> tuple[dict[str, Any], str]:
     input_hashes = manifest.get("input")
     protocol = manifest.get("protocol")
     performance = manifest.get("performance")
+    if isinstance(protocol, dict) and protocol.get("id") == DEBUG_PROTOCOL_ID:
+        raise TestOpeningRefused("debug development runs cannot open held-out test")
     if (
         manifest.get("schema_version") != "development-manifest-v1"
         or manifest.get("run_type") != "development"
@@ -191,7 +199,7 @@ def _development_manifest(run: Path) -> tuple[dict[str, Any], str]:
         or any(not _hex_sha(value) for value in input_hashes.values())
         or not isinstance(protocol, dict)
         or set(protocol) != {"id", "sha256"}
-        or protocol.get("id") != "adversarial-mlp-protocol-v1"
+        or protocol.get("id") != NORMAL_PROTOCOL_ID
         or not _hex_sha(protocol.get("sha256"))
         or not isinstance(selection, dict)
         or set(selection) != {"selected_lambda", "final_epochs"}
@@ -433,13 +441,15 @@ def _load_binding(development_run: str | Path, *, allowed_root: str | Path) -> _
     } or config.get("schema_version") != "development-config-v1" or not isinstance(config.get("protocol"), dict):
         raise InputBindingError("development config binding changed")
     protocol = config["protocol"]
+    if protocol.get("protocol_id") == DEBUG_PROTOCOL_ID:
+        raise TestOpeningRefused("debug development runs cannot open held-out test")
     _validate_protocol_manifest_binding(protocol, manifest)
     protocol_sha = config.get("protocol_sha256")
     selection = manifest.get("selection")
     if (
         not _hex_sha(protocol_sha)
         or manifest.get("protocol")
-        != {"id": "adversarial-mlp-protocol-v1", "sha256": protocol_sha}
+        != {"id": NORMAL_PROTOCOL_ID, "sha256": protocol_sha}
         or not isinstance(selection, dict)
         or selection["selected_lambda"] not in TARGET_LAMBDAS
     ):

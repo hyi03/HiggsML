@@ -39,9 +39,9 @@ development 行合并原 `train` 与 `validation`，之后不保留二者的决�
 M1-03 exact schema、dtype、finite、identity、feature 与 weight contract。输入表中的 test 行数只
 作为未开启计数写入 manifest；不得记录其 identity、label、weight、feature 统计或 hash 子集。
 
-## 3. Sealed protocol blocks
+## 3. Normal 与 Debug protocol blocks
 
-`config/adversarial_mlp_protocol_v1.yaml` 在 M1-04 新增并密封以下 block；loader 继续执行递归
+`config/adversarial_mlp_protocol_normal.yaml` 在 M1-04 新增并密封以下 block；loader 继续执行递归
 type-strict、mapping-order-strict、list-order-strict、missing/extra/value mutation rejection：
 
 - `folding`: `count=5`、`algorithm=sha256_identity_v1`、UTF-8、NUL separator、first-8-byte
@@ -52,7 +52,12 @@ type-strict、mapping-order-strict、list-order-strict、missing/extra/value mut
 - `final_fit`: full-development scaler、`seed=42`、fold-best-epoch median、no early stopping；
 - `development_artifacts`: exact output schemas and required paths from §9。
 
-实现必须同步扩展 `src/training/config.py::_EXPECTED`，否则 strict comparator 应当并确实会拒绝
+`config/adversarial_mlp_protocol_debug.yaml` 复用相同结构，只允许在 development 开始前修改
+`qualification.auc_minimum` 和 `qualification.ks_maximum`。两项必须是 `[0.0, 1.0]` 内的有限
+浮点数；其余字段继续与 Normal exact 一致。每个 Debug run 保存实际 YAML bytes、SHA-256 和
+protocol snapshot。Debug 可以按其门槛生成 final model/scaler，但不能进入 held-out test-opening。
+
+实现必须同步扩展 `src/training/config.py::_NORMAL_EXPECTED`，否则 strict comparator 应当并确实会拒绝
 新增 YAML keys。这里的 SHA-256 fold hash 与 M1-02 preprocess split 的 BLAKE2b hash 是两个不同
 职责的冻结算法，不得互换。
 
@@ -115,12 +120,15 @@ ZZ `m4l` KS 比较该 candidate 的全部 OOF 背景与通过该工作点的 OOF
 
 ## 7. Qualification 与选择
 
-Candidate eligible 当且仅当以下 exact 条件同时成立：
+Normal candidate eligible 当且仅当以下 exact 条件同时成立：
 
 - AUC `>= 0.80`；
 - loose/medium/tight KS 各 `<= 0.10`；
 - 每个工作点 `signal_efficiency > achieved_background_efficiency`；
 - §5 OOF contract 完整。
+
+Debug 使用其 protocol 文件中运行前声明的 `auc_minimum` 和 `ks_maximum` 替代上述两个数值，
+效率和 OOF 完整性条件不变。已经发布的 Debug run 不得回改门槛或产物。
 
 门槛比较不使用 epsilon。选择时先取 eligible candidate 的最大 AUC `best_auc`；只在选择层使用
 `abs(candidate_auc - best_auc) <= 1e-6`，从该集合选最小 lambda。这一定义避免相邻链式 tie 的
@@ -129,6 +137,8 @@ Candidate eligible 当且仅当以下 exact 条件同时成立：
 无 eligible candidate 是 exit 0 的正常终态 `no_eligible_candidate`：仍发布全部 OOF/metric/
 working-point/plot/manifest 证据，但不得创建 `model/`、`model.pt`、`scaler.json`、test artifact
 或可被 M1-05 解释为 test-opening 资格的占位文件。
+
+Debug run 即使达到 `eligible` 并生成模型，也不能被 M1-05 解释为 test-opening 资格。
 
 ## 8. Eligible final fit
 

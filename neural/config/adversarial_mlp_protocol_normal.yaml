@@ -1,5 +1,5 @@
 schema_version: "1.0"
-protocol_id: adversarial-mlp-protocol-v1
+protocol_id: adversarial-mlp-protocol-normal
 features:
   - lep1_pt
   - lep2_pt

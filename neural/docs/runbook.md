@@ -3,7 +3,7 @@
 ## 1. 适用范围与停止原则
 
 本手册只恢复和运行严格 MC-only 的 `higgsml-preprocess` 与 `higgsml-train`。Classifier 只消费
-[`Adversarial MLP Protocol V1`](adversarial-mlp-protocol-v1.md) 固定的 15 项 features；`m4l`、identity、
+[`Adversarial MLP Normal Protocol`](adversarial-mlp-protocol-normal.md) 固定的 15 项 features；`m4l`、identity、
 provenance、split 和 weight 字段都不得作为 classifier features。
 
 权威结果只能来自 `osx.yml` 恢复的原生 `osx-arm64` 环境。Windows/synthetic 运行只产生非权威开发
@@ -68,11 +68,12 @@ Windows 结果的 `authority` 必须记录为 `false`。
 按顺序执行；首个失败即停止，后续 full-data 命令记为 `not_run`：
 
 1. 确认 host 为原生 Darwin/arm64，并由 `osx.yml` 恢复 `pytorch`。
-2. 记录 `git rev-parse HEAD`，并确认 reviewed M1-05 scientific bytes 未改变：
+2. 记录 `git rev-parse HEAD`，将 `<reviewed-normal-commit>` 替换为包含 Normal/Debug protocol
+   变更且已经评审通过的提交，再确认正式 scientific bytes 未改变：
 
    ```bash
-   git diff --exit-code 85b67d1 -- src config/preprocess_protocol_v1.yaml config/adversarial_mlp_protocol_v1.yaml
-   git status --porcelain --untracked-files=all -- src config/preprocess_protocol_v1.yaml config/adversarial_mlp_protocol_v1.yaml
+   git diff --exit-code <reviewed-normal-commit> -- src config/preprocess_protocol_v1.yaml config/adversarial_mlp_protocol_normal.yaml
+   git status --porcelain --untracked-files=all -- src config/preprocess_protocol_v1.yaml config/adversarial_mlp_protocol_normal.yaml
    ```
 
    两条命令都必须无输出且 exit 0；从 `neural/` 执行时 `src` 已包含两个 CLI module。Test 文件不属于
@@ -143,7 +144,7 @@ comparator 替代。
 只在 authority preprocess/golden 通过后运行：
 
 ```bash
-conda run -n pytorch higgsml-train develop --input-run runs/preprocess-<unique-id> --protocol config/adversarial_mlp_protocol_v1.yaml --run-dir runs/mlp-development-<unique-id>
+conda run -n pytorch higgsml-train develop --input-run runs/preprocess-<unique-id> --protocol config/adversarial_mlp_protocol_normal.yaml --run-dir runs/mlp-development-<unique-id>
 ```
 
 审计 `artifacts/manifest.json`、`qualification.json`、两个 metric CSV 和完整 OOF：

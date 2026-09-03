@@ -1,0 +1,160 @@
+schema_version: "1.0"
+protocol_id: adversarial-mlp-protocol-debug
+features:
+  - lep1_pt
+  - lep2_pt
+  - lep1_eta
+  - lep2_eta
+  - lep3_eta
+  - lep4_eta
+  - pt4l
+  - deltaR_Z1
+  - deltaR_Z2
+  - deltaPhi_ZZ
+  - cos_theta_star
+  - cos_theta_1
+  - cos_theta_2
+  - phi_decay_planes
+  - phi_production_plane
+input_columns:
+  - lep1_pt
+  - lep2_pt
+  - lep3_pt
+  - lep4_pt
+  - lep1_eta
+  - lep2_eta
+  - lep3_eta
+  - lep4_eta
+  - mZ1
+  - mZ2
+  - pt4l
+  - deltaR_Z1
+  - deltaR_Z2
+  - deltaPhi_ZZ
+  - cos_theta_star
+  - cos_theta_1
+  - cos_theta_2
+  - phi_decay_planes
+  - phi_production_plane
+  - m4l
+  - label
+  - split
+  - physical_weight
+  - train_weight
+  - source_sample
+  - source_entry
+  - runNumber
+  - eventNumber
+  - channelNumber
+forbidden_features:
+  - lep3_pt
+  - lep4_pt
+  - mZ1
+  - mZ2
+  - m4l
+  - label
+  - split
+  - physical_weight
+  - train_weight
+  - source_sample
+  - source_entry
+  - runNumber
+  - eventNumber
+  - channelNumber
+dtypes:
+  frame_float: float64
+  model_float: float32
+  label_and_bin: int64
+classifier:
+  widths: [15, 64, 64, 32, 1]
+  activation: silu
+  layer_norm: {affine: true, eps: 1.0e-5}
+  linear_bias: true
+  dropout: 0.10
+  parameter_count: 7617
+adversary:
+  widths: [1, 32, 32, 11]
+  activation: silu
+  layer_norm: {affine: true, eps: 1.0e-5}
+  linear_bias: true
+  bins: 11
+  mass_edges_gev: [105.0, 110.0, 115.0, 120.0, 125.0, 130.0, 135.0, 140.0, 145.0, 150.0, 155.0, 160.0]
+  parameter_count: 1611
+gradient_reversal:
+  forward: identity
+  backward: negative_lambda_scale
+losses:
+  classification: weighted_bce_with_logits
+  adversarial: bin_balanced_background_cross_entropy
+  physical_weight_transform: absolute
+  empty_effective_background: differentiable_zero
+  bin_balance_rtol: 0.0
+  bin_balance_atol: 1.0e-7
+scaler:
+  fitting_dtype: float64
+  model_dtype: float32
+  variance_ddof: 0
+  zero_variance_scale: 1.0
+optimization:
+  optimizer: adamw
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-4
+  batch_size: 1024
+  maximum_epochs: 200
+  drop_last: false
+determinism:
+  device: cpu
+  base_seed: 42
+  fold_indices: [0, 1, 2, 3, 4]
+  data_loader_workers: 0
+  deterministic_algorithms: true
+  target_lambdas: [0.0, 0.05, 0.10, 0.20, 0.50]
+schedule:
+  warmup_epochs: 5
+  ramp_epochs: 10
+  first_full_lambda_epoch: 15
+early_stopping:
+  metric: validation_weighted_auc
+  patience: 20
+  minimum_improvement: 1.0e-4
+checkpoint:
+  in_memory_only: true
+  deep_cpu_copy: true
+  bind_protocol_sha256: true
+  fields: [protocol_sha256, feature_tuple, scaler, fold_index, fold_seed, target_lambda, best_epoch, best_validation_weighted_auc, classifier_state_dict, adversary_state_dict]
+result:
+  epoch_fields: [epoch, lambda_effective, train_cls_loss, train_adv_loss, train_total_loss, validation_weighted_auc, is_best, duration_seconds, events_per_second]
+  summary_fields: [epochs_completed, stopped_early, best_epoch, best_validation_weighted_auc]
+  environment_fields: [os, architecture, python, pytorch, device, dtype, threads, data_loader_workers, deterministic_algorithms]
+folding:
+  count: 5
+  algorithm: sha256_identity_v1
+  encoding: utf-8
+  separator_hex: "00"
+  digest_prefix_bytes: 8
+  byte_order: big
+  modulo: 5
+working_points:
+  loose: 0.50
+  medium: 0.20
+  tight: 0.10
+qualification:
+  # Debug-only mutable fields. Use decimal values in [0.0, 1.0].
+  # Every run still records the complete protocol bytes and SHA-256.
+  auc_minimum: 0.80
+  ks_maximum: 0.10
+  signal_efficiency_strictly_greater: true
+  auc_tie_rtol: 0.0
+  auc_tie_atol: 1.0e-6
+final_fit:
+  scaler_scope: full_development
+  seed: 42
+  epochs_rule: median_fold_best_epoch
+  early_stopping: false
+development_artifacts:
+  oof_columns: [target_lambda, source_sample, source_entry, fold_index, label, m4l, physical_weight, train_weight, score]
+  fold_metric_columns: [target_lambda, fold_index, fold_seed, epoch, lambda_effective, train_cls_loss, train_adv_loss, train_total_loss, validation_weighted_auc, is_best, duration_seconds, events_per_second, best_epoch, best_validation_weighted_auc, epochs_completed, stopped_early]
+  candidate_metric_columns: [target_lambda, weighted_oof_auc, loose_threshold, loose_target_background_efficiency, loose_achieved_background_efficiency, loose_signal_efficiency, loose_ks, medium_threshold, medium_target_background_efficiency, medium_achieved_background_efficiency, medium_signal_efficiency, medium_ks, tight_threshold, tight_target_background_efficiency, tight_achieved_background_efficiency, tight_signal_efficiency, tight_ks, eligible, rejection_reasons_json]
+  required_paths: [config.yaml, artifacts/candidate_metrics.csv, artifacts/fold_metrics.csv, artifacts/qualification.json, artifacts/working_points.json, predictions/oof_scores.csv.gz, plots/auc_vs_lambda.png, plots/ks_vs_lambda.png, plots/oof_roc.png, plots/oof_mass_sculpting.png, artifacts/manifest.json]
+  eligible_only_paths: [model/model.pt, model/scaler.json]
+  canonical_json_files: [artifacts/qualification.json, artifacts/working_points.json, artifacts/manifest.json]

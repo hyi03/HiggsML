@@ -116,7 +116,7 @@
 - Higgs 345060 ROOT，预期 SHA-256：`5b9628ccd88547cda07bb1b2ccd88c153d9b2e53bd119416df496ba11aa925a0`。
 - ZZ 363490 ROOT，预期 SHA-256：`76503d0cb2a015b814b43e5bc1887ea53a62b057e9ac2f812eaaec1efb1a3f07`。
 - `preprocess_protocol_v1.yaml`、本地 preprocess run config。
-- `adversarial_mlp_protocol_v1.yaml`、已完成的 preprocess run。
+- `adversarial_mlp_protocol_normal.yaml`、已完成的 preprocess run。
 - 对 `open-test` 而言：eligible 且冻结的 development run，以及另行明确的用户授权。
 
 ## 输出
