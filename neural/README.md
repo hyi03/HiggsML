@@ -126,6 +126,9 @@ higgsml-preprocess \
   --run-dir runs/preprocess-<unique-id>
 ```
 
+命令会按样本显示已读取事件数、总事件数、处理速率和预计剩余时间。用于 CI 或重定向
+日志时可追加 `--no-progress`。
+
 先复制 `config/preprocess_run.example.yaml` 为不提交的本地配置，只填写 Higgs 345060、
 ZZ 363490 的只读 ROOT 路径和 `chunk_size_events`。输出路径只由 `--run-dir` 指定。
 Selection、DSID、输入哈希、特征定义、权重和 split 算法由版本化 protocol 固定。
@@ -167,6 +170,9 @@ higgsml-train develop \
   --protocol config/adversarial_mlp_protocol_v1.yaml \
   --run-dir runs/mlp-development-<unique-id>
 ```
+
+每个候选 lambda 和 fold 会显示 epoch 进度及当前 validation AUC；触发 early stopping
+时进度条会标记 `early-stop`。用于 CI 或重定向日志时可追加 `--no-progress`。
 
 该命令只能访问 development 数据，用于五折 OOF、候选去相关强度比较、资格判断和工作点冻结，不得读取或评价 held-out test。
 

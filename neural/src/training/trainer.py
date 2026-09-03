@@ -12,6 +12,7 @@ import numpy as np
 from sklearn.metrics import roc_auc_score
 import torch
 from torch import Tensor
+from tqdm.auto import tqdm
 
 from src.config import InputBindingError
 from src.training.config import TARGET_LAMBDAS, TrainingProtocol
@@ -181,7 +182,14 @@ def _environment() -> dict[str, Any]:
     }
 
 
-def train_fold(fold: ValidatedFold, protocol: TrainingProtocol, *, target_lambda: float) -> TrainingResult:
+def train_fold(
+    fold: ValidatedFold,
+    protocol: TrainingProtocol,
+    *,
+    target_lambda: float,
+    show_progress: bool = False,
+    progress_label: str | None = None,
+) -> TrainingResult:
     if target_lambda not in protocol.target_lambdas:
         raise InputBindingError("target lambda is not pre-registered")
     if fold.protocol_sha256 != protocol.sha256:
@@ -200,6 +208,13 @@ def train_fold(fold: ValidatedFold, protocol: TrainingProtocol, *, target_lambda
     stopped_early = False
     rows = fold.fitting_features.shape[0]
 
+    progress = tqdm(
+        total=protocol.maximum_epochs,
+        desc=progress_label or f"train lambda={target_lambda:g}",
+        unit="epoch",
+        dynamic_ncols=True,
+        disable=not show_progress,
+    )
     for epoch in range(1, protocol.maximum_epochs + 1):
         started = time.perf_counter()
         model.train()
@@ -250,9 +265,14 @@ def train_fold(fold: ValidatedFold, protocol: TrainingProtocol, *, target_lambda
             best_checkpoint = _checkpoint(model, fold, protocol, target_lambda, epoch, auc)
         duration = time.perf_counter() - started
         metrics.append(EpochMetric(epoch, effective, cls_epoch, adv_epoch, cls_epoch + adv_epoch, auc, improved, duration, rows / max(duration, np.finfo(float).eps)))
+        progress.set_postfix(auc=f"{auc:.4f}", refresh=False)
+        progress.update(1)
         if should_stop:
             stopped_early = True
+            progress.total = progress.n
+            progress.set_postfix(auc=f"{auc:.4f}", status="early-stop", refresh=True)
             break
+    progress.close()
 
     if best_checkpoint is None:
         raise RuntimeError("training completed without checkpoint")
@@ -274,6 +294,7 @@ def train_fixed_epochs(
     *,
     target_lambda: float,
     epochs: int,
+    show_progress: bool = False,
 ) -> FinalTrainingResult:
     if (
         target_lambda not in protocol.target_lambdas
@@ -313,6 +334,13 @@ def train_fixed_epochs(
     generator = torch.Generator(device="cpu").manual_seed(seed)
     metrics: list[dict[str, float | int]] = []
     rows = len(frame)
+    progress = tqdm(
+        total=epochs,
+        desc=f"train final lambda={target_lambda:g}",
+        unit="epoch",
+        dynamic_ncols=True,
+        disable=not show_progress,
+    )
     for epoch in range(1, epochs + 1):
         model.train()
         effective = lambda_for_epoch(
@@ -362,6 +390,8 @@ def train_fixed_epochs(
                 "train_total_loss": cls_epoch + adv_epoch,
             }
         )
+        progress.update(1)
+    progress.close()
     environment = _environment()
     payload = {
         "schema_version": "adversarial-mlp-final-v1",

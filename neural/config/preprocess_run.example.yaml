@@ -1,8 +1,8 @@
 schema_version: "1.0"
 samples:
   higgs:
-    path: D:/code/HiggsML/var/project/data/raw/higgs.root
+    path: ../data/raw/higgs.root
   zz:
-    path: D:/code/HiggsML/var/project/data/raw/zz_363490.root
+    path: ../data/raw/zz_363490.root
 resources:
   chunk_size_events: 50000

@@ -116,6 +116,7 @@ def _candidate_oof(
     folds: np.ndarray,
     *,
     target_lambda: float,
+    show_progress: bool = False,
 ) -> tuple[pd.DataFrame, list[dict[str, Any]], list[int], dict[str, Any]]:
     development = input_data.development
     scores = np.full(len(development.frame), np.nan, dtype=np.float64)
@@ -128,7 +129,16 @@ def _candidate_oof(
         fold = build_validated_fold(
             development, fitting_indices, validation_indices, fold_index=fold_index
         )
-        result = train_fold(fold, protocol, target_lambda=target_lambda)
+        training_kwargs: dict[str, Any] = {"target_lambda": target_lambda}
+        if show_progress:
+            training_kwargs.update(
+                show_progress=True,
+                progress_label=(
+                    f"train lambda={target_lambda:g} "
+                    f"fold={fold_index + 1}/{protocol.fold_count}"
+                ),
+            )
+        result = train_fold(fold, protocol, **training_kwargs)
         scores[validation_indices] = np.asarray(result.validation_scores, dtype=np.float64)
         best_epochs.append(result.best_epoch)
         environment = result.environment
@@ -181,6 +191,7 @@ def execute_development(
     run_dir: str | Path,
     allowed_root: str | Path,
     input_allowed_root: str | Path | None = None,
+    show_progress: bool = False,
 ) -> DevelopmentResult:
     protocol = load_training_protocol(protocol_path)
     started = time.perf_counter()
@@ -198,7 +209,11 @@ def execute_development(
         environment: dict[str, Any] | None = None
         for target_lambda in protocol.target_lambdas:
             oof, rows, best_epochs, environment = _candidate_oof(
-                input_data, protocol, folds, target_lambda=target_lambda
+                input_data,
+                protocol,
+                folds,
+                target_lambda=target_lambda,
+                show_progress=show_progress,
             )
             candidate_frames.append(oof)
             fold_rows.extend(rows)
@@ -218,11 +233,14 @@ def execute_development(
         if selected is not None:
             ordered_epochs = sorted(epochs_by_lambda[selected_lambda])
             final_epochs = int(ordered_epochs[2])
+            final_kwargs: dict[str, Any] = {
+                "target_lambda": selected_lambda,
+                "epochs": final_epochs,
+            }
+            if show_progress:
+                final_kwargs["show_progress"] = True
             final_result = train_fixed_epochs(
-                input_data.development,
-                protocol,
-                target_lambda=selected_lambda,
-                epochs=final_epochs,
+                input_data.development, protocol, **final_kwargs
             )
 
         artifacts = transaction.path / "artifacts"
