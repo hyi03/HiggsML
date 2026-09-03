@@ -24,6 +24,10 @@ authoritative ARM64 run.
   an eligible frozen development run and separate explicit user authorization.
 - Do not relax AUC, KS, efficiency, candidate, epoch, architecture, or threshold
   rules after seeing results.
+- `adversarial_mlp_protocol_debug.yaml` is the only diagnostic exception: a
+  user may set `qualification.auc_minimum` and `qualification.ks_maximum`
+  before starting a new run. All other fields remain sealed, the exact debug
+  bytes/hash must be recorded, and debug runs may never open held-out test.
 - Frozen and failed runs are immutable. Every run uses a new path and retains
   its audit evidence.
 - Describe all output as an educational/technical demo, never an ATLAS result,

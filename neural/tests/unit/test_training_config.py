@@ -8,18 +8,26 @@ import pytest
 import yaml
 
 from src.config import InputBindingError
-from src.training.config import BASE_SEED, FEATURES, TARGET_LAMBDAS, load_training_protocol
+from src.training.config import (
+    BASE_SEED,
+    DEBUG_PROTOCOL_ID,
+    FEATURES,
+    NORMAL_PROTOCOL_ID,
+    TARGET_LAMBDAS,
+    load_training_protocol,
+)
 
 
 PROJECT = Path(__file__).resolve().parents[2]
-PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_v1.yaml"
+NORMAL_PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal.yaml"
+DEBUG_PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_debug.yaml"
 
 
 def test_checked_in_training_protocol_is_sealed_and_hashed() -> None:
-    protocol = load_training_protocol(PROTOCOL)
+    protocol = load_training_protocol(NORMAL_PROTOCOL)
 
-    assert protocol.protocol_id == "adversarial-mlp-protocol-v1"
-    assert protocol.sha256 == __import__("hashlib").sha256(PROTOCOL.read_bytes()).hexdigest()
+    assert protocol.protocol_id == NORMAL_PROTOCOL_ID
+    assert protocol.sha256 == hashlib.sha256(NORMAL_PROTOCOL.read_bytes()).hexdigest()
     assert len(protocol.features) == 15
     assert protocol.target_lambdas == (0.0, 0.05, 0.1, 0.2, 0.5)
     assert protocol.base_seed == BASE_SEED == protocol.raw["determinism"]["base_seed"]
@@ -49,6 +57,7 @@ def test_checked_in_training_protocol_is_sealed_and_hashed() -> None:
         (("folding", "algorithm"), "blake2b"),
         (("working_points", "medium"), 0.25),
         (("qualification", "auc_minimum"), 0.79),
+        (("qualification", "ks_maximum"), 0.11),
         (("final_fit", "seed"), 43),
         (("development_artifacts", "eligible_only_paths"), []),
     ],
@@ -56,7 +65,7 @@ def test_checked_in_training_protocol_is_sealed_and_hashed() -> None:
 def test_training_protocol_rejects_frozen_value_drift(
     tmp_path: Path, path: tuple[object, ...], value: object
 ) -> None:
-    raw = yaml.safe_load(PROTOCOL.read_text(encoding="utf-8"))
+    raw = yaml.safe_load(NORMAL_PROTOCOL.read_text(encoding="utf-8"))
     changed = copy.deepcopy(raw)
     target = changed
     for key in path[:-1]:
@@ -70,14 +79,14 @@ def test_training_protocol_rejects_frozen_value_drift(
 
 
 def test_training_protocol_rejects_missing_extra_and_duplicate_keys(tmp_path: Path) -> None:
-    raw = yaml.safe_load(PROTOCOL.read_text(encoding="utf-8"))
+    raw = yaml.safe_load(NORMAL_PROTOCOL.read_text(encoding="utf-8"))
     raw.pop("checkpoint")
     missing = tmp_path / "missing.yaml"
     missing.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
     with pytest.raises(InputBindingError):
         load_training_protocol(missing)
 
-    raw = yaml.safe_load(PROTOCOL.read_text(encoding="utf-8"))
+    raw = yaml.safe_load(NORMAL_PROTOCOL.read_text(encoding="utf-8"))
     raw["unexpected"] = True
     extra = tmp_path / "extra.yaml"
     extra.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
@@ -85,7 +94,10 @@ def test_training_protocol_rejects_missing_extra_and_duplicate_keys(tmp_path: Pa
         load_training_protocol(extra)
 
     duplicate = tmp_path / "duplicate.yaml"
-    duplicate.write_text(PROTOCOL.read_text(encoding="utf-8") + "\nprotocol_id: hidden\n", encoding="utf-8")
+    duplicate.write_text(
+        NORMAL_PROTOCOL.read_text(encoding="utf-8") + "\nprotocol_id: hidden\n",
+        encoding="utf-8",
+    )
     with pytest.raises(InputBindingError, match="duplicate YAML key"):
         load_training_protocol(duplicate)
 
@@ -102,7 +114,7 @@ def test_training_protocol_rejects_missing_extra_and_duplicate_keys(tmp_path: Pa
 def test_training_protocol_rejects_scalar_type_drift(
     tmp_path: Path, path: tuple[object, ...], value: object
 ) -> None:
-    raw = yaml.safe_load(PROTOCOL.read_text(encoding="utf-8"))
+    raw = yaml.safe_load(NORMAL_PROTOCOL.read_text(encoding="utf-8"))
     target = raw
     for key in path[:-1]:
         target = target[key]
@@ -115,7 +127,7 @@ def test_training_protocol_rejects_scalar_type_drift(
 
 
 def test_training_protocol_rejects_mapping_and_list_reordering(tmp_path: Path) -> None:
-    raw = yaml.safe_load(PROTOCOL.read_text(encoding="utf-8"))
+    raw = yaml.safe_load(NORMAL_PROTOCOL.read_text(encoding="utf-8"))
     reordered_mapping = copy.deepcopy(raw)
     classifier = reordered_mapping["classifier"]
     reordered_mapping["classifier"] = {
@@ -140,10 +152,62 @@ def test_training_protocol_rejects_mapping_and_list_reordering(tmp_path: Path) -
 
 def test_comment_only_change_preserves_semantics_but_changes_byte_hash(tmp_path: Path) -> None:
     changed = tmp_path / "comment-only.yaml"
-    changed.write_bytes(PROTOCOL.read_bytes() + b"\n# audit-only comment\n")
+    changed.write_bytes(NORMAL_PROTOCOL.read_bytes() + b"\n# audit-only comment\n")
 
     protocol = load_training_protocol(changed)
 
-    assert protocol.raw == load_training_protocol(PROTOCOL).raw
+    assert protocol.raw == load_training_protocol(NORMAL_PROTOCOL).raw
     assert protocol.sha256 == hashlib.sha256(changed.read_bytes()).hexdigest()
-    assert protocol.sha256 != hashlib.sha256(PROTOCOL.read_bytes()).hexdigest()
+    assert protocol.sha256 != hashlib.sha256(NORMAL_PROTOCOL.read_bytes()).hexdigest()
+
+
+def test_debug_protocol_allows_auc_and_ks_changes_and_hashes_exact_bytes(
+    tmp_path: Path,
+) -> None:
+    raw = yaml.safe_load(DEBUG_PROTOCOL.read_text(encoding="utf-8"))
+    raw["qualification"]["auc_minimum"] = 0.75
+    raw["qualification"]["ks_maximum"] = 0.20
+    changed = tmp_path / "debug.yaml"
+    changed.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    protocol = load_training_protocol(changed)
+
+    assert protocol.protocol_id == DEBUG_PROTOCOL_ID
+    assert protocol.raw["qualification"]["auc_minimum"] == 0.75
+    assert protocol.raw["qualification"]["ks_maximum"] == 0.20
+    assert protocol.sha256 == hashlib.sha256(changed.read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("auc_minimum", -0.01),
+        ("auc_minimum", 1.01),
+        ("auc_minimum", "0.80"),
+        ("auc_minimum", float("nan")),
+        ("ks_maximum", -0.01),
+        ("ks_maximum", 1.01),
+        ("ks_maximum", 1),
+        ("ks_maximum", float("inf")),
+    ],
+)
+def test_debug_protocol_rejects_invalid_mutable_qualification_values(
+    tmp_path: Path, field: str, value: object
+) -> None:
+    raw = yaml.safe_load(DEBUG_PROTOCOL.read_text(encoding="utf-8"))
+    raw["qualification"][field] = value
+    changed = tmp_path / "invalid-debug.yaml"
+    changed.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(InputBindingError, match=f"qualification.{field}"):
+        load_training_protocol(changed)
+
+
+def test_debug_protocol_still_rejects_other_field_changes(tmp_path: Path) -> None:
+    raw = yaml.safe_load(DEBUG_PROTOCOL.read_text(encoding="utf-8"))
+    raw["optimization"]["learning_rate"] = 0.01
+    changed = tmp_path / "invalid-debug.yaml"
+    changed.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(InputBindingError, match="debug adversarial MLP protocol changed"):
+        load_training_protocol(changed)

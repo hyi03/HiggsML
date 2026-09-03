@@ -28,7 +28,8 @@ from tests.integration.test_development_run import _install_fast_pipeline
 
 
 PROJECT = Path(__file__).resolve().parents[2]
-PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_v1.yaml"
+PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal.yaml"
+DEBUG_PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_debug.yaml"
 AUTHORIZATION = "synthetic-fixture-only"
 
 
@@ -177,6 +178,34 @@ def test_blank_authorization_refuses_before_claim(
             allowed_root=allowed_root,
         )
     assert not blank_output.exists()
+    assert not (development / "state").exists()
+
+
+def test_debug_development_refuses_open_test_before_claim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    allowed_root = tmp_path / "runs"
+    preprocess, _ = write_synthetic_preprocess_run(allowed_root)
+    _install_fast_pipeline(monkeypatch, eligible_lambda=0.0)
+    development = allowed_root / "debug-development"
+    result = execute_development(
+        input_run=preprocess,
+        protocol_path=DEBUG_PROTOCOL,
+        run_dir=development,
+        allowed_root=allowed_root,
+    )
+    assert result.status == "eligible"
+    assert (development / "model/model.pt").is_file()
+
+    output = allowed_root / "debug-test-opening"
+    with pytest.raises(OpeningRefused, match="debug development runs"):
+        execute_test_opening(
+            development_run=development,
+            run_dir=output,
+            authorization_reference=AUTHORIZATION,
+            allowed_root=allowed_root,
+        )
+    assert not output.exists()
     assert not (development / "state").exists()
 
 

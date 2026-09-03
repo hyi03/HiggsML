@@ -3,6 +3,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -26,7 +27,7 @@ from tests.development_fixtures import write_synthetic_preprocess_run
 
 
 PROJECT = Path(__file__).resolve().parents[2]
-PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_v1.yaml"
+PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal.yaml"
 
 
 def _fake_fold_result(fold, target_lambda: float):
@@ -169,7 +170,10 @@ def test_two_stage_reader_skips_poison_test_feature_before_numeric_decode(
 
 @pytest.mark.parametrize("eligible_lambda", [None, 0.05])
 def test_development_run_publishes_exact_normal_terminal_layouts(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, eligible_lambda: float | None
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    eligible_lambda: float | None,
 ) -> None:
     allowed_root = tmp_path / "runs"
     input_run, full_frame = write_synthetic_preprocess_run(allowed_root)
@@ -177,6 +181,7 @@ def test_development_run_publishes_exact_normal_terminal_layouts(
         monkeypatch, eligible_lambda=eligible_lambda
     )
     output = allowed_root / ("eligible" if eligible_lambda is not None else "no-eligible")
+    caplog.set_level(logging.INFO, logger="src.training.development")
 
     result = execute_development(
         input_run=input_run,
@@ -194,8 +199,36 @@ def test_development_run_publishes_exact_normal_terminal_layouts(
     assert len(plot_inputs) == 1
     assert final_calls == ([] if eligible_lambda is None else [(eligible_lambda, 7)])
     assert result.status == ("eligible" if eligible_lambda is not None else "no_eligible_candidate")
-    assert (output / "model").exists() is (eligible_lambda is not None)
+    candidate_messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "src.training.development"
+        and record.getMessage().startswith("development candidate complete:")
+    ]
     protocol = load_training_protocol(PROTOCOL)
+    auc_minimum = float(protocol.raw["qualification"]["auc_minimum"])
+    ks_maximum = float(protocol.raw["qualification"]["ks_maximum"])
+    expected_messages = []
+    for target_lambda in (0.0, 0.05, 0.1, 0.2, 0.5):
+        eligible = eligible_lambda is not None and target_lambda == eligible_lambda
+        auc = 0.9 - target_lambda / 100.0
+        ks = 0.05 if eligible else 0.20
+        expected_messages.append(
+            "development candidate complete:\n"
+            f"  target_lambda\t\t= {target_lambda:g}\t\tthreshold = registered\tPass\n"
+            f"  weighted_oof_auc\t= {auc:.6f}\tthreshold >= {auc_minimum:.6f}\t"
+            f"{'Pass' if auc >= auc_minimum else 'Fail'}\n"
+            f"  loose_ks\t\t= {ks:.6f}\tthreshold <= {ks_maximum:.6f}\t"
+            f"{'Pass' if ks <= ks_maximum else 'Fail'}\n"
+            f"  medium_ks\t\t= {ks:.6f}\tthreshold <= {ks_maximum:.6f}\t"
+            f"{'Pass' if ks <= ks_maximum else 'Fail'}\n"
+            f"  tight_ks\t\t= {ks:.6f}\tthreshold <= {ks_maximum:.6f}\t"
+            f"{'Pass' if ks <= ks_maximum else 'Fail'}\n"
+            f"  eligible\t\t= {str(eligible).lower()}\t\tthreshold = true\t"
+            f"{'Pass' if eligible else 'Fail'}"
+        )
+    assert candidate_messages == expected_messages
+    assert (output / "model").exists() is (eligible_lambda is not None)
     manifest = json.loads((output / "artifacts" / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["boundaries"] == {
         "authority_environment_verified": False,
@@ -338,7 +371,7 @@ def test_train_cli_dispatch_and_exit_mapping(monkeypatch: pytest.MonkeyPatch) ->
     arguments = [
         "develop",
         "--input-run", "runs/input",
-        "--protocol", "config/adversarial_mlp_protocol_v1.yaml",
+        "--protocol", "config/adversarial_mlp_protocol_normal.yaml",
         "--run-dir", "runs/output",
     ]
     monkeypatch.setattr(train_cli, "execute_development", success)

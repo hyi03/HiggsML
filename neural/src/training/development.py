@@ -207,6 +207,8 @@ def execute_development(
         candidates: list[dict[str, Any]] = []
         epochs_by_lambda: dict[float, list[int]] = {}
         environment: dict[str, Any] | None = None
+        auc_minimum = float(protocol.raw["qualification"]["auc_minimum"])
+        ks_maximum = float(protocol.raw["qualification"]["ks_maximum"])
         for target_lambda in protocol.target_lambdas:
             oof, rows, best_epochs, environment = _candidate_oof(
                 input_data,
@@ -220,10 +222,30 @@ def execute_development(
             epochs_by_lambda[target_lambda] = best_epochs
             candidate = evaluate_candidate(oof, protocol)
             candidates.append(candidate)
+            working_points = candidate["working_points"]
             LOGGER.info(
-                "development candidate complete: target_lambda=%s eligible=%s",
+                "development candidate complete:\n"
+                "  target_lambda\t\t= %g\t\tthreshold = registered\tPass\n"
+                "  weighted_oof_auc\t= %.6f\tthreshold >= %.6f\t%s\n"
+                "  loose_ks\t\t= %.6f\tthreshold <= %.6f\t%s\n"
+                "  medium_ks\t\t= %.6f\tthreshold <= %.6f\t%s\n"
+                "  tight_ks\t\t= %.6f\tthreshold <= %.6f\t%s\n"
+                "  eligible\t\t= %s\t\tthreshold = true\t%s",
                 target_lambda,
-                candidate["eligible"],
+                candidate["weighted_oof_auc"],
+                auc_minimum,
+                "Pass" if candidate["weighted_oof_auc"] >= auc_minimum else "Fail",
+                working_points["loose"]["ks"],
+                ks_maximum,
+                "Pass" if working_points["loose"]["ks"] <= ks_maximum else "Fail",
+                working_points["medium"]["ks"],
+                ks_maximum,
+                "Pass" if working_points["medium"]["ks"] <= ks_maximum else "Fail",
+                working_points["tight"]["ks"],
+                ks_maximum,
+                "Pass" if working_points["tight"]["ks"] <= ks_maximum else "Fail",
+                str(candidate["eligible"]).lower(),
+                "Pass" if candidate["eligible"] else "Fail",
             )
         selected = select_candidate(candidates, protocol)
         selected_lambda = None if selected is None else float(selected["target_lambda"])

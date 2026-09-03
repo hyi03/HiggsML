@@ -12,9 +12,9 @@ Windows/synthetic 自动化证据；没有把预注册 expected numbers 写成�
 
 - Preprocess：[`Preprocess Protocol V1`](preprocess-protocol-v1.md) 与
   `config/preprocess_protocol_v1.yaml`；
-- Model/training：[`Adversarial MLP Protocol V1`](adversarial-mlp-protocol-v1.md)、
+- Model/training：[`Adversarial MLP Normal Protocol`](adversarial-mlp-protocol-normal.md)、
   [`Development Protocol V1`](development-protocol-v1.md) 与
-  `config/adversarial_mlp_protocol_v1.yaml`；
+  `config/adversarial_mlp_protocol_normal.yaml`；
 - Test-opening：[`Test-opening Protocol V1`](test-opening-protocol-v1.md)。
 
 Classifier 只允许固定 15 features。`m4l`、identity、provenance、split、physical/train weight 均不是

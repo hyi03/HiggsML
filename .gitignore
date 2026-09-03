@@ -218,17 +218,13 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-xgboost/data
-/data/
-xgboost/runs
-xgboost/tmp
-neural/data/*
-!neural/data/.gitkeep
-/neural/config/preprocess_run.local.yaml
-neural/runs/*
-!neural/runs/.gitkeep
+# Local data and run directories
+data/
+var/
+neural/runs/
+neural/data/
+xgboost/data/
+xgboost/runs/
 .worktrees/
 
 .DS_Store
-
-var/

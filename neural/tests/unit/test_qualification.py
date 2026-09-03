@@ -27,7 +27,7 @@ PROJECT = Path(__file__).resolve().parents[2]
 
 
 def _protocol():
-    return load_training_protocol(PROJECT / "config/adversarial_mlp_protocol_v1.yaml")
+    return load_training_protocol(PROJECT / "config/adversarial_mlp_protocol_normal.yaml")
 
 
 def test_weighted_auc_and_ks_match_small_hand_cases() -> None:
