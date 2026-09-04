@@ -16,6 +16,7 @@ def test_exact_console_entry_points() -> None:
     assert metadata["project"]["scripts"] == {
         "higgsml-preprocess": "src.cli.preprocess:main",
         "higgsml-train": "src.cli.train:main",
+        "higgsml-test": "src.cli.test:main",
     }
 
 

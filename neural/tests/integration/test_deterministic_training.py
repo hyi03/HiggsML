@@ -252,6 +252,7 @@ def test_final_fit_uses_all_development_and_exact_fixed_epoch_count() -> None:
     assert len(first.epochs) == 6
     assert first.epochs[-1]["lambda_effective"] == 0.05
     assert first.model_payload["epochs"] == 6
+    assert type(first.model_payload["environment"]["pytorch"]) is str
     assert "validation_weighted_auc" not in first.epochs[-1]
     for key in ("classifier_state_dict", "adversary_state_dict"):
         assert all(

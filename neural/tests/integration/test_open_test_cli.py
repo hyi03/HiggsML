@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from src.cli import train as train_cli
+from src.cli import test as test_cli
 from src.config import (
     ExitCode,
     InputBindingError,
@@ -22,17 +23,17 @@ PROJECT = Path(__file__).resolve().parents[2]
 PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal.yaml"
 
 
-def test_open_test_requires_all_three_arguments() -> None:
+def test_open_test_requires_development_and_output_arguments() -> None:
     completed = subprocess.run(
-        [sys.executable, "-m", "src.cli.train", "open-test"],
+        [sys.executable, "-m", "src.cli.test"],
         check=False,
         capture_output=True,
         text=True,
     )
     assert completed.returncode == int(ExitCode.USAGE)
-    assert "--development-run" in completed.stderr
+    assert "--train-run" in completed.stderr
     assert "--run-dir" in completed.stderr
-    assert "--authorization-reference" in completed.stderr
+    assert "the following arguments are required: --train-run, --run-dir" in completed.stderr
 
 
 def test_blank_authorization_value_returns_refusal(tmp_path: Path) -> None:
@@ -40,9 +41,8 @@ def test_blank_authorization_value_returns_refusal(tmp_path: Path) -> None:
         [
             sys.executable,
             "-m",
-            "src.cli.train",
-            "open-test",
-            "--development-run",
+            "src.cli.test",
+            "--train-run",
             "runs/missing",
             "--run-dir",
             "runs/output",
@@ -58,7 +58,9 @@ def test_blank_authorization_value_returns_refusal(tmp_path: Path) -> None:
 
 
 def test_open_test_cli_runs_only_synthetic_fixture(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.chdir(tmp_path)
     allowed_root = tmp_path / "runs"
@@ -72,19 +74,24 @@ def test_open_test_cli_runs_only_synthetic_fixture(
         allowed_root=allowed_root,
     )
 
-    code = train_cli.main(
+    code = test_cli.main(
         [
-            "open-test",
-            "--development-run",
+            "--train-run",
             str(development),
             "--run-dir",
             str(allowed_root / "test-opening"),
-            "--authorization-reference",
-            "synthetic-fixture-only",
         ]
     )
     assert code == int(ExitCode.SUCCESS)
-    assert (allowed_root / "test-opening/artifacts/manifest.json").is_file()
+    manifest_path = allowed_root / "test-opening/artifacts/manifest.json"
+    assert manifest_path.is_file()
+    assert json.loads(manifest_path.read_bytes())["authorization_reference"] is None
+    output = capsys.readouterr().out
+    assert "HiggsML held-out test results" in output
+    assert "Weighted AUC" in output
+    assert "Working points" in output
+    assert "loose" in output and "medium" in output and "tight" in output
+    assert "Metrics file:" in output
 
 
 @pytest.mark.parametrize(
@@ -100,14 +107,13 @@ def test_open_test_cli_exit_mapping(
     monkeypatch: pytest.MonkeyPatch, error: Exception, expected: ExitCode
 ) -> None:
     monkeypatch.setattr(
-        train_cli,
+        test_cli,
         "execute_test_opening",
         lambda **kwargs: (_ for _ in ()).throw(error),
     )
-    code = train_cli.main(
+    code = test_cli.main(
         [
-            "open-test",
-            "--development-run",
+            "--train-run",
             "runs/development",
             "--run-dir",
             "runs/test",
@@ -122,16 +128,15 @@ def test_terminal_receipt_cli_log_requires_manual_audit(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     monkeypatch.setattr(
-        train_cli,
+        test_cli,
         "execute_test_opening",
         lambda **kwargs: (_ for _ in ()).throw(
             OpeningFailure("terminal_receipt", ExitCode.TRANSACTION)
         ),
     )
-    code = train_cli.main(
+    code = test_cli.main(
         [
-            "open-test",
-            "--development-run",
+            "--train-run",
             "runs/development",
             "--run-dir",
             "runs/test",
@@ -148,14 +153,13 @@ def test_open_test_input_binding_log_is_stage_and_run_aware(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     monkeypatch.setattr(
-        train_cli,
+        test_cli,
         "execute_test_opening",
         lambda **kwargs: (_ for _ in ()).throw(InputBindingError("hidden detail")),
     )
-    code = train_cli.main(
+    code = test_cli.main(
         [
-            "open-test",
-            "--development-run",
+            "--train-run",
             "runs/development",
             "--run-dir",
             "runs/test",

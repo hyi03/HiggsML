@@ -2,17 +2,18 @@
 
 ## 1. 目的、授权与边界
 
-本文是 Sprint M1-05 的自包含实现协议，冻结一次性 held-out MC test-opening 的输入绑定、
-原子 claim、冻结评价、receipt 和 test run 发布行为。M1-05 只实现并以 synthetic fixtures 验证
-机制；没有用户针对某个权威 development run 的另行明确授权时，不得运行权威 `open-test`。
+本文是 Sprint M1-05 的自包含实现协议，冻结 held-out MC test-opening 的输入绑定、
+可选原子 claim、冻结评价、receipt 和 test run 发布行为。
 
 命令为：
 
 ```text
-higgsml-train open-test --development-run <eligible-frozen-run> --run-dir <new-test-run> --authorization-reference <non-empty-audit-reference>
+higgsml-test --train-run <eligible-frozen-run> --run-dir <new-test-run> [--authorization-reference <non-empty-audit-reference>]
 ```
 
-`authorization-reference` 必须 `strip()` 后非空；strip 后的 Unicode code point 数至多 256，
+`authorization-reference` 是可选参数。省略时不创建 development claim，manifest 中记录
+`authorization_reference: null`，同一 development run 可使用不同的新输出目录重复评价。
+提供时启用一次性 claim，且值必须 `strip()` 后非空；strip 后的 Unicode code point 数至多 256，
 并拒绝 Unicode category `Cc`/`Cf`（包括 C0/C1、DEL、format/bidi controls）。它只保存公开、
 非敏感的外部批准审计引用（如工单号）；case-insensitive 的 `password|passwd|api[ _-]*key|secret|
 token|credential` 后跟可选空白及 `:`/`=` 的 credential assignment 形式必须拒绝。该拒绝仅是最小
@@ -35,9 +36,9 @@ held-out test feature token。
 按以下顺序 fail closed：
 
 1. 验证 test output `RunTransaction` target 合法且不存在；仅创建唯一 staging，不发布。
-2. 仅绑定 ordinary、无 link/reparse 的 development run path；若任何
-   `state/test_opening.json` 已存在，立即按 exit 5 拒绝。该 cheap probe 不读取 manifest/artifact，
-   `O_CREAT|O_EXCL` 仍是并发竞争的权威 guard。
+2. 仅绑定 ordinary、无 link/reparse 的 development run path。一次性模式若发现任何
+   `state/test_opening.json` 已存在，立即按 exit 5 拒绝；可重复模式不检查该 state。一次性模式的
+   cheap probe 不读取 manifest/artifact，`O_CREAT|O_EXCL` 仍是并发竞争的权威 guard。
 3. 读取 development canonical manifest bytes，exact 验证 manifest schema/version、
    `run_type=development`、`status=eligible`、Normal protocol ID、
    selected lambda/final epochs、boundary flags、schema/counts/OOF completeness。
@@ -57,13 +58,18 @@ held-out test feature token。
    containment。其 manifest/table/canonical-content SHA 必须与 development
    manifest `input` block exact 一致。此时允许完整文件 bytes 为完整性 hash 顺序流过，但仍不得
    decode test feature。
-7. 再次 cheap probe `state/test_opening.json`，然后才尝试原子 claim；最终唯一性由
-   `O_CREAT|O_EXCL` 决定。
+7. 一次性模式再次 cheap probe `state/test_opening.json`，然后才尝试原子 claim；最终唯一性由
+   `O_CREAT|O_EXCL` 决定。可重复模式完成输入绑定后直接进入 test-only reader。
 
-任一步失败均不得创建 claim，不得读取 test features；必须调用 transaction abort path 删除 staging，
-不得发布 failure run。只有 claim 后异常才发布 failure run。
+任一步失败均不得读取 test features；必须调用 transaction abort path 删除 staging，且不得发布
+failure run。一次性模式只有 claim 后异常才发布 failure run；可重复模式由输出 transaction 记录失败，
+不写 development state。
 
-## 3. 原子 claim 与不可重试状态机
+## 3. 可选原子 claim 与不可重试状态机
+
+本节只适用于提供 `authorization-reference` 的一次性模式。省略参数时不创建、读取或更新
+`state/test_opening.json`，因此 development run 不被占用；每次调用仍必须使用不存在的新
+test run 路径。
 
 Claim 固定写入 development run 的 `state/test_opening.json`。先以并发安全的
 `mkdir(exist_ok=True)` 创建或复用 `state/`，再逐 component 验证 ordinary/no link/reparse。
@@ -105,7 +111,7 @@ manifest SHA-256、完成时间、`test_features_opened=true`、`terminal_receip
 Claim 记录 output staging logical path。硬崩溃遗留的 hidden `.tmp` staging 永不自动发布；只能经
 另行人工授权清理，且清理绝不允许重试 opening。
 
-## 4. Claim 后 test-only reader
+## 4. 输入绑定及可选 Claim 后的 test-only reader
 
 Claim 成功后才允许第二阶段读取 preprocess gzip。Reader 顺序验证 exact 29-column header，并对
 每行只先定位/ASCII decode `split`：
@@ -180,7 +186,8 @@ canonical CSV content SHA-256。`test_metrics.json` 与 test manifest 使用 M1-
 `canonical_json_bytes`。metrics 记录 status、frozen selected lambda、weighted AUC、三个 frozen
 working points、pass/fail/reasons 和明确 no-feedback boundaries。
 
-Manifest 固定 `schema_version=test-manifest-v1`、`run_type=test_opening`，最后写入并覆盖自身以外
+Manifest 固定 `schema_version=test-manifest-v1`、`run_type=test_opening`，`authorization_reference`
+在省略参数时为 `null`，最后写入并覆盖自身以外
 所有发布文件的 size/SHA-256，并记录：development
 manifest/hash/selection、preprocess table hashes、authorization reference、protocol/model/scaler/
 working-point hashes、schema/counts、test conclusion、deterministic environment、wall time、peak
@@ -226,8 +233,8 @@ CLI 日志只记录阶段、terminal status 和 run path；不得输出 test row
   未调用；
 - test score/order/hash schema、reproduced/nonreproduction、success/failure layout 与 manifest-last；
 - empty-selected-background 的 efficiency `0.0`、KS `1.0` 与 sentinel reason 形成正常非复现；
-- missing authorization flag exit 2；blank、超过 256 Unicode code points、credential assignment、
-  Unicode `Cc`/`Cf` authorization value exit 5；post-claim 3/4/70 exact mapping；
+- 省略 authorization flag 可执行并可重复；显式 blank、超过 256 Unicode code points、credential
+  assignment、Unicode `Cc`/`Cf` authorization value exit 5；post-claim 3/4/70 exact mapping；
 - 已发布 output 后 terminal receipt replace/flush 注入失败：exit 4、state 永久不可重试、output 不覆盖；
 - development tree 除唯一 state file 外不变；failure/log/state poison assertions 不含 test value；
 - fixture-only CLI smoke、focused/full pytest、pip check、两个 CLI help、`git diff --check`；

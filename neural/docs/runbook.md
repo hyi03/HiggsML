@@ -2,7 +2,7 @@
 
 ## 1. 适用范围与停止原则
 
-本手册只恢复和运行严格 MC-only 的 `higgsml-preprocess` 与 `higgsml-train`。Classifier 只消费
+本手册只恢复和运行严格 MC-only 的 `higgsml-preprocess`、`higgsml-train` 与 `higgsml-test`。Classifier 只消费
 [`Adversarial MLP Normal Protocol`](adversarial-mlp-protocol-normal.md) 固定的 15 项 features；`m4l`、identity、
 provenance、split 和 weight 字段都不得作为 classifier features。
 
@@ -102,6 +102,7 @@ Windows 结果的 `authority` 必须记录为 `false`。
 conda run -n pytorch python -m pytest -q
 conda run -n pytorch higgsml-preprocess --help
 conda run -n pytorch higgsml-train --help
+conda run -n pytorch higgsml-test --help
 ```
 
 Authority host 在全部外部前置可用时预期 zero skip；任一 skip 都要诊断并阻塞 closure。Focused
@@ -144,7 +145,7 @@ comparator 替代。
 只在 authority preprocess/golden 通过后运行：
 
 ```bash
-conda run -n pytorch higgsml-train develop --input-run runs/preprocess-<unique-id> --protocol config/adversarial_mlp_protocol_normal.yaml --run-dir runs/mlp-development-<unique-id>
+conda run -n pytorch higgsml-train --input-run runs/preprocess-<unique-id> --protocol config/adversarial_mlp_protocol_normal.yaml --run-dir runs/mlp-development-<unique-id>
 ```
 
 审计 `artifacts/manifest.json`、`qualification.json`、两个 metric CSV 和完整 OOF：
@@ -163,8 +164,14 @@ conda run -n pytorch higgsml-train develop --input-run runs/preprocess-<unique-i
 获得单独授权后才可使用执行前不存在且 ignored 的新 path：
 
 ```bash
-conda run -n pytorch higgsml-train open-test --development-run runs/mlp-development-<id> --run-dir runs/mlp-test-<unique-id> --authorization-reference <external-approval-reference>
+conda run -n pytorch higgsml-test --train-run runs/mlp-development-<id> --run-dir runs/mlp-test-<unique-id> [--authorization-reference <external-approval-reference>]
 ```
+
+提供审计引用时，该 development run 会被原子 claim，后续不可再次开启。省略该参数时不写
+development state，可使用不同的新 `--run-dir` 重复运行 test；任何已存在的输出目录仍不可覆盖。
+命令默认显示输入校验、held-out 评分、产物发布和结果收尾四个阶段的进度；自动化运行可增加
+`--no-progress`。成功后终端直接打印 weighted AUC、冻结门槛、测试行数及三个工作点的量化结果，
+完整 JSON 同步保存在 `artifacts/test_metrics.json`。
 
 Eligibility 不等于授权。Test 结论只允许 `test_reproduced` 或 `test_nonreproduction`，且不得反馈到训练、
 候选、阈值或 protocol。

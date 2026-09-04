@@ -2,7 +2,7 @@
 
 ## 1. Sprint 目标
 
-交付 [`FR-001`](FR-001-adversarial-mlp-refactor.md) 的显式一次性 held-out MC test-opening 机制，包括 development artifact 绑定、原子 claim、冻结模型评价、成功/失败收据和关闭式拒绝路径。
+交付 [`FR-001`](FR-001-adversarial-mlp-refactor.md) 的 held-out MC test-opening 机制，包括 development artifact 绑定、可选原子 claim、冻结模型评价、成功/失败收据和关闭式拒绝路径。当前接口在省略 authorization reference 时允许使用新输出目录重复评价。
 
 核心目标：
 

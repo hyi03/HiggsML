@@ -10,7 +10,7 @@
 
 - `config/preprocess_protocol_v1.yaml` 固定输入身份、选择条件、特征、权重、数据切分和 canonical 输出规则。
 - `config/adversarial_mlp_protocol_normal.yaml` 固定网络结构、候选 lambda、训练日程、资格门槛、工作点和产物 schema。
-- `config/adversarial_mlp_protocol_debug.yaml` 保持相同训练结构，只允许在运行前修改 `auc_minimum` 和 `ks_maximum`；其 run 可以生成调试模型，但不能进入 held-out test-opening。
+- `config/adversarial_mlp_protocol_debug.yaml` 保持相同训练结构，只允许在运行前修改 `auc_minimum` 和 `ks_maximum`；状态为 `eligible` 且通过完整协议、哈希和产物校验的 debug run 可以进入 held-out test-opening。
 - 本地 preprocess run config 只提供 ROOT 路径与 chunk 大小，不能覆盖科学规则。
 - `src/domain/` 只负责物理对象重建、事件选择、特征、权重和稳定切分。
 - `src/preprocessing/` 与 `src/training/` 编排处理流程；`src/cli/` 只解析参数、映射退出码。
@@ -34,7 +34,7 @@ flowchart TD
     J --> K[候选资格判断与工作点冻结]
     K --> L[全 development final fit]
     L --> M[冻结模型、scaler、manifest]
-    M --> N{Normal protocol 的一次性 open-test gate}
+    M --> N{Eligible normal/debug run 的 open-test gate}
     N --> O[只评分 held-out test]
     O --> P[test 指标与终态 receipt]
 ```
@@ -56,7 +56,7 @@ flowchart TD
 这里的 test 指模型的 held-out test 评价，不是 `pytest` 软件测试。首先对一个已经成功发布的 preprocess run 执行 development 训练，并为输出使用全新的 run 路径：
 
 ```bash
-higgsml-train develop --input-run runs/preprocess-<id> --protocol config/adversarial_mlp_protocol_normal.yaml --run-dir runs/mlp-development-<id>
+higgsml-train --input-run runs/preprocess-<id> --protocol config/adversarial_mlp_protocol_normal.yaml --run-dir runs/mlp-development-<id>
 ```
 
 调试运行可以改用 `config/adversarial_mlp_protocol_debug.yaml` 或其本地副本。Loader 只放开 `qualification.auc_minimum` 和 `qualification.ks_maximum`，仍严格校验其他字段，并把完整 protocol bytes 和 SHA-256 绑定到 run。
@@ -77,15 +77,17 @@ development 依次训练 protocol 中预注册的全部 λ 候选，为每个候
 - `predictions/oof_scores.csv.gz`：development OOF 分数。
 - `plots/auc_vs_lambda.png`、`plots/ks_vs_lambda.png`、`plots/oof_roc.png` 和 `plots/oof_mass_sculpting.png`：development 图形证据。
 
-若状态为 `no_eligible_candidate`，该 run 是正常发布的科学终态，但不会生成 final model/scaler，也不得执行 test-opening。应保留该 run 的完整证据。正式 Normal 规则不得放宽；诊断时可以复制 Debug protocol，只修改 AUC/KS 门槛并创建新的 run。已经发布的 run 不能修改，Debug run 也不能进入 test-opening。
+若状态为 `no_eligible_candidate`，该 run 是正常发布的科学终态，但不会生成 final model/scaler，也不得执行 test-opening。应保留该 run 的完整证据。正式 Normal 规则不得放宽；诊断时可以复制 Debug protocol，只修改 AUC/KS 门槛并创建新的 run。已经发布的 run 不能修改。
 
-只有使用 Normal protocol 的 development 状态为 `eligible`，并已取得单独的 held-out test 开启授权后，才能执行一次性 test-opening。Debug run 即使按调试门槛达到 `eligible` 并生成模型，也会在 claim 和 test feature decode 前被拒绝：
+Normal 或 Debug protocol 的 development 状态为 `eligible` 后可以执行 test-opening。审计引用为可选参数：
 
 ```bash
-higgsml-train open-test --development-run runs/mlp-development-<id> --run-dir runs/mlp-test-<id> --authorization-reference "<approval-reference>"
+higgsml-test --train-run runs/mlp-development-example --run-dir runs/mlp-test-example --authorization-reference MLP-TEST-APPROVAL-EXAMPLE
 ```
 
-test-opening 会先验证 development lineage、资格状态、冻结模型、scaler、阈值和产物哈希，再持久化一次性 claim；claim 成功后才读取 held-out test 特征。test 阶段只使用冻结模型和阈值进行评分，不重新训练、不重新拟合 scaler、不重新选择 λ 或阈值。
+test-opening 会先验证 development lineage、资格状态、冻结模型、scaler、阈值和产物哈希。提供审计引用时，程序在读取 held-out test 特征前持久化一次性 claim；省略参数时不写 development state，可以为同一 development run 使用不同的新 `--run-dir` 重复评价。test 阶段只使用冻结模型和阈值进行评分，不重新训练、不重新拟合 scaler、不重新选择 λ 或阈值。
+
+命令默认显示四阶段进度条：冻结输入校验、held-out MC 评分、产物发布和结果收尾。CI 或日志重定向时可增加 `--no-progress`。完成后，终端会输出 test 状态、测试行数、weighted AUC 与冻结下限、三个工作点的 threshold、目标/实际背景效率、信号效率、KS、逐项 PASS/FAIL 和拒绝原因。
 
 test 指标和证据位于新的 test run：
 
@@ -94,7 +96,7 @@ test 指标和证据位于新的 test run：
 - `plots/test_roc.png` 和 `plots/test_mass_sculpting.png`：test 图形证据。
 - `artifacts/manifest.json`：输入 lineage、授权引用、边界声明、输出哈希和终态。
 
-test-opening 是一次性状态转换。claim 之后无论成功或失败，都必须按终态证据处理，不能用同一个 development run 重试或继续调参。
+提供审计引用的 test-opening 是一次性状态转换；claim 之后无论成功或失败，都必须按终态证据处理。省略审计引用的运行不创建 claim，因此可以重复，但仍不得覆盖既有输出 run 或把 test 结果反馈到训练与调参。
 ## 3. 预处理实现分析
 
 入口 `src.cli.preprocess:main` 调用 `src.preprocessing.pipeline.execute_preprocess`，处理过程如下：
@@ -147,17 +149,17 @@ test-opening 是一次性状态转换。claim 之后无论成功或失败，都�
 
 若没有候选合格，run 仍以声明的 `no_eligible_candidate` 科学终态发布资格证据，但不会发布 final model/scaler。该终态不是内部错误，也不能进入 test-opening。
 
-## 6. Held-out Test 的一次性边界
+## 6. Held-out Test 的执行边界
 
-`src.training.test_opening.execute_test_opening` 把开测实现为持久、一次性的状态转换：
+`src.training.test_opening.execute_test_opening` 支持带审计引用的一次性模式和不带引用的可重复模式：
 
 1. 在读取 test 特征前，重新校验 development run 的资格状态、protocol、模型、scaler、工作点、输出哈希，以及其上游 preprocess lineage。
-2. 使用独占创建在 development run 中写入 `state/test_opening.json` claim，并 fsync 文件和目录。已存在任何 test-opening state 的 development run 都会被拒绝再次开启。
-3. claim 成功后才从 preprocess canonical table 解码 test rows，并使用冻结 scaler 和分类器生成分数。
+2. 提供审计引用时，使用独占创建在 development run 中写入 `state/test_opening.json` claim，并 fsync 文件和目录；省略引用时跳过 development claim。
+3. 完成输入绑定以及可选 claim 后，才从 preprocess canonical table 解码 test rows，并使用冻结 scaler 和分类器生成分数。
 4. test 阶段复用 development 已冻结的阈值，只计算 weighted AUC、信号/背景效率和 KS。代码显式记录未执行训练、scaler fitting、阈值选择、候选选择或参数更新。
-5. claim 之后的成功或失败都会尝试发布输出 receipt，并把 development state 更新为终态；如果 terminal receipt 无法可靠写入，则要求人工审计，而不会静默允许重试。
+5. 一次性模式在 claim 之后的成功或失败都会尝试发布输出 receipt，并把 development state 更新为终态；可重复模式不修改 development state。
 
-`authorization_reference` 是外部批准的非敏感审计引用。程序可以验证该字段的格式并保存它，但不能自行证明组织层面的授权已取得。
+`authorization_reference` 是可选的非敏感审计引用。提供时程序验证格式并保存它，同时启用一次性 claim；省略时 manifest 记录 `null`，且运行可重复。
 
 ## 7. Artifact 与可复现性设计
 
@@ -169,7 +171,7 @@ test-opening 是一次性状态转换。claim 之后无论成功或失败，都�
 - protocol 与 run config 的内容哈希；
 - 输出文件的 SHA-256、大小、行数和 canonical content hash；
 - schema、事件计数、软件版本、平台、确定性设置和性能记录；
-- development 选择结果及 test-opening 的 lineage 与一次性状态。
+- development 选择结果及 test-opening 的 lineage、授权引用和可选一次性状态。
 
 canonical CSV 使用固定列顺序、`.17g` 浮点格式、LF、UTF-8、固定 gzip 参数和稳定身份排序，使内容哈希不受运行时间戳或 chunk 大小影响。authority comparator 还会先验证 lineage，再比较结构字段、浮点容差、cutflow 和预期计数。
 
@@ -187,7 +189,7 @@ canonical CSV 使用固定列顺序、`.17g` 浮点格式、LF、UTF-8、固定 
 | `src/training/trainer.py` | fold 训练、lambda schedule、early stopping 和 final fit |
 | `src/training/qualification.py` | OOF AUC、工作点、KS 和候选选择 |
 | `src/training/development.py` | 五折 OOF、资格判断、final fit 与 development 发布 |
-| `src/training/test_opening.py` | 一次性 claim、冻结模型评分和 test 终态 |
+| `src/training/test_opening.py` | 可选一次性 claim、冻结模型评分和 test 终态 |
 | `src/artifacts/` | 事务发布、manifest、canonical JSON 和图表 |
 | `tests/` | 单元、集成、确定性、micro-ROOT 与 authority gate 测试 |
 
