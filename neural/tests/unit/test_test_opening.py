@@ -20,6 +20,7 @@ from src.config import (
 )
 from src.training.development import execute_development
 from src.training import test_opening
+from src.training.config import DEBUG_PROTOCOL_ID
 from src.training.test_opening import _claim, _load_binding, execute_test_opening
 from src.training import test_reader
 from src.training.test_reader import read_test_rows_after_claim, validate_test_frame
@@ -90,7 +91,7 @@ def _rewrite_gzip_table(table: Path, mutate) -> None:
     table.write_bytes(gzip.compress(b"".join(lines), compresslevel=9, mtime=0))
 
 
-def test_synthetic_opening_publishes_terminal_run_and_only_mutates_state(
+def test_synthetic_opening_without_authorization_can_be_repeated_without_state(
     eligible_development,
 ) -> None:
     allowed_root, development, _, full_frame = eligible_development
@@ -100,7 +101,6 @@ def test_synthetic_opening_publishes_terminal_run_and_only_mutates_state(
     result = execute_test_opening(
         development_run=development,
         run_dir=output,
-        authorization_reference=AUTHORIZATION,
         allowed_root=allowed_root,
     )
 
@@ -124,6 +124,7 @@ def test_synthetic_opening_publishes_terminal_run_and_only_mutates_state(
     assert manifest_bytes == canonical_json_bytes(manifest)
     assert manifest["schema_version"] == "test-manifest-v1"
     assert manifest["run_type"] == "test_opening"
+    assert manifest["authorization_reference"] is None
     assert manifest["counts"]["test_rows"] == len(scores)
     assert manifest["boundaries"] == {
         "authority_environment_verified": False,
@@ -145,24 +146,19 @@ def test_synthetic_opening_publishes_terminal_run_and_only_mutates_state(
         if record["path"] == "predictions/test_scores.csv.gz"
     )
     assert hashlib.sha256(gzip.decompress((output / score_record["path"]).read_bytes())).hexdigest() == score_record["canonical_content_sha256"]
-    state = json.loads((development / "state/test_opening.json").read_bytes())
-    assert state["status"] == result.status
-    assert state["terminal_receipt"] is True
-    assert state["test_features_opened"] is True
-    assert state["claimed_at_utc"].endswith("Z")
-    assert state["output_staging"].endswith(".tmp")
+    assert not (development / "state/test_opening.json").exists()
     after = _tree_receipts(development)
-    assert {key: value for key, value in after.items() if key != "state/test_opening.json"} == before
+    assert after == before
 
     second_output = allowed_root / "second-opening"
-    with pytest.raises(OpeningRefused):
-        execute_test_opening(
-            development_run=development,
-            run_dir=second_output,
-            authorization_reference=AUTHORIZATION,
-            allowed_root=allowed_root,
-        )
-    assert not second_output.exists()
+    second = execute_test_opening(
+        development_run=development,
+        run_dir=second_output,
+        allowed_root=allowed_root,
+    )
+    assert second.status in {"test_reproduced", "test_nonreproduction"}
+    assert (second_output / "artifacts/manifest.json").is_file()
+    assert not (development / "state/test_opening.json").exists()
 
 
 def test_blank_authorization_refuses_before_claim(
@@ -181,11 +177,11 @@ def test_blank_authorization_refuses_before_claim(
     assert not (development / "state").exists()
 
 
-def test_debug_development_refuses_open_test_before_claim(
+def test_debug_development_can_open_test(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     allowed_root = tmp_path / "runs"
-    preprocess, _ = write_synthetic_preprocess_run(allowed_root)
+    preprocess, full_frame = write_synthetic_preprocess_run(allowed_root)
     _install_fast_pipeline(monkeypatch, eligible_lambda=0.0)
     development = allowed_root / "debug-development"
     result = execute_development(
@@ -198,15 +194,25 @@ def test_debug_development_refuses_open_test_before_claim(
     assert (development / "model/model.pt").is_file()
 
     output = allowed_root / "debug-test-opening"
-    with pytest.raises(OpeningRefused, match="debug development runs"):
-        execute_test_opening(
-            development_run=development,
-            run_dir=output,
-            authorization_reference=AUTHORIZATION,
-            allowed_root=allowed_root,
-        )
-    assert not output.exists()
-    assert not (development / "state").exists()
+    opening = execute_test_opening(
+        development_run=development,
+        run_dir=output,
+        authorization_reference=AUTHORIZATION,
+        allowed_root=allowed_root,
+    )
+
+    assert opening.status in {"test_reproduced", "test_nonreproduction"}
+    manifest = json.loads((output / "artifacts/manifest.json").read_bytes())
+    development_manifest = json.loads(
+        (development / "artifacts/manifest.json").read_bytes()
+    )
+    scores = pd.read_csv(output / "predictions/test_scores.csv.gz")
+    assert manifest["protocol_sha256"] == development_manifest["protocol"]["sha256"]
+    assert development_manifest["protocol"]["id"] == DEBUG_PROTOCOL_ID
+    assert len(scores) == int((full_frame["split"] == "test").sum())
+    state = json.loads((development / "state/test_opening.json").read_bytes())
+    assert state["status"] == opening.status
+    assert state["test_features_opened"] is True
 
 
 def test_development_artifact_tamper_refuses_before_claim(
@@ -866,6 +872,12 @@ def test_controlled_valid_metrics_publish_reproduced_terminal_status(
 
     assert result.status == "test_reproduced"
     metrics = json.loads((output / "artifacts/test_metrics.json").read_bytes())
+    assert result.metrics == metrics
+    assert result.qualification_rules == {
+        "auc_minimum": 0.8,
+        "ks_maximum": 0.1,
+        "signal_efficiency_strictly_greater_than_background": True,
+    }
     assert metrics["rejection_reasons"] == []
     assert all(point["ks"] == 0.0 for point in metrics["working_points"].values())
 

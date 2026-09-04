@@ -7,10 +7,11 @@
 
 ## 1. 方案摘要
 
-在仓库根目录新建独立工程 `neural/`，把现有多代 Demo、专用研究脚本和通用训练入口收敛为两个可执行程序：
+在仓库根目录新建独立工程 `neural/`，把现有多代 Demo、专用研究脚本和通用训练入口收敛为三个可执行程序：
 
 1. `higgsml-preprocess`：完成严格 MC-only 的 ROOT 读取、四轻子重建、selection、权重、稳定划分、Base14 与 Angular5 特征构造以及审计产物发布。
-2. `higgsml-train`：使用 PyTorch 对抗式多层感知机完成 development OOF 训练、质量去相关资格判断，以及经过显式授权的 held-out MC test-opening。
+2. `higgsml-train`：使用 PyTorch 对抗式多层感知机完成 development OOF 训练和质量去相关资格判断。
+3. `higgsml-test`：使用冻结的 eligible development run 完成 held-out MC test-opening。
 
 预处理的科学行为保持不变，但重新实现为职责清晰、可测试的模块；不复制现有千行级 run 模块，也不调用旧 `xgboost/`。预处理表输出完整 19 项特征，训练协议固定使用 DropTop4 后的 10 项基础特征与 5 项 Angular5 特征，共 15 项。
 
@@ -95,7 +96,8 @@ neural/
 ├── src/
 │   ├── cli/
 │   │   ├── preprocess.py
-│   │   └── train.py
+│   │   ├── train.py
+│   │   └── test.py
 │   ├── config.py
 │   ├── domain/
 │   │   ├── four_vectors.py
@@ -137,14 +139,15 @@ neural/
 
 每个模块只承担一个明确职责。CLI 只负责解析参数和调用 application service；科学计算不写在 CLI 或 artifact 发布代码中。
 
-## 6. 两个可执行程序
+## 6. 三个可执行程序
 
-`pyproject.toml` 只发布以下两个 console entry points：
+`pyproject.toml` 只发布以下三个 console entry points：
 
 ```toml
 [project.scripts]
 higgsml-preprocess = "src.cli.preprocess:main"
 higgsml-train = "src.cli.train:main"
+higgsml-test = "src.cli.test:main"
 ```
 
 ### 6.1 预处理
@@ -164,7 +167,7 @@ SHA-256 位于版本化 protocol 中；普通命令行不能覆盖这些科学�
 ### 6.2 Development 训练
 
 ```bash
-conda run -n pytorch higgsml-train develop \
+conda run -n pytorch higgsml-train \
   --input-run runs/preprocess-<id> \
   --protocol config/adversarial_mlp_protocol_v1.yaml \
   --run-dir runs/mlp-development-<unique-id>
@@ -177,13 +180,13 @@ conda run -n pytorch higgsml-train develop \
 ### 6.3 显式 test-opening
 
 ```bash
-conda run -n pytorch higgsml-train open-test \
-  --development-run runs/mlp-development-<id> \
+conda run -n pytorch higgsml-test \
+  --train-run runs/mlp-development-<id> \
   --run-dir runs/mlp-test-<unique-id> \
-  --authorization-reference <external-approval-reference>
+  [--authorization-reference <external-approval-reference>]
 ```
 
-`open-test` 是同一个训练可执行程序的独立子命令。它必须验证：
+`higgsml-test` 是独立的 held-out test 评价命令。它必须验证：
 
 - development manifest 完整且状态为 eligible；
 - 输入表、protocol、scaler、模型、工作点和 OOF 证据哈希未变化；
@@ -561,7 +564,7 @@ conda run -n pytorch python -m pytest -q
 
 1. 原 `xgboost/` 的代码、配置、数据和冻结 runs 未被修改；用户现有未提交修改被保留。
 2. `neural` 可仅凭 README、Conda lock、两个 MC ROOT 和配置从零恢复。
-3. 对外只有 `higgsml-preprocess` 与 `higgsml-train` 两个程序。
+3. 对外只有 `higgsml-preprocess`、`higgsml-train` 与 `higgsml-test` 三个程序。
 4. 预处理生成 199,104 行、19 项特征和完整 provenance，科学行为与旧最终方案等价。
 5. 分类器固定为约 9k 参数的对抗式 MLP，训练只使用固定 15 项特征。
 6. 五个 λ 候选、五折 OOF、门槛、tie-break 和 test-opening 均由版本化协议锁定。

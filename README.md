@@ -18,19 +18,19 @@ Neural 流程只处理两个 MC 样本：Higgs 信号 DSID 345060 和 continuum 
 flowchart LR
     A[共享 MC ROOT 文件] --> B[higgsml-preprocess]
     B --> C[冻结的 preprocess run]
-    C --> D[higgsml-train develop]
+    C --> D[higgsml-train]
     D --> E{是否存在 eligible candidate}
     E -->|是| F[model.pt + scaler.json]
     E -->|否| G[no_eligible_candidate]
     F --> H{Normal 且已取得单独开测授权}
-    H -->|是| I[higgsml-train open-test]
+    H -->|是| I[higgsml-test]
 ```
 
 完整流程分为三个项目阶段：
 
 1. `higgsml-preprocess` 校验 ROOT 输入，执行冻结选择和特征构造，并发布带哈希的预处理产物。
-2. `higgsml-train develop` 只使用 development split 完成五折 OOF 训练、候选比较和资格判断。
-3. `higgsml-train open-test` 在 development 合格且另有明确授权后，对 held-out MC test split 进行一次评价。
+2. `higgsml-train` 只使用 development split 完成五折 OOF 训练、候选比较和资格判断。
+3. `higgsml-test` 在 development 合格且另有明确授权后，对 held-out MC test split 进行一次评价。
 
 数据、特征、网络、候选和训练规则都由版本化 protocol 绑定。Normal 的资格门槛保持冻结；Debug 只允许在开始一个新 run 前修改 AUC 和 KS 门槛，不能改变已经发布的 run，也不能用于 held-out test。
 
@@ -156,6 +156,10 @@ higgsml-preprocess --help
 higgsml-train --help
 ```
 
+```bash
+higgsml-test --help
+```
+
 项目固定使用 Python 3.12、PyTorch 2.7.1 和 CPU deterministic algorithms。即使 macOS 检测到 MPS，也不会把 MPS 用于权威训练。
 
 ### 4.3 运行自动化测试
@@ -215,13 +219,13 @@ higgsml-preprocess --protocol config/preprocess_protocol_v1.yaml --run-config ru
 实际可运行示例：
 
 ```bash
-export PREPROCESS_RUN="runs/preprocess-$(date -u +%Y%m%dT%H%M%SZ)"; higgsml-preprocess --protocol config/preprocess_protocol_v1.yaml --run-config runs/preprocess_run.local.yaml --run-dir "$PREPROCESS_RUN"
+higgsml-preprocess --protocol config/preprocess_protocol_v1.yaml --run-config runs/preprocess_run.local.yaml --run-dir runs/preprocess-example
 ```
 
 命令成功后，检查 manifest 状态：
 
 ```bash
-python -c "import json, os; print(json.load(open(os.path.join(os.environ['PREPROCESS_RUN'], 'artifacts/manifest.json'), encoding='utf-8'))['status'])"
+python -c "import json; print(json.load(open('runs/preprocess-example/artifacts/manifest.json', encoding='utf-8'))['status'])"
 ```
 
 预期输出为：
@@ -277,14 +281,13 @@ qualification:
 命令格式：
 
 ```bash
-higgsml-train develop --input-run runs/preprocess-<id> --protocol config/adversarial_mlp_protocol_normal.yaml --run-dir runs/mlp-development-<unique-id>
+higgsml-train --input-run runs/preprocess-<id> --protocol config/adversarial_mlp_protocol_normal.yaml --run-dir runs/mlp-development-<unique-id>
 ```
 
-`higgsml-train develop` 参数如下：
+`higgsml-train` 参数如下：
 
 | 参数 | 必填 | 含义与用法 |
 |---|---|---|
-| `develop` | 是 | 选择 development-only 五折 OOF 训练和候选资格判断子命令。 |
 | `--input-run <path>` | 是 | 指定第 5 节成功发布的 preprocess run。 |
 | `--protocol <path>` | 是 | 指定 Normal 或 Debug adversarial MLP protocol。Normal 冻结全部规则；Debug 只允许修改 AUC/KS 资格门槛。 |
 | `--run-dir <path>` | 是 | 指定 `runs/` 下全新的 development 输出目录。 |
@@ -293,25 +296,25 @@ higgsml-train develop --input-run runs/preprocess-<id> --protocol config/adversa
 在完成第 5 节的同一个 shell 中运行：
 
 ```bash
-export DEVELOPMENT_RUN="runs/mlp-development-$(date -u +%Y%m%dT%H%M%SZ)"; higgsml-train develop --input-run "$PREPROCESS_RUN" --protocol config/adversarial_mlp_protocol_normal.yaml --run-dir "$DEVELOPMENT_RUN"
+higgsml-train --input-run runs/preprocess-example --protocol config/adversarial_mlp_protocol_normal.yaml --run-dir runs/mlp-development-example
 ```
 
 使用已经修改的 Debug protocol 运行：
 
 ```bash
-export DEBUG_DEVELOPMENT_RUN="runs/mlp-development-debug-$(date -u +%Y%m%dT%H%M%SZ)"; higgsml-train develop --input-run "$PREPROCESS_RUN" --protocol runs/adversarial_mlp_protocol_debug.local.yaml --run-dir "$DEBUG_DEVELOPMENT_RUN"
+higgsml-train --input-run runs/preprocess-example --protocol runs/adversarial_mlp_protocol_debug.local.yaml --run-dir runs/mlp-development-debug-example
 ```
 
 读取 Debug 资格状态：
 
 ```bash
-python -c "import json, os; print(json.load(open(os.path.join(os.environ['DEBUG_DEVELOPMENT_RUN'], 'artifacts/qualification.json'), encoding='utf-8'))['status'])"
+python -c "import json; print(json.load(open('runs/mlp-development-debug-example/artifacts/qualification.json', encoding='utf-8'))['status'])"
 ```
 
 训练完成后读取资格状态：
 
 ```bash
-python -c "import json, os; print(json.load(open(os.path.join(os.environ['DEVELOPMENT_RUN'], 'artifacts/qualification.json'), encoding='utf-8'))['status'])"
+python -c "import json; print(json.load(open('runs/mlp-development-example/artifacts/qualification.json', encoding='utf-8'))['status'])"
 ```
 
 Development 有两个正常终态：
@@ -383,7 +386,7 @@ Normal 的 AUC、KS、效率目标和 threshold 选择规则全部冻结，不�
 
 ## 8. 执行 Held-out Test（非 pytest）
 
-`higgsml-train open-test` 是对 held-out MC test split 的一次性模型评价，与第 4.3 节的代码测试不同。执行前必须同时满足：
+`higgsml-test` 是对 held-out MC test split 的模型评价，与第 4.3 节的代码测试不同。执行前必须同时满足：
 
 1. Development run 使用 Normal protocol，且 `artifacts/qualification.json` 和 manifest 状态均为 `eligible`。
 2. `model/model.pt`、`model/scaler.json`、working points 和全部哈希绑定完整。
@@ -393,21 +396,30 @@ Normal 的 AUC、KS、效率目标和 threshold 选择规则全部冻结，不�
 命令格式：
 
 ```bash
-higgsml-train open-test --development-run runs/mlp-development-<id> --run-dir runs/mlp-test-<unique-id> --authorization-reference <external-approval-reference>
+higgsml-test --train-run runs/mlp-development-<id> --run-dir runs/mlp-test-<unique-id> [--authorization-reference <external-approval-reference>]
 ```
 
-`higgsml-train open-test` 参数如下：
+不提供 `--authorization-reference` 时，可直接执行：
+
+```bash
+higgsml-test --train-run runs/mlp-development-<id> --run-dir runs/mlp-test-repeat-<unique-id>
+```
+
+该模式可对同一个 development run 重复执行 test，但每次都必须替换 `<unique-id>`，使用一个
+尚不存在的新 `--run-dir`。
+
+`higgsml-test` 参数如下：
 
 | 参数 | 必填 | 含义与用法 |
 |---|---|---|
-| `open-test` | 是 | 选择一次性 held-out MC test 评价子命令；不会重新训练或重新选择阈值。 |
-| `--development-run <path>` | 是 | 指定完整、冻结且状态为 `eligible` 的 development run。 |
+| `--train-run <path>` | 是 | 指定完整、冻结且状态为 `eligible` 的 development run。 |
 | `--run-dir <path>` | 是 | 指定 `runs/` 下全新的 test 输出目录。 |
-| `--authorization-reference <value>` | 是 | 指定外部批准记录的公开、非敏感审计标识。 |
+| `--authorization-reference <value>` | 否 | 指定公开、非敏感审计标识并启用一次性 claim；省略时允许用新输出目录重复评价。 |
+| `--no-progress` | 否 | 关闭输入校验、held-out 评分、产物发布和结果收尾的阶段进度条。 |
 
 ### 8.1 配置 authorization reference
 
-`--authorization-reference` 是命令行参数，不写入 preprocess 或 training YAML。将占位符替换为审批系统中对应的工单号、批准记录编号或其他稳定短标识，例如：
+`--authorization-reference` 是可选命令行参数，不写入 preprocess 或 training YAML。提供时将占位符替换为公开、非敏感的稳定短标识，并启用一次性 claim；省略时不会写 development state，可用不同的新输出目录重复执行 test。例如：
 
 ```text
 MLP-TEST-APPROVAL-2026-09-03-001
@@ -427,10 +439,29 @@ MLP-TEST-APPROVAL-2026-09-03-001
 确认授权和 development run 后，在同一个 shell 中执行：
 
 ```bash
-export AUTHORIZATION_REFERENCE="MLP-TEST-APPROVAL-2026-09-03-001"; export TEST_RUN="runs/mlp-test-$(date -u +%Y%m%dT%H%M%SZ)"; higgsml-train open-test --development-run "$DEVELOPMENT_RUN" --run-dir "$TEST_RUN" --authorization-reference "$AUTHORIZATION_REFERENCE"
+higgsml-test --train-run runs/mlp-development-example --run-dir runs/mlp-test-example --authorization-reference MLP-TEST-APPROVAL-EXAMPLE
 ```
 
 命令在读取 test 特征前，会在源 development run 中原子创建永久的 `state/test_opening.json`。同一个 development run 只能开启一次；claim 创建后，即使运行失败或中断，也不得直接重试。
+
+命令默认显示四阶段进度条。成功后会在终端打印量化评价结果，格式如下（数值仅为格式示例）：
+
+```text
+HiggsML held-out test results
+Status          PASS (test_reproduced)
+Selected lambda 0.100000
+Test rows       39,709 (39,709 unique; complete)
+Weighted AUC    0.842315  required >= 0.800000  PASS
+
+Working points
+Name    Threshold   Bkg target   Bkg actual   Signal eff.   KS         Result
+loose    0.873660     0.500000     0.501200      0.965400   0.082100   PASS
+medium   0.972876     0.200000     0.201100      0.687300   0.093200   PASS
+tight    0.984812     0.100000     0.100500      0.462100   0.098700   PASS
+Requirements: KS <= 0.100000; signal efficiency > achieved background efficiency.
+Rejection reasons: none
+Metrics file: runs\mlp-test-example\artifacts\test_metrics.json
+```
 
 Test run 的主要产物如下：
 
@@ -445,7 +476,7 @@ Test run 的主要产物如下：
 读取 test 终态：
 
 ```bash
-python -c "import json, os; print(json.load(open(os.path.join(os.environ['TEST_RUN'], 'artifacts/test_metrics.json'), encoding='utf-8'))['status'])"
+python -c "import json; print(json.load(open('runs/mlp-test-example/artifacts/test_metrics.json', encoding='utf-8'))['status'])"
 ```
 
 正常 test 终态包括：
@@ -483,7 +514,7 @@ Neural CLI 使用以下稳定退出码：
 | `5` | 资格或 test-opening 被拒绝 |
 | `70` | 未预期的内部错误 |
 
-### 找不到 `higgsml-preprocess` 或 `higgsml-train`
+### 找不到 `higgsml-preprocess`、`higgsml-train` 或 `higgsml-test`
 
 确认已经进入 `neural/`、激活 `pytorch` 环境，并执行过：
 
@@ -496,7 +527,7 @@ python -m pip install --no-deps -e .
 不要删除或覆盖已有 run。重新生成一个目录名并再次运行相应阶段：
 
 ```bash
-export PREPROCESS_RUN="runs/preprocess-$(date -u +%Y%m%dT%H%M%SZ)"
+higgsml-preprocess --protocol config/preprocess_protocol_v1.yaml --run-config runs/preprocess_run.local.yaml --run-dir runs/preprocess-retry-example
 ```
 
 ### Development 成功但没有 `model.pt`

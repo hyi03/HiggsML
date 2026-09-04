@@ -177,7 +177,7 @@ def validate_checkpoint(checkpoint: dict[str, Any], protocol: TrainingProtocol, 
 def _environment() -> dict[str, Any]:
     return {
         "os": platform.system(), "architecture": platform.machine(), "python": sys.version.split()[0],
-        "pytorch": torch.__version__, "device": "cpu", "dtype": "float32", "threads": torch.get_num_threads(),
+        "pytorch": str(torch.__version__), "device": "cpu", "dtype": "float32", "threads": torch.get_num_threads(),
         "data_loader_workers": 0, "deterministic_algorithms": torch.are_deterministic_algorithms_enabled(),
     }
 

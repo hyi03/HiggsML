@@ -17,7 +17,7 @@
 
 ## 目标
 
-在 `neural/` 中建设一个不依赖 `xgboost/` 运行时代码的独立 Python 工程，将最终 MC 预处理与质量去相关训练收敛为 `higgsml-preprocess` 和 `higgsml-train` 两个可执行程序。系统应以可复现、可审计、fail-closed 的方式完成 Base14 + Angular5 预处理、对抗式 MLP development OOF 资格判断，以及仅在额外明确授权后进行的一次性 held-out MC test-opening。
+在 `neural/` 中建设一个不依赖 `xgboost/` 运行时代码的独立 Python 工程，将最终 MC 预处理、质量去相关训练与 held-out test 评价分别收敛为 `higgsml-preprocess`、`higgsml-train` 和 `higgsml-test` 三个可执行程序。系统应以可复现、可审计、fail-closed 的方式完成 Base14 + Angular5 预处理、对抗式 MLP development OOF 资格判断，以及 held-out MC test-opening。
 
 该工程只用于教育与技术方法演示，不构成 ATLAS 结果、Higgs 发现或物理测量。
 
@@ -41,7 +41,7 @@
 
 - Conda 环境名称固定为 `pytorch`；`environment.yml` 声明跨平台直接依赖，`osx.yml` 锁定权威 `osx-arm64` 环境，`win.yml` 锁定 `win-64` 开发与测试环境。
 - Windows 运行只可作为开发验证，不得声明与权威 ARM64 run 精确等价。
-- `pyproject.toml` 只能发布 `higgsml-preprocess` 与 `higgsml-train` 两个 console entry point。
+- `pyproject.toml` 只能发布 `higgsml-preprocess`、`higgsml-train` 与 `higgsml-test` 三个 console entry point。
 - `neural` 运行时代码不得导入或调用 `xgboost/src`；旧工程只可作为行为比对与只读数据来源。
 - CLI 只负责参数解析和调用 application service，科学计算不得放在 CLI 或 artifact 发布层。
 
@@ -79,10 +79,10 @@
 - 无合格候选时终态必须为 `no_eligible_candidate`，不得生成最终模型或允许 test-opening。
 - 有合格候选时，只可使用全部 development 数据拟合并封存 scaler 和模型；最终 epoch 数取五折最佳 epoch 的中位数并取最近整数，不得读取 test 特征或重新早停。
 
-### FR-001-R5 显式一次性 test-opening
+### FR-001-R5 可选一次性 test-opening
 
-- `higgsml-train open-test` 必须是独立子命令，且只有在 development run 已冻结、eligible、证据哈希完整并获得用户另行明确授权时才可执行。
-- 必须通过原子 claim 占用唯一 test-opening 槽位；成功或失败均写收据，重复开启必须被拒绝。
+- `higgsml-test` 必须是独立命令，且只有在 development run 已冻结、eligible、证据哈希完整时才可执行。
+- 提供 authorization reference 时必须通过原子 claim 占用唯一 test-opening 槽位；成功或失败均写收据，重复开启必须被拒绝。省略该参数时不创建 development claim，并允许使用新的输出目录重复开启。
 - Test 只能评价冻结模型与 OOF 冻结阈值，结论只能是 `test_reproduced` 或 `test_nonreproduction`。
 - Test 结果不得触发重训、调参、改阈值、扩展候选或放宽门槛。
 
@@ -156,7 +156,7 @@
 
 ## 验收要点
 
-- `neural/` 可独立安装，运行时不导入 `xgboost/src`，且只有两个对外程序。
+- `neural/` 可独立安装，运行时不导入 `xgboost/src`，且只有三个对外程序。
 - 全量预处理得到 199,104 行、规定的 19 项特征和完整 provenance，Higgs/ZZ 数量分别为 187,128/11,976。
 - v1 模型只消费固定 15 项特征，禁止字段与 test 数据均无法泄漏进 development 决策。
 - 五候选五折 OOF、工作点、资格门槛、tie-break 和终态均严格遵循 protocol。

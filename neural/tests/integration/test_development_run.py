@@ -369,7 +369,6 @@ def test_train_cli_dispatch_and_exit_mapping(monkeypatch: pytest.MonkeyPatch) ->
         captured.append(kwargs)
 
     arguments = [
-        "develop",
         "--input-run", "runs/input",
         "--protocol", "config/adversarial_mlp_protocol_normal.yaml",
         "--run-dir", "runs/output",

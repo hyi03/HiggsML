@@ -21,13 +21,16 @@ authoritative ARM64 run.
 - Signed `physical_weight` is for physical-yield reporting. Optimizer weights
   use the protocol-defined normalized absolute weight.
 - Development may not read held-out test feature values. Test opening requires
-  an eligible frozen development run and separate explicit user authorization.
+  an eligible frozen development run. Supplying an authorization reference
+  enables the durable one-shot claim; omitting it allows repeatable evaluation
+  with a new output run directory for each invocation.
 - Do not relax AUC, KS, efficiency, candidate, epoch, architecture, or threshold
   rules after seeing results.
 - `adversarial_mlp_protocol_debug.yaml` is the only diagnostic exception: a
   user may set `qualification.auc_minimum` and `qualification.ks_maximum`
   before starting a new run. All other fields remain sealed, the exact debug
-  bytes/hash must be recorded, and debug runs may never open held-out test.
+  bytes/hash must be recorded, and eligible debug runs use the same optional
+  authorization-reference behavior as normal runs.
 - Frozen and failed runs are immutable. Every run uses a new path and retains
   its audit evidence.
 - Describe all output as an educational/technical demo, never an ATLAS result,

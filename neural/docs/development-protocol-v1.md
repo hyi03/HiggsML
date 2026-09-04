@@ -55,7 +55,7 @@ type-strict、mapping-order-strict、list-order-strict、missing/extra/value mut
 `config/adversarial_mlp_protocol_debug.yaml` 复用相同结构，只允许在 development 开始前修改
 `qualification.auc_minimum` 和 `qualification.ks_maximum`。两项必须是 `[0.0, 1.0]` 内的有限
 浮点数；其余字段继续与 Normal exact 一致。每个 Debug run 保存实际 YAML bytes、SHA-256 和
-protocol snapshot。Debug 可以按其门槛生成 final model/scaler，但不能进入 held-out test-opening。
+protocol snapshot。Debug 可以按其门槛生成 final model/scaler；状态为 `eligible` 且通过完整绑定校验时，可以进入 held-out test-opening。提供审计引用时使用一次性 claim，省略时允许以新输出目录重复评价。
 
 实现必须同步扩展 `src/training/config.py::_NORMAL_EXPECTED`，否则 strict comparator 应当并确实会拒绝
 新增 YAML keys。这里的 SHA-256 fold hash 与 M1-02 preprocess split 的 BLAKE2b hash 是两个不同

@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 import torch
 import yaml
+from tqdm.auto import tqdm
 
 from src.artifacts.manifest import canonical_json_bytes, peak_memory_bytes, sha256_file, software_record, write_canonical_json
 from src.artifacts.plots import write_test_plots
@@ -105,6 +106,8 @@ class _ClaimPathError(RunPathError):
 class TestOpeningResult:
     status: str
     run_dir: Path
+    metrics: dict[str, Any]
+    qualification_rules: dict[str, float | bool]
 
 
 @dataclass(frozen=True)
@@ -133,7 +136,9 @@ def _finite_number(value: Any) -> bool:
     return type(value) in {int, float} and np.isfinite(float(value))
 
 
-def _authorization_reference(value: Any) -> str:
+def _authorization_reference(value: Any) -> str | None:
+    if value is None:
+        return None
     reference = value.strip() if type(value) is str else ""
     if not reference:
         raise TestOpeningRefused("authorization reference is blank")
@@ -177,8 +182,6 @@ def _development_manifest(run: Path) -> tuple[dict[str, Any], str]:
     input_hashes = manifest.get("input")
     protocol = manifest.get("protocol")
     performance = manifest.get("performance")
-    if isinstance(protocol, dict) and protocol.get("id") == DEBUG_PROTOCOL_ID:
-        raise TestOpeningRefused("debug development runs cannot open held-out test")
     if (
         manifest.get("schema_version") != "development-manifest-v1"
         or manifest.get("run_type") != "development"
@@ -199,7 +202,7 @@ def _development_manifest(run: Path) -> tuple[dict[str, Any], str]:
         or any(not _hex_sha(value) for value in input_hashes.values())
         or not isinstance(protocol, dict)
         or set(protocol) != {"id", "sha256"}
-        or protocol.get("id") != NORMAL_PROTOCOL_ID
+        or protocol.get("id") not in {NORMAL_PROTOCOL_ID, DEBUG_PROTOCOL_ID}
         or not _hex_sha(protocol.get("sha256"))
         or not isinstance(selection, dict)
         or set(selection) != {"selected_lambda", "final_epochs"}
@@ -441,15 +444,14 @@ def _load_binding(development_run: str | Path, *, allowed_root: str | Path) -> _
     } or config.get("schema_version") != "development-config-v1" or not isinstance(config.get("protocol"), dict):
         raise InputBindingError("development config binding changed")
     protocol = config["protocol"]
-    if protocol.get("protocol_id") == DEBUG_PROTOCOL_ID:
-        raise TestOpeningRefused("debug development runs cannot open held-out test")
     _validate_protocol_manifest_binding(protocol, manifest)
     protocol_sha = config.get("protocol_sha256")
+    protocol_id = protocol.get("protocol_id")
     selection = manifest.get("selection")
     if (
         not _hex_sha(protocol_sha)
         or manifest.get("protocol")
-        != {"id": NORMAL_PROTOCOL_ID, "sha256": protocol_sha}
+        != {"id": protocol_id, "sha256": protocol_sha}
         or not isinstance(selection, dict)
         or selection["selected_lambda"] not in TARGET_LAMBDAS
     ):
@@ -470,7 +472,15 @@ def _load_binding(development_run: str | Path, *, allowed_root: str | Path) -> _
     if scaler.fitting_rows != manifest["counts"]["development_rows"]:
         raise InputBindingError("frozen scaler row binding changed")
     try:
-        payload = torch.load(run / "model/model.pt", map_location="cpu", weights_only=True)
+        # PyTorch 2.7 serializes torch.__version__ as this str subclass in
+        # historical checkpoints. Keep weights-only loading and allow just
+        # that inert metadata type.
+        with torch.serialization.safe_globals([torch.torch_version.TorchVersion]):
+            payload = torch.load(
+                run / "model/model.pt",
+                map_location="cpu",
+                weights_only=True,
+            )
     except Exception as error:
         raise InputBindingError("frozen model cannot be loaded") from error
     model_keys = {
@@ -767,7 +777,7 @@ def _write_success_artifacts(
     scores: pd.DataFrame,
     metrics: dict[str, Any],
     *,
-    authorization: str,
+    authorization: str | None,
     started: float,
     started_utc: str,
 ) -> None:
@@ -876,7 +886,7 @@ def _write_success_artifacts(
 def _failure_state(
     binding: _Binding,
     transaction: RunTransaction,
-    authorization: str,
+    authorization: str | None,
     error: BaseException,
     *,
     claimed_at_utc: str,
@@ -907,7 +917,7 @@ def _store_failure_state(
     state: Path,
     binding: _Binding,
     transaction: RunTransaction,
-    authorization: str,
+    authorization: str | None,
     error: BaseException,
     *,
     claimed_at_utc: str,
@@ -931,80 +941,93 @@ def _store_failure_state(
         error.add_note("test-opening terminal state could not be durably updated")
 
 
-def execute_test_opening(
+def _execute_test_opening(
     *,
     development_run: str | Path,
     run_dir: str | Path,
-    authorization_reference: str,
+    authorization_reference: str | None = None,
     allowed_root: str | Path,
+    progress: Any,
 ) -> TestOpeningResult:
     started = time.perf_counter()
     started_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     authorization = _authorization_reference(authorization_reference)
+    one_shot = authorization is not None
     transaction = RunTransaction(
         run_dir,
         allowed_root=allowed_root,
-        safe_failure_message="test-opening failed; see development state receipt",
+        safe_failure_message=(
+            "test-opening failed; see development state receipt"
+            if one_shot
+            else "test-opening failed"
+        ),
         safe_failure_stage="output_transaction",
     )
     output_staging = transaction.path
     try:
         prechecked_run = _bound_input_run(development_run, allowed_root)
         state_candidate = prechecked_run / "state" / "test_opening.json"
-        if os.path.lexists(state_candidate):
+        if one_shot and os.path.lexists(state_candidate):
             raise TestOpeningRefused("development run already has a test-opening state")
         binding = _load_binding(prechecked_run, allowed_root=allowed_root)
-        if os.path.lexists(state_candidate):
+        if one_shot and os.path.lexists(state_candidate):
             raise TestOpeningRefused("development run already has a test-opening state")
     except BaseException:
         transaction.abort_without_receipt()
         raise
     claimed_at_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    try:
-        state = _claim(
-            binding,
-            output_run=transaction.run_dir,
-            authorization=authorization,
-            staging=transaction.path,
-            claimed_at_utc=claimed_at_utc,
-        )
-    except TestOpeningRefused:
-        transaction.abort_without_receipt()
-        raise
-    except _ClaimPathError as error:
-        if not error.claim_created:
-            transaction.abort_without_receipt()
-            if os.path.lexists(state_candidate):
-                raise TestOpeningRefused(
-                    "development run already has a test-opening state"
-                ) from error
-            raise
-        wrapped = TestOpeningFailure("claim_durability", ExitCode.TRANSACTION)
+    state: Path | None = None
+    if one_shot:
+        assert authorization is not None
         try:
-            with transaction:
-                raise wrapped from error
-        except TestOpeningFailure:
-            pass
-        _store_failure_state(
-            state_candidate,
-            binding,
-            transaction,
-            authorization,
-            wrapped,
-            claimed_at_utc=claimed_at_utc,
-            output_staging=output_staging,
-            test_features_opened=False,
-        )
-        raise wrapped from error
-    except BaseException:
-        transaction.abort_without_receipt()
-        raise
+            state = _claim(
+                binding,
+                output_run=transaction.run_dir,
+                authorization=authorization,
+                staging=transaction.path,
+                claimed_at_utc=claimed_at_utc,
+            )
+        except TestOpeningRefused:
+            transaction.abort_without_receipt()
+            raise
+        except _ClaimPathError as error:
+            if not error.claim_created:
+                transaction.abort_without_receipt()
+                if os.path.lexists(state_candidate):
+                    raise TestOpeningRefused(
+                        "development run already has a test-opening state"
+                    ) from error
+                raise
+            wrapped = TestOpeningFailure("claim_durability", ExitCode.TRANSACTION)
+            try:
+                with transaction:
+                    raise wrapped from error
+            except TestOpeningFailure:
+                pass
+            _store_failure_state(
+                state_candidate,
+                binding,
+                transaction,
+                authorization,
+                wrapped,
+                claimed_at_utc=claimed_at_utc,
+                output_staging=output_staging,
+                test_features_opened=False,
+            )
+            raise wrapped from error
+        except BaseException:
+            transaction.abort_without_receipt()
+            raise
+    progress.update(1)
+    progress.set_description("test score held-out MC")
     opened = False
     try:
         with transaction:
             try:
                 opened = True
                 scores, metrics = _evaluate(binding)
+                progress.update(1)
+                progress.set_description("test publish artifacts")
             except InputBindingError as error:
                 raise TestOpeningFailure("test_frame_binding", ExitCode.INPUT_BINDING) from error
             except TestOpeningFailure:
@@ -1029,29 +1052,49 @@ def execute_test_opening(
                 raise TestOpeningFailure("publication_internal", ExitCode.INTERNAL_ERROR) from error
     except RunPathError as error:
         wrapped = TestOpeningFailure("output_transaction", ExitCode.TRANSACTION)
-        _store_failure_state(
-            state,
-            binding,
-            transaction,
-            authorization,
-            wrapped,
-            claimed_at_utc=claimed_at_utc,
-            output_staging=output_staging,
-            test_features_opened=opened,
-        )
+        if state is not None:
+            _store_failure_state(
+                state,
+                binding,
+                transaction,
+                authorization,
+                wrapped,
+                claimed_at_utc=claimed_at_utc,
+                output_staging=output_staging,
+                test_features_opened=opened,
+            )
         raise wrapped from error
     except BaseException as error:
-        _store_failure_state(
-            state,
-            binding,
-            transaction,
-            authorization,
-            error,
-            claimed_at_utc=claimed_at_utc,
-            output_staging=output_staging,
-            test_features_opened=opened,
-        )
+        if state is not None:
+            _store_failure_state(
+                state,
+                binding,
+                transaction,
+                authorization,
+                error,
+                claimed_at_utc=claimed_at_utc,
+                output_staging=output_staging,
+                test_features_opened=opened,
+            )
         raise
+    progress.update(1)
+    progress.set_description("test finalize result")
+    rules = binding.protocol["qualification"]
+    qualification_rules: dict[str, float | bool] = {
+        "auc_minimum": float(rules["auc_minimum"]),
+        "ks_maximum": float(rules["ks_maximum"]),
+        "signal_efficiency_strictly_greater_than_background": True,
+    }
+    if state is None:
+        LOGGER.info(
+            "repeatable test-opening complete: status=%s run_dir=%s",
+            metrics["status"],
+            transaction.run_dir,
+        )
+        progress.update(1)
+        return TestOpeningResult(
+            metrics["status"], transaction.run_dir, metrics, qualification_rules
+        )
     try:
         manifest_sha = sha256_file(transaction.run_dir / "artifacts/manifest.json")
     except BaseException as error:
@@ -1093,4 +1136,31 @@ def execute_test_opening(
         metrics["status"],
         transaction.run_dir,
     )
-    return TestOpeningResult(metrics["status"], transaction.run_dir)
+    progress.update(1)
+    return TestOpeningResult(
+        metrics["status"], transaction.run_dir, metrics, qualification_rules
+    )
+
+
+def execute_test_opening(
+    *,
+    development_run: str | Path,
+    run_dir: str | Path,
+    authorization_reference: str | None = None,
+    allowed_root: str | Path,
+    show_progress: bool = False,
+) -> TestOpeningResult:
+    with tqdm(
+        total=4,
+        desc="test validate frozen run",
+        unit="stage",
+        dynamic_ncols=True,
+        disable=not show_progress,
+    ) as progress:
+        return _execute_test_opening(
+            development_run=development_run,
+            run_dir=run_dir,
+            authorization_reference=authorization_reference,
+            allowed_root=allowed_root,
+            progress=progress,
+        )
