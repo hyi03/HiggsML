@@ -32,7 +32,7 @@ flowchart LR
 2. `higgsml-train` 只使用 development split 完成五折 OOF 训练、候选比较和资格判断。
 3. `higgsml-test` 在 development 合格且另有明确授权后，对 held-out MC test split 进行冻结模型评价。
 
-数据、特征、网络、候选和训练规则都由版本化 protocol 绑定。Normal 的资格门槛保持冻结；Debug 只允许在开始一个新 run 前修改 AUC 和 KS 门槛，不能改变已经发布的 run；eligible Debug run 沿用相同 test-opening 规则。
+数据、特征、网络、候选和训练规则都由版本化 protocol 绑定。Normal 的资格门槛保持冻结。Debug 是显式诊断模式：可使用关闭 `m4l` 质量窗的预处理协议，并通过训练命令的 `--debug` 放开输入 run 与训练协议的 SHA/封存校验；不能改变已经发布的 run，也不能用于 held-out test。
 
 ## 2. 运行约定
 
@@ -124,7 +124,36 @@ conda run -n pytorch higgsml-test --dataset atlas2020_4lep --train-run runs/atla
 
 可选 `--authorization-reference <公开审计引用>` 启用持久化一次性 claim；省略时允许新的输出目录重复评价。test 不训练、重拟合 scaler 或重选阈值。`no_eligible_candidate` 是正常科学终态，禁止开启 test。三条命令支持 `--no-progress`。
 
-Normal 特征、网络、候选及资格规则不变；Debug v2 仅允许运行前调整 AUC/KS 两项门槛。成功/失败 runs 不可覆盖，不能用 test 反馈选择数据集或调参。
+Normal 特征、网络、候选及资格规则不变。训练协议的 debug 模式允许在运行前修改诊断参数，并跳过封存快照比较；这些改动只作用于新建的 debug run。成功/失败 runs 不可覆盖，不能用 test 反馈选择数据集或调参。
+
+### 4.1 Debug：关闭预处理 m4l 质量窗
+
+`config/preprocess_protocol_debug.yaml` 将 `selection.m4l_window_gev` 设为 `null`，因此预处理不执行默认的 `105 <= m4l < 160 GeV` 分析质量窗。debug 协议按 `protocol_id: higgsml-preprocess-debug` 识别，不依赖文件名，也不要求协议内容匹配正式 v2 的 SHA。原始 ROOT、数据集定义、DSID、entry count 和下载 receipt 的校验仍然执行。
+
+```powershell
+conda run -n pytorch higgsml-preprocess `
+  --dataset atlas2020_4lep `
+  --protocol config/preprocess_protocol_debug.yaml `
+  --run-config config/preprocess_run.example.yaml `
+  --run-dir runs/atlas2020_4lep/preprocess-debug-001
+```
+
+### 4.2 Debug development 训练
+
+训练的 debug 状态只由 `--debug` 决定，不根据 `--protocol` 文件名或 protocol ID 自动推断。在该模式下，reader 不比较 `--input-run` 记录的文件 SHA、canonical SHA、预处理协议 SHA 和 run-config SHA；训练协议仍须是可解析 YAML 并包含运行所需字段，但不执行正式封存快照比较。数据集身份、目录安全、31 列输入结构、有限数值、来源事件身份以及 development/test 分区隔离仍然校验。
+
+```powershell
+conda run -n pytorch higgsml-train `
+  --debug `
+  --dataset atlas2020_4lep `
+  --input-run runs/atlas2020_4lep/preprocess-debug-001 `
+  --protocol config/adversarial_mlp_protocol_debug_v2.yaml `
+  --run-dir runs/atlas2020_4lep/development-debug-001
+```
+
+关闭质量窗后，debug 训练接受任意有限的 `m4l`。低于 105 GeV 的背景进入第一个 adversary overflow bin，高于 160 GeV 的背景进入最后一个 overflow bin。当前 adversary 的内部 11 个箱仍对应 105–160 GeV，因此宽质量范围结果只用于诊断；全范围 AUC 不能与正式窗口内 AUC 直接比较。
+
+如果某个 debug run 已失败或已成功发布，下一次运行必须换用新名称，例如 `preprocess-debug-002` 或 `development-debug-002`。2025 debug 运行将数据集名称和全部上下游路径一致替换为 `atlas2025_exactly4lep`。不要把 debug development run 传给 `higgsml-test`。
 
 ## 5. 验证与文档
 
