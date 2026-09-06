@@ -8,18 +8,11 @@ from src.config import InputBindingError
 from src.training.dataset import ValidatedDevelopment
 
 
-def fold_index_for_identity(source_sample: str, source_entry: int) -> int:
-    if (
-        type(source_sample) is not str
-        or not source_sample
-        or "\x00" in source_sample
-        or type(source_entry) is not int
-        or source_entry < 0
-    ):
-        raise InputBindingError("canonical identity is invalid for fold assignment")
-    payload = source_sample.encode("utf-8") + b"\x00" + str(source_entry).encode("ascii")
-    digest = hashlib.sha256(payload).digest()
-    return int.from_bytes(digest[:8], byteorder="big", signed=False) % 5
+def fold_index_for_identity(event_group_id: str) -> int:
+    if not isinstance(event_group_id, str) or not event_group_id or "\x00" in event_group_id:
+        raise InputBindingError("physical event group is invalid")
+    digest = hashlib.sha256(event_group_id.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big") % 5
 
 
 def assign_folds(development: ValidatedDevelopment) -> np.ndarray:
@@ -33,7 +26,7 @@ def assign_folds(development: ValidatedDevelopment) -> np.ndarray:
     if len(set(normalized)) != len(normalized):
         raise InputBindingError("canonical identity is not unique for fold assignment")
     folds = np.asarray(
-        [fold_index_for_identity(sample, entry) for sample, entry in normalized],
+        [fold_index_for_identity(group) for group in frame["event_group_id"]],
         dtype=np.int64,
     )
     if folds.shape != (len(frame),) or np.any(folds < 0) or np.any(folds >= 5):

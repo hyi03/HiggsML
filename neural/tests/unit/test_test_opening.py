@@ -1,4 +1,5 @@
 from __future__ import annotations
+from src.dataset_binding import dataset_context
 
 from concurrent.futures import ThreadPoolExecutor
 import gzip
@@ -29,8 +30,8 @@ from tests.integration.test_development_run import _install_fast_pipeline
 
 
 PROJECT = Path(__file__).resolve().parents[2]
-PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal.yaml"
-DEBUG_PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_debug.yaml"
+PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal_v2.yaml"
+DEBUG_PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_debug_v2.yaml"
 AUTHORIZATION = "synthetic-fixture-only"
 
 
@@ -45,7 +46,7 @@ def eligible_development(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         protocol_path=PROTOCOL,
         run_dir=development,
         allowed_root=allowed_root,
-    )
+     dataset="atlas2020_4lep")
     assert result.status == "eligible"
     return allowed_root, development, preprocess, full_frame
 
@@ -102,7 +103,7 @@ def test_synthetic_opening_without_authorization_can_be_repeated_without_state(
         development_run=development,
         run_dir=output,
         allowed_root=allowed_root,
-    )
+     dataset="atlas2020_4lep")
 
     assert result.status in {"test_reproduced", "test_nonreproduction"}
     assert set(path.relative_to(output).as_posix() for path in output.rglob("*") if path.is_file()) == {
@@ -122,7 +123,7 @@ def test_synthetic_opening_without_authorization_can_be_repeated_without_state(
     manifest_bytes = (output / "artifacts/manifest.json").read_bytes()
     manifest = json.loads(manifest_bytes)
     assert manifest_bytes == canonical_json_bytes(manifest)
-    assert manifest["schema_version"] == "test-manifest-v1"
+    assert manifest["schema_version"] == "test-manifest-v2"
     assert manifest["run_type"] == "test_opening"
     assert manifest["authorization_reference"] is None
     assert manifest["counts"]["test_rows"] == len(scores)
@@ -155,7 +156,7 @@ def test_synthetic_opening_without_authorization_can_be_repeated_without_state(
         development_run=development,
         run_dir=second_output,
         allowed_root=allowed_root,
-    )
+     dataset="atlas2020_4lep")
     assert second.status in {"test_reproduced", "test_nonreproduction"}
     assert (second_output / "artifacts/manifest.json").is_file()
     assert not (development / "state/test_opening.json").exists()
@@ -172,7 +173,7 @@ def test_blank_authorization_refuses_before_claim(
             run_dir=blank_output,
             authorization_reference="  ",
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
     assert not blank_output.exists()
     assert not (development / "state").exists()
 
@@ -189,7 +190,7 @@ def test_debug_development_can_open_test(
         protocol_path=DEBUG_PROTOCOL,
         run_dir=development,
         allowed_root=allowed_root,
-    )
+     dataset="atlas2020_4lep")
     assert result.status == "eligible"
     assert (development / "model/model.pt").is_file()
 
@@ -199,7 +200,7 @@ def test_debug_development_can_open_test(
         run_dir=output,
         authorization_reference=AUTHORIZATION,
         allowed_root=allowed_root,
-    )
+     dataset="atlas2020_4lep")
 
     assert opening.status in {"test_reproduced", "test_nonreproduction"}
     manifest = json.loads((output / "artifacts/manifest.json").read_bytes())
@@ -228,7 +229,7 @@ def test_development_artifact_tamper_refuses_before_claim(
             run_dir=tamper_output,
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
     assert not tamper_output.exists()
     assert not (development / "state").exists()
 
@@ -257,14 +258,14 @@ def test_adjusted_manifest_cannot_hide_scaler_binding_drift(
             run_dir=output,
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
     assert not output.exists()
     assert not (development / "state").exists()
 
 
 def test_preprocess_table_drift_refuses_before_claim(eligible_development) -> None:
     allowed_root, development, preprocess, _ = eligible_development
-    table = preprocess / "processed/mc_events.csv.gz"
+    table = preprocess / "processed/development_events.csv.gz"
     table.write_bytes(table.read_bytes() + b"tamper")
     output = allowed_root / "preprocess-drift"
 
@@ -274,7 +275,7 @@ def test_preprocess_table_drift_refuses_before_claim(eligible_development) -> No
             run_dir=output,
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
     assert not output.exists()
     assert not (development / "state").exists()
 
@@ -289,7 +290,7 @@ def test_missing_required_model_refuses_before_claim(eligible_development) -> No
             run_dir=output,
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
     assert not output.exists()
     assert not (development / "state").exists()
 
@@ -306,7 +307,7 @@ def test_no_eligible_development_is_refused_without_claim(
         protocol_path=PROTOCOL,
         run_dir=development,
         allowed_root=allowed_root,
-    )
+     dataset="atlas2020_4lep")
     assert result.status == "no_eligible_candidate"
 
     output = allowed_root / "refused-test-opening"
@@ -316,7 +317,7 @@ def test_no_eligible_development_is_refused_without_claim(
             run_dir=output,
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
     assert not output.exists()
     assert not (development / "state").exists()
 
@@ -344,7 +345,7 @@ def test_sensitive_authorization_reference_is_refused_before_output(
             run_dir=output,
             authorization_reference=reference,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
     assert not output.exists()
     assert not (development / "state").exists()
 
@@ -374,7 +375,7 @@ def test_adjusted_manifest_cannot_hide_working_point_schema_drift(
             run_dir=output,
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
     assert not output.exists()
     assert not (development / "state").exists()
 
@@ -389,7 +390,7 @@ def test_output_path_escape_and_existing_output_refuse_before_claim(
             run_dir=tmp_path / "outside",
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
     existing = allowed_root / "existing"
     existing.mkdir()
     with pytest.raises(RunPathError):
@@ -398,7 +399,7 @@ def test_output_path_escape_and_existing_output_refuse_before_claim(
             run_dir=existing,
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
     assert not (development / "state").exists()
 
 @pytest.mark.parametrize("payload", [b"", b"{", b'{"status":"claimed"}\n'])
@@ -417,7 +418,7 @@ def test_any_existing_state_permanently_refuses_and_aborts_staging(
             run_dir=output,
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
 
     assert not output.exists()
     assert not list(allowed_root.glob(f".{output.name}.*.tmp"))
@@ -425,7 +426,7 @@ def test_any_existing_state_permanently_refuses_and_aborts_staging(
 
 def test_atomic_claim_allows_exactly_one_concurrent_winner(eligible_development) -> None:
     allowed_root, development, _, _ = eligible_development
-    binding = _load_binding(development, allowed_root=allowed_root)
+    binding = _load_binding(development, allowed_root=allowed_root, dataset="atlas2020_4lep")
     staging = [allowed_root / ".one.tmp", allowed_root / ".two.tmp"]
     for path in staging:
         path.mkdir()
@@ -457,7 +458,7 @@ def test_atomic_claim_allows_exactly_one_concurrent_winner(eligible_development)
             run_dir=refused_output,
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
     assert not refused_output.exists()
 
 
@@ -483,7 +484,7 @@ def test_preclaim_failure_never_overwrites_concurrent_winner_state(
             run_dir=output,
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
 
     assert state.read_bytes() == winner
     assert not output.exists()
@@ -509,7 +510,7 @@ def test_preclaim_directory_durability_failure_is_exit_four_without_receipt(
             run_dir=output,
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
 
     assert raised.value.exit_code == int(ExitCode.TRANSACTION)
     assert not (development / "state/test_opening.json").exists()
@@ -540,7 +541,7 @@ def test_post_claim_failures_publish_only_sanitized_receipts(
             run_dir=output,
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
 
     assert raised.value.exit_code == expected_code
     failure = (output / "failure.json").read_text(encoding="utf-8")
@@ -568,7 +569,7 @@ def test_invalid_classifier_score_is_model_scoring_exit_seventy(
             run_dir=output,
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
 
     assert raised.value.stage == "model_scoring"
     assert raised.value.exit_code == ExitCode.INTERNAL_ERROR
@@ -598,7 +599,7 @@ def test_output_publish_failure_records_exit_four_without_raw_message(
             run_dir=output,
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
 
     assert raised.value.exit_code == ExitCode.TRANSACTION
     state = json.loads((development / "state/test_opening.json").read_bytes())
@@ -638,7 +639,7 @@ def test_opening_never_calls_training_fit_or_selection_paths(
         run_dir=allowed_root / "no-training",
         authorization_reference=AUTHORIZATION,
         allowed_root=allowed_root,
-    )
+     dataset="atlas2020_4lep")
 
 
 def test_claim_and_terminal_receipt_flush_directories_durably(
@@ -658,7 +659,7 @@ def test_claim_and_terminal_receipt_flush_directories_durably(
         run_dir=allowed_root / "durable",
         authorization_reference=AUTHORIZATION,
         allowed_root=allowed_root,
-    )
+     dataset="atlas2020_4lep")
 
     assert flushed[0] == development
     assert flushed[1:] == [development / "state", development / "state"]
@@ -693,7 +694,7 @@ def test_claim_durability_failure_is_terminal_without_test_decode(
             run_dir=output,
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
 
     assert raised.value.exit_code == ExitCode.TRANSACTION
     assert (output / "failure.json").is_file()
@@ -720,7 +721,7 @@ def test_terminal_receipt_failure_preserves_published_run_and_claim(
             run_dir=output,
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
 
     assert raised.value.exit_code == ExitCode.TRANSACTION
     assert raised.value.stage == "terminal_receipt"
@@ -734,7 +735,7 @@ def test_terminal_receipt_failure_preserves_published_run_and_claim(
             run_dir=allowed_root / "retry-after-terminal-failure",
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
 
 
 def test_post_publish_manifest_hash_failure_is_terminal_receipt_exit_four(
@@ -756,7 +757,7 @@ def test_post_publish_manifest_hash_failure_is_terminal_receipt_exit_four(
             run_dir=output,
             authorization_reference=AUTHORIZATION,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
 
     assert raised.value.stage == "terminal_receipt"
     assert raised.value.exit_code == ExitCode.TRANSACTION
@@ -771,7 +772,7 @@ def test_claim_fdopen_failure_releases_owned_descriptor(
     eligible_development, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     allowed_root, development, _, _ = eligible_development
-    binding = _load_binding(development, allowed_root=allowed_root)
+    binding = _load_binding(development, allowed_root=allowed_root, dataset="atlas2020_4lep")
     staging = allowed_root / ".fdopen-claim.tmp"
     staging.mkdir()
     monkeypatch.setattr(
@@ -828,7 +829,7 @@ def test_controlled_empty_background_is_normal_nonreproduction(
         run_dir=output,
         authorization_reference=AUTHORIZATION,
         allowed_root=allowed_root,
-    )
+     dataset="atlas2020_4lep")
 
     assert result.status == "test_nonreproduction"
     metrics = json.loads((output / "artifacts/test_metrics.json").read_bytes())
@@ -854,7 +855,7 @@ def test_controlled_valid_metrics_publish_reproduced_terminal_status(
         validated = original_reader(*args, **kwargs)
         frame = validated.frame.copy(deep=True)
         frame.loc[frame["label"] == 0, "m4l"] = 120.0
-        validate_test_frame(frame, expected_rows=len(frame))
+        validate_test_frame(frame, expected_rows=len(frame), dataset_binding=dataset_context("atlas2020_4lep").snapshot())
         return test_reader.ValidatedTest(frame)
 
     monkeypatch.setattr(
@@ -868,7 +869,7 @@ def test_controlled_valid_metrics_publish_reproduced_terminal_status(
         run_dir=output,
         authorization_reference=AUTHORIZATION,
         allowed_root=allowed_root,
-    )
+     dataset="atlas2020_4lep")
 
     assert result.status == "test_reproduced"
     metrics = json.loads((output / "artifacts/test_metrics.json").read_bytes())
@@ -892,7 +893,7 @@ def test_test_frame_rejects_non_exact_numeric_dtype(column: str, dtype: str) -> 
     frame[column] = frame[column].astype(dtype)
 
     with pytest.raises(InputBindingError, match="dtype|numeric"):
-        validate_test_frame(frame, expected_rows=len(frame))
+        validate_test_frame(frame, expected_rows=len(frame), dataset_binding=dataset_context("atlas2020_4lep").snapshot())
 
 
 @pytest.mark.parametrize("weight_column", ["train_weight", "physical_weight"])
@@ -905,7 +906,7 @@ def test_test_frame_rejects_zero_total_class_weight(
     test_frame.loc[test_frame["label"] == 0, weight_column] = 0.0
 
     with pytest.raises(InputBindingError, match="class weight total"):
-        validate_test_frame(test_frame, expected_rows=len(test_frame))
+        validate_test_frame(test_frame, expected_rows=len(test_frame), dataset_binding=dataset_context("atlas2020_4lep").snapshot())
 
 
 def test_test_reader_skips_poison_development_features_before_decode(
@@ -913,14 +914,14 @@ def test_test_reader_skips_poison_development_features_before_decode(
 ) -> None:
     allowed_root = tmp_path / "runs"
     preprocess, frame = write_synthetic_preprocess_run(allowed_root)
-    table = preprocess / "processed/mc_events.csv.gz"
+    table = preprocess / "processed/test_events.csv.gz"
 
     def poison(lines: list[bytes]) -> None:
         tokens = lines[1].rstrip(b"\n").split(b",")
         tokens[0] = b"poison-development-feature"
         lines[1] = b",".join(tokens) + b"\n"
 
-    _rewrite_gzip_table(table, poison)
+    _rewrite_gzip_table(preprocess / "processed/development_events.csv.gz", poison)
     original = test_reader._decode_test_rows
     payloads: list[bytes] = []
 
@@ -933,7 +934,7 @@ def test_test_reader_skips_poison_development_features_before_decode(
     result = read_test_rows_after_claim(
         table,
         expected_rows=int((frame["split"] == "test").sum()),
-    )
+     dataset_binding=dataset_context("atlas2020_4lep").snapshot())
     assert len(result.frame) == 6
     assert len(payloads) == 1
 
@@ -943,7 +944,7 @@ def test_unknown_split_fails_before_full_row_decode(
 ) -> None:
     allowed_root = tmp_path / "runs"
     preprocess, frame = write_synthetic_preprocess_run(allowed_root)
-    table = preprocess / "processed/mc_events.csv.gz"
+    table = preprocess / "processed/test_events.csv.gz"
 
     def poison(lines: list[bytes]) -> None:
         tokens = lines[1].rstrip(b"\n").split(b",")
@@ -961,4 +962,4 @@ def test_unknown_split_fails_before_full_row_decode(
         read_test_rows_after_claim(
             table,
             expected_rows=int((frame["split"] == "test").sum()),
-        )
+         dataset_binding=dataset_context("atlas2020_4lep").snapshot())

@@ -29,12 +29,12 @@ def weighted_binary_cross_entropy(logits: Tensor, labels: Tensor, weights: Tenso
     return numerator / denominator
 
 
-def mass_bin_indices(masses: Tensor) -> Tensor:
+def mass_bin_indices(masses: Tensor, *, debug: bool = False) -> Tensor:
     if masses.ndim != 1 or not torch.isfinite(masses).all():
         raise InputBindingError("m4l must be a finite vector")
-    if torch.any(masses < 105.0) or torch.any(masses > 160.0):
+    if not debug and (torch.any(masses < 105.0) or torch.any(masses > 160.0)):
         raise InputBindingError("m4l outside sealed adversary range")
-    return torch.floor((masses - 105.0) / 5.0).to(torch.int64).clamp(max=10)
+    return torch.floor((masses - 105.0) / 5.0).to(torch.int64).clamp(min=0, max=10)
 
 
 def adversarial_bin_weights(bins: Tensor, physical_weights: Tensor) -> Tensor:

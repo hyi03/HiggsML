@@ -12,7 +12,7 @@ HiggsML 是一个基于 Monte Carlo 数据的粒子物理机器学习演示仓�
 
 ## 1. 复现范围与流程
 
-Neural 流程只处理两个 MC 样本：Higgs 信号 DSID 345060 和 continuum ZZ 背景 DSID 363490。真实数据不会被读取、预处理、训练或评分。
+Neural 流程按数据集处理同版 MC 配对：2020 `4lep`（345060 + 363490）或 2025 `exactly4lep`（345060 + 700600）。真实数据不会被读取、预处理、训练或评分。
 
 ```mermaid
 flowchart LR
@@ -22,7 +22,7 @@ flowchart LR
     D --> E{是否存在 eligible candidate}
     E -->|是| F[model.pt + scaler.json]
     E -->|否| G[no_eligible_candidate]
-    F --> H{Normal 且已取得单独开测授权}
+    F --> H{Eligible 且满足开测条件}
     H -->|是| I[higgsml-test]
 ```
 
@@ -30,9 +30,9 @@ flowchart LR
 
 1. `higgsml-preprocess` 校验 ROOT 输入，执行冻结选择和特征构造，并发布带哈希的预处理产物。
 2. `higgsml-train` 只使用 development split 完成五折 OOF 训练、候选比较和资格判断。
-3. `higgsml-test` 在 development 合格且另有明确授权后，对 held-out MC test split 进行一次评价。
+3. `higgsml-test` 在 development 合格且另有明确授权后，对 held-out MC test split 进行冻结模型评价。
 
-数据、特征、网络、候选和训练规则都由版本化 protocol 绑定。Normal 的资格门槛保持冻结；Debug 只允许在开始一个新 run 前修改 AUC 和 KS 门槛，不能改变已经发布的 run，也不能用于 held-out test。
+数据、特征、网络、候选和训练规则都由版本化 protocol 绑定。Normal 的资格门槛保持冻结；Debug 只允许在开始一个新 run 前修改 AUC 和 KS 门槛，不能改变已经发布的 run；eligible Debug run 沿用相同 test-opening 规则。
 
 ## 2. 运行约定
 
@@ -41,7 +41,7 @@ flowchart LR
 - Git；
 - Conda 或兼容的 Conda 环境管理器；
 - 可访问 CERN Open Data 的网络；
-- 足够保存约 361 MB 原始 ROOT 文件以及后续 run 产物的磁盘空间。
+- 足够保存约 417 MB 原始 ROOT 文件以及后续 run 产物的磁盘空间。
 
 命令执行目录如下：
 
@@ -50,7 +50,7 @@ flowchart LR
 | 克隆仓库、初始化共享数据 | 仓库根目录 |
 | 创建环境、预处理、训练、test、pytest | `neural/` |
 
-每个 preprocess、development 和 test 命令都必须使用 `neural/runs/` 下尚不存在的新目录。成功、失败或已经发布的 run 均不可覆盖或复用。本文使用 UTC 时间生成唯一目录名，并将路径保存在当前 shell 变量中；如果更换 shell，需要把变量重新设置为实际 run 路径。
+每个 preprocess、development 和 test 命令都必须使用 `neural/runs/` 下尚不存在的新目录。成功、失败或已经发布的 run 均不可覆盖或复用。下文目录名为示例，实际执行时须使用新的 run 名称。
 
 ## 3. 获取代码和共享数据
 
@@ -65,497 +65,76 @@ cd HiggsML
 
 ### 3.2 下载并校验 MC 数据
 
-从仓库根目录执行：
+下载器仅使用 Python 标准库，通过直接 HTTPS 初始化两套同 release、同 collection 的 MC 配对。无参数按 2020、2025 顺序处理四个文件：
 
 ```bash
 python scripts/init_data.py
+python scripts/init_data.py --dataset atlas2020_4lep
+python scripts/init_data.py --dataset atlas2025_exactly4lep
+python scripts/init_data.py --dataset atlas2020_4lep --force
 ```
 
-这是本项目实现的数据初始化命令，参数如下：
+| 参数 | 行为 |
+|---|---|
+| 无参数 | 校验并补齐两套配对；已有文件大小和 SHA-256 正确则跳过。 |
+| `--dataset <name>` | 只处理指定完整配对，仅接受上述两个精确名称。 |
+| `--force` | 重新下载；新文件仍须通过固定大小和 SHA-256 校验才替换目标。 |
 
-| 参数 | 必填 | 含义与用法 |
-|---|---|---|
-| 无参数 | 否 | 创建 `data/raw/`，下载缺失文件；已有文件通过大小和 SHA-256 校验后直接跳过。 |
-| `--force` | 否 | 重新下载并替换已有文件；新下载内容仍须通过大小和 SHA-256 校验。 |
+本地文件保留官网原始文件名，以 `data/raw/<dataset>/` 隔离。同名 DSID 不代表跨 release 文件相同。四个成员如下：
 
-需要明确重新下载时执行：
+| 数据集 | 样本 / DSID | 官网及本地文件名 | bytes |
+|---|---|---|---:|
+| `atlas2020_4lep` | higgs / 345060 | `mc_345060.ggH125_ZZ4lep.4lep.root` | 50,518,236 |
+| `atlas2020_4lep` | zz / 363490 | `mc_363490.llll.4lep.root` | 179,082,866 |
+| `atlas2025_exactly4lep` | higgs / 345060 | `ODEO_FEB2025_v0_exactly4lep_mc_345060.PowhegPythia8EvtGen_NNLOPS_nnlo_30_ggH125_ZZ4l.exactly4lep.root` | 182,051,943 |
+| `atlas2025_exactly4lep` | zz / 700600 | `ODEO_FEB2025_v0_exactly4lep_mc_700600.Sh_2212_llll.exactly4lep.root` | 5,407,367 |
 
-```bash
-python scripts/init_data.py --force
-```
+每个数据集目录还包含 `dataset_receipt.json`。单一受控定义位于 [`neural/config/datasets/`](neural/config/datasets/)，记录精确 URL、file key、官方 Adler-32、固定 SHA-256 和 tree/entry count，并由代码中的名称、修订和定义字节摘要白名单绑定。官方证据与精确摘要见[下载验证记录](neural/docs/init-data-verification.md)。运行时不会学习或更新期望哈希，不接受任意 URL、清单路径或跨版本配对。
 
-脚本先写入同目录的 `.part` 临时文件，流式校验大小和 SHA-256，通过后才原子发布最终文件。成功时最后输出：
+脚本根据自身位置定位仓库，不依赖当前工作目录。已有文件损坏时返回失败，需显式 `--force` 修复。每个文件最多尝试 3 次，每次请求/读取超时 60 秒，重试等待 1、2 秒并从零开始；只清理该次调用创建的随机 `.part` 文件。校验成功后原子发布文件，两个成员最终校验均通过后才原子发布 complete receipt。中断后可保留已验证的单个文件，下次补齐；有效 receipt 在无变更重跑时保持不变。`--force` 下载失败会保留原有效文件及仍有效的 receipt，但命令仍失败。
 
-```text
-Shared data initialization completed.
-```
+每套配对使用 `.init-data.lock` 独占锁。锁冲突立即失败，不自动删除遗留锁。崩溃恢复时，先查看锁内 host/PID/时间，确认原进程已退出、没有其他初始化调用，再手工删除**该数据集的那个锁文件**后重试；无法确认所有权时不要删除。目录、目标、锁和 receipt 拒绝 symlink、junction/reparse point 及非普通文件目标。
 
-最终目录和冻结校验值如下：
+退出码：`0` 表示所有请求配对完成，`1` 表示下载/校验/路径/锁失败，`2` 表示参数错误。默认模式一套失败后仍尝试另一套并保留成功配对，但总命令返回 `1`。
 
-| 本地文件 | 样本 | 官方来源 | 大小（bytes） | SHA-256 |
-|---|---|---|---:|---|
-| `data/raw/higgs.root` | Higgs，DSID 345060 | [CERN Open Data exactly4lep MC 记录](https://opendata.cern.ch/record/atlas-93928) | 182,051,943 | `5b9628ccd88547cda07bb1b2ccd88c153d9b2e53bd119416df496ba11aa925a0` |
-| `data/raw/zz_363490.root` | continuum ZZ，DSID 363490 | [CERN Open Data record 15005](https://opendata.cern.ch/record/15005) | 179,082,866 | `76503d0cb2a015b814b43e5bc1887ea53a62b057e9ac2f812eaaec1efb1a3f07` |
+本次按用户要求，已有 `data/raw/higgs.root` 和 `data/raw/zz_363490.root` 经校验后已移动到对应新目录，并改为官网原名；这是一回性的本地迁移。日常下载器不读取旧平铺路径、不自动迁移或回退。`data/`、ROOT 与临时文件均被 Git 忽略。
 
-共享数据目录应为：
+receipt 仅证明文件字节已验证，不能代替使用方重新校验，也不代表 ROOT schema、物理归一化或训练资格。新配对接入预处理/训练/test 属于[全链重构](neural/docs/dataset-isolation-refactor-plan.md)；后文采用 v2 命令，不能将两套文件接回旧混用协议。
 
-```text
-data/
-└── raw/
-    ├── higgs.root
-    └── zz_363490.root
-```
+## 4. 当前 Neural v2 命令
 
-`data/` 已被根目录 `.gitignore` 忽略。ROOT 文件和临时下载文件不会进入 Git。
+以下命令从 `neural/` 执行。创建 `pytorch` 环境后安装入口；原生 ARM64 权威环境使用 `osx.yml`，Windows 开发验证使用 `win.yml`，具体见 [v2 手册](neural/docs/dataset-v2-runbook.md)。
 
-## 4. 创建 Neural 运行环境
-
-进入 Neural 项目目录。此后的命令均从该目录执行：
-
-```bash
+```powershell
 cd neural
-```
-
-### 4.1 创建 Conda 环境
-
-Linux 和 macOS 均使用普通 Conda，根据 `environment.yml` 创建名为 `pytorch` 的环境：
-
-```bash
 conda env create --file environment.yml
+conda run -n pytorch python -m pip install --no-deps -e .
+conda run -n pytorch python -m pip check
+conda run -n pytorch higgsml-preprocess --dataset atlas2020_4lep --protocol config/preprocess_protocol_v2.yaml --run-config config/preprocess_run.example.yaml --run-dir runs/atlas2020_4lep/preprocess-001
+conda run -n pytorch higgsml-train --dataset atlas2020_4lep --input-run runs/atlas2020_4lep/preprocess-001 --protocol config/adversarial_mlp_protocol_normal_v2.yaml --run-dir runs/atlas2020_4lep/development-001
 ```
 
-`environment.yml` 已声明环境名称、Conda channel 和项目依赖。命令执行成功后再激活该环境。
+每次都须使用全新输出目录。2025 改用 `atlas2025_exactly4lep` 并一致修改上下游路径。预处理产出独立 development/test 分区；训练不打开 test 文件。旧 mixed 单表/协议和模型不能由新入口运行，需重新预处理。
 
-### 4.2 激活环境并安装命令入口
+只有同一数据集的 eligible 冻结 development run，且满足项目授权边界，才开启 test：
 
-```bash
-conda activate pytorch
+```powershell
+conda run -n pytorch higgsml-test --dataset atlas2020_4lep --train-run runs/atlas2020_4lep/development-001 --run-dir runs/atlas2020_4lep/test-001
 ```
 
-以 editable 方式安装 Neural 包。依赖已经由前一步创建的环境提供：
+可选 `--authorization-reference <公开审计引用>` 启用持久化一次性 claim；省略时允许新的输出目录重复评价。test 不训练、重拟合 scaler 或重选阈值。`no_eligible_candidate` 是正常科学终态，禁止开启 test。三条命令支持 `--no-progress`。
 
-```bash
-python -m pip install --no-deps -e .
+Normal 特征、网络、候选及资格规则不变；Debug v2 仅允许运行前调整 AUC/KS 两项门槛。成功/失败 runs 不可覆盖，不能用 test 反馈选择数据集或调参。
+
+## 5. 验证与文档
+
+```powershell
+conda run -n pytorch python -m pytest -q
 ```
 
-检查环境和项目命令入口：
-
-```bash
-python --version
-```
-
-```bash
-python -m pip check
-```
-
-```bash
-higgsml-preprocess --help
-```
-
-```bash
-higgsml-train --help
-```
-
-```bash
-higgsml-test --help
-```
-
-项目固定使用 Python 3.12、PyTorch 2.7.1 和 CPU deterministic algorithms。即使 macOS 检测到 MPS，也不会把 MPS 用于权威训练。
-
-### 4.3 运行自动化测试
-
-```bash
-python -m pytest -q
-```
-
-这里的 `pytest` 验证代码行为。它不会执行后文的 held-out test-opening，也不会授予读取 held-out test split 的权限。
-
-## 5. 执行 MC 预处理
-
-### 5.1 准备本地运行配置
-
-创建 `runs/` 并复制示例配置：
-
-```bash
-mkdir -p runs
-```
-
-```bash
-cp config/preprocess_run.example.yaml runs/preprocess_run.local.yaml
-```
-
-示例配置默认指向第 3 节创建的共享数据：
-
-```yaml
-schema_version: "1.0"
-samples:
-  higgs:
-    path: ../data/raw/higgs.root
-  zz:
-    path: ../data/raw/zz_363490.root
-resources:
-  chunk_size_events: 50000
-```
-
-如果 ROOT 文件位于其他位置，只修改两个 `path` 和按本机内存调整 `chunk_size_events`。DSID、文件哈希、selection、特征、权重和 split 算法由 `config/preprocess_protocol_v1.yaml` 固定，不在本地运行配置中修改。
-
-### 5.2 运行预处理
-
-命令格式：
-
-```bash
-higgsml-preprocess --protocol config/preprocess_protocol_v1.yaml --run-config runs/preprocess_run.local.yaml --run-dir runs/preprocess-<unique-id>
-```
-
-`higgsml-preprocess` 参数如下：
-
-| 参数 | 必填 | 含义与用法 |
-|---|---|---|
-| `--protocol <path>` | 是 | 指定版本化预处理 protocol，固定样本、选择、特征、权重、split 和输入哈希。 |
-| `--run-config <path>` | 是 | 指定本地运行配置，只包含 ROOT 路径和 chunk 大小。 |
-| `--run-dir <path>` | 是 | 指定 `runs/` 下全新的输出目录。目录必须尚不存在。 |
-| `--no-progress` | 否 | 关闭事件进度条，适合 CI 或日志重定向。 |
-
-实际可运行示例：
-
-```bash
-higgsml-preprocess --protocol config/preprocess_protocol_v1.yaml --run-config runs/preprocess_run.local.yaml --run-dir runs/preprocess-example
-```
-
-命令成功后，检查 manifest 状态：
-
-```bash
-python -c "import json; print(json.load(open('runs/preprocess-example/artifacts/manifest.json', encoding='utf-8'))['status'])"
-```
-
-预期输出为：
-
-```text
-success
-```
-
-主要产物如下：
-
-| 文件 | 内容与用途 |
-|---|---|
-| `processed/mc_events.csv.gz` | 经过选择和特征构造的 MC 表，包含冻结的 development/test split 标记。 |
-| `artifacts/cutflow.json` | 两个样本各阶段的事件计数、效率和加权产额。 |
-| `artifacts/mc_summary.json` | 样本级和总计统计、输入绑定信息。 |
-| `artifacts/manifest.json` | 最后发布，记录输入、protocol、配置、输出大小、SHA-256、schema、计数和环境。 |
-
-只有预处理 exit code 为 `0`、manifest 状态为 `success`，并且上述文件完整时，才能把该目录传给 development。
-
-## 6. 执行 Development 训练
-
-Development 只访问 preprocess run 中的 development 行，不会读取 held-out test 特征。它依次训练 protocol 预注册的五个对抗强度候选 `lambda = 0, 0.05, 0.10, 0.20, 0.50`，每个候选执行五折 OOF 训练。
-
-### 6.1 选择 Normal 或 Debug protocol
-
-项目提供两种 training protocol：
-
-| Protocol | 文件 | AUC/KS 门槛 | 模型输出 | Held-out test |
-|---|---|---|---|---|
-| Normal | `config/adversarial_mlp_protocol_normal.yaml` | 全部字段严格冻结，AUC `0.80`、KS `0.10` | `eligible` 时生成 | `eligible` 且另有授权时允许 |
-| Debug | `config/adversarial_mlp_protocol_debug.yaml` | 可手工修改 `auc_minimum`、`ks_maximum` | 按调试门槛达到 `eligible` 时生成 | 始终禁止 |
-
-Normal 用于正式、可复核的 development。Debug 用于观察不同资格门槛下的训练和模型产物；它不是权威协议，不能用于 held-out test-opening。
-
-建议先复制一份不提交的 Debug 本地配置：
-
-```bash
-cp config/adversarial_mlp_protocol_debug.yaml runs/adversarial_mlp_protocol_debug.local.yaml
-```
-
-然后只修改其中两项：
-
-```yaml
-qualification:
-  auc_minimum: 0.75
-  ks_maximum: 0.20
-```
-
-两项都必须写成 `0.0–1.0` 范围内的有限小数。Debug loader 仍会拒绝其他字段的缺失、增加、改值、改类型或顺序变化。每次运行都会把完整 Debug protocol 快照及其 SHA-256 写入 development run，因此修改后的具体门槛仍然可追溯。
-
-### 6.2 运行 Development
-
-命令格式：
-
-```bash
-higgsml-train --input-run runs/preprocess-<id> --protocol config/adversarial_mlp_protocol_normal.yaml --run-dir runs/mlp-development-<unique-id>
-```
-
-`higgsml-train` 参数如下：
-
-| 参数 | 必填 | 含义与用法 |
-|---|---|---|
-| `--input-run <path>` | 是 | 指定第 5 节成功发布的 preprocess run。 |
-| `--protocol <path>` | 是 | 指定 Normal 或 Debug adversarial MLP protocol。Normal 冻结全部规则；Debug 只允许修改 AUC/KS 资格门槛。 |
-| `--run-dir <path>` | 是 | 指定 `runs/` 下全新的 development 输出目录。 |
-| `--no-progress` | 否 | 关闭 fold 和 epoch 进度条。 |
-
-在完成第 5 节的同一个 shell 中运行：
-
-```bash
-higgsml-train --input-run runs/preprocess-example --protocol config/adversarial_mlp_protocol_normal.yaml --run-dir runs/mlp-development-example
-```
-
-使用已经修改的 Debug protocol 运行：
-
-```bash
-higgsml-train --input-run runs/preprocess-example --protocol runs/adversarial_mlp_protocol_debug.local.yaml --run-dir runs/mlp-development-debug-example
-```
-
-读取 Debug 资格状态：
-
-```bash
-python -c "import json; print(json.load(open('runs/mlp-development-debug-example/artifacts/qualification.json', encoding='utf-8'))['status'])"
-```
-
-训练完成后读取资格状态：
-
-```bash
-python -c "import json; print(json.load(open('runs/mlp-development-example/artifacts/qualification.json', encoding='utf-8'))['status'])"
-```
-
-Development 有两个正常终态：
-
-| 状态 | 含义 | 是否生成模型 | 是否可申请 open-test |
-|---|---|---|---|
-| `eligible` | 至少一个候选满足所选 protocol 的全部资格条件，已选择候选并完成全 development final fit。 | 是 | 仅 Normal 可申请，且仍需单独授权 |
-| `no_eligible_candidate` | 所有候选至少违反一项资格条件。运行正常结束并保留诊断证据。 | 否 | 否 |
-
-`no_eligible_candidate` 的进程退出码也是 `0`，因为它是声明的科学终态，不是程序异常。
-
-### 6.3 Development 产物
-
-| 文件 | 生成条件 | 内容与用途 |
-|---|---|---|
-| `config.yaml` | 始终生成 | 绑定 input run、preprocess manifest、training protocol 哈希及 protocol 快照。 |
-| `artifacts/candidate_metrics.csv` | 始终生成 | 每个 lambda 的 weighted OOF AUC、三个工作点阈值、效率、KS 和拒绝原因。 |
-| `artifacts/fold_metrics.csv` | 始终生成 | 每个 lambda、fold、epoch 的损失、validation AUC 和 early-stopping 信息。 |
-| `artifacts/qualification.json` | 始终生成 | 最终状态、全部候选、选定 lambda 和 final-fit epoch。 |
-| `artifacts/working_points.json` | 始终生成 | 各候选的 loose、medium、tight 工作点和冻结阈值。 |
-| `predictions/oof_scores.csv.gz` | 始终生成 | 每个候选的完整五折 out-of-fold 分数。 |
-| `plots/auc_vs_lambda.png` | 始终生成 | 各候选 AUC 对比。 |
-| `plots/ks_vs_lambda.png` | 始终生成 | 各候选三个工作点的 KS 对比。 |
-| `plots/oof_roc.png` | 始终生成 | 选定候选或最高 AUC 候选的 OOF ROC。 |
-| `plots/oof_mass_sculpting.png` | 始终生成 | 分数选择前后的背景质量分布诊断。 |
-| `model/model.pt` | 仅 `eligible` | 最终 PyTorch 模型权重和评分绑定信息。 |
-| `model/scaler.json` | 仅 `eligible` | 全 development 拟合的 15 项特征标准化参数。 |
-| `artifacts/manifest.json` | 始终生成且最后写入 | 绑定输入、protocol、全部输出哈希、schema、计数、环境和科学边界。 |
-
-### 6.4 `model.pt` 包含什么
-
-只有状态为 `eligible` 时，程序才会在全 development 数据上重新训练最终模型并生成 `model/model.pt`。该文件包含：
-
-- schema 版本和 training protocol SHA-256；
-- 固定的 15 项特征及顺序；
-- final-fit scaler 快照；
-- 选定 lambda、随机种子和训练 epoch 数；
-- classifier 与 adversary 的 `state_dict`；
-- 训练环境记录。
-
-`model.pt` 不能脱离 `model/scaler.json`、冻结 protocol、特征顺序和 manifest 独立使用。正式 test 评分只使用 classifier 权重，但会先验证整个模型、scaler 和 lineage 的完整绑定。
-
-如果找不到 `model.pt`，首先读取 `artifacts/qualification.json`。状态为 `no_eligible_candidate` 时，不生成 `model/` 目录是预期行为；不得手工创建模型占位文件、修改 manifest 或强制把该 run 标记为 `eligible`。
-
-## 7. 理解 AUC、KS、效率和阈值
-
-AUC、KS 和效率是通用统计或机器学习指标；本项目采用的合格数值是预先注册在 protocol 中的项目规则，不是统一行业标准。
-
-| 指标或规则 | 本项目中的含义 | Normal 资格要求 |
-|---|---|---|
-| Weighted OOF AUC | 使用 `train_weight` 衡量信号与背景的整体排序能力；`0.5` 接近随机，`1.0` 表示完全区分。 | `AUC >= 0.80` |
-| Weighted KS | 使用 `abs(physical_weight)` 比较全部 OOF 背景与通过阈值的 OOF 背景之间 `m4l` 累积分布的最大差异。 | 三个工作点均 `KS <= 0.10` |
-| 背景效率 | 通过分数选择的背景绝对权重占全部背景绝对权重的比例。 | loose、medium、tight 目标分别为 `0.50`、`0.20`、`0.10` |
-| 信号效率 | 通过相同分数选择的信号绝对权重占全部信号绝对权重的比例。 | 每个工作点严格大于实际背景效率 |
-
-每个 lambda 候选都在自己的 OOF 背景上确定三个 score threshold：按 score 从高到低稳定排序，累加 `abs(physical_weight)`，第一次达到目标背景效率时的 score 就是阈值。事件选择使用 `score >= threshold`，因此相同 score 的事件会全部保留，实际背景效率可能略高于目标值。
-
-候选必须同时满足以下条件才是 `eligible`：
-
-```text
-weighted OOF AUC >= 0.80
-loose、medium、tight KS 均 <= 0.10
-每个工作点 signal_efficiency > achieved_background_efficiency
-```
-
-资格比较不使用浮点容差。只有多个合格候选的 AUC 与最佳值差异不超过 `1e-6` 时，选择阶段才使用 tie rule 并优先较小 lambda。
-
-Normal 的 AUC、KS、效率目标和 threshold 选择规则全部冻结，不能通过命令行覆盖。Debug 允许在运行前手工修改 `auc_minimum` 和 `ks_maximum`，但每次必须使用新的 run 路径；运行开始后不得回改已发布 run 的 protocol 快照或产物。
-
-## 8. 执行 Held-out Test（非 pytest）
-
-`higgsml-test` 是对 held-out MC test split 的模型评价，与第 4.3 节的代码测试不同。执行前必须同时满足：
-
-1. Development run 使用 Normal protocol，且 `artifacts/qualification.json` 和 manifest 状态均为 `eligible`。
-2. `model/model.pt`、`model/scaler.json`、working points 和全部哈希绑定完整。
-3. 针对该 development run 已取得单独、明确的外部开测授权。
-4. Development run 中尚不存在 `state/test_opening.json`。
-
-命令格式：
-
-```bash
-higgsml-test --train-run runs/mlp-development-<id> --run-dir runs/mlp-test-<unique-id> [--authorization-reference <external-approval-reference>]
-```
-
-不提供 `--authorization-reference` 时，可直接执行：
-
-```bash
-higgsml-test --train-run runs/mlp-development-<id> --run-dir runs/mlp-test-repeat-<unique-id>
-```
-
-该模式可对同一个 development run 重复执行 test，但每次都必须替换 `<unique-id>`，使用一个
-尚不存在的新 `--run-dir`。
-
-`higgsml-test` 参数如下：
-
-| 参数 | 必填 | 含义与用法 |
-|---|---|---|
-| `--train-run <path>` | 是 | 指定完整、冻结且状态为 `eligible` 的 development run。 |
-| `--run-dir <path>` | 是 | 指定 `runs/` 下全新的 test 输出目录。 |
-| `--authorization-reference <value>` | 否 | 指定公开、非敏感审计标识并启用一次性 claim；省略时允许用新输出目录重复评价。 |
-| `--no-progress` | 否 | 关闭输入校验、held-out 评分、产物发布和结果收尾的阶段进度条。 |
-
-### 8.1 配置 authorization reference
-
-`--authorization-reference` 是可选命令行参数，不写入 preprocess 或 training YAML。提供时将占位符替换为公开、非敏感的稳定短标识，并启用一次性 claim；省略时不会写 development state，可用不同的新输出目录重复执行 test。例如：
-
-```text
-MLP-TEST-APPROVAL-2026-09-03-001
-```
-
-该值会记录在 test 配置、test manifest 和 development run 的 `state/test_opening.json` 中。它必须满足：
-
-- 去除首尾空白后非空；
-- 不超过 256 个 Unicode 字符；
-- 不包含控制字符或格式控制字符；
-- 不包含 `password=`、`api_key=`、`secret=`、`token=`、`credential=` 等凭据赋值形式。
-
-不要填写审批正文、密码、API key、访问令牌或其他敏感信息。程序只保存这个外部引用，不会联网查询审批系统，也不会把任意字符串自动视为真实授权。
-
-### 8.2 运行一次性 test
-
-确认授权和 development run 后，在同一个 shell 中执行：
-
-```bash
-higgsml-test --train-run runs/mlp-development-example --run-dir runs/mlp-test-example --authorization-reference MLP-TEST-APPROVAL-EXAMPLE
-```
-
-命令在读取 test 特征前，会在源 development run 中原子创建永久的 `state/test_opening.json`。同一个 development run 只能开启一次；claim 创建后，即使运行失败或中断，也不得直接重试。
-
-命令默认显示四阶段进度条。成功后会在终端打印量化评价结果，格式如下（数值仅为格式示例）：
-
-```text
-HiggsML held-out test results
-Status          PASS (test_reproduced)
-Selected lambda 0.100000
-Test rows       39,709 (39,709 unique; complete)
-Weighted AUC    0.842315  required >= 0.800000  PASS
-
-Working points
-Name    Threshold   Bkg target   Bkg actual   Signal eff.   KS         Result
-loose    0.873660     0.500000     0.501200      0.965400   0.082100   PASS
-medium   0.972876     0.200000     0.201100      0.687300   0.093200   PASS
-tight    0.984812     0.100000     0.100500      0.462100   0.098700   PASS
-Requirements: KS <= 0.100000; signal efficiency > achieved background efficiency.
-Rejection reasons: none
-Metrics file: runs\mlp-test-example\artifacts\test_metrics.json
-```
-
-Test run 的主要产物如下：
-
-| 文件 | 内容与用途 |
-|---|---|
-| `predictions/test_scores.csv.gz` | 每个 held-out test 事件的身份、标签、`m4l`、权重和冻结模型分数。 |
-| `artifacts/test_metrics.json` | Test weighted AUC、三个冻结工作点的效率、KS、通过项和拒绝原因。 |
-| `plots/test_roc.png` | Held-out test ROC。 |
-| `plots/test_mass_sculpting.png` | 冻结工作点下的背景质量分布诊断。 |
-| `artifacts/manifest.json` | 绑定授权引用、development/preprocess lineage、protocol、模型、scaler、阈值和全部 test 输出。 |
-
-读取 test 终态：
-
-```bash
-python -c "import json; print(json.load(open('runs/mlp-test-example/artifacts/test_metrics.json', encoding='utf-8'))['status'])"
-```
-
-正常 test 终态包括：
-
-| 状态 | 含义 |
-|---|---|
-| `test_reproduced` | Held-out test 指标满足 development 中冻结的资格规则。 |
-| `test_nonreproduction` | 评价完成，但至少一项 held-out test 指标未复现冻结要求。 |
-
-`test_nonreproduction` 是正常科学结果。程序不会据此重新训练、重新选 threshold、增加候选或修改门槛。
-
-## 9. 复现完成检查清单
-
-按顺序确认以下内容：
-
-- `data/raw/higgs.root` 和 `data/raw/zz_363490.root` 的大小、SHA-256 与第 3 节一致；
-- `python -m pip check` 成功，两个项目 CLI 的 `--help` 可运行；
-- preprocess manifest 状态为 `success`，并且 manifest 是该 run 最后发布的完整输出索引；
-- development 的 `qualification.json` 状态为 `eligible` 或 `no_eligible_candidate`；
-- 只有 `eligible` run 才存在 `model/model.pt` 和 `model/scaler.json`；
-- held-out test 仅在 eligible、完整、未开启且已取得单独授权时运行一次；
-- 每个阶段使用不同且先前不存在的 `runs/` 子目录；
-- 保存实际命令、run 路径、manifest、protocol 哈希和最终状态，便于复核。
-
-## 10. 退出码与常见问题
-
-Neural CLI 使用以下稳定退出码：
-
-| 退出码 | 含义 |
-|---:|---|
-| `0` | 成功，或者 `no_eligible_candidate`、`test_nonreproduction` 等声明的正常科学终态 |
-| `2` | 命令行参数错误 |
-| `3` | 输入、schema、哈希或 protocol 绑定失败 |
-| `4` | run 路径或事务失败 |
-| `5` | 资格或 test-opening 被拒绝 |
-| `70` | 未预期的内部错误 |
-
-### 找不到 `higgsml-preprocess`、`higgsml-train` 或 `higgsml-test`
-
-确认已经进入 `neural/`、激活 `pytorch` 环境，并执行过：
-
-```bash
-python -m pip install --no-deps -e .
-```
-
-### `--run-dir` 已存在
-
-不要删除或覆盖已有 run。重新生成一个目录名并再次运行相应阶段：
-
-```bash
-higgsml-preprocess --protocol config/preprocess_protocol_v1.yaml --run-config runs/preprocess_run.local.yaml --run-dir runs/preprocess-retry-example
-```
-
-### Development 成功但没有 `model.pt`
-
-检查 `artifacts/qualification.json`。如果状态为 `no_eligible_candidate`，说明没有候选同时通过 AUC、三个 KS 和三个效率条件；不生成模型是协议要求。各候选的具体失败原因位于 `artifacts/candidate_metrics.csv` 和 `qualification.json`。
-
-### `open-test` 返回退出码 5
-
-常见原因包括 development 不合格、model/scaler 或哈希绑定不完整、authorization reference 无效，或者该 development 已经存在 test-opening claim。不要通过修改 artifact、删除 claim 或更换门槛绕过拒绝。
-
-### 需要调整 AUC 或 KS 门槛
-
-当前 `develop` 不接受 AUC/KS 命令行覆盖参数。正式运行使用 Normal protocol；调试时复制 `config/adversarial_mlp_protocol_debug.yaml`，只修改 `auc_minimum` 和 `ks_maximum`，并使用新的 development run。Debug 生成的模型不能执行 open-test。
-
-## 11. 验证边界与参考文档
-
-当前仓库交付状态不等于已经完成权威 full-data 复现。locked native `osx-arm64` full-data preprocess golden、完整 development OOF 和按条件授权的 open-test，只有在实际运行并保留证据后才能分别声明完成。Linux 或其他环境的测试与运行结果可以作为开发证据，但不能替代锁定的 macOS Apple Silicon 权威 gate。
-
-进一步信息见：
-
-- [Neural 实现原理与代码流程](neural/README.md)
-- [对抗式 MLP 重构设计](neural_adversarial_mlp_refactor_design.md)
-- [Preprocess Protocol V1](neural/docs/preprocess-protocol-v1.md)
-- [Development Protocol V1](neural/docs/development-protocol-v1.md)
-- [Adversarial MLP Normal Protocol](neural/docs/adversarial-mlp-protocol-normal.md)
-- [Test-opening Protocol V1](neural/docs/test-opening-protocol-v1.md)
-- [运行手册](neural/docs/runbook.md)
-- [Artifact Schema](neural/docs/artifact-schema.md)
-- [M1-06 验证证据](neural/docs/m1-06-verification-evidence.md)
-- [最终技术报告](neural/docs/final-technical-report.md)
-- [Neural 项目约束](neural/AGENTS.md)
+- [v2 操作、权重及身份边界](neural/docs/dataset-v2-runbook.md)
+- [实现导航](neural/README.md)
+- [全链重构方案](neural/docs/dataset-isolation-refactor-plan.md)
+- [v2 实际验证记录](neural/docs/dataset-v2-verification.md)
+
+Windows 或合成测试不能替代原生锁定 ARM64 与实际绑定数据的权威验证。项目输出仅为 educational/technical demo。

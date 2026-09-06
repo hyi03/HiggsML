@@ -33,7 +33,7 @@ class SelectionConfig:
     min_sfos_mass: float
     z1_window: tuple[float, float]
     z2_window: tuple[float, float]
-    m4l_window: tuple[float, float]
+    m4l_window: tuple[float, float] | None
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "SelectionConfig":
@@ -45,7 +45,8 @@ class SelectionConfig:
             float(value["z0_sintheta_max_mm"]), float(value["min_all_sfos_mass_gev"]),
             tuple(map(float, value["z1_mass_window_gev"])),
             tuple(map(float, value["z2_mass_window_gev"])),
-            tuple(map(float, value["m4l_window_gev"])),
+            (None if value.get("m4l_window_gev") is None
+             else tuple(map(float, value["m4l_window_gev"]))),
         )
 
 @dataclass(frozen=True)
@@ -177,7 +178,7 @@ def select_event(event: Mapping[str, Any], config: SelectionConfig, momentum_uni
     if not config.z2_window[0] < candidate.z2.mass < config.z2_window[1]:
         return _fail("z2_mass_window", passed, candidate)
     passed.append("z2_mass_window")
-    if not config.m4l_window[0] <= candidate.four_lepton.mass < config.m4l_window[1]:
+    if config.m4l_window is not None and not config.m4l_window[0] <= candidate.four_lepton.mass < config.m4l_window[1]:
         return _fail("m4l_analysis_window", passed, candidate)
     passed.extend(("m4l_analysis_window", "selected"))
     return SelectionResult(True, tuple(passed), None, candidate)

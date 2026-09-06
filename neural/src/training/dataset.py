@@ -9,13 +9,14 @@ import torch
 from torch import Tensor
 
 from src.config import InputBindingError
+from src.dataset_binding import validate_frame_identity
 from src.training.config import BASE_SEED, FEATURES, INPUT_COLUMNS
 from src.training.losses import adversarial_bin_weights, mass_bin_indices
 
 
 FEATURE_COLUMNS = FEATURES
 _INTEGER_COLUMNS = ("label", "source_entry", "runNumber", "eventNumber", "channelNumber")
-_TEXT_COLUMNS = {"split", "source_sample"}
+_TEXT_COLUMNS = {"split", "source_sample", "source_file_id", "event_group_id"}
 
 
 @dataclass(frozen=True)
@@ -23,9 +24,10 @@ class FoldLocalScaler:
     mean: np.ndarray
     scale: np.ndarray
     fitting_rows: int
+    dataset_binding: dict | None = None
 
     @classmethod
-    def fit(cls, matrix: np.ndarray) -> "FoldLocalScaler":
+    def fit(cls, matrix: np.ndarray, *, dataset_binding: dict | None = None) -> "FoldLocalScaler":
         values = np.asarray(matrix, dtype=np.float64)
         if values.ndim != 2 or values.shape[1] != 15 or values.shape[0] == 0 or not np.isfinite(values).all():
             raise InputBindingError("scaler fitting matrix must be finite shape (N, 15)")
@@ -35,7 +37,7 @@ class FoldLocalScaler:
         scale[scale == 0.0] = 1.0
         if not np.isfinite(mean).all() or not np.isfinite(scale).all():
             raise InputBindingError("scaler statistics must be finite")
-        return cls(mean, scale, int(values.shape[0]))
+        return cls(mean, scale, int(values.shape[0]), dataset_binding)
 
     def transform(self, matrix: np.ndarray) -> np.ndarray:
         values = np.asarray(matrix, dtype=np.float64)
@@ -47,11 +49,11 @@ class FoldLocalScaler:
         return transformed.astype(np.float32)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"schema_version": "fold-local-scaler-v1", "features": list(FEATURE_COLUMNS), "mean": self.mean.tolist(), "scale": self.scale.tolist(), "fitting_rows": self.fitting_rows}
+        return {"dataset_binding": self.dataset_binding, "schema_version": "fold-local-scaler-v2", "features": list(FEATURE_COLUMNS), "mean": self.mean.tolist(), "scale": self.scale.tolist(), "fitting_rows": self.fitting_rows}
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "FoldLocalScaler":
-        if set(raw) != {"schema_version", "features", "mean", "scale", "fitting_rows"} or raw.get("schema_version") != "fold-local-scaler-v1" or tuple(raw.get("features", ())) != FEATURE_COLUMNS:
+        if set(raw) != {"dataset_binding", "schema_version", "features", "mean", "scale", "fitting_rows"} or raw.get("schema_version") != "fold-local-scaler-v2" or tuple(raw.get("features", ())) != FEATURE_COLUMNS:
             raise InputBindingError("scaler schema changed")
         mean = np.asarray(raw["mean"], dtype=np.float64)
         scale = np.asarray(raw["scale"], dtype=np.float64)
@@ -60,13 +62,15 @@ class FoldLocalScaler:
         rows = raw["fitting_rows"]
         if type(rows) is not int or rows <= 0:
             raise InputBindingError("scaler fitting_rows must be positive")
-        return cls(mean, scale, rows)
+        return cls(mean, scale, rows, raw["dataset_binding"])
 
 
 @dataclass(frozen=True)
 class ValidatedDevelopment:
     frame: pd.DataFrame
     protocol_sha256: str
+    dataset_binding: dict | None = None
+    debug: bool = False
 
 
 @dataclass(frozen=True)
@@ -85,6 +89,7 @@ class ValidatedFold:
     fold_index: int
     fold_seed: int
     protocol_sha256: str
+    dataset_binding: dict | None = None
 
     def __post_init__(self) -> None:
         for name, values in (("fitting", self.fitting_features), ("validation", self.validation_features)):
@@ -145,7 +150,9 @@ class ValidatedFold:
             raise InputBindingError("fold binding changed")
 
 
-def validate_development_frame(frame: pd.DataFrame, *, protocol_sha256: str) -> ValidatedDevelopment:
+def validate_development_frame(frame: pd.DataFrame, *, protocol_sha256: str,
+                               dataset_binding: dict | None = None,
+                               debug: bool = False) -> ValidatedDevelopment:
     if tuple(frame.columns) != INPUT_COLUMNS:
         raise InputBindingError("development frame columns changed")
     splits = frame["split"].to_numpy(copy=False)
@@ -170,7 +177,7 @@ def validate_development_frame(frame: pd.DataFrame, *, protocol_sha256: str) -> 
             raise InputBindingError(f"numeric column must be finite: {column}")
     if (frame["train_weight"] < 0).any():
         raise InputBindingError("train_weight must be non-negative")
-    if ((frame["m4l"] < 105.0) | (frame["m4l"] > 160.0)).any():
+    if not debug and ((frame["m4l"] < 105.0) | (frame["m4l"] > 160.0)).any():
         raise InputBindingError("m4l outside sealed range")
     if (
         type(protocol_sha256) is not str
@@ -178,7 +185,9 @@ def validate_development_frame(frame: pd.DataFrame, *, protocol_sha256: str) -> 
         or any(character not in "0123456789abcdef" for character in protocol_sha256)
     ):
         raise InputBindingError("protocol SHA-256 is invalid")
-    return ValidatedDevelopment(frame.copy(deep=True), protocol_sha256)
+    if dataset_binding is not None:
+        validate_frame_identity(frame, dataset_binding)
+    return ValidatedDevelopment(frame.copy(deep=True), protocol_sha256, dataset_binding, debug)
 
 
 def _indices(values: np.ndarray, *, rows: int, name: str) -> np.ndarray:
@@ -209,7 +218,9 @@ def build_validated_fold(
     val_identities = tuple(zip(frame.iloc[validation]["source_sample"].astype(str), frame.iloc[validation]["source_entry"].astype(int), strict=True))
     if set(fit_identities) & set(val_identities):
         raise InputBindingError("fitting and validation identity overlap")
-    scaler = FoldLocalScaler.fit(frame.iloc[fitting][list(FEATURE_COLUMNS)].to_numpy(dtype=np.float64))
+    if set(frame.iloc[fitting]["event_group_id"]) & set(frame.iloc[validation]["event_group_id"]):
+        raise InputBindingError("fitting and validation physical group overlap")
+    scaler = FoldLocalScaler.fit(frame.iloc[fitting][list(FEATURE_COLUMNS)].to_numpy(dtype=np.float64), dataset_binding=development.dataset_binding)
     fitting_features = torch.from_numpy(scaler.transform(frame.iloc[fitting][list(FEATURE_COLUMNS)].to_numpy(dtype=np.float64)))
     validation_features = torch.from_numpy(scaler.transform(frame.iloc[validation][list(FEATURE_COLUMNS)].to_numpy(dtype=np.float64)))
     labels = torch.tensor(frame.iloc[fitting]["label"].to_numpy(), dtype=torch.int64)
@@ -221,7 +232,7 @@ def build_validated_fold(
     background = labels == 0
     masses = torch.tensor(frame.iloc[fitting]["m4l"].to_numpy(), dtype=torch.float64)[background]
     physical = torch.tensor(frame.iloc[fitting]["physical_weight"].to_numpy(), dtype=torch.float32)[background]
-    bins = mass_bin_indices(masses)
+    bins = mass_bin_indices(masses, debug=development.debug)
     adversarial_weights = adversarial_bin_weights(bins, physical)
     all_bins = torch.full_like(labels, -1)
     all_adv = torch.zeros_like(train_weights)
@@ -230,5 +241,5 @@ def build_validated_fold(
     return ValidatedFold(
         fitting_features, validation_features, labels, validation_labels, train_weights,
         validation_weights, all_bins, all_adv, fit_identities, val_identities, scaler,
-        fold_index, BASE_SEED + fold_index, development.protocol_sha256,
+        fold_index, BASE_SEED + fold_index, development.protocol_sha256, development.dataset_binding,
     )

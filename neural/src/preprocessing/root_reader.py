@@ -20,6 +20,8 @@ def iter_events(
     try:
         with uproot.open(source) as root:
             tree = root[sample.tree_name]
+            if verify_entry_count and tree.num_entries != sample.expected_entry_count:
+                raise InputBindingError("ROOT entry count mismatch before decoding")
             physical = tuple(sample.branches.values())
             available = {str(name) for name in tree.keys()}
             missing = set(physical) - available

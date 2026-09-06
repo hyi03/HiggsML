@@ -20,7 +20,7 @@ from tests.integration.test_development_run import _install_fast_pipeline
 
 
 PROJECT = Path(__file__).resolve().parents[2]
-PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal.yaml"
+PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal_v2.yaml"
 
 
 def test_open_test_requires_development_and_output_arguments() -> None:
@@ -42,7 +42,7 @@ def test_blank_authorization_value_returns_refusal(tmp_path: Path) -> None:
             sys.executable,
             "-m",
             "src.cli.test",
-            "--train-run",
+            "--dataset", "atlas2020_4lep", "--train-run",
             "runs/missing",
             "--run-dir",
             "runs/output",
@@ -72,11 +72,11 @@ def test_open_test_cli_runs_only_synthetic_fixture(
         protocol_path=PROTOCOL,
         run_dir=development,
         allowed_root=allowed_root,
-    )
+     dataset="atlas2020_4lep")
 
     code = test_cli.main(
         [
-            "--train-run",
+            "--dataset", "atlas2020_4lep", "--train-run",
             str(development),
             "--run-dir",
             str(allowed_root / "test-opening"),
@@ -113,7 +113,7 @@ def test_open_test_cli_exit_mapping(
     )
     code = test_cli.main(
         [
-            "--train-run",
+            "--dataset", "atlas2020_4lep", "--train-run",
             "runs/development",
             "--run-dir",
             "runs/test",
@@ -136,7 +136,7 @@ def test_terminal_receipt_cli_log_requires_manual_audit(
     )
     code = test_cli.main(
         [
-            "--train-run",
+            "--dataset", "atlas2020_4lep", "--train-run",
             "runs/development",
             "--run-dir",
             "runs/test",
@@ -159,7 +159,7 @@ def test_open_test_input_binding_log_is_stage_and_run_aware(
     )
     code = test_cli.main(
         [
-            "--train-run",
+            "--dataset", "atlas2020_4lep", "--train-run",
             "runs/development",
             "--run-dir",
             "runs/test",

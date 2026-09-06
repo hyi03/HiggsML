@@ -30,6 +30,8 @@ def synthetic_development_frame(*, validation_shift: float = 0.0) -> pd.DataFram
                     "train_weight": 1.0,
                     "source_sample": "zz_363490" if label == 0 else "higgs_345060",
                     "source_entry": entry,
+                    "source_file_id": "atlas2020_4lep:mc_363490" if label == 0 else "atlas2020_4lep:mc_345060",
+                    "event_group_id": f"{363490 if label == 0 else 345060}:{2000+entry}",
                     "runNumber": 1000 + entry,
                     "eventNumber": 2000 + entry,
                     "channelNumber": 363490 if label == 0 else 345060,

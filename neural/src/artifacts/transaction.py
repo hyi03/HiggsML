@@ -39,6 +39,7 @@ class RunTransaction:
         allowed_root: str | Path,
         safe_failure_message: str | None = None,
         safe_failure_stage: str | None = None,
+        dataset_binding: dict | None = None,
     ) -> None:
         requested_run = Path(run_dir)
         requested_root = Path(allowed_root)
@@ -80,6 +81,7 @@ class RunTransaction:
         self._finished = False
         self._safe_failure_message = safe_failure_message
         self._safe_failure_stage = safe_failure_stage
+        self._dataset_binding = dataset_binding
 
     def _reject_link_components(self, target_parent: Path) -> None:
         if _is_link_or_reparse(self._requested_root):
@@ -161,6 +163,8 @@ class RunTransaction:
             "message": message,
             "status": "failed",
         }
+        if self._dataset_binding is not None:
+            receipt["dataset_binding"] = self._dataset_binding
         if stage is not None:
             receipt["stage"] = stage
         (self.path / "failure.json").write_text(

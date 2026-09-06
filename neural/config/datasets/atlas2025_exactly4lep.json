@@ -1,0 +1,44 @@
+{
+  "schema_version": "higgsml.download-definition.v1",
+  "dataset_name": "atlas2025_exactly4lep",
+  "definition_revision": 1,
+  "release": "2025",
+  "collection": "exactly4lep",
+  "mc_only": true,
+  "members": [
+    {
+      "role": "higgs",
+      "label": 1,
+      "dsid": 345060,
+      "file_id": "atlas2025_exactly4lep:mc_345060",
+      "release": "2025",
+      "collection": "exactly4lep",
+      "record_url": "https://opendata.cern.ch/record/atlas-93928",
+      "file_key": "ODEO_FEB2025_v0_exactly4lep_mc_345060.PowhegPythia8EvtGen_NNLOPS_nnlo_30_ggH125_ZZ4l.exactly4lep.root",
+      "download_url": "https://opendata.cern.ch/record/atlas-93928/files/ODEO_FEB2025_v0_exactly4lep_mc_345060.PowhegPythia8EvtGen_NNLOPS_nnlo_30_ggH125_ZZ4l.exactly4lep.root",
+      "filename": "ODEO_FEB2025_v0_exactly4lep_mc_345060.PowhegPythia8EvtGen_NNLOPS_nnlo_30_ggH125_ZZ4l.exactly4lep.root",
+      "size_bytes": 182051943,
+      "sha256": "5b9628ccd88547cda07bb1b2ccd88c153d9b2e53bd119416df496ba11aa925a0",
+      "source_checksum": "adler32:c675b786",
+      "tree": "analysis",
+      "entry_count": 419943
+    },
+    {
+      "role": "zz",
+      "label": 0,
+      "dsid": 700600,
+      "file_id": "atlas2025_exactly4lep:mc_700600",
+      "release": "2025",
+      "collection": "exactly4lep",
+      "record_url": "https://opendata.cern.ch/record/atlas-93928",
+      "file_key": "ODEO_FEB2025_v0_exactly4lep_mc_700600.Sh_2212_llll.exactly4lep.root",
+      "download_url": "https://opendata.cern.ch/record/atlas-93928/files/ODEO_FEB2025_v0_exactly4lep_mc_700600.Sh_2212_llll.exactly4lep.root",
+      "filename": "ODEO_FEB2025_v0_exactly4lep_mc_700600.Sh_2212_llll.exactly4lep.root",
+      "size_bytes": 5407367,
+      "sha256": "3d7588b897fc50a2342ef1d7b10f8c1b34f035456b2af215f62ad92525422789",
+      "source_checksum": "adler32:1a80cedf",
+      "tree": "analysis",
+      "entry_count": 11260
+    }
+  ]
+}

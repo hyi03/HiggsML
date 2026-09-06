@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from src.data_contract import DATASET_NAMES
 from collections.abc import Sequence
 import logging
 from pathlib import Path
@@ -35,6 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disable test-opening stage progress.",
     )
+    parser.add_argument("--dataset", choices=DATASET_NAMES, required=True)
     return parser
 
 
@@ -91,10 +93,11 @@ def format_test_results(result: TestOpeningResult) -> str:
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
     configure_logging()
+    LOGGER.info("dataset=%s", arguments.dataset)
     allowed_root = Path.cwd() / "runs"
     try:
         result = execute_test_opening(
-            development_run=arguments.train_run,
+            dataset=arguments.dataset,            development_run=arguments.train_run,
             run_dir=arguments.run_dir,
             authorization_reference=arguments.authorization_reference,
             allowed_root=allowed_root,

@@ -126,6 +126,18 @@ def test_development_representative_contract_mutations(mutation: str) -> None:
         validate_development_frame(frame, protocol_sha256=protocol_sha256)
 
 
+def test_debug_development_accepts_finite_m4l_outside_sealed_range() -> None:
+    frame = synthetic_development_frame()
+    frame.loc[0, "m4l"] = 70.0
+    frame.loc[1, "m4l"] = 500.0
+
+    development = validate_development_frame(
+        frame, protocol_sha256="a" * 64, debug=True,
+    )
+
+    assert development.debug is True
+
+
 def test_fold_indices_and_validation_auc_preconditions_fail_closed() -> None:
     frame = synthetic_development_frame()
     development = validate_development_frame(frame, protocol_sha256="a" * 64)

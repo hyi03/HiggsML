@@ -27,7 +27,7 @@ from tests.development_fixtures import write_synthetic_preprocess_run
 
 
 PROJECT = Path(__file__).resolve().parents[2]
-PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal.yaml"
+PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal_v2.yaml"
 
 
 def _fake_fold_result(fold, target_lambda: float):
@@ -87,12 +87,13 @@ def _install_fast_pipeline(monkeypatch: pytest.MonkeyPatch, *, eligible_lambda: 
     def fake_final(development, protocol, *, target_lambda: float, epochs: int):
         final_calls.append((target_lambda, epochs))
         scaler = FoldLocalScaler.fit(
-            development.frame[list(FEATURE_COLUMNS)].to_numpy(dtype="float64")
+            development.frame[list(FEATURE_COLUMNS)].to_numpy(dtype="float64"), dataset_binding=development.dataset_binding
         )
         model = AdversarialMLP().cpu().to(torch.float32)
         return FinalTrainingResult(
             {
-                "schema_version": "adversarial-mlp-final-v1",
+                "schema_version": "adversarial-mlp-final-v2",
+                "dataset_binding": development.dataset_binding,
                 "protocol_sha256": protocol.sha256,
                 "feature_tuple": FEATURE_COLUMNS,
                 "scaler": scaler.to_dict(),
@@ -114,7 +115,7 @@ def _install_fast_pipeline(monkeypatch: pytest.MonkeyPatch, *, eligible_lambda: 
             {"device": "cpu"},
         )
 
-    def fake_plots(directory, candidates, oof, *, selected_lambda, roc_points, mass_edges):
+    def fake_plots(directory, candidates, oof, *, selected_lambda, roc_points, mass_edges, dataset_name=None):
         assert "split" not in oof
         assert len(roc_points) == 2
         assert tuple(mass_edges) == tuple(protocol_mass_edges())
@@ -158,7 +159,7 @@ def test_two_stage_reader_skips_poison_test_feature_before_numeric_decode(
     monkeypatch.setattr(development_reader, "_decode_development_rows", spy_decoder)
     loaded = read_development_input(
         input_run, allowed_root=allowed_root, protocol_sha256=protocol.sha256
-    )
+    , dataset="atlas2020_4lep")
 
     assert loaded.total_rows == len(full_frame)
     assert loaded.held_out_test_rows == 6
@@ -188,7 +189,7 @@ def test_development_run_publishes_exact_normal_terminal_layouts(
         protocol_path=PROTOCOL,
         run_dir=output,
         allowed_root=allowed_root,
-    )
+     dataset="atlas2020_4lep")
 
     assert len(fold_calls) == 25
     assert fold_calls == [
@@ -241,7 +242,7 @@ def test_development_run_publishes_exact_normal_terminal_layouts(
     assert manifest["counts"]["folds_per_candidate"] == 5
     assert manifest["counts"]["held_out_test_rows_not_opened"] == 6
     assert manifest["counts"]["fold_epoch_rows"] == 25
-    assert manifest["input"]["preprocess_protocol_sha256"] == "1" * 64
+    assert manifest["input"]["preprocess_protocol_sha256"] == __import__("src.resource_seals",fromlist=["RESOURCE_HASHES"]).RESOURCE_HASHES["preprocess_protocol_v2.yaml"]
     assert manifest["input"]["preprocess_run_config_sha256"] == "2" * 64
     assert manifest["schema"]["oof_columns"] == list(protocol.raw["development_artifacts"]["oof_columns"])
     assert manifest["oof_completeness"] == {
@@ -287,7 +288,7 @@ def test_development_run_publishes_exact_normal_terminal_layouts(
     assert hashlib.sha256(oof_payload).hexdigest() == oof_record["canonical_content_sha256"]
     if eligible_lambda is not None:
         payload = torch.load(output / "model" / "model.pt", weights_only=False)
-        assert payload["schema_version"] == "adversarial-mlp-final-v1"
+        assert payload["schema_version"] == "adversarial-mlp-final-v2"
         for relative in ("model/model.pt", "model/scaler.json"):
             record = next(item for item in manifest["outputs"] if item["path"] == relative)
             assert sha256_file(output / relative) == record["sha256"]
@@ -304,7 +305,7 @@ def test_poison_fixture_passes_command_pipeline_without_test_feature_decode(
         protocol_path=PROTOCOL,
         run_dir=allowed_root / "poison-command",
         allowed_root=allowed_root,
-    )
+     dataset="atlas2020_4lep")
     assert result.status == "no_eligible_candidate"
 
 
@@ -317,7 +318,7 @@ def test_real_synthetic_development_e2e_uses_actual_science_pipeline(tmp_path: P
         protocol_path=PROTOCOL,
         run_dir=output,
         allowed_root=allowed_root,
-    )
+     dataset="atlas2020_4lep")
     assert result.status == "eligible"
     oof = pd.read_csv(output / "predictions" / "oof_scores.csv.gz")
     candidates = pd.read_csv(output / "artifacts" / "candidate_metrics.csv")
@@ -355,7 +356,7 @@ def test_abnormal_fold_failure_stops_candidates_and_publishes_no_success_manifes
             protocol_path=PROTOCOL,
             run_dir=output,
             allowed_root=allowed_root,
-        )
+         dataset="atlas2020_4lep")
 
     assert calls == 7
     assert (output / "failure.json").is_file()
@@ -369,8 +370,8 @@ def test_train_cli_dispatch_and_exit_mapping(monkeypatch: pytest.MonkeyPatch) ->
         captured.append(kwargs)
 
     arguments = [
-        "--input-run", "runs/input",
-        "--protocol", "config/adversarial_mlp_protocol_normal.yaml",
+        "--dataset", "atlas2020_4lep", "--input-run", "runs/input",
+        "--protocol", "config/adversarial_mlp_protocol_normal_v2.yaml",
         "--run-dir", "runs/output",
     ]
     monkeypatch.setattr(train_cli, "execute_development", success)

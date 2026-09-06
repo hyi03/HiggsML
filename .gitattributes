@@ -1,2 +1,9 @@
 neural/osx.yml text eol=lf
 neural/win.yml text eol=lf
+
+# Preserve byte-bound dataset/scientific resources across platforms.
+neural/config/datasets/*.json -text
+neural/config/profiles/*.yaml -text
+neural/config/*_v2.yaml -text
+neural/config/dataset_science_v1.json -text
+neural/config/validation/*.json -text

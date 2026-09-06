@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from src.data_contract import DATASET_NAMES
 import logging
 from pathlib import Path
 from collections.abc import Sequence
@@ -23,23 +24,32 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--protocol", required=True)
     parser.add_argument("--run-dir", required=True)
     parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug mode and skip input-run/protocol SHA validation.",
+    )
+    parser.add_argument(
         "--no-progress",
         action="store_true",
         help="Disable epoch progress bars.",
     )
+    parser.add_argument("--dataset", choices=DATASET_NAMES, required=True)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
     configure_logging()
+    LOGGER.info("dataset=%s debug=%s", arguments.dataset, arguments.debug)
     allowed_root = Path.cwd() / "runs"
     try:
         execute_development(
+            dataset=arguments.dataset,
             input_run=arguments.input_run,
             protocol_path=arguments.protocol,
             run_dir=arguments.run_dir,
             allowed_root=allowed_root,
+            debug=arguments.debug,
             show_progress=not arguments.no_progress,
         )
     except InputBindingError as error:

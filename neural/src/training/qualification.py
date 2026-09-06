@@ -13,6 +13,7 @@ from src.training.dataset import ValidatedDevelopment
 
 
 OOF_COLUMNS = (
+    "source_file_id", "event_group_id",
     "target_lambda", "source_sample", "source_entry", "fold_index", "label", "m4l",
     "physical_weight", "train_weight", "score",
 )
@@ -32,7 +33,7 @@ def validate_candidate_oof(
         raise InputBindingError("candidate OOF lambda binding changed")
     if not np.array_equal(frame["fold_index"].to_numpy(), folds):
         raise InputBindingError("candidate OOF fold binding changed")
-    for column in ("source_sample", "source_entry", "label", "m4l", "physical_weight", "train_weight"):
+    for column in ("source_file_id", "event_group_id", "source_sample", "source_entry", "label", "m4l", "physical_weight", "train_weight"):
         if not np.array_equal(frame[column].to_numpy(), expected[column].to_numpy()):
             raise InputBindingError(f"candidate OOF field changed: {column}")
     identities = tuple(zip(frame["source_sample"], frame["source_entry"], strict=True))

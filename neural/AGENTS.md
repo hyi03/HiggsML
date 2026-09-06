@@ -26,7 +26,7 @@ authoritative ARM64 run.
   with a new output run directory for each invocation.
 - Do not relax AUC, KS, efficiency, candidate, epoch, architecture, or threshold
   rules after seeing results.
-- `adversarial_mlp_protocol_debug.yaml` is the only diagnostic exception: a
+- `adversarial_mlp_protocol_debug_v2.yaml` is the current diagnostic exception: a
   user may set `qualification.auc_minimum` and `qualification.ks_maximum`
   before starting a new run. All other fields remain sealed, the exact debug
   bytes/hash must be recorded, and eligible debug runs use the same optional
@@ -66,3 +66,11 @@ conda run -n pytorch python -m pytest -q
 
 Do not claim authority-environment or full-data verification unless it was
 actually performed on the locked ARM64 environment with the bound ROOT inputs.
+
+## Current dataset contract (v2)
+
+- All business CLIs require `--dataset`: `atlas2020_4lep` or `atlas2025_exactly4lep`.
+- Use v2 protocols and separate development/test files. Never infer identity for historical mixed runs.
+- Physical event groups must remain in the same split/fold across source rows.
+- Root design v1 hashes/counts/golden apply only to historical v1 runs. New authority references require independent evidence.
+- Current operations: `docs/dataset-v2-runbook.md`. Preserve frozen/failed runs.

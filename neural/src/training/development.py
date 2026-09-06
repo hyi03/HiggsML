@@ -24,6 +24,8 @@ from src.artifacts.manifest import (
 from src.artifacts.plots import write_development_plots
 from src.artifacts.transaction import RunTransaction
 from src.preprocessing.outputs import canonical_csv_bytes, write_canonical_table
+from src.dataset_binding import dataset_context
+from src.training.statistics import development_statistics
 from src.training.config import TrainingProtocol, load_training_protocol
 from src.training.dataset import build_validated_fold
 from src.training.development_reader import DevelopmentInput, read_development_input
@@ -166,6 +168,8 @@ def _candidate_oof(
     source = development.frame
     oof = pd.DataFrame(
         {
+            "source_file_id": source["source_file_id"].to_numpy(copy=True),
+            "event_group_id": source["event_group_id"].to_numpy(copy=True),
             "target_lambda": np.full(len(source), target_lambda),
             "source_sample": source["source_sample"].to_numpy(copy=True),
             "source_entry": source["source_entry"].to_numpy(copy=True),
@@ -186,20 +190,23 @@ def _candidate_oof(
 
 def execute_development(
     *,
+    dataset: str,
     input_run: str | Path,
     protocol_path: str | Path,
     run_dir: str | Path,
     allowed_root: str | Path,
     input_allowed_root: str | Path | None = None,
+    debug: bool = False,
     show_progress: bool = False,
 ) -> DevelopmentResult:
-    protocol = load_training_protocol(protocol_path)
+    protocol = load_training_protocol(protocol_path, debug=debug)
     started = time.perf_counter()
     started_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     input_root = input_allowed_root if input_allowed_root is not None else allowed_root
-    with RunTransaction(run_dir, allowed_root=allowed_root) as transaction:
+    with RunTransaction(run_dir, allowed_root=allowed_root, dataset_binding=dataset_context(dataset).snapshot()) as transaction:
         input_data = read_development_input(
-            input_run, allowed_root=input_root, protocol_sha256=protocol.sha256
+            input_run, dataset=dataset, allowed_root=input_root,
+            protocol_sha256=protocol.sha256, debug=debug,
         )
         folds = assign_folds(input_data.development)
         candidate_frames: list[pd.DataFrame] = []
@@ -270,11 +277,13 @@ def execute_development(
         artifacts.mkdir()
         predictions.mkdir()
         snapshot = {
-            "schema_version": "development-config-v1",
+            "schema_version": "development-config-v2",
+            "dataset_binding": input_data.development.dataset_binding,
             "input_run": str(Path(input_run)),
             "input_manifest_sha256": input_data.input_manifest_sha256,
             "protocol_sha256": protocol.sha256,
             "protocol": protocol.raw,
+            "protocol_payload": protocol.payload.decode("utf-8"),
         }
         config_payload = yaml.safe_dump(snapshot, sort_keys=False).encode("utf-8")
         _write_bytes(transaction.path / "config.yaml", config_payload)
@@ -328,7 +337,7 @@ def execute_development(
             published_oof,
             OOF_COLUMNS,
             integer_columns={"source_entry", "fold_index", "label"},
-            string_columns={"source_sample"},
+            string_columns={"source_sample", "source_file_id", "event_group_id"},
         )
         table_receipt = write_canonical_table(
             predictions / "oof_scores.csv.gz",
@@ -347,6 +356,7 @@ def execute_development(
             candidates,
             published_oof,
             selected_lambda=selected_lambda,
+            dataset_name=dataset,
             roc_points=weighted_roc_points(display_oof),
             mass_edges=tuple(float(value) for value in protocol.raw["adversary"]["mass_edges_gev"]),
         )
@@ -371,7 +381,9 @@ def execute_development(
         ]
         software = software_record()
         manifest = {
-            "schema_version": "development-manifest-v1",
+            "schema_version": "development-manifest-v2",
+            "statistics": development_statistics(input_data.development.frame, folds),
+            "dataset_binding": input_data.development.dataset_binding,
             "status": status,
             "run_type": "development",
             "started_at_utc": started_utc,
