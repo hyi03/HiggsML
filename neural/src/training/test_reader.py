@@ -9,14 +9,13 @@ import numpy as np
 import pandas as pd
 
 from src.config import InputBindingError
+from src.dataset_binding import validate_frame_identity
 from src.training.config import INPUT_COLUMNS
 from src.training.development_reader import _field_token
 
 
 _INTEGER_COLUMNS = {"label", "source_entry", "runNumber", "eventNumber", "channelNumber"}
-_TEXT_COLUMNS = {"split", "source_sample"}
-_SAMPLES = {"higgs_345060", "zz_363490"}
-_SAMPLE_LABELS = {"higgs_345060": 1, "zz_363490": 0}
+_TEXT_COLUMNS = {"split", "source_sample", "source_file_id", "event_group_id"}
 
 
 @dataclass(frozen=True)
@@ -41,7 +40,7 @@ def _decode_test_rows(payload: bytes) -> pd.DataFrame:
         raise InputBindingError("test rows cannot be decoded") from error
 
 
-def read_test_rows_after_claim(table: str | Path, *, expected_rows: int) -> ValidatedTest:
+def read_test_rows_after_claim(table: str | Path, *, expected_rows: int, dataset_binding: dict) -> ValidatedTest:
     if type(expected_rows) is not int or expected_rows <= 0:
         raise InputBindingError("expected test row count changed")
     header = b",".join(name.encode("utf-8") for name in INPUT_COLUMNS) + b"\n"
@@ -60,7 +59,7 @@ def read_test_rows_after_claim(table: str | Path, *, expected_rows: int) -> Vali
                 if split == "test":
                     test_rows += 1
                     approved.extend(line)
-                elif split not in {"train", "validation"}:
+                else:
                     raise InputBindingError("preprocess split token is invalid")
     except InputBindingError:
         raise
@@ -69,17 +68,16 @@ def read_test_rows_after_claim(table: str | Path, *, expected_rows: int) -> Vali
     if test_rows != expected_rows:
         raise InputBindingError("test row count changed")
     frame = _decode_test_rows(bytes(approved))
-    validate_test_frame(frame, expected_rows=expected_rows)
+    validate_test_frame(frame, expected_rows=expected_rows, dataset_binding=dataset_binding)
     return ValidatedTest(frame.copy(deep=True))
 
 
-def validate_test_frame(frame: pd.DataFrame, *, expected_rows: int) -> None:
+def validate_test_frame(frame: pd.DataFrame, *, expected_rows: int, dataset_binding: dict) -> None:
     if tuple(frame.columns) != INPUT_COLUMNS or len(frame) != expected_rows:
         raise InputBindingError("test frame schema or row count changed")
     if set(frame["split"].tolist()) != {"test"}:
         raise InputBindingError("test frame contains forbidden split")
-    if set(frame["source_sample"].tolist()) - _SAMPLES:
-        raise InputBindingError("test source sample changed")
+    validate_frame_identity(frame, dataset_binding)
     identities = tuple(zip(frame["source_sample"], frame["source_entry"], strict=True))
     if len(set(identities)) != len(identities):
         raise InputBindingError("test canonical identity is not unique")
@@ -88,11 +86,6 @@ def validate_test_frame(frame: pd.DataFrame, *, expected_rows: int) -> None:
             raise InputBindingError("test integer dtype changed")
     if set(frame["label"].tolist()) != {0, 1}:
         raise InputBindingError("test labels changed")
-    if any(
-        int(row.label) != _SAMPLE_LABELS[str(row.source_sample)]
-        for row in frame[["source_sample", "label"]].itertuples(index=False)
-    ):
-        raise InputBindingError("test sample-label binding changed")
     for column in INPUT_COLUMNS:
         if column in _TEXT_COLUMNS:
             continue

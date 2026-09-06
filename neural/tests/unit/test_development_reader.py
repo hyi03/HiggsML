@@ -18,7 +18,7 @@ from tests.development_fixtures import write_synthetic_preprocess_run
 
 
 PROJECT = Path(__file__).resolve().parents[2]
-PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal.yaml"
+PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal_v2.yaml"
 
 
 def _manifest_path(run: Path) -> Path:
@@ -35,17 +35,17 @@ def _write_manifest(run: Path, manifest: dict[str, Any]) -> None:
 
 def _read(run: Path, root: Path):
     protocol = load_training_protocol(PROTOCOL)
-    return read_development_input(run, allowed_root=root, protocol_sha256=protocol.sha256)
+    return read_development_input(run, allowed_root=root, protocol_sha256=protocol.sha256, dataset="atlas2020_4lep")
 
 
 def _table_record(manifest: dict[str, Any]) -> dict[str, Any]:
     return next(
-        item for item in manifest["outputs"] if item["path"] == "processed/mc_events.csv.gz"
+        item for item in manifest["outputs"] if item["path"] == "processed/development_events.csv.gz"
     )
 
 
 def _replace_table_payload(run: Path, payload: bytes, manifest: dict[str, Any]) -> None:
-    table = run / "processed" / "mc_events.csv.gz"
+    table = run / "processed" / "development_events.csv.gz"
     compressed = gzip.compress(payload, compresslevel=9, mtime=0)
     table.write_bytes(compressed)
     record = _table_record(manifest)
@@ -59,7 +59,7 @@ def test_reader_surfaces_preprocess_lineage_hashes(tmp_path: Path) -> None:
     root = tmp_path / "runs"
     run, _ = write_synthetic_preprocess_run(root)
     loaded = _read(run, root)
-    assert loaded.preprocess_protocol_sha256 == "1" * 64
+    assert loaded.preprocess_protocol_sha256 == __import__("src.resource_seals",fromlist=["RESOURCE_HASHES"]).RESOURCE_HASHES["preprocess_protocol_v2.yaml"]
     assert loaded.preprocess_run_config_sha256 == "2" * 64
 
 
@@ -143,7 +143,7 @@ def _drop_schema_dtype(manifest: dict[str, Any]) -> None:
 @pytest.mark.parametrize(
     "mutation",
     [
-        _set("schema_version", "2.0"),
+        _set("schema_version", "1.0"),
         _set("status", "failed"),
         _set("run_type", "development"),
         _set("protocol_id", "changed"),
@@ -182,6 +182,26 @@ def test_reader_rejects_output_receipt_mutations(tmp_path: Path, field: str) -> 
         _read(run, root)
 
 
+def test_debug_reader_skips_input_run_sha_validation(tmp_path: Path) -> None:
+    root = tmp_path / "runs"
+    run, _ = write_synthetic_preprocess_run(root)
+    manifest = _manifest(run)
+    record = _table_record(manifest)
+    record["sha256"] = "not-checked-in-debug"
+    record["canonical_content_sha256"] = "not-checked-in-debug"
+    manifest["configuration"]["protocol_sha256"] = "not-checked-in-debug"
+    manifest["configuration"]["run_config_sha256"] = "not-checked-in-debug"
+    _write_manifest(run, manifest)
+
+    protocol = load_training_protocol(PROTOCOL)
+    loaded = read_development_input(
+        run, allowed_root=root, protocol_sha256=protocol.sha256,
+        dataset="atlas2020_4lep", debug=True,
+    )
+
+    assert loaded.development_rows > 0
+
+
 def test_reader_rejects_output_path_traversal_and_output_set_drift(tmp_path: Path) -> None:
     root = tmp_path / "runs"
     run, _ = write_synthetic_preprocess_run(root)
@@ -207,7 +227,7 @@ def test_reader_rejects_empty_or_unknown_split_before_other_decode(
     root = tmp_path / "runs"
     run, _ = write_synthetic_preprocess_run(root)
     manifest = _manifest(run)
-    payload = gzip.decompress((run / "processed" / "mc_events.csv.gz").read_bytes())
+    payload = gzip.decompress((run / "processed" / "development_events.csv.gz").read_bytes())
     lines = payload.splitlines(keepends=True)
     split_index = INPUT_COLUMNS.index("split")
     tokens = lines[1].rstrip(b"\n").split(b",")
@@ -224,7 +244,7 @@ def test_reader_rejects_header_count_and_duplicate_identity_drift(tmp_path: Path
     root = tmp_path / "runs-header"
     run, _ = write_synthetic_preprocess_run(root)
     manifest = _manifest(run)
-    payload = gzip.decompress((run / "processed" / "mc_events.csv.gz").read_bytes())
+    payload = gzip.decompress((run / "processed" / "development_events.csv.gz").read_bytes())
     lines = payload.splitlines(keepends=True)
     lines[0] = lines[0].replace(b"lep1_pt", b"changed", 1)
     _replace_table_payload(run, b"".join(lines), manifest)
@@ -242,7 +262,7 @@ def test_reader_rejects_header_count_and_duplicate_identity_drift(tmp_path: Path
     root3 = tmp_path / "runs-identity"
     run3, _ = write_synthetic_preprocess_run(root3)
     manifest3 = _manifest(run3)
-    payload3 = gzip.decompress((run3 / "processed" / "mc_events.csv.gz").read_bytes())
+    payload3 = gzip.decompress((run3 / "processed" / "development_events.csv.gz").read_bytes())
     lines3 = payload3.splitlines(keepends=True)
     entry_index = INPUT_COLUMNS.index("source_entry")
     first = lines3[1].rstrip(b"\n").split(b",")
@@ -257,7 +277,7 @@ def test_reader_rejects_header_count_and_duplicate_identity_drift(tmp_path: Path
 def test_reader_rejects_corrupt_gzip_with_no_row_or_value_in_error(tmp_path: Path) -> None:
     root = tmp_path / "runs"
     run, _ = write_synthetic_preprocess_run(root)
-    table = run / "processed" / "mc_events.csv.gz"
+    table = run / "processed" / "development_events.csv.gz"
     table.write_bytes(b"not-gzip")
     manifest = _manifest(run)
     record = _table_record(manifest)

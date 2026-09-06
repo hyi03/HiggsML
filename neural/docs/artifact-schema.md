@@ -1,152 +1,77 @@
-# HiggsML Neural Artifact Schema Index
+# HiggsML Neural Artifact Schema v2
 
-## 1. 地位与通用约束
+本文描述当前按数据集隔离的产物；历史 v1 字段见相应历史协议文档。精确字段和列序以版本化协议及 reader 为准。所有 run 使用 `neural/runs/<dataset>/<new-run>/` 新路径，冻结和失败 run 不可覆盖。
 
-本文是已实现 artifact 契约的导航与审计索引，不替代 sealed protocol：
+## 通用绑定
 
-- preprocess 字段与 golden：[`Preprocess Protocol V1`](preprocess-protocol-v1.md) §6–§8；
-- development/OOF：[`Development Protocol V1`](development-protocol-v1.md) §5–§9；
-- test-opening/receipt：[`Test-opening Protocol V1`](test-opening-protocol-v1.md) §3、§7。
+`dataset_binding` 包含数据集名称、定义修订与字节摘要、release、collection、profile/science 摘要、事件身份策略及两个成员的受控元数据。下载定义在 `config/datasets/`；科学规则、profile 独立封存。名称不能重标记其他数据集的文件或模型。
 
-所有 run 必须位于 `neural/runs/` allowed root 下的新路径，不能覆盖、复用或修改 frozen/failed run。
-成功 manifest 最后发布并覆盖自身以外的全部文件 size/SHA-256。Canonical gzip 表同时记录 compressed
-file SHA-256 和解压后 canonical CSV SHA-256。
+成功 manifest 最后发布，列出自身以外的产物文件大小与 SHA-256。CSV gzip 另记录解压后 canonical 内容摘要、行数。snapshot 保存协议及绑定，development snapshot 还保存精确训练协议文本以校验 Debug 字节。
 
-## 2. Preprocess run
+## Preprocess
 
 ```text
-runs/preprocess-<id>/
-├── config.yaml
-├── processed/mc_events.csv.gz
-└── artifacts/
-    ├── cutflow.json
-    ├── mc_summary.json
-    └── manifest.json
+config.yaml
+processed/development_events.csv.gz
+processed/test_events.csv.gz
+artifacts/cutflow.json
+artifacts/mc_summary.json
+artifacts/manifest.json
 ```
 
-`mc_events.csv.gz` 的 29 列及顺序由 preprocess protocol §6.1 exact 固定。`cutflow.json` 按两个批准
-MC samples 和固定 stage 记录 count/efficiency/yield；`mc_summary.json` 记录 per-sample 与 total
-read/selected/split/weight/identity facts。
+Manifest 为 `schema_version: "2.0"`、`run_type: preprocess`、`protocol_id: higgsml-preprocess-v2`。记录 inputs、configuration、dataset_binding、outputs、schema、counts、software、platform、determinism、performance。
 
-Preprocess manifest：
+两张表使用 `config/preprocess_protocol_v2.yaml` 的相同 31 列；原 29 列加 `source_file_id`、`event_group_id`。development 仅含 train/validation，test 仅含 test。来源行键为 file ID + source entry；事件分组字符串为 `channelNumber:eventNumber`。新身份字段、质量、权重、标识符均禁止进入 15 维模型输入。
 
-| Block | 最小审计内容 |
-|---|---|
-| header | `schema_version=1.0`、`status=success`、`run_type=preprocess`、`protocol_id`、UTC times |
-| inputs | sample、DSID、logical path、SHA-256、size、tree/profile/unit、entry count |
-| configuration | protocol/run-config path 与 SHA-256、chunk size、`full_read=true` |
-| outputs | relative path、SHA-256、size、row count、canonical content SHA-256 |
-| schema/counts | ordered columns、dtypes、per-sample 与 totals |
-| reproducibility | software/packages/Git、platform、determinism、wall time、peak memory |
+Development reader 校验 manifest 和非 test 产物，只解码 development 分区；不会打开、计算哈希或 stat test 文件。test 文件的描述符此时只作为冻结的预期值，不能声称已重新验证。
 
-## 3. Development run
+## Development
 
 ```text
-runs/mlp-development-<id>/
-├── config.yaml
-├── artifacts/
-│   ├── candidate_metrics.csv
-│   ├── fold_metrics.csv
-│   ├── qualification.json
-│   ├── working_points.json
-│   └── manifest.json
-├── predictions/oof_scores.csv.gz
-├── plots/
-│   ├── auc_vs_lambda.png
-│   ├── ks_vs_lambda.png
-│   ├── oof_roc.png
-│   └── oof_mass_sculpting.png
-└── model/                       # eligible only
-    ├── model.pt
-    └── scaler.json
+config.yaml
+artifacts/candidate_metrics.csv
+artifacts/fold_metrics.csv
+artifacts/qualification.json
+artifacts/working_points.json
+artifacts/manifest.json
+predictions/oof_scores.csv.gz
+plots/auc_vs_lambda.png
+plots/ks_vs_lambda.png
+plots/oof_roc.png
+plots/oof_mass_sculpting.png
+model/model.pt                  # eligible only
+model/scaler.json               # eligible only
 ```
 
-`candidate_metrics.csv` 每个 frozen lambda 一行；`fold_metrics.csv` 每个
-`(target_lambda, fold_index, epoch)` 一行。`oof_scores.csv.gz` exact 列为：
+Manifest 使用 `development-manifest-v2`，config 使用 `development-config-v2`。记录上游分区与 manifest 摘要、协议、数据绑定、OOF 完整性、候选资格、环境及性能；`statistics` 为 development 各类、fold、背景质量 bin 的计数、负权重数、绝对权重和、平方和与有效样本量。
+
+OOF 精确列序：
 
 ```text
-target_lambda,source_sample,source_entry,fold_index,label,m4l,
-physical_weight,train_weight,score
+source_file_id,event_group_id,target_lambda,source_sample,source_entry,fold_index,label,m4l,physical_weight,train_weight,score
 ```
 
-`qualification.json` 使用 `development-qualification-v1`，status 只允许 `eligible` 或
-`no_eligible_candidate`，并记录 selected lambda/final epochs、tie rule 和全部 candidates。
-`working_points.json` 使用 `development-working-points-v1`，保存每个 candidate 的 loose/medium/tight
-冻结工作点。
+资格与工作点算法未变，分别保留 `development-qualification-v1` 和 `development-working-points-v1` schema。状态为 `eligible` 或 `no_eligible_candidate`；后者不发布 final model。Final payload 为 `adversarial-mlp-final-v2`；scaler 为 `fold-local-scaler-v2`，携带同一绑定。模型、scaler 和阈值不可跨数据集使用。
 
-Development manifest 使用 `development-manifest-v1`，其 status 与 qualification 一致；它绑定 preprocess
-manifest/table/canonical/protocol/run-config hashes、training protocol、全部 output、schema/counts、OOF
-完整性、selection、environment/software/performance，并明确：real data 未读、held-out test 未开启、
-authority environment 未由普通 development run 自证。
-
-## 4. Test-opening run 与唯一 state
-
-正常 test run：
+## Test-opening
 
 ```text
-runs/mlp-test-<id>/
-├── config.yaml
-├── artifacts/
-│   ├── test_metrics.json
-│   └── manifest.json
-├── predictions/test_scores.csv.gz
-└── plots/
-    ├── test_roc.png
-    └── test_mass_sculpting.png
+config.yaml
+artifacts/test_metrics.json
+artifacts/manifest.json
+predictions/test_scores.csv.gz
+plots/test_roc.png
+plots/test_mass_sculpting.png
 ```
 
-`test_scores.csv.gz` exact 列为：
+Manifest 为 `test-manifest-v2`，记录数据绑定及 development/preprocess/model/scaler/working-points lineage。指标保留 `test-metrics-v1`；正常终态为 `test_reproduced` 或 `test_nonreproduction`。预测列为 source_file_id、event_group_id 及原 source_sample、source_entry、label、m4l、physical_weight、train_weight、score，精确顺序以 test reader 常量为准。
 
-```text
-source_sample,source_entry,label,m4l,physical_weight,train_weight,score
-```
+完成数据集与资格 gate 后才校验/解码 test 分区。提供 authorization reference 时，在 development 的 `state/test_opening.json` 建立 `test-opening-state-v2` 一次性 claim；成功或 `failed_after_claim` 均为不可重试终态。已有空、partial 或不可解析 state 也拒绝重试。省略 reference 时保持原有不同新输出目录的可重复评价模式。
 
-`test_metrics.json` 使用 `test-metrics-v1`；status 只允许 `test_reproduced` 或
-`test_nonreproduction`。`test-manifest-v1` 绑定 authorization reference、development/preprocess、
-protocol/model/scaler/working points、outputs、schema/counts、metrics、environment/software/performance
-和 no-feedback boundaries。
+## 失败及独立验证
 
-唯一 claim/terminal receipt 位于源 development run 的 `state/test_opening.json`：
+事务 `failure.json` 包含失败类型、退出码、时间、消息、可用的阶段及 dataset_binding；不同时发布成功 manifest。test claim 后消息经过清理，禁止泄漏事件特征、预测及阈值。
 
-- claim：`test-opening-state-v1`、`status=claimed`、`terminal_receipt=false`；
-- claim 后失败：`status=failed_after_claim`、固定 stage/exit code、test feature opened 状态；
-- 成功：status 等于 test 终态、绑定 test manifest SHA-256、`terminal_receipt=true`。
+Authority 使用 `authority-development-v2`，仅在 native osx-arm64 上比较同数据集 development 特征及结构计数，要求独立登记且摘要固定的 reference。`config/validation/registry.json` 当前为空，因此不会把首次输出自认证为 golden。test 特征比较未纳入此 gate。
 
-任何现存、空、partial 或不可解析 state 都永久拒绝重试。正常 test run 不复制 claim。
-
-## 5. Failure run
-
-普通 preprocess/development transaction 失败时，只发布 `failure.json`，不得同时含成功 manifest：
-
-```text
-status="failed"
-error_type
-exit_code
-failed_at_utc
-message
-stage                         # 仅已分类阶段存在
-```
-
-Test-opening claim 后的 output failure receipt 只保留 sanitized stage/error type；详细且同样 sanitized
-的 terminal state 保存在 development run。日志、receipt 与 state 不得泄漏 event row、identity、feature、
-score 或 threshold value。
-
-## 6. Authority comparator evidence
-
-`run_authority_gate` 只在 locked native `osx-arm64` 执行，并以 exclusive create 写入独立路径。它固定从
-`repository/neural/config/preprocess_protocol_v1.yaml` 读取 reviewed sealed protocol，不接受 runtime
-protocol-path 注入：
-
-```text
-runs/authority-evidence-<id>/preprocess-authority.json
-```
-
-成功 evidence 包含 `schema_version=1.0`、`status=passed`、gate id、比较行数、resolved new run、
-全部 approved lineage SHA-256，以及 structural/float/equal-nan predicates。Gate 读取新 run 的 canonical
-table、MC summary 与 cutflow，但不读取或重新绑定新 run 的 manifest；manifest-last/output hash audit 是
-独立前置。Evidence 文件不写回 preprocess run，也不由
-`tests/golden/test_preprocess_authority.py` 自动生成。
-
-M1-06 的 Markdown evidence record 另外为每条验证添加正交分类：`method`、`platform`、`data_scope`、
-`authority` 和执行 `status`。只有 authority environment、zero-skip automated suite、full-MC preprocess/
-golden 和 full development 全部通过，M1-06 才能关闭；未授权 `test_opening=not_run` 不阻塞关闭。
+实际验证范围见 [dataset-v2-verification.md](dataset-v2-verification.md)，命令见 [dataset-v2-runbook.md](dataset-v2-runbook.md)。

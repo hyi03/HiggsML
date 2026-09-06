@@ -56,7 +56,7 @@ def test_preprocess_progress_is_enabled_by_default_and_can_be_disabled(
 
     required = [
         "--protocol", "protocol.yaml",
-        "--run-config", "run.yaml",
+        "--dataset", "atlas2020_4lep", "--run-config", "run.yaml",
         "--run-dir", "runs/example",
     ]
     assert preprocess.main(required) == 0
@@ -71,7 +71,7 @@ def test_train_progress_is_enabled_by_default_and_can_be_disabled(monkeypatch) -
     monkeypatch.setattr(train, "execute_development", lambda **kwargs: calls.append(kwargs))
 
     required = [
-        "--input-run", "runs/input",
+        "--dataset", "atlas2020_4lep", "--input-run", "runs/input",
         "--protocol", "protocol.yaml",
         "--run-dir", "runs/output",
     ]
@@ -79,6 +79,19 @@ def test_train_progress_is_enabled_by_default_and_can_be_disabled(monkeypatch) -
     assert train.main([*required, "--no-progress"]) == 0
 
     assert [call["show_progress"] for call in calls] == [True, False]
+    assert [call["debug"] for call in calls] == [False, False]
+
+
+def test_train_debug_flag_is_forwarded(monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(train, "configure_logging", lambda: None)
+    monkeypatch.setattr(train, "execute_development", lambda **kwargs: calls.append(kwargs))
+    arguments = [
+        "--debug", "--dataset", "atlas2020_4lep", "--input-run", "runs/input",
+        "--protocol", "protocol.yaml", "--run-dir", "runs/output",
+    ]
+    assert train.main(arguments) == 0
+    assert calls[0]["debug"] is True
 
 
 def test_test_progress_is_enabled_by_default_and_can_be_disabled(
@@ -93,7 +106,7 @@ def test_test_progress_is_enabled_by_default_and_can_be_disabled(
 
     monkeypatch.setattr(test_cli, "execute_test_opening", execute)
     required = [
-        "--train-run", "runs/development",
+        "--dataset", "atlas2020_4lep", "--train-run", "runs/development",
         "--run-dir", "runs/test",
     ]
 

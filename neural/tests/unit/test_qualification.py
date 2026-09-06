@@ -27,7 +27,7 @@ PROJECT = Path(__file__).resolve().parents[2]
 
 
 def _protocol():
-    return load_training_protocol(PROJECT / "config/adversarial_mlp_protocol_normal.yaml")
+    return load_training_protocol(PROJECT / "config/adversarial_mlp_protocol_normal_v2.yaml")
 
 
 def test_weighted_auc_and_ks_match_small_hand_cases() -> None:
@@ -146,6 +146,8 @@ def test_oof_contract_rejects_missing_duplicate_nonfinite_and_wrong_fold() -> No
     frame = pd.DataFrame(
         {
             "target_lambda": np.zeros(len(source)),
+            "source_file_id": source["source_file_id"],
+            "event_group_id": source["event_group_id"],
             "source_sample": source["source_sample"],
             "source_entry": source["source_entry"],
             "fold_index": folds,

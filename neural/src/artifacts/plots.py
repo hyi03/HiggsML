@@ -12,7 +12,9 @@ import pandas as pd
 from src.config import InputBindingError
 
 
-def _save(path: Path) -> None:
+def _save(path: Path, dataset_name: str | None = None) -> None:
+    if dataset_name is not None:
+        plt.title(dataset_name + " — MC educational demo")
     plt.tight_layout()
     plt.savefig(path, dpi=120, metadata={"Software": "HiggsML neural educational demo"})
     plt.close()
@@ -26,6 +28,7 @@ def write_development_plots(
     selected_lambda: float | None,
     roc_points: tuple[np.ndarray, np.ndarray],
     mass_edges: tuple[float, ...],
+    dataset_name: str | None = None,
 ) -> tuple[Path, ...]:
     false_positive, true_positive = roc_points
     bins = np.asarray(mass_edges, dtype=np.float64)
@@ -53,7 +56,7 @@ def write_development_plots(
     plt.xlabel("target lambda")
     plt.ylabel("weighted development OOF AUC")
     auc_path = destination / "auc_vs_lambda.png"
-    _save(auc_path)
+    _save(auc_path, dataset_name)
 
     plt.figure()
     for name in ("loose", "medium", "tight"):
@@ -67,7 +70,7 @@ def write_development_plots(
     plt.ylabel("OOF ZZ weighted mass KS")
     plt.legend()
     ks_path = destination / "ks_vs_lambda.png"
-    _save(ks_path)
+    _save(ks_path, dataset_name)
 
     display_lambda = selected_lambda
     if display_lambda is None:
@@ -80,7 +83,7 @@ def write_development_plots(
     plt.xlabel("background efficiency")
     plt.ylabel("signal efficiency")
     roc_path = destination / "oof_roc.png"
-    _save(roc_path)
+    _save(roc_path, dataset_name)
 
     candidate = next(item for item in candidates if item["target_lambda"] == display_lambda)
     threshold = float(candidate["working_points"]["medium"]["threshold"])
@@ -95,7 +98,7 @@ def write_development_plots(
     plt.ylabel("normalized absolute-weight density")
     plt.legend()
     mass_path = destination / "oof_mass_sculpting.png"
-    _save(mass_path)
+    _save(mass_path, dataset_name)
     return auc_path, ks_path, roc_path, mass_path
 
 
@@ -106,12 +109,13 @@ def write_test_plots(
     roc_points: tuple[np.ndarray, np.ndarray],
     medium_threshold: float,
     mass_edges: tuple[float, ...],
+    dataset_name: str | None = None,
 ) -> tuple[Path, Path]:
     false_positive, true_positive = roc_points
     bins = np.asarray(mass_edges, dtype=np.float64)
     if (
         tuple(frame.columns) != (
-            "source_sample", "source_entry", "label", "m4l",
+            "source_file_id", "event_group_id", "source_sample", "source_entry", "label", "m4l",
             "physical_weight", "train_weight", "score",
         )
         or false_positive.ndim != 1
@@ -133,7 +137,7 @@ def write_test_plots(
     plt.xlabel("background efficiency")
     plt.ylabel("signal efficiency")
     roc_path = destination / "test_roc.png"
-    _save(roc_path)
+    _save(roc_path, dataset_name)
 
     labels = frame["label"].to_numpy(dtype=np.int64)
     scores = frame["score"].to_numpy(dtype=np.float64)
@@ -151,5 +155,5 @@ def write_test_plots(
     plt.ylabel("normalized absolute-weight density")
     plt.legend()
     mass_path = destination / "test_mass_sculpting.png"
-    _save(mass_path)
+    _save(mass_path, dataset_name)
     return roc_path, mass_path

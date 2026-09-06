@@ -19,8 +19,8 @@ from src.training.config import (
 
 
 PROJECT = Path(__file__).resolve().parents[2]
-NORMAL_PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal.yaml"
-DEBUG_PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_debug.yaml"
+NORMAL_PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal_v2.yaml"
+DEBUG_PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_debug_v2.yaml"
 
 
 def test_checked_in_training_protocol_is_sealed_and_hashed() -> None:
@@ -211,3 +211,16 @@ def test_debug_protocol_still_rejects_other_field_changes(tmp_path: Path) -> Non
 
     with pytest.raises(InputBindingError, match="debug adversarial MLP protocol changed"):
         load_training_protocol(changed)
+
+
+def test_cli_debug_mode_skips_training_protocol_seal_validation(tmp_path: Path) -> None:
+    raw = yaml.safe_load(NORMAL_PROTOCOL.read_text(encoding="utf-8"))
+    raw["optimization"]["learning_rate"] = 0.012345
+    raw["protocol_id"] = "local-unsealed-debug"
+    changed = tmp_path / "any-name.yaml"
+    changed.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+
+    protocol = load_training_protocol(changed, debug=True)
+
+    assert protocol.protocol_id == "local-unsealed-debug"
+    assert protocol.raw["optimization"]["learning_rate"] == 0.012345

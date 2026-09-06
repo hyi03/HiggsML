@@ -125,6 +125,7 @@ def _state(module: torch.nn.Module) -> dict[str, Tensor]:
 
 def _checkpoint(model: AdversarialMLP, fold: ValidatedFold, protocol: TrainingProtocol, target_lambda: float, epoch: int, auc: float) -> dict[str, Any]:
     return {
+        "dataset_binding": fold.dataset_binding,
         "protocol_sha256": protocol.sha256,
         "feature_tuple": FEATURE_COLUMNS,
         "scaler": fold.scaler.to_dict(),
@@ -139,7 +140,9 @@ def _checkpoint(model: AdversarialMLP, fold: ValidatedFold, protocol: TrainingPr
 
 
 def validate_checkpoint(checkpoint: dict[str, Any], protocol: TrainingProtocol, fold: ValidatedFold) -> None:
-    required = {"protocol_sha256", "feature_tuple", "scaler", "fold_index", "fold_seed", "target_lambda", "best_epoch", "best_validation_weighted_auc", "classifier_state_dict", "adversary_state_dict"}
+    required = {"dataset_binding", "protocol_sha256", "feature_tuple", "scaler", "fold_index", "fold_seed", "target_lambda", "best_epoch", "best_validation_weighted_auc", "classifier_state_dict", "adversary_state_dict"}
+    if checkpoint.get("dataset_binding") != fold.dataset_binding:
+        raise InputBindingError("checkpoint dataset binding changed")
     if set(checkpoint) != required or checkpoint["protocol_sha256"] != protocol.sha256 or checkpoint["protocol_sha256"] != fold.protocol_sha256:
         raise InputBindingError("checkpoint protocol binding changed")
     if (
@@ -305,7 +308,7 @@ def train_fixed_epochs(
     ):
         raise InputBindingError("final-fit binding changed")
     frame = development.frame
-    scaler = FoldLocalScaler.fit(frame[list(FEATURE_COLUMNS)].to_numpy(dtype=np.float64))
+    scaler = FoldLocalScaler.fit(frame[list(FEATURE_COLUMNS)].to_numpy(dtype=np.float64), dataset_binding=development.dataset_binding)
     features = torch.from_numpy(
         scaler.transform(frame[list(FEATURE_COLUMNS)].to_numpy(dtype=np.float64))
     )
@@ -316,7 +319,7 @@ def train_fixed_epochs(
     physical = torch.tensor(
         frame.loc[background.numpy(), "physical_weight"].to_numpy(), dtype=torch.float32
     )
-    bins = mass_bin_indices(masses)
+    bins = mass_bin_indices(masses, debug=development.debug)
     background_weights = adversarial_bin_weights(bins, physical)
     mass_bins = torch.full_like(labels, -1)
     adversarial_weights = torch.zeros_like(class_weights)
@@ -394,7 +397,8 @@ def train_fixed_epochs(
     progress.close()
     environment = _environment()
     payload = {
-        "schema_version": "adversarial-mlp-final-v1",
+        "schema_version": "adversarial-mlp-final-v2",
+        "dataset_binding": development.dataset_binding,
         "protocol_sha256": protocol.sha256,
         "feature_tuple": FEATURE_COLUMNS,
         "scaler": scaler.to_dict(),

@@ -1,8 +1,4 @@
-schema_version: "1.0"
-samples:
-  higgs:
-    path: ../data/raw/higgs.root
-  zz:
-    path: ../data/raw/zz_363490.root
+schema_version: "2.0"
+data_root: ../../data/raw
 resources:
   chunk_size_events: 50000

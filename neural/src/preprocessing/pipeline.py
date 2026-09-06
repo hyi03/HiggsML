@@ -24,7 +24,7 @@ from .root_reader import iter_events
 
 
 INTEGER_COLUMNS = {"label", "source_entry", "runNumber", "eventNumber", "channelNumber"}
-STRING_COLUMNS = {"split", "source_sample"}
+STRING_COLUMNS = {"split", "source_sample", "source_file_id", "event_group_id"}
 
 
 def _selection(protocol: PreprocessProtocol) -> SelectionConfig:
@@ -76,6 +76,8 @@ def prepare_table(
             ) as progress:
                 for event in events:
                     progress.update(1)
+                    if int(event["channelNumber"]) != sample.dsid:
+                        raise InputBindingError("event DSID does not match dataset")
                     observed_channels.add(int(event["channelNumber"]))
                     normalization = _normalization(event, sample, normalization)
                     weight = physical_event_weight(mc_weight=float(event["mcWeight"]), luminosity_pb=protocol.luminosity_pb, **normalization)
@@ -88,7 +90,7 @@ def prepare_table(
                         raise InputBindingError("selected event has no candidate")
                     row = build_candidate_features(event, result.candidate)
                     row.update(build_angular5(result.candidate))
-                    row.update(label=sample.label, split=event_split(event["eventNumber"], event["channelNumber"]), physical_weight=weight, source_sample=sample.source_sample, source_entry=int(event["source_entry"]))
+                    row.update(label=sample.label, split=event_split(event["eventNumber"], event["channelNumber"]), physical_weight=weight, source_sample=sample.source_sample, source_entry=int(event["source_entry"]), source_file_id=sample.source_file_id, event_group_id=f"{int(event['channelNumber'])}:{int(event['eventNumber'])}")
                     rows.append(row)
         except InputBindingError:
             raise
@@ -114,36 +116,37 @@ def prepare_table(
 
 def execute_preprocess(
     *,
+    dataset: str,
     protocol_path: str | Path,
     run_config_path: str | Path,
     run_dir: str | Path,
     allowed_root: str | Path,
     show_progress: bool = False,
 ) -> None:
-    protocol = load_preprocess_protocol(protocol_path)
-    config = load_preprocess_run_config(run_config_path)
+    protocol = load_preprocess_protocol(protocol_path, dataset=dataset)
+    config = load_preprocess_run_config(run_config_path, dataset=dataset)
+    _verify_download_receipt(config, protocol)
     started = time.perf_counter()
     started_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    with RunTransaction(run_dir, allowed_root=allowed_root) as transaction:
+    with RunTransaction(run_dir, allowed_root=allowed_root, dataset_binding=protocol.dataset.snapshot()) as transaction:
         frame, cutflows, summaries, inputs = prepare_table(
             protocol, config, show_progress=show_progress
         )
         processed, artifacts = transaction.path / "processed", transaction.path / "artifacts"
         processed.mkdir(); artifacts.mkdir()
-        snapshot = {"protocol_sha256": hashlib.sha256(protocol.payload).hexdigest(), "run_config_sha256": hashlib.sha256(config.payload).hexdigest(), "protocol": protocol.raw, "run_config": yaml.safe_load(config.payload)}
+        snapshot = {"dataset_binding": protocol.dataset.snapshot(), "protocol_sha256": hashlib.sha256(protocol.payload).hexdigest(), "run_config_sha256": hashlib.sha256(config.payload).hexdigest(), "protocol": protocol.raw, "run_config": yaml.safe_load(config.payload)}
         config_bytes = yaml.safe_dump(snapshot, sort_keys=False).encode("utf-8")
         (transaction.path / "config.yaml").write_bytes(config_bytes)
-        csv_payload = canonical_csv_bytes(
-            frame,
-            protocol.output_columns,
-            integer_columns=INTEGER_COLUMNS,
-            string_columns=STRING_COLUMNS,
-            string_enums={
-                "split": {"train", "validation", "test"},
-                "source_sample": {sample.source_sample for sample in protocol.samples.values()},
-            },
-        )
-        table = write_canonical_table(processed / "mc_events.csv.gz", csv_payload, row_count=len(frame))
+        partition_records = []
+        for partition, mask in (("development", frame["split"] != "test"), ("test", frame["split"] == "test")):
+            partition_frame = frame.loc[mask]
+            csv_payload = canonical_csv_bytes(partition_frame, protocol.output_columns,
+                integer_columns=INTEGER_COLUMNS, string_columns=STRING_COLUMNS)
+            relative = f"processed/{partition}_events.csv.gz"
+            table = write_canonical_table(transaction.path / relative, csv_payload, row_count=len(partition_frame))
+            partition_records.append({"path": relative, "sha256": table.sha256,
+                "size_bytes": table.size_bytes, "row_count": len(partition_frame),
+                "canonical_content_sha256": table.canonical_content_sha256})
         cutflow_receipt = write_json(artifacts / "cutflow.json", {"schema_version": "1.0", "selection": {"protocol_id": protocol.protocol_id, "z2_min_mode": protocol.selection["z2_min_mode"], "ordered_stages": list(STAGES)}, "samples": cutflows})
         total_splits = {name: sum(item["split_counts"][name] for item in summaries.values()) for name in ("train", "validation", "test")}
         legacy_sizes = frame.groupby(
@@ -157,10 +160,36 @@ def execute_preprocess(
                 raise InputBindingError(f"input changed before publication: {sample.source_sample}")
         outputs = [
             {"path": "config.yaml", "sha256": hashlib.sha256(config_bytes).hexdigest(), "size_bytes": len(config_bytes), "row_count": None, "canonical_content_sha256": None},
-            {"path": "processed/mc_events.csv.gz", "sha256": table.sha256, "size_bytes": table.size_bytes, "row_count": len(frame), "canonical_content_sha256": table.canonical_content_sha256},
+            *partition_records,
             {**cutflow_receipt, "path": "artifacts/cutflow.json", "row_count": None, "canonical_content_sha256": None},
             {**summary_receipt, "path": "artifacts/mc_summary.json", "row_count": None, "canonical_content_sha256": None},
         ]
         software = software_record()
-        manifest = {"schema_version": "1.0", "status": "success", "run_type": "preprocess", "protocol_id": protocol.protocol_id, "started_at_utc": started_utc, "completed_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "inputs": inputs, "configuration": {"protocol_path": str(protocol_path), "protocol_sha256": hashlib.sha256(protocol.payload).hexdigest(), "run_config_path": str(run_config_path), "run_config_sha256": hashlib.sha256(config.payload).hexdigest(), "chunk_size_events": config.chunk_size_events, "full_read": True}, "outputs": outputs, "schema": {"ordered_columns": list(protocol.output_columns), "dtypes": {name: str(frame[name].dtype) for name in protocol.output_columns}}, "counts": {"per_sample": summaries, "totals": summary["totals"]}, "software": {key: value for key, value in software.items() if key != "platform"}, "platform": software["platform"], "determinism": {"row_order": "higgs_then_zz_source_entry", "csv_float_format": ".17g", "gzip_mtime": 0}, "performance": {"wall_seconds": time.perf_counter() - started, "peak_memory_bytes": peak_memory_bytes()}}
+        manifest = {"dataset_binding": protocol.dataset.snapshot(), "schema_version": "2.0", "status": "success", "run_type": "preprocess", "protocol_id": protocol.protocol_id, "started_at_utc": started_utc, "completed_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "inputs": inputs, "configuration": {"protocol_path": str(protocol_path), "protocol_sha256": hashlib.sha256(protocol.payload).hexdigest(), "run_config_path": str(run_config_path), "run_config_sha256": hashlib.sha256(config.payload).hexdigest(), "chunk_size_events": config.chunk_size_events, "full_read": True}, "outputs": outputs, "schema": {"ordered_columns": list(protocol.output_columns), "dtypes": {name: str(frame[name].dtype) for name in protocol.output_columns}}, "counts": {"per_sample": summaries, "totals": summary["totals"]}, "software": {key: value for key, value in software.items() if key != "platform"}, "platform": software["platform"], "determinism": {"row_order": "higgs_then_zz_source_entry", "csv_float_format": ".17g", "gzip_mtime": 0}, "performance": {"wall_seconds": time.perf_counter() - started, "peak_memory_bytes": peak_memory_bytes()}}
         write_json(artifacts / "manifest.json", manifest)
+
+
+def _verify_download_receipt(config, protocol):
+    import json
+    directory = next(iter(config.sample_paths.values())).parent
+    receipt_path = directory / "dataset_receipt.json"
+    try:
+        from src.data_contract import unique_object
+        from src.artifacts.transaction import _is_link_or_reparse
+        for candidate in (receipt_path, *config.sample_paths.values()):
+            if any(_is_link_or_reparse(part) for part in (candidate, *candidate.parents)):
+                raise ValueError("linked raw input")
+        receipt = json.loads(receipt_path.read_bytes(), object_pairs_hook=unique_object)
+        if receipt.get("status") != "complete" or receipt.get("dataset_name") != protocol.dataset.name:
+            raise ValueError("incomplete or mismatched download receipt")
+        expected_members = [dict(member, actual_size_bytes=member["size_bytes"], actual_sha256=member["sha256"]) for member in protocol.dataset.samples.values()]
+        if (receipt.get("schema_version") != "higgsml.download-receipt.v1"
+                or receipt.get("members") != expected_members
+                or receipt.get("mc_only") is not True
+                or receipt.get("release") != protocol.dataset.snapshot()["release"]
+                or receipt.get("collection") != protocol.dataset.snapshot()["collection"]):
+            raise ValueError("download receipt members changed")
+        if receipt.get("definition_sha256") != protocol.dataset.snapshot()["definition_sha256"]:
+            raise ValueError("download definition changed")
+    except (OSError, ValueError, TypeError) as error:
+        raise InputBindingError("complete bound download receipt required") from error

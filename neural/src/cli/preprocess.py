@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from src.data_contract import DATASET_NAMES
 import logging
 from collections.abc import Sequence
 from pathlib import Path
@@ -27,16 +28,18 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disable event progress bars.",
     )
+    parser.add_argument("--dataset", choices=DATASET_NAMES, required=True)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
     configure_logging()
+    LOGGER.info("dataset=%s", arguments.dataset)
     allowed_root = Path.cwd() / "runs"
     try:
         execute_preprocess(
-            protocol_path=arguments.protocol,
+            dataset=arguments.dataset,            protocol_path=arguments.protocol,
             run_config_path=arguments.run_config,
             run_dir=arguments.run_dir,
             allowed_root=allowed_root,

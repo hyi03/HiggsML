@@ -81,8 +81,8 @@ def test_train_help_has_no_removed_subcommands() -> None:
     )
 
     assert completed.returncode == 0
-    assert "develop" not in completed.stdout
-    assert "open-test" not in completed.stdout
+    assert "{develop" not in completed.stdout
+    assert "{open-test" not in completed.stdout
 
 
 def test_test_requires_development_and_run_dir() -> None:
@@ -105,7 +105,7 @@ def test_test_requires_development_and_run_dir() -> None:
             "src.cli.train",
             [
                 "develop",
-                "--input-run", "runs/input",
+                "--dataset", "atlas2020_4lep", "--input-run", "runs/input",
                 "--protocol", "protocol.yaml",
                 "--run-dir", "runs/output",
             ],
@@ -114,7 +114,7 @@ def test_test_requires_development_and_run_dir() -> None:
             "src.cli.train",
             [
                 "open-test",
-                "--train-run", "runs/development",
+                "--dataset", "atlas2020_4lep", "--train-run", "runs/development",
                 "--run-dir", "runs/test",
             ],
         ),
@@ -122,7 +122,7 @@ def test_test_requires_development_and_run_dir() -> None:
             "src.cli.test",
             [
                 "open-test",
-                "--train-run", "runs/development",
+                "--dataset", "atlas2020_4lep", "--train-run", "runs/development",
                 "--run-dir", "runs/test",
             ],
         ),

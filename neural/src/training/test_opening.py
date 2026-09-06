@@ -26,6 +26,7 @@ from tqdm.auto import tqdm
 from src.artifacts.manifest import canonical_json_bytes, peak_memory_bytes, sha256_file, software_record, write_canonical_json
 from src.artifacts.plots import write_test_plots
 from src.artifacts.transaction import RunPathError, RunTransaction
+from src.dataset_binding import dataset_context, validate_dataset_snapshot
 from src.config import ExitCode, InputBindingError, TestOpeningFailure, TestOpeningRefused
 from src.preprocessing.outputs import canonical_csv_bytes, write_canonical_table
 from src.training.config import (
@@ -51,6 +52,7 @@ from src.training.test_reader import read_test_rows_after_claim
 
 LOGGER = logging.getLogger(__name__)
 TEST_SCORE_COLUMNS = (
+    "source_file_id", "event_group_id",
     "source_sample", "source_entry", "label", "m4l",
     "physical_weight", "train_weight", "score",
 )
@@ -126,6 +128,7 @@ class _Binding:
     working_points: dict[str, dict[str, float]]
     input_hashes: dict[str, str]
     artifact_hashes: dict[str, str]
+    test_record: dict[str, Any]
 
 
 def _hex_sha(value: Any) -> bool:
@@ -167,9 +170,9 @@ def _development_manifest(run: Path) -> tuple[dict[str, Any], str]:
         _plain_descendant(run, Path("artifacts/manifest.json"))
     )
     required = {
-        "schema_version", "status", "run_type", "started_at_utc", "completed_at_utc",
+        "dataset_binding", "schema_version", "status", "run_type", "started_at_utc", "completed_at_utc",
         "input", "protocol", "outputs", "counts", "schema", "oof_completeness",
-        "selection", "environment", "software", "performance", "boundaries",
+        "statistics", "selection", "environment", "software", "performance", "boundaries",
     }
     if set(manifest) != required:
         raise InputBindingError("development manifest schema changed")
@@ -183,7 +186,7 @@ def _development_manifest(run: Path) -> tuple[dict[str, Any], str]:
     protocol = manifest.get("protocol")
     performance = manifest.get("performance")
     if (
-        manifest.get("schema_version") != "development-manifest-v1"
+        manifest.get("schema_version") != "development-manifest-v2"
         or manifest.get("run_type") != "development"
         or type(manifest.get("started_at_utc")) is not str
         or type(manifest.get("completed_at_utc")) is not str
@@ -430,19 +433,26 @@ def _validated_working_points(
     return selected_points
 
 
-def _load_binding(development_run: str | Path, *, allowed_root: str | Path) -> _Binding:
+def _load_binding(development_run: str | Path, *, allowed_root: str | Path, dataset: str) -> _Binding:
     root = Path(allowed_root).resolve(strict=True)
     run = _bound_input_run(development_run, root)
     manifest, manifest_sha = _development_manifest(run)
+    validate_dataset_snapshot(manifest["dataset_binding"], dataset)
     _validate_dev_outputs(run, manifest)
     try:
         config = yaml.safe_load((run / "config.yaml").read_bytes())
     except (OSError, UnicodeError, yaml.YAMLError) as error:
         raise InputBindingError("development config cannot be loaded") from error
     if not isinstance(config, dict) or set(config) != {
-        "schema_version", "input_run", "input_manifest_sha256", "protocol_sha256", "protocol"
-    } or config.get("schema_version") != "development-config-v1" or not isinstance(config.get("protocol"), dict):
+        "protocol_payload", "dataset_binding", "schema_version", "input_run", "input_manifest_sha256", "protocol_sha256", "protocol"
+    } or config.get("schema_version") != "development-config-v2" or not isinstance(config.get("protocol"), dict):
         raise InputBindingError("development config binding changed")
+    if config["dataset_binding"] != manifest["dataset_binding"]:
+        raise InputBindingError("development dataset snapshot changed")
+    if (type(config["protocol_payload"]) is not str
+            or hashlib.sha256(config["protocol_payload"].encode()).hexdigest() != config["protocol_sha256"]
+            or yaml.safe_load(config["protocol_payload"]) != config["protocol"]):
+        raise InputBindingError("protocol exact bytes mismatch")
     protocol = config["protocol"]
     _validate_protocol_manifest_binding(protocol, manifest)
     protocol_sha = config.get("protocol_sha256")
@@ -469,6 +479,8 @@ def _load_binding(development_run: str | Path, *, allowed_root: str | Path) -> _
     )
     scaler_raw, _ = _read_canonical_json(run / "model/scaler.json")
     scaler = FoldLocalScaler.from_dict(scaler_raw)
+    if scaler.dataset_binding != manifest["dataset_binding"]:
+        raise InputBindingError("scaler dataset mismatch")
     if scaler.fitting_rows != manifest["counts"]["development_rows"]:
         raise InputBindingError("frozen scaler row binding changed")
     try:
@@ -484,13 +496,14 @@ def _load_binding(development_run: str | Path, *, allowed_root: str | Path) -> _
     except Exception as error:
         raise InputBindingError("frozen model cannot be loaded") from error
     model_keys = {
-        "schema_version", "protocol_sha256", "feature_tuple", "scaler", "target_lambda",
+        "dataset_binding", "schema_version", "protocol_sha256", "feature_tuple", "scaler", "target_lambda",
         "seed", "epochs", "classifier_state_dict", "adversary_state_dict", "environment",
     }
     if (
         not isinstance(payload, dict)
         or set(payload) != model_keys
-        or payload.get("schema_version") != "adversarial-mlp-final-v1"
+        or payload.get("schema_version") != "adversarial-mlp-final-v2"
+        or payload.get("dataset_binding") != manifest["dataset_binding"]
         or payload.get("protocol_sha256") != protocol_sha
         or tuple(payload.get("feature_tuple", ())) != FEATURE_COLUMNS
         or payload.get("target_lambda") != selected
@@ -525,9 +538,11 @@ def _load_binding(development_run: str | Path, *, allowed_root: str | Path) -> _
 
     preprocess = _resolve_preprocess(str(config.get("input_run")), allowed_root=root)
     pre_manifest, pre_manifest_sha = _read_manifest(preprocess)
+    if pre_manifest["dataset_binding"] != manifest["dataset_binding"]:
+        raise InputBindingError("preprocess dataset mismatch")
     records = _output_records(preprocess, pre_manifest)
-    table_record = records["processed/mc_events.csv.gz"]
-    table = preprocess / "processed/mc_events.csv.gz"
+    table_record = records["processed/development_events.csv.gz"]
+    table = preprocess / "processed/development_events.csv.gz"
     input_hashes = manifest["input"]
     if (
         pre_manifest_sha != input_hashes.get("manifest_sha256")
@@ -557,7 +572,7 @@ def _load_binding(development_run: str | Path, *, allowed_root: str | Path) -> _
         manifest_sha,
         manifest,
         preprocess,
-        table,
+        preprocess / "processed/test_events.csv.gz",
         pre_count,
         protocol,
         protocol_sha,
@@ -567,6 +582,7 @@ def _load_binding(development_run: str | Path, *, allowed_root: str | Path) -> _
         working_points,
         input_hashes,
         artifact_hashes,
+        records["processed/test_events.csv.gz"],
     )
 
 
@@ -642,7 +658,8 @@ def _claim(
             ) from error
     state = state_dir / "test_opening.json"
     claim = {
-        "schema_version": "test-opening-state-v1", "status": "claimed",
+        "schema_version": "test-opening-state-v2",
+        "dataset_binding": binding.development_manifest["dataset_binding"], "status": "claimed",
         "development_manifest_sha256": binding.development_manifest_sha256,
         "test_run": output_run.as_posix(), "output_staging": staging.as_posix(),
         "authorization_reference": authorization, "claimed_at_utc": claimed_at_utc,
@@ -710,8 +727,13 @@ def _record(root: Path, relative: str, *, canonical: str | None = None, rows: in
 
 
 def _evaluate(binding: _Binding) -> tuple[pd.DataFrame, dict[str, Any]]:
+    test_path = _plain_descendant(binding.preprocess_run, Path("processed/test_events.csv.gz"))
+    if (test_path.stat().st_size != binding.test_record["size_bytes"]
+            or sha256_file(test_path) != binding.test_record["sha256"]
+            or _canonical_content_sha256(test_path) != binding.test_record["canonical_content_sha256"]):
+        raise InputBindingError("test partition hash changed")
     torch.use_deterministic_algorithms(True)
-    test = read_test_rows_after_claim(binding.table, expected_rows=binding.expected_test_rows)
+    test = read_test_rows_after_claim(binding.table, expected_rows=binding.expected_test_rows, dataset_binding=binding.development_manifest["dataset_binding"])
     raw = test.frame
     features = binding.scaler.transform(raw[list(FEATURE_COLUMNS)].to_numpy(dtype=np.float64))
     with torch.no_grad():
@@ -799,7 +821,7 @@ def _write_success_artifacts(
         scores,
         TEST_SCORE_COLUMNS,
         integer_columns={"source_entry", "label"},
-        string_columns={"source_sample"},
+        string_columns={"source_sample", "source_file_id", "event_group_id"},
     )
     score_receipt = write_canonical_table(
         predictions / "test_scores.csv.gz",
@@ -811,6 +833,7 @@ def _write_success_artifacts(
         transaction.path / "plots",
         scores,
         roc_points=roc,
+        dataset_name=binding.development_manifest["dataset_binding"]["dataset_name"],
         medium_threshold=float(metrics["working_points"]["medium"]["threshold"]),
         mass_edges=tuple(
             float(value) for value in binding.protocol["adversary"]["mass_edges_gev"]
@@ -837,7 +860,8 @@ def _write_success_artifacts(
         for path in paths
     ]
     manifest = {
-        "schema_version": "test-manifest-v1",
+        "schema_version": "test-manifest-v2",
+        "dataset_binding": binding.development_manifest["dataset_binding"],
         "run_type": "test_opening",
         "status": metrics["status"],
         "started_at_utc": started_utc,
@@ -896,7 +920,8 @@ def _failure_state(
     code = getattr(error, "exit_code", ExitCode.INTERNAL_ERROR)
     cause = error.__cause__ if isinstance(error, TestOpeningFailure) else None
     return {
-        "schema_version": "test-opening-state-v1",
+        "schema_version": "test-opening-state-v2",
+        "dataset_binding": binding.development_manifest["dataset_binding"],
         "status": "failed_after_claim",
         "development_manifest_sha256": binding.development_manifest_sha256,
         "authorization_reference": authorization,
@@ -943,6 +968,7 @@ def _store_failure_state(
 
 def _execute_test_opening(
     *,
+    dataset: str,
     development_run: str | Path,
     run_dir: str | Path,
     authorization_reference: str | None = None,
@@ -962,6 +988,7 @@ def _execute_test_opening(
             else "test-opening failed"
         ),
         safe_failure_stage="output_transaction",
+        dataset_binding=dataset_context(dataset).snapshot(),
     )
     output_staging = transaction.path
     try:
@@ -969,7 +996,7 @@ def _execute_test_opening(
         state_candidate = prechecked_run / "state" / "test_opening.json"
         if one_shot and os.path.lexists(state_candidate):
             raise TestOpeningRefused("development run already has a test-opening state")
-        binding = _load_binding(prechecked_run, allowed_root=allowed_root)
+        binding = _load_binding(prechecked_run, allowed_root=allowed_root, dataset=dataset)
         if one_shot and os.path.lexists(state_candidate):
             raise TestOpeningRefused("development run already has a test-opening state")
     except BaseException:
@@ -1114,7 +1141,8 @@ def _execute_test_opening(
         _replace_state(
             state,
             {
-                "schema_version": "test-opening-state-v1",
+                "schema_version": "test-opening-state-v2",
+        "dataset_binding": binding.development_manifest["dataset_binding"],
                 "status": metrics["status"],
                 "development_manifest_sha256": binding.development_manifest_sha256,
                 "authorization_reference": authorization,
@@ -1144,6 +1172,7 @@ def _execute_test_opening(
 
 def execute_test_opening(
     *,
+    dataset: str,
     development_run: str | Path,
     run_dir: str | Path,
     authorization_reference: str | None = None,
@@ -1158,6 +1187,7 @@ def execute_test_opening(
         disable=not show_progress,
     ) as progress:
         return _execute_test_opening(
+            dataset=dataset,
             development_run=development_run,
             run_dir=run_dir,
             authorization_reference=authorization_reference,

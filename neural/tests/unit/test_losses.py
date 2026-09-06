@@ -47,6 +47,11 @@ def test_mass_bins_and_fold_weights_are_exactly_balanced() -> None:
     assert torch.allclose(totals, torch.ones(11), rtol=0.0, atol=1e-7)
 
 
+def test_debug_mass_bins_include_underflow_and_overflow() -> None:
+    masses = torch.tensor([70.0, 104.999, 105.0, 160.0, 160.001, 500.0], dtype=torch.float64)
+    assert mass_bin_indices(masses, debug=True).tolist() == [0, 0, 0, 10, 10, 10]
+
+
 def test_every_mass_edge_and_invalid_mass_failures_are_bound() -> None:
     edges = torch.arange(105.0, 165.0, 5.0, dtype=torch.float64)
     expected = list(range(11)) + [10]

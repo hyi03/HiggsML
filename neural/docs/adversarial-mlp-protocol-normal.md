@@ -1,3 +1,5 @@
+> 历史 v1 文档。当前接口及数据边界以 [v2 手册](dataset-v2-runbook.md) 为准；旧协议原字节保留，当前入口不接受旧混用产物。
+
 # Adversarial MLP Normal Protocol
 
 - `协议 ID`: `adversarial-mlp-protocol-normal`

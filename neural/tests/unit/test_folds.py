@@ -9,13 +9,21 @@ from src.training.folds import assign_folds, fold_index_for_identity
 from tests.training_fixtures import synthetic_development_frame
 
 
-def test_fold_hash_known_vectors_include_zero_entry() -> None:
-    assert fold_index_for_identity("higgs_345060", 0) == 3
-    assert fold_index_for_identity("zz_363490", 7) == 4
-    assert fold_index_for_identity("sample", 42) == 0
-    for sample, entry in (("", 0), ("bad\x00sample", 0), ("sample", -1), ("sample", True)):
-        with pytest.raises(InputBindingError):
-            fold_index_for_identity(sample, entry)
+def test_fold_hash_known_vectors_include_zero_event():
+    import hashlib
+    for group in ("345060:0","363490:7","700600:42"):
+        assert fold_index_for_identity(group)==int.from_bytes(hashlib.sha256(group.encode()).digest()[:8],"big")%5
+    for group in ("","bad\x00sample",None):
+        with pytest.raises(InputBindingError):fold_index_for_identity(group)
+
+
+def test_same_event_changed_source_entry_keeps_fold():
+    frame=synthetic_development_frame()
+    dev=validate_development_frame(frame,protocol_sha256="a"*64)
+    before=assign_folds(dev)
+    dev.frame["source_entry"]+=100
+    dev.frame["source_file_id"]="another-collection"
+    assert np.array_equal(before,assign_folds(dev))
 
 
 def test_fold_assignment_is_identity_stable_under_row_reordering() -> None:

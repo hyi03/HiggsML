@@ -22,13 +22,13 @@ INPUT_COLUMNS = (
     "mZ1", "mZ2", "pt4l", "deltaR_Z1", "deltaR_Z2", "deltaPhi_ZZ", "cos_theta_star",
     "cos_theta_1", "cos_theta_2", "phi_decay_planes", "phi_production_plane", "m4l", "label",
     "split", "physical_weight", "train_weight", "source_sample", "source_entry", "runNumber",
-    "eventNumber", "channelNumber",
+    "eventNumber", "channelNumber", "source_file_id", "event_group_id",
 )
 FORBIDDEN_FEATURES = tuple(column for column in INPUT_COLUMNS if column not in FEATURES)
 TARGET_LAMBDAS = (0.0, 0.05, 0.10, 0.20, 0.50)
 BASE_SEED = 42
-NORMAL_PROTOCOL_ID = "adversarial-mlp-protocol-normal"
-DEBUG_PROTOCOL_ID = "adversarial-mlp-protocol-debug"
+NORMAL_PROTOCOL_ID = "adversarial-mlp-protocol-normal-v2"
+DEBUG_PROTOCOL_ID = "adversarial-mlp-protocol-debug-v2"
 DEBUG_MUTABLE_QUALIFICATION_FIELDS = ("auc_minimum", "ks_maximum")
 
 
@@ -50,7 +50,7 @@ _UniqueLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _m
 
 
 _NORMAL_EXPECTED: dict[str, Any] = {
-    "schema_version": "1.0",
+    "schema_version": "2.0",
     "protocol_id": NORMAL_PROTOCOL_ID,
     "features": list(FEATURES),
     "input_columns": list(INPUT_COLUMNS),
@@ -84,7 +84,7 @@ _NORMAL_EXPECTED: dict[str, Any] = {
     "early_stopping": {"metric": "validation_weighted_auc", "patience": 20, "minimum_improvement": 1.0e-4},
     "checkpoint": {
         "in_memory_only": True, "deep_cpu_copy": True, "bind_protocol_sha256": True,
-        "fields": ["protocol_sha256", "feature_tuple", "scaler", "fold_index", "fold_seed", "target_lambda", "best_epoch", "best_validation_weighted_auc", "classifier_state_dict", "adversary_state_dict"],
+        "fields": ["dataset_binding", "protocol_sha256", "feature_tuple", "scaler", "fold_index", "fold_seed", "target_lambda", "best_epoch", "best_validation_weighted_auc", "classifier_state_dict", "adversary_state_dict"],
     },
     "result": {
         "epoch_fields": ["epoch", "lambda_effective", "train_cls_loss", "train_adv_loss", "train_total_loss", "validation_weighted_auc", "is_best", "duration_seconds", "events_per_second"],
@@ -92,8 +92,8 @@ _NORMAL_EXPECTED: dict[str, Any] = {
         "environment_fields": ["os", "architecture", "python", "pytorch", "device", "dtype", "threads", "data_loader_workers", "deterministic_algorithms"],
     },
     "folding": {
-        "count": 5, "algorithm": "sha256_identity_v1", "encoding": "utf-8",
-        "separator_hex": "00", "digest_prefix_bytes": 8, "byte_order": "big", "modulo": 5,
+        "count": 5, "algorithm": "sha256_event_group_v2", "encoding": "utf-8",
+        "separator_hex": "3a", "digest_prefix_bytes": 8, "byte_order": "big", "modulo": 5,
     },
     "working_points": {"loose": 0.50, "medium": 0.20, "tight": 0.10},
     "qualification": {
@@ -106,7 +106,7 @@ _NORMAL_EXPECTED: dict[str, Any] = {
         "epochs_rule": "median_fold_best_epoch", "early_stopping": False,
     },
     "development_artifacts": {
-        "oof_columns": ["target_lambda", "source_sample", "source_entry", "fold_index", "label", "m4l", "physical_weight", "train_weight", "score"],
+        "oof_columns": ["source_file_id", "event_group_id", "target_lambda", "source_sample", "source_entry", "fold_index", "label", "m4l", "physical_weight", "train_weight", "score"],
         "fold_metric_columns": ["target_lambda", "fold_index", "fold_seed", "epoch", "lambda_effective", "train_cls_loss", "train_adv_loss", "train_total_loss", "validation_weighted_auc", "is_best", "duration_seconds", "events_per_second", "best_epoch", "best_validation_weighted_auc", "epochs_completed", "stopped_early"],
         "candidate_metric_columns": ["target_lambda", "weighted_oof_auc", "loose_threshold", "loose_target_background_efficiency", "loose_achieved_background_efficiency", "loose_signal_efficiency", "loose_ks", "medium_threshold", "medium_target_background_efficiency", "medium_achieved_background_efficiency", "medium_signal_efficiency", "medium_ks", "tight_threshold", "tight_target_background_efficiency", "tight_achieved_background_efficiency", "tight_signal_efficiency", "tight_ks", "eligible", "rejection_reasons_json"],
         "required_paths": ["config.yaml", "artifacts/candidate_metrics.csv", "artifacts/fold_metrics.csv", "artifacts/qualification.json", "artifacts/working_points.json", "predictions/oof_scores.csv.gz", "plots/auc_vs_lambda.png", "plots/ks_vs_lambda.png", "plots/oof_roc.png", "plots/oof_mass_sculpting.png", "artifacts/manifest.json"],
@@ -210,7 +210,7 @@ def validate_training_protocol_snapshot(raw: Any) -> dict[str, Any]:
     return raw
 
 
-def load_training_protocol(path: str | Path) -> TrainingProtocol:
+def load_training_protocol(path: str | Path, *, debug: bool = False) -> TrainingProtocol:
     try:
         payload = Path(path).read_bytes()
         raw = yaml.load(payload.decode("utf-8"), Loader=_UniqueLoader)
@@ -218,11 +218,20 @@ def load_training_protocol(path: str | Path) -> TrainingProtocol:
         raise
     except (OSError, UnicodeError, yaml.YAMLError) as exc:
         raise InputBindingError("unable to load sealed adversarial MLP protocol") from exc
-    validate_training_protocol_snapshot(raw)
+    if not isinstance(raw, dict):
+        raise InputBindingError("adversarial MLP protocol must be a mapping")
+    if not debug:
+        validate_training_protocol_snapshot(raw)
+    try:
+        protocol_id = str(raw["protocol_id"])
+        features = tuple(raw["features"])
+        target_lambdas = tuple(float(value) for value in raw["determinism"]["target_lambdas"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise InputBindingError("debug adversarial MLP protocol is missing required fields") from exc
     return TrainingProtocol(
-        protocol_id=str(raw["protocol_id"]),
-        features=tuple(raw["features"]),
-        target_lambdas=tuple(float(value) for value in raw["determinism"]["target_lambdas"]),
+        protocol_id=protocol_id,
+        features=features,
+        target_lambdas=target_lambdas,
         raw=raw,
         payload=payload,
         sha256=hashlib.sha256(payload).hexdigest(),
