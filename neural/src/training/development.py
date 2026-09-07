@@ -255,8 +255,17 @@ def execute_development(
                 "Pass" if candidate["eligible"] else "Fail",
             )
         selected = select_candidate(candidates, protocol)
+        if selected is None and debug:
+            selected = select_candidate(candidates, protocol, debug=True)
         selected_lambda = None if selected is None else float(selected["target_lambda"])
         status = "no_eligible_candidate" if selected is None else "eligible"
+        if debug:
+            status = "debug_diagnostic"
+            LOGGER.warning(
+                "DEBUG diagnostic model: selected_lambda=%s eligible=%s; "
+                "test evaluation requires --debug",
+                selected_lambda, selected is not None and selected["eligible"],
+            )
         final_result = None
         final_epochs = None
         if selected is not None:
@@ -307,7 +316,7 @@ def execute_development(
             "status": status,
             "selected_lambda": selected_lambda,
             "final_epochs": final_epochs,
-            "tie_rule": {"reference": "maximum_eligible_auc", "rtol": 0.0, "atol": 1.0e-6, "prefer": "smaller_lambda"},
+            "tie_rule": {"reference": "maximum_eligible_auc" if selected is None or selected["eligible"] else "maximum_oof_auc", "rtol": 0.0, "atol": 1.0e-6, "prefer": "smaller_lambda"},
             "candidates": candidates,
         }
         write_canonical_json(artifacts / "qualification.json", qualification)

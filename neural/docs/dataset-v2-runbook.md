@@ -19,7 +19,7 @@ conda run -n pytorch python -m pip check
 
 `config/preprocess_run.example.yaml` 只允许 `schema_version: "2.0"`、`data_root`、`resources.chunk_size_events`。相对 data root 按配置文件所在目录解析；样本路径由数据集定义构造，不允许分别指定 Higgs/ZZ 路径。
 
-诊断时可显式使用 `config/preprocess_protocol_debug.yaml`。该协议将 `selection.m4l_window_gev` 设为 `null`，表示不执行 m4l 分析质量窗。训练时必须显式传入 `--debug`；debug 状态不根据任何协议文件名推断。此模式不验证 `--input-run` 中记录的文件/canonical/protocol/run-config SHA，也不执行 `--protocol` 的封存快照校验，但仍要求输入可解析、数据集身份一致、表结构有效且只读取 development 分区。debug 接受任意有限 m4l；低于 105 GeV 的背景进入首个 adversary overflow bin，高于 160 GeV 的背景进入最后一个 overflow bin。数据集定义、原始 ROOT 和下载 receipt 的校验仍属于预处理阶段。debug development 不能用于 held-out test，并且必须使用新的 run 目录。
+诊断时可显式使用 `config/preprocess_protocol_debug.yaml`。该协议将 `selection.m4l_window_gev` 设为 `null`，表示不执行 m4l 分析质量窗。训练时必须显式传入 `--debug`；debug 状态不根据任何协议文件名推断。此模式不验证 `--input-run` 中记录的文件/canonical/protocol/run-config SHA，也不执行 `--protocol` 的封存快照校验，但仍要求输入可解析、数据集身份一致、表结构有效且只读取 development 分区。debug 接受任意有限 m4l；低于 105 GeV 的背景进入首个 adversary overflow bin，高于 160 GeV 的背景进入最后一个 overflow bin。数据集定义、原始 ROOT 和下载 receipt 的校验仍属于预处理阶段。显式 `--debug` 训练发布 `debug_diagnostic` 状态，必须使用新的 run 目录；仅可通过 `higgsml-test --debug` 进行诊断评价。
 
 ```powershell
 conda run -n pytorch higgsml-train --debug --dataset atlas2020_4lep --input-run runs/atlas2020_4lep/preprocess-debug-001 --protocol config/adversarial_mlp_protocol_debug_v2.yaml --run-dir runs/atlas2020_4lep/development-debug-001
@@ -62,7 +62,7 @@ conda run -n pytorch higgsml-train --dataset atlas2020_4lep --input-run runs/atl
 
 ## Test-opening
 
-只有同一数据集的 eligible 冻结 development run 才可评价 test。开启前遵守项目的授权边界；以下命令展示接口，不代表自动授权读取任意 run 的 test。
+正式模式只有同一数据集的 eligible 冻结 development run 才可评价 test。开启前遵守项目的授权边界；以下命令展示接口，不代表自动授权读取任意 run 的 test。
 
 ```powershell
 conda run -n pytorch higgsml-test --dataset atlas2020_4lep --train-run runs/atlas2020_4lep/development-001 --run-dir runs/atlas2020_4lep/test-001
@@ -83,3 +83,16 @@ conda run -n pytorch python -m pytest -q
 历史 v1 protocol 原字节与冻结/失败 runs 保留，当前加载器不做旧 manifest 推断或 mixed 回退。`config/validation/registry.json` 在独立基准登记前保持为空，authority gate 明确拒绝自行认证；当前 gate 只比较 development 特征及结构计数，不解码 test 特征。
 
 此次软件与数据验证的实际结果见 [dataset-v2-verification.md](dataset-v2-verification.md)。所有结果均为 educational/technical demo，不能描述为 ATLAS 结果、Higgs discovery 或 physics measurement。
+
+## 显式 debug 诊断评价
+
+`higgsml-train --debug` 保留所有候选的资格结果和失败原因。若存在合格候选，仍按原规则选择；若没有，则按最高 development OOF AUC 选择，AUC 差值在协议的 `auc_tie_atol` 内时优先较小 λ。final fit 仍仅使用 development 数据，epoch 仍取所选候选五折 best epoch 的中位数。无论是否合格，显式 debug 训练均发布 `debug_diagnostic`，普通 test 入口拒绝该状态。
+
+```powershell
+higgsml-train --debug --dataset atlas2020_4lep --input-run runs/atlas2020_4lep/preprocess-debug-001 --protocol config/adversarial_mlp_protocol_debug_v2.yaml --run-dir runs/atlas2020_4lep/development-debug-002
+higgsml-test --debug --dataset atlas2020_4lep --train-run runs/atlas2020_4lep/development-debug-002 --run-dir runs/atlas2020_4lep/test-debug-002
+```
+
+已有 `no_eligible_candidate` run 没有 final model/scaler，追加 `--debug` 也不能直接评分。须按上例在新目录重跑训练；不会修改旧 run，也不会在 test 阶段补训或选择候选。
+
+`higgsml-test --debug` 忽略已有模型的 run/candidate eligible 资格判定及候选排名复核；只要存在已绑定的模型、scaler 和冻结阈值，非 eligible 模型也可诊断评分。它跳过预处理 lineage/分区哈希比对与训练协议封存快照校验，允许任意有限 m4l。仍校验 development 产物哈希、协议精确字节、数据集身份、固定 15 项特征、模型/scaler/阈值绑定、test 分区结构及行数。它不修改 AUC/KS 门槛，不根据 test 更新模型或阈值。metrics、manifest 和配置标记 debug，状态为 `debug_diagnostic`，不能解释为正式 test reproduction。可选授权引用仍启用一次性 claim；所有运行仍使用新输出目录。结果仅用于 educational/technical demo，不得反馈到开发选择。

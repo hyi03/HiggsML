@@ -26,7 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="Enable debug mode and skip input-run/protocol SHA validation.",
+        help="Skip input-run/protocol SHA validation and publish a diagnostic model even if no candidate qualifies.",
     )
     parser.add_argument(
         "--no-progress",

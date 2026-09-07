@@ -256,7 +256,7 @@ def qualification_reasons(
     return reasons
 
 
-def select_candidate(candidates: list[dict[str, Any]], protocol: TrainingProtocol) -> dict[str, Any] | None:
+def select_candidate(candidates: list[dict[str, Any]], protocol: TrainingProtocol, *, debug: bool = False) -> dict[str, Any] | None:
     if [item.get("target_lambda") for item in candidates] != list(protocol.target_lambdas):
         raise InputBindingError("candidate set or order changed")
     if any(
@@ -266,6 +266,8 @@ def select_candidate(candidates: list[dict[str, Any]], protocol: TrainingProtoco
     ):
         raise InputBindingError("candidate metric changed")
     eligible = [item for item in candidates if item.get("eligible") is True]
+    if not eligible and debug:
+        eligible = candidates
     if not eligible:
         return None
     best_auc = max(float(item["weighted_oof_auc"]) for item in eligible)

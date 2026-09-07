@@ -125,3 +125,21 @@ def test_test_result_formatter_quantifies_passes_and_failures() -> None:
     assert "39,709 unique; complete" in formatted
     assert "auc_below_minimum, medium_ks_above_maximum" in formatted
     assert str(Path("runs/test/artifacts/test_metrics.json")) in formatted
+
+
+def test_test_debug_flag_and_diagnostic_output(monkeypatch, capsys):
+    calls = []
+    result = _test_result()
+    result.metrics.update(status="debug_diagnostic", debug=True)
+    def execute(**kwargs):
+        calls.append(kwargs)
+        return result
+    monkeypatch.setattr(test_cli, "execute_test_opening", execute)
+    assert test_cli.main([
+        "--debug", "--dataset", "atlas2020_4lep", "--train-run", "runs/debug-dev",
+        "--run-dir", "runs/debug-test", "--no-progress",
+    ]) == 0
+    assert calls[0]["debug"] is True
+    output = capsys.readouterr().out
+    assert "DEBUG diagnostic" in output
+    assert "DIAGNOSTIC (debug_diagnostic)" in output

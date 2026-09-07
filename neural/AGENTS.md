@@ -21,7 +21,11 @@ authoritative ARM64 run.
 - Signed `physical_weight` is for physical-yield reporting. Optimizer weights
   use the protocol-defined normalized absolute weight.
 - Development may not read held-out test feature values. Test opening requires
-  an eligible frozen development run. Supplying an authorization reference
+  an eligible frozen development run in normal mode. Explicit `--debug` is a
+  diagnostic exception: debug training may select the best development OOF AUC
+  candidate when none qualifies, preserving rejection reasons and publishing
+  `debug_diagnostic`. Only `higgsml-test --debug` accepts that status; no training
+  or selection occurs during test evaluation. Supplying an authorization reference
   enables the durable one-shot claim; omitting it allows repeatable evaluation
   with a new output run directory for each invocation.
 - Do not relax AUC, KS, efficiency, candidate, epoch, architecture, or threshold

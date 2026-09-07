@@ -75,3 +75,18 @@ Manifest 为 `test-manifest-v2`，记录数据绑定及 development/preprocess/m
 Authority 使用 `authority-development-v2`，仅在 native osx-arm64 上比较同数据集 development 特征及结构计数，要求独立登记且摘要固定的 reference。`config/validation/registry.json` 当前为空，因此不会把首次输出自认证为 golden。test 特征比较未纳入此 gate。
 
 实际验证范围见 [dataset-v2-verification.md](dataset-v2-verification.md)，命令见 [dataset-v2-runbook.md](dataset-v2-runbook.md)。
+
+## Explicit debug diagnostics
+
+Explicit `higgsml-train --debug` publishes `debug_diagnostic` in the development
+manifest and qualification artifact, with a final model/scaler. Candidate
+eligibility and rejection reasons remain unchanged. When none qualifies,
+`tie_rule.reference` is `maximum_oof_auc`; otherwise it is `maximum_eligible_auc`.
+Normal-mode artifact schemas and terminal states remain unchanged.
+
+`higgsml-test --debug` publishes `debug_diagnostic` in metrics, manifest and any
+successful one-shot state receipt. Its config and metrics contain `debug: true`,
+and manifest boundaries contain `debug: true`. Metrics retain the original
+qualification failure reasons and frozen working points; this status never
+asserts formal test reproduction. The original development artifacts are
+immutable (apart from the existing optional state claim).
