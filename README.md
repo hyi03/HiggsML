@@ -54,7 +54,7 @@ python -m pip check
 
 ## 2. DEBUG 模式
 
-用于诊断，符合开测条件的 DEBUG 训练产物也可执行测试。以下预处理协议关闭 `m4l` 质量窗；训练必须显式传入 `--debug`，该选项会跳过输入 run 的 SHA 和训练协议封存校验。
+用于诊断，训练和测试均须显式传入 `--debug`，不会根据协议文件名自动启用。以下预处理协议关闭 `m4l` 质量窗；DEBUG 训练无论候选是否 eligible 都生成模型，DEBUG 测试忽略 eligible 判定。训练和测试结果均标记为 `debug_diagnostic`，保留资格失败原因，不代表正式测试通过，也不得用于根据 test 结果调参。
 
 ### 2.1 higgsml-preprocess：预处理
 
@@ -79,18 +79,25 @@ higgsml-train `
   --run-dir runs/atlas2020_4lep/development-debug-001
 ```
 
+`--debug` 跳过输入 run 的 SHA 和训练协议封存校验。若有合格候选，按原规则选择；若没有，则选择 development OOF AUC 最高的候选，AUC 差值在协议的 `auc_tie_atol` 内时优先较小 λ。随后仅使用 development 数据完成 final fit，epoch 仍取所选候选五折 best epoch 的中位数，无论候选是否 eligible 都输出 `model/model.pt` 和 `model/scaler.json`。
+
 ### 2.3 higgsml-test：测试
 
-DEBUG development run 为 eligible、数据集一致且已获得明确开测授权后，可执行：
+已有模型、scaler 和冻结阈值，且数据集一致时，显式使用 `--debug` 进行诊断评分，无需模型或候选为 eligible：
 
 ```powershell
 higgsml-test `
+  --debug `
   --dataset atlas2020_4lep `
   --train-run runs/atlas2020_4lep/development-debug-001 `
   --run-dir runs/atlas2020_4lep/test-debug-001
 ```
 
-`higgsml-test` 不需要、也不接受 `--debug` 参数；测试仍执行协议和产物完整性校验，不继承训练阶段跳过校验的行为。若训练结果为 `no_eligible_candidate`，不得开启 test。可选 `--authorization-reference` 的用法与正式模式相同。
+`higgsml-test --debug` 忽略 run/candidate 的 eligible 判定及候选排名复核，跳过预处理 lineage/分区哈希比对和训练协议封存快照校验，并允许任意有限 `m4l`。仍校验 development 产物哈希、协议精确字节、数据集身份、固定 15 项特征、模型/scaler/阈值绑定，以及 test 分区结构和行数。测试阶段不补训模型、不重新选择候选或阈值；省略 `--debug` 时仍执行正式资格检查，拒绝 `debug_diagnostic` run。
+
+旧版本生成的 `no_eligible_candidate` run 没有最终模型和 scaler，追加 `--debug` 也无法直接评分。需使用 `higgsml-train --debug` 在新目录（例如 `development-debug-002`）重新训练，再将该目录传给 `--train-run`，并使用新的测试输出目录。不得修改或覆盖旧 run。
+
+可选 `--authorization-reference` 的用法与正式模式相同：提供公开审计引用时启用一次性 claim；省略时允许重复评价，每次仍须使用新输出目录。
 
 ## 3. 正式模式
 

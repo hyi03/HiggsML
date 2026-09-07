@@ -175,3 +175,20 @@ def test_oof_contract_rejects_missing_duplicate_nonfinite_and_wrong_fold() -> No
     for changed in mutations:
         with pytest.raises(InputBindingError):
             validate_candidate_oof(changed, development, folds, target_lambda=0.0)
+
+
+def test_debug_candidate_fallback_preserves_qualification_and_ties():
+    protocol = _protocol()
+    candidates = [
+        {"target_lambda": value, "weighted_oof_auc": 0.9,
+         "eligible": False, "rejection_reasons": ["loose_ks_above_maximum"]}
+        for value in protocol.target_lambdas
+    ]
+    candidates[1]["weighted_oof_auc"] += 0.5e-6
+    assert select_candidate(candidates, protocol) is None
+    assert select_candidate(candidates, protocol, debug=True) is candidates[0]
+    assert all(not item["eligible"] for item in candidates)
+    candidates[-1]["eligible"] = True
+    candidates[-1]["rejection_reasons"] = []
+    candidates[-1]["weighted_oof_auc"] = 0.85
+    assert select_candidate(candidates, protocol, debug=True) is candidates[-1]

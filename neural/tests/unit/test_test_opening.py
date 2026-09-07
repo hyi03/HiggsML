@@ -35,6 +35,73 @@ DEBUG_PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_debug_v2.yaml"
 AUTHORIZATION = "synthetic-fixture-only"
 
 
+@pytest.mark.parametrize("eligible_lambda", [None, 0.0])
+def test_debug_training_and_test_are_explicit_diagnostics(tmp_path, monkeypatch, eligible_lambda):
+    root = tmp_path / "runs"
+    preprocess, _ = write_synthetic_preprocess_run(root)
+    _, _, final_calls = _install_fast_pipeline(monkeypatch, eligible_lambda=eligible_lambda)
+    protocol = tmp_path / "unsealed.yaml"
+    protocol.write_text(PROTOCOL.read_text().replace(
+        "adversarial-mlp-protocol-normal-v2", "local-unsealed-debug"
+    ))
+    development = root / "debug-development"
+    result = execute_development(
+        dataset="atlas2020_4lep", input_run=preprocess, protocol_path=protocol,
+        run_dir=development, allowed_root=root, debug=True,
+    )
+    assert result.status == "debug_diagnostic"
+    assert final_calls == [(0.0, 7)]
+    qualification = json.loads((development / "artifacts/qualification.json").read_bytes())
+    assert qualification["candidates"][0]["eligible"] is (eligible_lambda is not None)
+    before = _tree_receipts(development)
+    with pytest.raises(OpeningRefused, match="requires higgsml-test --debug"):
+        execute_test_opening(dataset="atlas2020_4lep", development_run=development,
+                             run_dir=root / "refused", allowed_root=root)
+    assert not (root / "refused").exists()
+
+    # A changed diagnostic test table may contain any finite mass; strict mode
+    # still rejects it. All of this fixture's rows are synthetic MC.
+    table = preprocess / "processed/test_events.csv.gz"
+    frame = pd.read_csv(table)
+    frame.loc[0, "m4l"] = 200.0
+    frame.to_csv(table, index=False, compression="gzip", lineterminator="\n")
+    binding = _load_binding(development, allowed_root=root, dataset="atlas2020_4lep", debug=True)
+    with pytest.raises(InputBindingError, match="outside sealed range"):
+        read_test_rows_after_claim(table, expected_rows=len(frame), dataset_binding=binding.development_manifest["dataset_binding"])
+    output = root / "debug-test"
+    evaluated = execute_test_opening(
+        dataset="atlas2020_4lep", development_run=development,
+        run_dir=output, allowed_root=root, debug=True,
+    )
+    assert evaluated.status == "debug_diagnostic"
+    assert evaluated.metrics["debug"] is True
+    manifest = json.loads((output / "artifacts/manifest.json").read_bytes())
+    assert manifest["boundaries"]["debug"] is True
+    assert manifest["metrics"]["no_feedback"] is True
+    assert all(value is False for value in manifest["metrics"]["boundaries"].values())
+    assert _tree_receipts(development) == before
+    assert final_calls == [(0.0, 7)]
+
+    model_path = development / "model/model.pt"
+    model_path.write_bytes(model_path.read_bytes() + b"tampered")
+    with pytest.raises(InputBindingError, match="development output hash changed"):
+        _load_binding(development, allowed_root=root, dataset="atlas2020_4lep", debug=True)
+
+
+def test_debug_cannot_create_missing_final_model_at_test_time(tmp_path, monkeypatch):
+    root = tmp_path / "runs"
+    preprocess, _ = write_synthetic_preprocess_run(root)
+    _install_fast_pipeline(monkeypatch, eligible_lambda=None)
+    development = root / "no-model"
+    execute_development(dataset="atlas2020_4lep", input_run=preprocess,
+                        protocol_path=PROTOCOL, run_dir=development, allowed_root=root)
+    with pytest.raises(OpeningRefused, match="rerun higgsml-train --debug"):
+        execute_test_opening(dataset="atlas2020_4lep", development_run=development,
+                             run_dir=root / "test", allowed_root=root, debug=True)
+    assert not (root / "test").exists()
+    assert not (development / "state").exists()
+
+
 @pytest.fixture
 def eligible_development(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     allowed_root = tmp_path / "runs"
@@ -963,3 +1030,32 @@ def test_unknown_split_fails_before_full_row_decode(
             table,
             expected_rows=int((frame["split"] == "test").sum()),
          dataset_binding=dataset_context("atlas2020_4lep").snapshot())
+
+
+@pytest.mark.parametrize("status", ["eligible", "no_eligible_candidate"])
+def test_debug_ignores_eligibility_for_existing_model(eligible_development, status):
+    root, development, _, _ = eligible_development
+    qualification_path = development / "artifacts/qualification.json"
+    qualification = json.loads(qualification_path.read_bytes())
+    qualification["status"] = "no_eligible_candidate"
+    for candidate in qualification["candidates"]:
+        candidate["eligible"] = False
+        candidate["rejection_reasons"] = ["auc_below_minimum"]
+    qualification_path.write_bytes(canonical_json_bytes(qualification))
+    manifest_path = development / "artifacts/manifest.json"
+    manifest = json.loads(manifest_path.read_bytes())
+    manifest["status"] = status
+    for record in manifest["outputs"]:
+        if record["path"] == "artifacts/qualification.json":
+            record["sha256"] = sha256_file(qualification_path)
+            record["size_bytes"] = qualification_path.stat().st_size
+    manifest_path.write_bytes(canonical_json_bytes(manifest))
+    with pytest.raises((OpeningRefused, InputBindingError)):
+        _load_binding(development, allowed_root=root, dataset="atlas2020_4lep")
+    before = _tree_receipts(development)
+    result = execute_test_opening(
+        dataset="atlas2020_4lep", development_run=development,
+        run_dir=root / "debug-existing-model", allowed_root=root, debug=True,
+    )
+    assert result.status == "debug_diagnostic"
+    assert _tree_receipts(development) == before

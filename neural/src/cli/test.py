@@ -28,6 +28,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--train-run", required=True)
     parser.add_argument("--run-dir", required=True)
     parser.add_argument(
+        "--debug", action="store_true",
+        help="Evaluate a diagnostic model from higgsml-train --debug; results are diagnostic only.",
+    )
+    parser.add_argument(
         "--authorization-reference",
         help="Optional public audit reference; when omitted, test opening is repeatable.",
     )
@@ -46,10 +50,12 @@ def format_test_results(result: TestOpeningResult) -> str:
     reasons = list(metrics["rejection_reasons"])
     completeness = metrics["prediction_completeness"]
     status_label = "PASS" if metrics["status"] == "test_reproduced" else "FAIL"
+    if metrics.get("debug"):
+        status_label = "DIAGNOSTIC"
     auc_result = "FAIL" if "auc_below_minimum" in reasons else "PASS"
 
     lines = [
-        "HiggsML held-out test results",
+        "HiggsML DEBUG diagnostic test results" if metrics.get("debug") else "HiggsML held-out test results",
         f"Status          {status_label} ({metrics['status']})",
         f"Selected lambda {float(metrics['selected_lambda']):.6f}",
         (
@@ -102,6 +108,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             authorization_reference=arguments.authorization_reference,
             allowed_root=allowed_root,
             show_progress=not arguments.no_progress,
+            debug=arguments.debug,
         )
     except TestOpeningRefused as error:
         LOGGER.error("test-opening refused: %s", error)

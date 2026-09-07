@@ -129,6 +129,7 @@ class _Binding:
     input_hashes: dict[str, str]
     artifact_hashes: dict[str, str]
     test_record: dict[str, Any]
+    debug: bool = False
 
 
 def _hex_sha(value: Any) -> bool:
@@ -165,7 +166,7 @@ def _read_canonical_json(path: Path) -> tuple[dict[str, Any], bytes]:
     return value, payload
 
 
-def _development_manifest(run: Path) -> tuple[dict[str, Any], str]:
+def _development_manifest(run: Path, *, debug: bool = False) -> tuple[dict[str, Any], str]:
     manifest, payload = _read_canonical_json(
         _plain_descendant(run, Path("artifacts/manifest.json"))
     )
@@ -176,7 +177,17 @@ def _development_manifest(run: Path) -> tuple[dict[str, Any], str]:
     }
     if set(manifest) != required:
         raise InputBindingError("development manifest schema changed")
-    if manifest.get("status") != "eligible":
+    if manifest.get("status") == "no_eligible_candidate" and (
+        not debug or not (run / "model/model.pt").is_file()
+        or not (run / "model/scaler.json").is_file()
+    ):
+        raise TestOpeningRefused(
+            "development run has no final model (no_eligible_candidate); "
+            "rerun higgsml-train --debug with a new run directory, then use higgsml-test --debug"
+        )
+    if manifest.get("status") == "debug_diagnostic" and not debug:
+        raise TestOpeningRefused("diagnostic development run requires higgsml-test --debug")
+    if manifest.get("status") not in ({"eligible", "debug_diagnostic", "no_eligible_candidate"} if debug else {"eligible"}):
         raise TestOpeningRefused("development run is not eligible")
     selection = manifest.get("selection")
     counts = manifest.get("counts")
@@ -202,10 +213,11 @@ def _development_manifest(run: Path) -> tuple[dict[str, Any], str]:
         or performance["peak_memory_bytes"] < 0
         or not isinstance(input_hashes, dict)
         or set(input_hashes) != _INPUT_HASH_KEYS
-        or any(not _hex_sha(value) for value in input_hashes.values())
+        or any((type(value) is not str if debug else not _hex_sha(value)) for value in input_hashes.values())
         or not isinstance(protocol, dict)
         or set(protocol) != {"id", "sha256"}
-        or protocol.get("id") not in {NORMAL_PROTOCOL_ID, DEBUG_PROTOCOL_ID}
+        or (type(protocol.get("id")) is not str if debug
+            else protocol.get("id") not in {NORMAL_PROTOCOL_ID, DEBUG_PROTOCOL_ID})
         or not _hex_sha(protocol.get("sha256"))
         or not isinstance(selection, dict)
         or set(selection) != {"selected_lambda", "final_epochs"}
@@ -301,9 +313,10 @@ def _resolve_preprocess(recorded: str, *, allowed_root: Path) -> Path:
 
 
 def _validate_protocol_manifest_binding(
-    protocol: dict[str, Any], manifest: dict[str, Any]
+    protocol: dict[str, Any], manifest: dict[str, Any], *, debug: bool = False
 ) -> None:
-    validate_training_protocol_snapshot(protocol)
+    if not debug:
+        validate_training_protocol_snapshot(protocol)
     schema = manifest["schema"]
     artifacts = protocol["development_artifacts"]
     if (
@@ -326,6 +339,7 @@ def _validated_working_points(
     protocol: dict[str, Any],
     *,
     selected_lambda: float,
+    debug: bool = False,
 ) -> dict[str, dict[str, float]]:
     targets = list(protocol["determinism"]["target_lambdas"])
     if (
@@ -339,16 +353,16 @@ def _validated_working_points(
             "tie_rule", "candidates",
         }
         or qualification.get("schema_version") != "development-qualification-v1"
-        or qualification.get("status") != "eligible"
+        or (not debug and qualification.get("status") != "eligible")
         or qualification.get("selected_lambda") != selected_lambda
-        or qualification.get("tie_rule")
+        or not isinstance(qualification.get("candidates"), list)
+        or (not debug and qualification.get("tie_rule")
         != {
             "reference": "maximum_eligible_auc",
             "rtol": 0.0,
             "atol": 1.0e-6,
             "prefer": "smaller_lambda",
-        }
-        or not isinstance(qualification.get("candidates"), list)
+        })
         or len(points_file["candidates"]) != len(targets)
         or len(qualification["candidates"]) != len(targets)
     ):
@@ -408,7 +422,7 @@ def _validated_working_points(
                 point["achieved_background_efficiency"]
             ):
                 expected_reasons.append(f"{name}_signal_efficiency_not_greater")
-        if (
+        if not debug and (
             candidate["rejection_reasons"] != expected_reasons
             or candidate["eligible"] != (not expected_reasons)
         ):
@@ -416,11 +430,13 @@ def _validated_working_points(
         if candidate["eligible"]:
             eligible_candidates.append(candidate)
         if target_lambda == selected_lambda:
-            if candidate["eligible"] is not True or candidate["rejection_reasons"] != []:
+            if not debug and (candidate["eligible"] is not True or candidate["rejection_reasons"] != []):
                 raise InputBindingError("selected development candidate is not eligible")
             selected_points = point_candidate["working_points"]
     if selected_points is None:
         raise InputBindingError("selected development candidate is missing")
+    if debug:
+        return selected_points
     best_auc = max(float(candidate["weighted_oof_auc"]) for candidate in eligible_candidates)
     tolerance = float(protocol["qualification"]["auc_tie_atol"])
     expected_selection = min(
@@ -433,10 +449,10 @@ def _validated_working_points(
     return selected_points
 
 
-def _load_binding(development_run: str | Path, *, allowed_root: str | Path, dataset: str) -> _Binding:
+def _load_binding(development_run: str | Path, *, allowed_root: str | Path, dataset: str, debug: bool = False) -> _Binding:
     root = Path(allowed_root).resolve(strict=True)
     run = _bound_input_run(development_run, root)
-    manifest, manifest_sha = _development_manifest(run)
+    manifest, manifest_sha = _development_manifest(run, debug=debug)
     validate_dataset_snapshot(manifest["dataset_binding"], dataset)
     _validate_dev_outputs(run, manifest)
     try:
@@ -454,7 +470,7 @@ def _load_binding(development_run: str | Path, *, allowed_root: str | Path, data
             or yaml.safe_load(config["protocol_payload"]) != config["protocol"]):
         raise InputBindingError("protocol exact bytes mismatch")
     protocol = config["protocol"]
-    _validate_protocol_manifest_binding(protocol, manifest)
+    _validate_protocol_manifest_binding(protocol, manifest, debug=debug)
     protocol_sha = config.get("protocol_sha256")
     protocol_id = protocol.get("protocol_id")
     selection = manifest.get("selection")
@@ -476,6 +492,7 @@ def _load_binding(development_run: str | Path, *, allowed_root: str | Path, data
         qualification,
         protocol,
         selected_lambda=selected,
+        debug=debug,
     )
     scaler_raw, _ = _read_canonical_json(run / "model/scaler.json")
     scaler = FoldLocalScaler.from_dict(scaler_raw)
@@ -537,14 +554,14 @@ def _load_binding(development_run: str | Path, *, allowed_root: str | Path, data
     model.eval()
 
     preprocess = _resolve_preprocess(str(config.get("input_run")), allowed_root=root)
-    pre_manifest, pre_manifest_sha = _read_manifest(preprocess)
+    pre_manifest, pre_manifest_sha = _read_manifest(preprocess, debug=debug)
     if pre_manifest["dataset_binding"] != manifest["dataset_binding"]:
         raise InputBindingError("preprocess dataset mismatch")
-    records = _output_records(preprocess, pre_manifest)
+    records = _output_records(preprocess, pre_manifest, debug=debug)
     table_record = records["processed/development_events.csv.gz"]
     table = preprocess / "processed/development_events.csv.gz"
     input_hashes = manifest["input"]
-    if (
+    if not debug and (
         pre_manifest_sha != input_hashes.get("manifest_sha256")
         or table_record["sha256"] != input_hashes.get("table_sha256")
         or table_record["canonical_content_sha256"] != input_hashes.get("canonical_content_sha256")
@@ -583,6 +600,7 @@ def _load_binding(development_run: str | Path, *, allowed_root: str | Path, data
         input_hashes,
         artifact_hashes,
         records["processed/test_events.csv.gz"],
+        debug,
     )
 
 
@@ -728,12 +746,12 @@ def _record(root: Path, relative: str, *, canonical: str | None = None, rows: in
 
 def _evaluate(binding: _Binding) -> tuple[pd.DataFrame, dict[str, Any]]:
     test_path = _plain_descendant(binding.preprocess_run, Path("processed/test_events.csv.gz"))
-    if (test_path.stat().st_size != binding.test_record["size_bytes"]
+    if not binding.debug and (test_path.stat().st_size != binding.test_record["size_bytes"]
             or sha256_file(test_path) != binding.test_record["sha256"]
             or _canonical_content_sha256(test_path) != binding.test_record["canonical_content_sha256"]):
         raise InputBindingError("test partition hash changed")
     torch.use_deterministic_algorithms(True)
-    test = read_test_rows_after_claim(binding.table, expected_rows=binding.expected_test_rows, dataset_binding=binding.development_manifest["dataset_binding"])
+    test = read_test_rows_after_claim(binding.table, expected_rows=binding.expected_test_rows, dataset_binding=binding.development_manifest["dataset_binding"], debug=binding.debug)
     raw = test.frame
     features = binding.scaler.transform(raw[list(FEATURE_COLUMNS)].to_numpy(dtype=np.float64))
     with torch.no_grad():
@@ -770,9 +788,12 @@ def _evaluate(binding: _Binding) -> tuple[pd.DataFrame, dict[str, Any]]:
         if point["signal_efficiency"] <= point["achieved_background_efficiency"]:
             reasons.append(f"{name}_signal_efficiency_not_greater")
     status = "test_nonreproduction" if reasons else "test_reproduced"
+    if binding.debug:
+        status = "debug_diagnostic"
     return frame, {
         "schema_version": "test-metrics-v1",
         "status": status,
+        **({"debug": True} if binding.debug else {}),
         "selected_lambda": binding.selected_lambda,
         "weighted_auc": auc,
         "working_points": points,
@@ -814,6 +835,8 @@ def _write_success_artifacts(
         "protocol_sha256": binding.protocol_sha256,
         "authorization_reference": authorization,
     }
+    if binding.debug:
+        snapshot["debug"] = True
     config_bytes = yaml.safe_dump(snapshot, sort_keys=False).encode("utf-8")
     (transaction.path / "config.yaml").write_bytes(config_bytes)
     write_canonical_json(artifacts / "test_metrics.json", metrics)
@@ -902,7 +925,7 @@ def _write_success_artifacts(
             "wall_seconds": time.perf_counter() - started,
             "peak_memory_bytes": peak_memory_bytes(),
         },
-        "boundaries": _TEST_BOUNDARIES,
+        "boundaries": {**_TEST_BOUNDARIES, **({"debug": True} if binding.debug else {})},
     }
     write_canonical_json(artifacts / "manifest.json", manifest)
 
@@ -974,6 +997,7 @@ def _execute_test_opening(
     authorization_reference: str | None = None,
     allowed_root: str | Path,
     progress: Any,
+    debug: bool = False,
 ) -> TestOpeningResult:
     started = time.perf_counter()
     started_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -996,7 +1020,7 @@ def _execute_test_opening(
         state_candidate = prechecked_run / "state" / "test_opening.json"
         if one_shot and os.path.lexists(state_candidate):
             raise TestOpeningRefused("development run already has a test-opening state")
-        binding = _load_binding(prechecked_run, allowed_root=allowed_root, dataset=dataset)
+        binding = _load_binding(prechecked_run, allowed_root=allowed_root, dataset=dataset, debug=debug)
         if one_shot and os.path.lexists(state_candidate):
             raise TestOpeningRefused("development run already has a test-opening state")
     except BaseException:
@@ -1178,7 +1202,10 @@ def execute_test_opening(
     authorization_reference: str | None = None,
     allowed_root: str | Path,
     show_progress: bool = False,
+    debug: bool = False,
 ) -> TestOpeningResult:
+    if debug:
+        LOGGER.warning("DEBUG diagnostic evaluation: qualification gate, upstream hashes and sealed mass range are not enforced")
     with tqdm(
         total=4,
         desc="test validate frozen run",
@@ -1193,4 +1220,5 @@ def execute_test_opening(
             authorization_reference=authorization_reference,
             allowed_root=allowed_root,
             progress=progress,
+            debug=debug,
         )
