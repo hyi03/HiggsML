@@ -22,7 +22,7 @@ REPOSITORY = NEURAL.parent
 
 
 def test_old_mixed_golden_is_not_used():
-    protocol=load_preprocess_protocol(NEURAL/"config/preprocess_protocol_v2.yaml",dataset="atlas2020_4lep")
+    protocol=load_preprocess_protocol(NEURAL/"config/preprocess_protocol_mass_window.yaml",dataset="atlas2020_4lep")
     assert "golden" not in protocol.raw
 
 
@@ -45,7 +45,7 @@ def test_authority_platform_refuses_windows(monkeypatch: pytest.MonkeyPatch) -> 
 def test_table_comparator_uses_exact_structure_and_approved_float_tolerance(
     tmp_path: Path,
 ) -> None:
-    protocol = load_preprocess_protocol(NEURAL / "config/preprocess_protocol_v2.yaml", dataset="atlas2020_4lep")
+    protocol = load_preprocess_protocol(NEURAL / "config/preprocess_protocol_mass_window.yaml", dataset="atlas2020_4lep")
     row = {name: 1.0 for name in protocol.output_columns}
     row.update(
         label=1, source_entry=0, runNumber=284500, eventNumber=1,

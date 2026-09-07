@@ -122,7 +122,8 @@ _OUTPUT_COLUMNS = (
 def load_preprocess_protocol(path: str | Path, *, dataset: str) -> PreprocessProtocol:
     raw, payload = _yaml(path)
     is_debug = raw.get("protocol_id") == "higgsml-preprocess-debug"
-    if not is_debug and hashlib.sha256(payload).hexdigest() != RESOURCE_HASHES["preprocess_protocol_v2.yaml"]:
+    resource = "preprocess_protocol_inclusive.yaml" if raw.get("protocol_id") == "higgsml-preprocess-inclusive" else "preprocess_protocol_mass_window.yaml"
+    if not is_debug and hashlib.sha256(payload).hexdigest() != RESOURCE_HASHES[resource]:
         raise InputBindingError("sealed v2 preprocess protocol changed; old mixed inputs are unsupported")
     if is_debug and raw.get("protocol_id") != "higgsml-preprocess-debug":
         raise InputBindingError("invalid preprocess debug protocol")

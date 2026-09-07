@@ -27,7 +27,7 @@ from tests.development_fixtures import write_synthetic_preprocess_run
 
 
 PROJECT = Path(__file__).resolve().parents[2]
-PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal_v2.yaml"
+PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_mass_window.yaml"
 
 
 def _fake_fold_result(fold, target_lambda: float):
@@ -242,7 +242,7 @@ def test_development_run_publishes_exact_normal_terminal_layouts(
     assert manifest["counts"]["folds_per_candidate"] == 5
     assert manifest["counts"]["held_out_test_rows_not_opened"] == 6
     assert manifest["counts"]["fold_epoch_rows"] == 25
-    assert manifest["input"]["preprocess_protocol_sha256"] == __import__("src.resource_seals",fromlist=["RESOURCE_HASHES"]).RESOURCE_HASHES["preprocess_protocol_v2.yaml"]
+    assert manifest["input"]["preprocess_protocol_sha256"] == __import__("src.resource_seals",fromlist=["RESOURCE_HASHES"]).RESOURCE_HASHES["preprocess_protocol_mass_window.yaml"]
     assert manifest["input"]["preprocess_run_config_sha256"] == "2" * 64
     assert manifest["schema"]["oof_columns"] == list(protocol.raw["development_artifacts"]["oof_columns"])
     assert manifest["oof_completeness"] == {
@@ -371,7 +371,7 @@ def test_train_cli_dispatch_and_exit_mapping(monkeypatch: pytest.MonkeyPatch) ->
 
     arguments = [
         "--dataset", "atlas2020_4lep", "--input-run", "runs/input",
-        "--protocol", "config/adversarial_mlp_protocol_normal_v2.yaml",
+        "--protocol", "config/adversarial_mlp_protocol_mass_window.yaml",
         "--run-dir", "runs/output",
     ]
     monkeypatch.setattr(train_cli, "execute_development", success)

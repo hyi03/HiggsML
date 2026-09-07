@@ -20,7 +20,7 @@ from tests.integration.test_development_run import _install_fast_pipeline
 
 
 PROJECT = Path(__file__).resolve().parents[2]
-PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal_v2.yaml"
+PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_mass_window.yaml"
 
 
 def test_open_test_requires_development_and_output_arguments() -> None:

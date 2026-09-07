@@ -101,10 +101,13 @@ def prepare_table(
         if not rows:
             raise InputBindingError(f"no selected events for {sample.source_sample}")
         frame = pd.DataFrame(rows)
-        frame["train_weight"] = training_weights(frame["physical_weight"])
+        if "train_weight" in protocol.output_columns:
+            frame["train_weight"] = training_weights(frame["physical_weight"])
         frame = frame.loc[:, protocol.output_columns]
         frames.append(frame)
         cutflows[sample.source_sample] = accumulator.to_dict()
+        if protocol.protocol_id == "higgsml-preprocess-inclusive":
+            cutflows[sample.source_sample]["stages"]["m4l_analysis_window"]["enabled"] = False
         split_counts = {name: int((frame["split"] == name).sum()) for name in ("train", "validation", "test")}
         summaries[sample.source_sample] = {"dsid": sample.dsid, "label": sample.label, "read_count": accumulator.counts["read"], "selected_count": len(frame), "split_counts": split_counts, "negative_weight_events": int((frame["physical_weight"] < 0).sum()), "sum_physical_weight": float(frame["physical_weight"].sum()), "sum_abs_physical_weight": float(frame["physical_weight"].abs().sum())}
         inputs.append({"source_sample": sample.source_sample, "dsid": sample.dsid, "logical_path": str(path), "sha256": actual_hash, "size_bytes": path.stat().st_size, "tree_name": sample.tree_name, "input_profile": sample.input_profile, "momentum_unit": sample.momentum_unit, "entry_count": accumulator.counts["read"]})
@@ -165,7 +168,7 @@ def execute_preprocess(
             {**summary_receipt, "path": "artifacts/mc_summary.json", "row_count": None, "canonical_content_sha256": None},
         ]
         software = software_record()
-        manifest = {"dataset_binding": protocol.dataset.snapshot(), "schema_version": "2.0", "status": "success", "run_type": "preprocess", "protocol_id": protocol.protocol_id, "started_at_utc": started_utc, "completed_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "inputs": inputs, "configuration": {"protocol_path": str(protocol_path), "protocol_sha256": hashlib.sha256(protocol.payload).hexdigest(), "run_config_path": str(run_config_path), "run_config_sha256": hashlib.sha256(config.payload).hexdigest(), "chunk_size_events": config.chunk_size_events, "full_read": True}, "outputs": outputs, "schema": {"ordered_columns": list(protocol.output_columns), "dtypes": {name: str(frame[name].dtype) for name in protocol.output_columns}}, "counts": {"per_sample": summaries, "totals": summary["totals"]}, "software": {key: value for key, value in software.items() if key != "platform"}, "platform": software["platform"], "determinism": {"row_order": "higgs_then_zz_source_entry", "csv_float_format": ".17g", "gzip_mtime": 0}, "performance": {"wall_seconds": time.perf_counter() - started, "peak_memory_bytes": peak_memory_bytes()}}
+        manifest = {"dataset_binding": protocol.dataset.snapshot(), "schema_version": protocol.raw["schema_version"], "status": "success", "run_type": "preprocess", "protocol_id": protocol.protocol_id, "started_at_utc": started_utc, "completed_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "inputs": inputs, "configuration": {"protocol_path": str(protocol_path), "protocol_sha256": hashlib.sha256(protocol.payload).hexdigest(), "run_config_path": str(run_config_path), "run_config_sha256": hashlib.sha256(config.payload).hexdigest(), "chunk_size_events": config.chunk_size_events, "full_read": True}, "outputs": outputs, "schema": {"ordered_columns": list(protocol.output_columns), "dtypes": {name: str(frame[name].dtype) for name in protocol.output_columns}}, "counts": {"per_sample": summaries, "totals": summary["totals"]}, "software": {key: value for key, value in software.items() if key != "platform"}, "platform": software["platform"], "determinism": {"row_order": "higgs_then_zz_source_entry", "csv_float_format": ".17g", "gzip_mtime": 0}, "performance": {"wall_seconds": time.perf_counter() - started, "peak_memory_bytes": peak_memory_bytes()}}
         write_json(artifacts / "manifest.json", manifest)
 
 

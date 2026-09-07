@@ -6,7 +6,7 @@ PROJECT=Path(__file__).parents[2]
 
 @pytest.mark.parametrize("dataset,profile,zz,count",[("atlas2020_4lep","mini",363490,164716),("atlas2025_exactly4lep","analysis",700600,419943)])
 def test_checked_in_protocol_freezes_scientific_contract(dataset,profile,zz,count):
-    p=load_preprocess_protocol(PROJECT/"config/preprocess_protocol_v2.yaml",dataset=dataset)
+    p=load_preprocess_protocol(PROJECT/"config/preprocess_protocol_mass_window.yaml",dataset=dataset)
     assert p.protocol_id=="higgsml-preprocess-v2"
     assert p.samples["higgs"].tree_name==p.samples["zz"].tree_name==profile
     assert p.samples["zz"].dsid==zz and p.samples["higgs"].expected_entry_count==count
@@ -15,7 +15,7 @@ def test_checked_in_protocol_freezes_scientific_contract(dataset,profile,zz,coun
 
 @pytest.mark.parametrize("field",["luminosity_pb","selection","split","serialization","output_columns"])
 def test_protocol_rejects_frozen_contract_drift(tmp_path,field):
-    raw=yaml.safe_load((PROJECT/"config/preprocess_protocol_v2.yaml").read_bytes());raw[field]=None
+    raw=yaml.safe_load((PROJECT/"config/preprocess_protocol_mass_window.yaml").read_bytes());raw[field]=None
     path=tmp_path/"changed.yaml";path.write_text(yaml.safe_dump(raw))
     with pytest.raises(InputBindingError):load_preprocess_protocol(path,dataset="atlas2020_4lep")
 

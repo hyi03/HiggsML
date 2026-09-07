@@ -17,6 +17,8 @@ conda run -n pytorch python -m pip check
 
 ## 预处理
 
+本手册的正常命令展示有窗兼容流程；新增正式无窗流程、拟合折权重及分位数分箱见 [inclusive 协议手册](inclusive-protocol.md)。协议文件已改为用途名称，旧冻结 run 保留原记录。
+
 `config/preprocess_run.example.yaml` 只允许 `schema_version: "2.0"`、`data_root`、`resources.chunk_size_events`。相对 data root 按配置文件所在目录解析；样本路径由数据集定义构造，不允许分别指定 Higgs/ZZ 路径。
 
 诊断时可显式使用 `config/preprocess_protocol_debug.yaml`。该协议将 `selection.m4l_window_gev` 设为 `null`，表示不执行 m4l 分析质量窗。训练时必须显式传入 `--debug`；debug 状态不根据任何协议文件名推断。此模式不验证 `--input-run` 中记录的文件/canonical/protocol/run-config SHA，也不执行 `--protocol` 的封存快照校验，但仍要求输入可解析、数据集身份一致、表结构有效且只读取 development 分区。debug 接受任意有限 m4l；低于 105 GeV 的背景进入首个 adversary overflow bin，高于 160 GeV 的背景进入最后一个 overflow bin。数据集定义、原始 ROOT 和下载 receipt 的校验仍属于预处理阶段。显式 `--debug` 训练发布 `debug_diagnostic` 状态，必须使用新的 run 目录；仅可通过 `higgsml-test --debug` 进行诊断评价。
@@ -26,7 +28,7 @@ conda run -n pytorch higgsml-train --debug --dataset atlas2020_4lep --input-run 
 ```
 
 ```powershell
-conda run -n pytorch higgsml-preprocess --dataset atlas2020_4lep --protocol config/preprocess_protocol_v2.yaml --run-config config/preprocess_run.example.yaml --run-dir runs/atlas2020_4lep/preprocess-001
+conda run -n pytorch higgsml-preprocess --dataset atlas2020_4lep --protocol config/preprocess_protocol_mass_window.yaml --run-config config/preprocess_run.example.yaml --run-dir runs/atlas2020_4lep/preprocess-001
 ```
 
 每次运行必须更换尚不存在的输出目录。新输出包含：
@@ -51,7 +53,7 @@ split 仍为 `channelNumber:eventNumber` 的 BLAKE2b 6:2:2 分桶。fold 改为�
 ## Development 训练
 
 ```powershell
-conda run -n pytorch higgsml-train --dataset atlas2020_4lep --input-run runs/atlas2020_4lep/preprocess-001 --protocol config/adversarial_mlp_protocol_normal_v2.yaml --run-dir runs/atlas2020_4lep/development-001
+conda run -n pytorch higgsml-train --dataset atlas2020_4lep --input-run runs/atlas2020_4lep/preprocess-001 --protocol config/adversarial_mlp_protocol_mass_window.yaml --run-dir runs/atlas2020_4lep/development-001
 ```
 
 训练在解码事件前比对数据集、协议、manifest 和分区身份；不打开 test 分区，test 的哈希仅保存为上游 receipt 的预期值。五折 scaler、模型、OOF、最终 scaler/model 与 manifest 均绑定数据集。manifest 的 `statistics` 报告 development 的分类、fold 与背景质量 bin 的事件数、负权重数、绝对权重和、平方和及有效样本量。

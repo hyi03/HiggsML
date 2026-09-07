@@ -25,6 +25,8 @@ from src.artifacts.plots import write_development_plots
 from src.artifacts.transaction import RunTransaction
 from src.preprocessing.outputs import canonical_csv_bytes, write_canonical_table
 from src.dataset_binding import dataset_context
+from src.training.inclusive import InsufficientStatistics, MassBinning, fit_scientific_state
+from src.training.mass_diagnostics import bin_statistics, mass_diagnostics
 from src.training.statistics import development_statistics
 from src.training.config import TrainingProtocol, load_training_protocol
 from src.training.dataset import build_validated_fold
@@ -32,6 +34,7 @@ from src.training.development_reader import DevelopmentInput, read_development_i
 from src.training.folds import assign_folds
 from src.training.qualification import (
     OOF_COLUMNS,
+    oof_columns,
     evaluate_candidate,
     select_candidate,
     validate_candidate_oof,
@@ -119,6 +122,7 @@ def _candidate_oof(
     *,
     target_lambda: float,
     show_progress: bool = False,
+    fitting_states: dict | None = None,
 ) -> tuple[pd.DataFrame, list[dict[str, Any]], list[int], dict[str, Any]]:
     development = input_data.development
     scores = np.full(len(development.frame), np.nan, dtype=np.float64)
@@ -129,7 +133,8 @@ def _candidate_oof(
         validation_indices = np.flatnonzero(folds == fold_index)
         fitting_indices = np.flatnonzero(folds != fold_index)
         fold = build_validated_fold(
-            development, fitting_indices, validation_indices, fold_index=fold_index
+            development, fitting_indices, validation_indices, fold_index=fold_index,
+            **({"scientific_state": fitting_states[str(fold_index)]} if fitting_states is not None else {})
         )
         training_kwargs: dict[str, Any] = {"target_lambda": target_lambda}
         if show_progress:
@@ -177,10 +182,10 @@ def _candidate_oof(
             "label": source["label"].to_numpy(copy=True),
             "m4l": source["m4l"].to_numpy(copy=True),
             "physical_weight": source["physical_weight"].to_numpy(copy=True),
-            "train_weight": source["train_weight"].to_numpy(copy=True),
+            ("metric_weight" if protocol.inclusive else "train_weight"): (np.abs(source["physical_weight"].to_numpy(copy=True)) if protocol.inclusive else source["train_weight"].to_numpy(copy=True)),
             "score": scores,
         },
-        columns=OOF_COLUMNS,
+        columns=oof_columns(protocol.inclusive),
     )
     validate_candidate_oof(oof, development, folds, target_lambda=target_lambda)
     if environment is None:
@@ -206,9 +211,43 @@ def execute_development(
     with RunTransaction(run_dir, allowed_root=allowed_root, dataset_binding=dataset_context(dataset).snapshot()) as transaction:
         input_data = read_development_input(
             input_run, dataset=dataset, allowed_root=input_root,
-            protocol_sha256=protocol.sha256, debug=debug,
+            protocol_sha256=protocol.sha256, debug=debug, inclusive=protocol.inclusive,
         )
         folds = assign_folds(input_data.development)
+        scientific = None
+        if protocol.inclusive:
+            frame = input_data.development.frame
+            try:
+                fitting_states = {str(index): fit_scientific_state(frame.loc[folds != index]) for index in range(5)}
+                final_state = fit_scientific_state(frame)
+                # A class with no effective validation weight cannot support early stopping.
+                for index in range(5):
+                    for label in (0, 1):
+                        if frame.loc[(folds == index) & (frame.label == label), "physical_weight"].abs().sum() <= 0:
+                            raise InsufficientStatistics(f"fold {index} validation class {label} has no effective weight")
+                scientific = {"schema_version": "inclusive-scientific-state-v1",
+                    "dataset_binding": input_data.development.dataset_binding, "protocol_sha256": protocol.sha256,
+                    "folds": fitting_states, "final_fit": final_state,
+                    "report_binning": final_state["mass_binning"],
+                    "fold_statistics": {str(index): bin_statistics(frame.loc[folds != index], MassBinning.from_dict(fitting_states[str(index)]["mass_binning"])) for index in range(5)}}
+            except InsufficientStatistics as error:
+                artifacts = transaction.path / "artifacts"
+                artifacts.mkdir()
+                write_canonical_json(transaction.path / "config.yaml", {
+                    "protocol": protocol.raw, "protocol_payload": protocol.payload.decode("utf-8"),
+                    "protocol_sha256": protocol.sha256, "input_manifest_sha256": input_data.input_manifest_sha256,
+                    "dataset_binding": input_data.development.dataset_binding})
+                write_canonical_json(artifacts / "qualification.json", {"status": "insufficient_statistics", "reason": str(error)})
+                write_canonical_json(artifacts / "manifest.json", {
+                    "schema_version": "development-insufficient-statistics-v1", "status": "insufficient_statistics",
+                    "run_type": "development", "dataset_binding": input_data.development.dataset_binding,
+                    "protocol": {"id": protocol.protocol_id, "sha256": protocol.sha256},
+                    "input_manifest_sha256": input_data.input_manifest_sha256,
+                    "statistics": development_statistics(frame, folds, inclusive=True),
+                    "outputs": [_record(transaction.path, name) for name in ("config.yaml", "artifacts/qualification.json")],
+                    "boundaries": {"held_out_test_opened": False, "training_performed": False}})
+                LOGGER.info("development run complete: status=insufficient_statistics reason=%s run_dir=%s", error, run_dir)
+                return DevelopmentResult("insufficient_statistics", None, Path(run_dir).resolve())
         candidate_frames: list[pd.DataFrame] = []
         fold_rows: list[dict[str, Any]] = []
         candidates: list[dict[str, Any]] = []
@@ -223,6 +262,7 @@ def execute_development(
                 folds,
                 target_lambda=target_lambda,
                 show_progress=show_progress,
+                **({"fitting_states": scientific["folds"]} if scientific is not None else {}),
             )
             candidate_frames.append(oof)
             fold_rows.extend(rows)
@@ -275,6 +315,8 @@ def execute_development(
                 "target_lambda": selected_lambda,
                 "epochs": final_epochs,
             }
+            if scientific is not None:
+                final_kwargs["scientific_state"] = scientific["final_fit"]
             if show_progress:
                 final_kwargs["show_progress"] = True
             final_result = train_fixed_epochs(
@@ -286,7 +328,7 @@ def execute_development(
         artifacts.mkdir()
         predictions.mkdir()
         snapshot = {
-            "schema_version": "development-config-v2",
+            "schema_version": "development-config-v3" if protocol.inclusive else "development-config-v2",
             "dataset_binding": input_data.development.dataset_binding,
             "input_run": str(Path(input_run)),
             "input_manifest_sha256": input_data.input_manifest_sha256,
@@ -344,7 +386,7 @@ def execute_development(
         )
         oof_payload = canonical_csv_bytes(
             published_oof,
-            OOF_COLUMNS,
+            oof_columns(protocol.inclusive),
             integer_columns={"source_entry", "fold_index", "label"},
             string_columns={"source_sample", "source_file_id", "event_group_id"},
         )
@@ -360,6 +402,15 @@ def execute_development(
                 max(candidates, key=lambda item: item["weighted_oof_auc"])["target_lambda"]
             )
         display_oof = published_oof.loc[published_oof["target_lambda"] == display_lambda]
+        diagnostics = None
+        if scientific is not None:
+            report_binning = MassBinning.from_dict(scientific["report_binning"])
+            by_candidate = {str(item["target_lambda"]): mass_diagnostics(
+                published_oof.loc[published_oof.target_lambda == item["target_lambda"]], report_binning, item["working_points"])
+                for item in candidates}
+            diagnostics = by_candidate[str(display_lambda)]
+            write_canonical_json(artifacts / "scientific_state.json", scientific)
+            write_canonical_json(artifacts / "mass_diagnostics.json", {"candidates": by_candidate})
         write_development_plots(
             transaction.path / "plots",
             candidates,
@@ -367,7 +418,8 @@ def execute_development(
             selected_lambda=selected_lambda,
             dataset_name=dataset,
             roc_points=weighted_roc_points(display_oof),
-            mass_edges=tuple(float(value) for value in protocol.raw["adversary"]["mass_edges_gev"]),
+            mass_edges=(report_binning.boundaries if protocol.inclusive else tuple(float(value) for value in protocol.raw["adversary"]["mass_edges_gev"])),
+            **({"mass_diagnostics": diagnostics} if protocol.inclusive else {}),
         )
         if final_result is not None:
             model = transaction.path / "model"
@@ -390,8 +442,8 @@ def execute_development(
         ]
         software = software_record()
         manifest = {
-            "schema_version": "development-manifest-v2",
-            "statistics": development_statistics(input_data.development.frame, folds),
+            "schema_version": "development-manifest-v3" if protocol.inclusive else "development-manifest-v2",
+            "statistics": development_statistics(input_data.development.frame, folds, **({"inclusive": True, "binning": report_binning} if protocol.inclusive else {})),
             "dataset_binding": input_data.development.dataset_binding,
             "status": status,
             "run_type": "development",

@@ -23,6 +23,7 @@ from src.training.losses import (
     binary_loss_components,
     mass_bin_indices,
 )
+from src.training.inclusive import MassBinning, fit_scientific_state, optimizer_weights, validate_scientific_state
 from src.training.network import AdversarialMLP
 
 
@@ -125,6 +126,7 @@ def _state(module: torch.nn.Module) -> dict[str, Tensor]:
 
 def _checkpoint(model: AdversarialMLP, fold: ValidatedFold, protocol: TrainingProtocol, target_lambda: float, epoch: int, auc: float) -> dict[str, Any]:
     return {
+        **({"scientific_state": copy.deepcopy(fold.scientific_state)} if protocol.inclusive else {}),
         "dataset_binding": fold.dataset_binding,
         "protocol_sha256": protocol.sha256,
         "feature_tuple": FEATURE_COLUMNS,
@@ -141,6 +143,11 @@ def _checkpoint(model: AdversarialMLP, fold: ValidatedFold, protocol: TrainingPr
 
 def validate_checkpoint(checkpoint: dict[str, Any], protocol: TrainingProtocol, fold: ValidatedFold) -> None:
     required = {"dataset_binding", "protocol_sha256", "feature_tuple", "scaler", "fold_index", "fold_seed", "target_lambda", "best_epoch", "best_validation_weighted_auc", "classifier_state_dict", "adversary_state_dict"}
+    if protocol.inclusive:
+        required.add("scientific_state")
+        validate_scientific_state(checkpoint.get("scientific_state"))
+        if checkpoint["scientific_state"] != fold.scientific_state:
+            raise InputBindingError("checkpoint scientific state changed")
     if checkpoint.get("dataset_binding") != fold.dataset_binding:
         raise InputBindingError("checkpoint dataset binding changed")
     if set(checkpoint) != required or checkpoint["protocol_sha256"] != protocol.sha256 or checkpoint["protocol_sha256"] != fold.protocol_sha256:
@@ -197,6 +204,8 @@ def train_fold(
         raise InputBindingError("target lambda is not pre-registered")
     if fold.protocol_sha256 != protocol.sha256:
         raise InputBindingError("fold protocol binding changed")
+    if protocol.inclusive != (fold.scientific_state is not None):
+        raise InputBindingError("fold scientific protocol mode changed")
     _seed(fold.fold_seed)
     model = AdversarialMLP().cpu().to(torch.float32)
     optimizer = torch.optim.AdamW(
@@ -234,6 +243,8 @@ def train_fold(
             features = fold.fitting_features[index]
             labels = fold.labels[index]
             class_weights = fold.train_weights[index]
+            if protocol.inclusive and class_weights.sum().item() == 0:
+                continue
             optimizer.zero_grad(set_to_none=True)
             logits = model.classifier(features)
             cls_numerator, cls_denominator = binary_loss_components(logits, labels, class_weights)
@@ -258,7 +269,7 @@ def train_fold(
         with torch.no_grad():
             validation_logits = model.classifier(fold.validation_features)
             validation_scores = torch.sigmoid(validation_logits).cpu().numpy()
-        auc = float(roc_auc_score(fold.validation_labels.numpy(), validation_scores, sample_weight=fold.validation_weights.numpy()))
+        auc = float(roc_auc_score(fold.validation_labels.numpy(), validation_scores, sample_weight=(fold.validation_metric_weights if protocol.inclusive else fold.validation_weights).numpy()))
         if not np.isfinite(auc) or not np.isfinite(cls_epoch) or not np.isfinite(adv_epoch):
             raise RuntimeError("non-finite training metric")
         improved, should_stop = early.observe(
@@ -298,6 +309,7 @@ def train_fixed_epochs(
     target_lambda: float,
     epochs: int,
     show_progress: bool = False,
+    scientific_state: dict | None = None,
 ) -> FinalTrainingResult:
     if (
         target_lambda not in protocol.target_lambdas
@@ -305,6 +317,7 @@ def train_fixed_epochs(
         or epochs < 1
         or epochs > protocol.maximum_epochs
         or development.protocol_sha256 != protocol.sha256
+        or development.inclusive != protocol.inclusive
     ):
         raise InputBindingError("final-fit binding changed")
     frame = development.frame
@@ -313,13 +326,16 @@ def train_fixed_epochs(
         scaler.transform(frame[list(FEATURE_COLUMNS)].to_numpy(dtype=np.float64))
     )
     labels = torch.tensor(frame["label"].to_numpy(), dtype=torch.int64)
-    class_weights = torch.tensor(frame["train_weight"].to_numpy(), dtype=torch.float32)
+    if protocol.inclusive:
+        scientific_state = scientific_state if scientific_state is not None else fit_scientific_state(frame)
+    class_weights = torch.tensor(optimizer_weights(frame, scientific_state) if protocol.inclusive else frame["train_weight"].to_numpy(), dtype=torch.float32)
     background = labels == 0
     masses = torch.tensor(frame.loc[background.numpy(), "m4l"].to_numpy(), dtype=torch.float64)
     physical = torch.tensor(
         frame.loc[background.numpy(), "physical_weight"].to_numpy(), dtype=torch.float32
     )
-    bins = mass_bin_indices(masses, debug=development.debug)
+    bins = (torch.from_numpy(MassBinning.from_dict(scientific_state["mass_binning"]).indices(masses.numpy()))
+            if protocol.inclusive else mass_bin_indices(masses, debug=development.debug))
     background_weights = adversarial_bin_weights(bins, physical)
     mass_bins = torch.full_like(labels, -1)
     adversarial_weights = torch.zeros_like(class_weights)
@@ -356,6 +372,8 @@ def train_fixed_epochs(
         cls_num = cls_den = adv_num = adv_den = 0.0
         for offset in range(0, rows, protocol.batch_size):
             index = order[offset : offset + protocol.batch_size]
+            if protocol.inclusive and class_weights[index].sum().item() == 0:
+                continue
             optimizer.zero_grad(set_to_none=True)
             logits = model.classifier(features[index])
             cls_numerator, cls_denominator = binary_loss_components(
@@ -397,7 +415,8 @@ def train_fixed_epochs(
     progress.close()
     environment = _environment()
     payload = {
-        "schema_version": "adversarial-mlp-final-v2",
+        "schema_version": "adversarial-mlp-final-v3" if protocol.inclusive else "adversarial-mlp-final-v2",
+        **({"scientific_state": copy.deepcopy(scientific_state)} if protocol.inclusive else {}),
         "dataset_binding": development.dataset_binding,
         "protocol_sha256": protocol.sha256,
         "feature_tuple": FEATURE_COLUMNS,

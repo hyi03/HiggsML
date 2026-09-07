@@ -12,6 +12,36 @@ import pandas as pd
 from src.config import InputBindingError
 
 
+def _inclusive_mass_plot(path, frame, diagnostics, dataset_name):
+    """Unbounded quantile bins are categories, never finite-width densities."""
+    edges = diagnostics["binning"]["edges_gev"]
+    labels = [f"({('-∞' if low is None else format(low, '.5g'))},\n{('+∞)' if high is None else format(high, '.5g') + ']')}"
+              for low, high in zip(edges[:-1], edges[1:])]
+    figure, axes = plt.subplots(3, 1, figsize=(13, 13))
+    x = np.arange(11)
+    medium = diagnostics["working_points"]["medium"]["bins"]
+    axes[0].plot(x, [row["background_fraction_before"] for row in medium], label="all ZZ")
+    for name, point in diagnostics["working_points"].items():
+        axes[0].plot(x, [row["background_fraction_after"] for row in point["bins"]], label=f"{name} selected ZZ")
+        axes[1].plot(x, [row["background_efficiency"] for row in point["bins"]], label=f"{name} ZZ")
+        axes[1].plot(x, [row["signal_efficiency"] for row in point["bins"]], linestyle="--", label=f"{name} Higgs")
+    for axis, ylabel in zip(axes[:2], ("absolute-weight background fraction", "within-bin efficiency")):
+        axis.set_xticks(x, labels, fontsize=7)
+        axis.set_xlabel("m4l bin [GeV], frozen development boundaries")
+        axis.set_ylabel(ylabel)
+        axis.legend()
+    background = frame.loc[frame.label == 0].sort_values("m4l", kind="stable")
+    for name, threshold in [("all ZZ", None)] + [(name, point["threshold"]) for name, point in diagnostics["working_points"].items()]:
+        selected = background if threshold is None else background.loc[background.score >= threshold]
+        weights = np.abs(selected.physical_weight.to_numpy(dtype=np.float64))
+        if weights.sum() > 0:
+            axes[2].step(selected.m4l, np.cumsum(weights) / weights.sum(), where="post", label=name)
+    axes[2].set_xlabel("m4l [GeV], all selected events")
+    axes[2].set_ylabel("absolute-weight ZZ CDF")
+    axes[2].legend()
+    _save(path, dataset_name)
+
+
 def _save(path: Path, dataset_name: str | None = None) -> None:
     if dataset_name is not None:
         plt.title(dataset_name + " — MC educational demo")
@@ -29,6 +59,7 @@ def write_development_plots(
     roc_points: tuple[np.ndarray, np.ndarray],
     mass_edges: tuple[float, ...],
     dataset_name: str | None = None,
+    mass_diagnostics: dict | None = None,
 ) -> tuple[Path, ...]:
     false_positive, true_positive = roc_points
     bins = np.asarray(mass_edges, dtype=np.float64)
@@ -85,6 +116,10 @@ def write_development_plots(
     roc_path = destination / "oof_roc.png"
     _save(roc_path, dataset_name)
 
+    mass_path = destination / "oof_mass_sculpting.png"
+    if mass_diagnostics is not None:
+        _inclusive_mass_plot(mass_path, display, mass_diagnostics, dataset_name)
+        return auc_path, ks_path, roc_path, mass_path
     candidate = next(item for item in candidates if item["target_lambda"] == display_lambda)
     threshold = float(candidate["working_points"]["medium"]["threshold"])
     background = display["label"].to_numpy() == 0
@@ -97,7 +132,6 @@ def write_development_plots(
     plt.xlabel("m4l [GeV]")
     plt.ylabel("normalized absolute-weight density")
     plt.legend()
-    mass_path = destination / "oof_mass_sculpting.png"
     _save(mass_path, dataset_name)
     return auc_path, ks_path, roc_path, mass_path
 
@@ -110,13 +144,14 @@ def write_test_plots(
     medium_threshold: float,
     mass_edges: tuple[float, ...],
     dataset_name: str | None = None,
+    mass_diagnostics: dict | None = None,
 ) -> tuple[Path, Path]:
     false_positive, true_positive = roc_points
     bins = np.asarray(mass_edges, dtype=np.float64)
     if (
         tuple(frame.columns) != (
             "source_file_id", "event_group_id", "source_sample", "source_entry", "label", "m4l",
-            "physical_weight", "train_weight", "score",
+            "physical_weight", "metric_weight" if mass_diagnostics is not None else "train_weight", "score",
         )
         or false_positive.ndim != 1
         or true_positive.shape != false_positive.shape
@@ -139,6 +174,10 @@ def write_test_plots(
     roc_path = destination / "test_roc.png"
     _save(roc_path, dataset_name)
 
+    mass_path = destination / "test_mass_sculpting.png"
+    if mass_diagnostics is not None:
+        _inclusive_mass_plot(mass_path, frame, mass_diagnostics, dataset_name)
+        return roc_path, mass_path
     labels = frame["label"].to_numpy(dtype=np.int64)
     scores = frame["score"].to_numpy(dtype=np.float64)
     masses = frame["m4l"].to_numpy(dtype=np.float64)
@@ -154,6 +193,5 @@ def write_test_plots(
     plt.xlabel("m4l [GeV]")
     plt.ylabel("normalized absolute-weight density")
     plt.legend()
-    mass_path = destination / "test_mass_sculpting.png"
     _save(mass_path, dataset_name)
     return roc_path, mass_path

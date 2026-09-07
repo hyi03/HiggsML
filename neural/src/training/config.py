@@ -28,6 +28,8 @@ FORBIDDEN_FEATURES = tuple(column for column in INPUT_COLUMNS if column not in F
 TARGET_LAMBDAS = (0.0, 0.05, 0.10, 0.20, 0.50)
 BASE_SEED = 42
 NORMAL_PROTOCOL_ID = "adversarial-mlp-protocol-normal-v2"
+INCLUSIVE_PROTOCOL_ID = "adversarial-mlp-protocol-inclusive"
+INCLUSIVE_INPUT_COLUMNS = tuple(column for column in INPUT_COLUMNS if column != "train_weight")
 DEBUG_PROTOCOL_ID = "adversarial-mlp-protocol-debug-v2"
 DEBUG_MUTABLE_QUALIFICATION_FIELDS = ("auc_minimum", "ks_maximum")
 
@@ -116,6 +118,28 @@ _NORMAL_EXPECTED: dict[str, Any] = {
 }
 
 
+_INCLUSIVE_EXPECTED = copy.deepcopy(_NORMAL_EXPECTED)
+_INCLUSIVE_EXPECTED.update(schema_version="3.0", protocol_id=INCLUSIVE_PROTOCOL_ID,
+    input_columns=list(INCLUSIVE_INPUT_COLUMNS),
+    forbidden_features=[column for column in INCLUSIVE_INPUT_COLUMNS if column not in FEATURES])
+_INCLUSIVE_EXPECTED["adversary"].pop("mass_edges_gev")
+_INCLUSIVE_EXPECTED["adversary"]["mass_binning"] = {
+    "algorithm": "background_abs_weight_quantiles", "version": 1, "scope": "fitting_only",
+    "closure": "right", "tails": "unbounded", "degenerate": "insufficient_statistics"}
+_INCLUSIVE_EXPECTED["analysis"] = {
+    "training_scope": "all_selected", "evaluation_scope": "all_selected",
+    "working_point_scope": "all_selected", "metric_weight": "absolute_physical_weight",
+    "optimizer_normalization": "fit_class_mean_absolute", "report_binning_scope": "development_background"}
+_INCLUSIVE_EXPECTED["checkpoint"]["fields"].append("scientific_state")
+_INCLUSIVE_EXPECTED["development_artifacts"]["oof_columns"] = [
+    "metric_weight" if name == "train_weight" else name
+    for name in _NORMAL_EXPECTED["development_artifacts"]["oof_columns"]]
+_INCLUSIVE_EXPECTED["development_artifacts"]["required_paths"] += [
+    "artifacts/scientific_state.json", "artifacts/mass_diagnostics.json"]
+_INCLUSIVE_EXPECTED["development_artifacts"]["canonical_json_files"] += [
+    "artifacts/scientific_state.json", "artifacts/mass_diagnostics.json"]
+
+
 @dataclass(frozen=True)
 class TrainingProtocol:
     protocol_id: str
@@ -124,6 +148,10 @@ class TrainingProtocol:
     raw: dict[str, Any]
     payload: bytes
     sha256: str
+
+    @property
+    def inclusive(self) -> bool:
+        return self.protocol_id == INCLUSIVE_PROTOCOL_ID
 
     @property
     def batch_size(self) -> int:
@@ -184,6 +212,8 @@ def validate_training_protocol_snapshot(raw: Any) -> dict[str, Any]:
     protocol_id = raw.get("protocol_id")
     if protocol_id == NORMAL_PROTOCOL_ID:
         expected = _NORMAL_EXPECTED
+    elif protocol_id == INCLUSIVE_PROTOCOL_ID:
+        expected = _INCLUSIVE_EXPECTED
     elif protocol_id == DEBUG_PROTOCOL_ID:
         expected = copy.deepcopy(_NORMAL_EXPECTED)
         expected["protocol_id"] = DEBUG_PROTOCOL_ID
@@ -220,6 +250,8 @@ def load_training_protocol(path: str | Path, *, debug: bool = False) -> Training
         raise InputBindingError("unable to load sealed adversarial MLP protocol") from exc
     if not isinstance(raw, dict):
         raise InputBindingError("adversarial MLP protocol must be a mapping")
+    if debug and raw.get("protocol_id") == INCLUSIVE_PROTOCOL_ID:
+        raise InputBindingError("inclusive formal protocol cannot use --debug")
     if not debug:
         validate_training_protocol_snapshot(raw)
     try:

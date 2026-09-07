@@ -50,7 +50,7 @@ def _canonical_events(dsid: int, *, mev: bool) -> dict:
 
 
 def _write_inputs(tmp_path: Path, dataset="atlas2020_4lep"):
-    protocol=load_preprocess_protocol(PROJECT/"config/preprocess_protocol_v2.yaml",dataset=dataset)
+    protocol=load_preprocess_protocol(PROJECT/"config/preprocess_protocol_mass_window.yaml",dataset=dataset)
     directory=tmp_path/dataset;directory.mkdir()
     paths={}
     for role,sample in protocol.samples.items():
@@ -69,7 +69,7 @@ def _write_inputs(tmp_path: Path, dataset="atlas2020_4lep"):
 
 
 def _bound_synthetic_protocol(higgs,zz,dataset="atlas2020_4lep"):
-    p=load_preprocess_protocol(PROJECT/"config/preprocess_protocol_v2.yaml",dataset=dataset)
+    p=load_preprocess_protocol(PROJECT/"config/preprocess_protocol_mass_window.yaml",dataset=dataset)
     return replace(p,samples={role:replace(p.samples[role],sha256=sha256_file(path),expected_entry_count=2)
         for role,path in (("higgs",higgs),("zz",zz))})
 
@@ -95,7 +95,7 @@ def test_success_publication_is_deterministic_and_manifest_complete(tmp_path,mon
     config.write_text("schema_version: '2.0'\ndata_root: .\nresources: {chunk_size_events: 1}\n")
     runs=tmp_path/"runs"
     for name in ("first","second"):
-        execute_preprocess(dataset=dataset,protocol_path=PROJECT/"config/preprocess_protocol_v2.yaml",
+        execute_preprocess(dataset=dataset,protocol_path=PROJECT/"config/preprocess_protocol_mass_window.yaml",
             run_config_path=config,run_dir=runs/dataset/name,allowed_root=runs)
     a,b=runs/dataset/"first",runs/dataset/"second"
     for partition in ("development","test"):

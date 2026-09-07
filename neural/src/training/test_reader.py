@@ -10,7 +10,7 @@ import pandas as pd
 
 from src.config import InputBindingError
 from src.dataset_binding import validate_frame_identity
-from src.training.config import INPUT_COLUMNS
+from src.training.config import INPUT_COLUMNS, INCLUSIVE_INPUT_COLUMNS
 from src.training.development_reader import _field_token
 
 
@@ -40,11 +40,12 @@ def _decode_test_rows(payload: bytes) -> pd.DataFrame:
         raise InputBindingError("test rows cannot be decoded") from error
 
 
-def read_test_rows_after_claim(table: str | Path, *, expected_rows: int, dataset_binding: dict, debug: bool = False) -> ValidatedTest:
+def read_test_rows_after_claim(table: str | Path, *, expected_rows: int, dataset_binding: dict, debug: bool = False, inclusive: bool = False) -> ValidatedTest:
     if type(expected_rows) is not int or expected_rows <= 0:
         raise InputBindingError("expected test row count changed")
-    header = b",".join(name.encode("utf-8") for name in INPUT_COLUMNS) + b"\n"
-    split_index = INPUT_COLUMNS.index("split")
+    columns = INCLUSIVE_INPUT_COLUMNS if inclusive else INPUT_COLUMNS
+    header = b",".join(name.encode("utf-8") for name in columns) + b"\n"
+    split_index = columns.index("split")
     approved = bytearray(header)
     test_rows = 0
     try:
@@ -68,12 +69,15 @@ def read_test_rows_after_claim(table: str | Path, *, expected_rows: int, dataset
     if test_rows != expected_rows:
         raise InputBindingError("test row count changed")
     frame = _decode_test_rows(bytes(approved))
-    validate_test_frame(frame, expected_rows=expected_rows, dataset_binding=dataset_binding, debug=debug)
+    validate_test_frame(frame, expected_rows=expected_rows, dataset_binding=dataset_binding, debug=debug, inclusive=inclusive)
     return ValidatedTest(frame.copy(deep=True))
 
 
-def validate_test_frame(frame: pd.DataFrame, *, expected_rows: int, dataset_binding: dict, debug: bool = False) -> None:
-    if tuple(frame.columns) != INPUT_COLUMNS or len(frame) != expected_rows:
+def validate_test_frame(frame: pd.DataFrame, *, expected_rows: int, dataset_binding: dict, debug: bool = False, inclusive: bool = False) -> None:
+    columns = INCLUSIVE_INPUT_COLUMNS if inclusive else INPUT_COLUMNS
+    if debug and inclusive:
+        raise InputBindingError("inclusive formal protocol cannot use --debug")
+    if tuple(frame.columns) != columns or len(frame) != expected_rows:
         raise InputBindingError("test frame schema or row count changed")
     if set(frame["split"].tolist()) != {"test"}:
         raise InputBindingError("test frame contains forbidden split")
@@ -86,7 +90,7 @@ def validate_test_frame(frame: pd.DataFrame, *, expected_rows: int, dataset_bind
             raise InputBindingError("test integer dtype changed")
     if set(frame["label"].tolist()) != {0, 1}:
         raise InputBindingError("test labels changed")
-    for column in INPUT_COLUMNS:
+    for column in columns:
         if column in _TEXT_COLUMNS:
             continue
         expected_dtype = np.dtype("int64" if column in _INTEGER_COLUMNS else "float64")
@@ -95,10 +99,10 @@ def validate_test_frame(frame: pd.DataFrame, *, expected_rows: int, dataset_bind
             or not np.isfinite(frame[column].to_numpy(dtype=np.float64)).all()
         ):
             raise InputBindingError("test numeric field is invalid")
-    if (frame["train_weight"] < 0).any():
+    if not inclusive and (frame["train_weight"] < 0).any():
         raise InputBindingError("test train weight is negative")
     labels = frame["label"].to_numpy(dtype=np.int64)
-    train_weights = frame["train_weight"].to_numpy(dtype=np.float64)
+    train_weights = np.abs(frame["physical_weight"].to_numpy(dtype=np.float64)) if inclusive else frame["train_weight"].to_numpy(dtype=np.float64)
     physical_weights = np.abs(frame["physical_weight"].to_numpy(dtype=np.float64))
     if any(
         train_weights[labels == label].sum() <= 0.0
@@ -106,5 +110,5 @@ def validate_test_frame(frame: pd.DataFrame, *, expected_rows: int, dataset_bind
         for label in (0, 1)
     ):
         raise InputBindingError("test class weight total is not positive")
-    if not debug and ((frame["m4l"] < 105.0) | (frame["m4l"] > 160.0)).any():
+    if not debug and not inclusive and ((frame["m4l"] < 105.0) | (frame["m4l"] > 160.0)).any():
         raise InputBindingError("test m4l is outside sealed range")

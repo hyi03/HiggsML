@@ -19,7 +19,7 @@ from src.training.config import (
 
 
 PROJECT = Path(__file__).resolve().parents[2]
-NORMAL_PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal_v2.yaml"
+NORMAL_PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_mass_window.yaml"
 DEBUG_PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_debug_v2.yaml"
 
 
