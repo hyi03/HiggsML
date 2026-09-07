@@ -19,6 +19,7 @@ spec.loader.exec_module(init)
 
 class Response(io.BytesIO):
     status = 200
+    headers = {}
 
 
 @pytest.fixture
@@ -202,7 +203,7 @@ def test_symlink_rejected(setup, tmp_path, target):
     assert not calls
 
 
-def test_retry_starts_from_zero(setup, monkeypatch):
+def test_retry_restarts_when_server_ignores_range(setup, monkeypatch):
     data, _, _, _ = setup
     binding, directory, receipt = pair_paths(setup)
     original = init.urlopen; count = 0
@@ -210,12 +211,107 @@ def test_retry_starts_from_zero(setup, monkeypatch):
         nonlocal count
         count += 1
         if count == 1: return Response(b'partial')
+        if count == 2: assert request.get_header('Range') == 'bytes=7-'
         return original(request, timeout)
     monkeypatch.setattr(init, 'urlopen', transient)
     init.initialize(data, dataset=binding.dataset_name)
     assert count == 3
     assert receipt.exists()
     assert not list(directory.glob('*.part'))
+
+
+@pytest.mark.parametrize('failure', ['eof', 'reset', 'timeout'])
+def test_retry_resumes_partial_transfer(setup, monkeypatch, failure):
+    data, _, payloads, _ = setup
+    binding, directory, receipt = pair_paths(setup)
+    payload = payloads[0]
+    requests = []
+    original = init.urlopen
+    class Interrupted(Response):
+        def read(self, size):
+            if self.tell() == 4 and failure != 'eof':
+                raise (TimeoutError if failure == 'timeout' else ConnectionResetError)('interrupted')
+            return super().read(size)
+    def http(request, timeout):
+        requests.append(request)
+        assert request.get_header('Accept-encoding') == 'identity'
+        if len(requests) == 1:
+            return Interrupted(payload[:4])
+        if len(requests) == 2:
+            assert request.get_header('Range') == 'bytes=4-'
+            response = Response(payload[4:])
+            response.status = 206
+            response.headers = {'Content-Range': f'bytes 4-{len(payload)-1}/{len(payload)}'}
+            return response
+        return original(request, timeout)
+    monkeypatch.setattr(init, 'urlopen', http)
+    init.initialize(data, dataset=binding.dataset_name)
+    assert len(requests) == 3
+    assert receipt.exists()
+    assert (directory / binding.members[0].filename).read_bytes() == payload
+    assert not list(directory.glob('*.part'))
+
+
+@pytest.mark.parametrize('content_range', ['', 'bytes 0-12/13', 'bytes 4-12/99',
+                                         'bytes 4-99/13', 'bytes 4-3/13'])
+def test_invalid_resume_response_never_appended(setup, monkeypatch, content_range):
+    data, _, payloads, _ = setup
+    binding, directory, receipt = pair_paths(setup)
+    original = init.urlopen
+    count = 0
+    def http(request, timeout):
+        nonlocal count
+        count += 1
+        if count == 1: return Response(payloads[0][:4])
+        if count == 2:
+            response = Response(b'bad bytes')
+            response.status = 206
+            response.headers = {'Content-Range': content_range}
+            return response
+        if count == 3: assert request.get_header('Range') == 'bytes=4-'
+        return original(request, timeout)
+    monkeypatch.setattr(init, 'urlopen', http)
+    init.initialize(data, dataset=binding.dataset_name)
+    assert count == 4
+    assert receipt.exists()
+
+
+def test_hash_mismatch_retries_without_range(setup, monkeypatch):
+    data, _, payloads, _ = setup
+    binding, _, receipt = pair_paths(setup)
+    original = init.urlopen
+    count = 0
+    def http(request, timeout):
+        nonlocal count
+        count += 1
+        assert request.get_header('Range') is None
+        if count == 1: return Response(b'x' * len(payloads[0]))
+        return original(request, timeout)
+    monkeypatch.setattr(init, 'urlopen', http)
+    init.initialize(data, dataset=binding.dataset_name)
+    assert receipt.exists()
+
+
+def test_read_failure_after_full_body_restarts_safely(setup, monkeypatch):
+    data, _, payloads, _ = setup
+    binding, _, receipt = pair_paths(setup)
+    original = init.urlopen
+    count = 0
+    class LateFailure(Response):
+        def read(self, size):
+            if self.tell() == len(payloads[0]):
+                raise ConnectionResetError('late reset')
+            return super().read(size)
+    def http(request, timeout):
+        nonlocal count
+        count += 1
+        assert request.get_header('Range') is None
+        if count == 1: return LateFailure(payloads[0])
+        return original(request, timeout)
+    monkeypatch.setattr(init, 'urlopen', http)
+    init.initialize(data, dataset=binding.dataset_name)
+    assert count == 3
+    assert receipt.exists()
 
 
 @pytest.mark.parametrize('content', [b'{}', b'invalid', b'[]', b'{"status":"complete","status":"complete"}'])
