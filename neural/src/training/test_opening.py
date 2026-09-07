@@ -31,6 +31,8 @@ from src.config import ExitCode, InputBindingError, TestOpeningFailure, TestOpen
 from src.preprocessing.outputs import canonical_csv_bytes, write_canonical_table
 from src.training.config import (
     DEBUG_PROTOCOL_ID,
+    INCLUSIVE_PROTOCOL_ID,
+    INCLUSIVE_INPUT_COLUMNS,
     INPUT_COLUMNS,
     NORMAL_PROTOCOL_ID,
     TARGET_LAMBDAS,
@@ -46,7 +48,9 @@ from src.training.development_reader import (
     _read_manifest,
 )
 from src.training.network import AdversarialMLP
-from src.training.qualification import frozen_working_point_metrics, weighted_auc, weighted_roc_points
+from src.training.qualification import frozen_working_point_metrics, weighted_auc, weighted_roc_points, metric_weights
+from src.training.inclusive import MassBinning, validate_scientific_state
+from src.training.mass_diagnostics import mass_diagnostics
 from src.training.test_reader import read_test_rows_after_claim
 
 
@@ -130,6 +134,7 @@ class _Binding:
     artifact_hashes: dict[str, str]
     test_record: dict[str, Any]
     debug: bool = False
+    scientific_state: dict | None = None
 
 
 def _hex_sha(value: Any) -> bool:
@@ -170,6 +175,12 @@ def _development_manifest(run: Path, *, debug: bool = False) -> tuple[dict[str, 
     manifest, payload = _read_canonical_json(
         _plain_descendant(run, Path("artifacts/manifest.json"))
     )
+    if manifest.get("status") == "insufficient_statistics":
+        raise TestOpeningRefused("development run has insufficient_statistics; no final model")
+    protocol_record = manifest.get("protocol")
+    inclusive = isinstance(protocol_record, dict) and protocol_record.get("id") == INCLUSIVE_PROTOCOL_ID
+    if inclusive and debug:
+        raise TestOpeningRefused("inclusive formal protocol cannot use --debug")
     required = {
         "dataset_binding", "schema_version", "status", "run_type", "started_at_utc", "completed_at_utc",
         "input", "protocol", "outputs", "counts", "schema", "oof_completeness",
@@ -181,6 +192,8 @@ def _development_manifest(run: Path, *, debug: bool = False) -> tuple[dict[str, 
         not debug or not (run / "model/model.pt").is_file()
         or not (run / "model/scaler.json").is_file()
     ):
+        if inclusive:
+            raise TestOpeningRefused("inclusive development run has no eligible candidate or final model; test opening refused")
         raise TestOpeningRefused(
             "development run has no final model (no_eligible_candidate); "
             "rerun higgsml-train --debug with a new run directory, then use higgsml-test --debug"
@@ -197,7 +210,7 @@ def _development_manifest(run: Path, *, debug: bool = False) -> tuple[dict[str, 
     protocol = manifest.get("protocol")
     performance = manifest.get("performance")
     if (
-        manifest.get("schema_version") != "development-manifest-v2"
+        manifest.get("schema_version") != ("development-manifest-v3" if inclusive else "development-manifest-v2")
         or manifest.get("run_type") != "development"
         or type(manifest.get("started_at_utc")) is not str
         or type(manifest.get("completed_at_utc")) is not str
@@ -217,7 +230,7 @@ def _development_manifest(run: Path, *, debug: bool = False) -> tuple[dict[str, 
         or not isinstance(protocol, dict)
         or set(protocol) != {"id", "sha256"}
         or (type(protocol.get("id")) is not str if debug
-            else protocol.get("id") not in {NORMAL_PROTOCOL_ID, DEBUG_PROTOCOL_ID})
+            else protocol.get("id") not in {NORMAL_PROTOCOL_ID, DEBUG_PROTOCOL_ID, INCLUSIVE_PROTOCOL_ID})
         or not _hex_sha(protocol.get("sha256"))
         or not isinstance(selection, dict)
         or set(selection) != {"selected_lambda", "final_epochs"}
@@ -297,7 +310,8 @@ def _validate_dev_outputs(run: Path, manifest: dict[str, Any]) -> None:
         elif record.get("row_count") is not None or record.get("canonical_content_sha256") is not None:
             raise InputBindingError("development output receipt changed")
         seen.add(record["path"])
-    if seen != _DEV_OUTPUTS:
+    expected = _DEV_OUTPUTS | ({"artifacts/scientific_state.json", "artifacts/mass_diagnostics.json"} if manifest["protocol"]["id"] == INCLUSIVE_PROTOCOL_ID else set())
+    if seen != expected:
         raise InputBindingError("development output set changed")
 
 
@@ -328,7 +342,7 @@ def _validate_protocol_manifest_binding(
         != set(artifacts["candidate_metric_columns"])
         or set(schema["fold_metric_dtypes"]) != set(artifacts["fold_metric_columns"])
         or tuple(protocol["features"]) != FEATURE_COLUMNS
-        or tuple(protocol["input_columns"]) != INPUT_COLUMNS
+        or tuple(protocol["input_columns"]) != (INCLUSIVE_INPUT_COLUMNS if protocol["protocol_id"] == INCLUSIVE_PROTOCOL_ID else INPUT_COLUMNS)
     ):
         raise InputBindingError("development schema is not bound to the frozen protocol")
 
@@ -454,6 +468,7 @@ def _load_binding(development_run: str | Path, *, allowed_root: str | Path, data
     run = _bound_input_run(development_run, root)
     manifest, manifest_sha = _development_manifest(run, debug=debug)
     validate_dataset_snapshot(manifest["dataset_binding"], dataset)
+    inclusive = manifest["protocol"]["id"] == INCLUSIVE_PROTOCOL_ID
     _validate_dev_outputs(run, manifest)
     try:
         config = yaml.safe_load((run / "config.yaml").read_bytes())
@@ -461,7 +476,7 @@ def _load_binding(development_run: str | Path, *, allowed_root: str | Path, data
         raise InputBindingError("development config cannot be loaded") from error
     if not isinstance(config, dict) or set(config) != {
         "protocol_payload", "dataset_binding", "schema_version", "input_run", "input_manifest_sha256", "protocol_sha256", "protocol"
-    } or config.get("schema_version") != "development-config-v2" or not isinstance(config.get("protocol"), dict):
+    } or config.get("schema_version") != ("development-config-v3" if inclusive else "development-config-v2") or not isinstance(config.get("protocol"), dict):
         raise InputBindingError("development config binding changed")
     if config["dataset_binding"] != manifest["dataset_binding"]:
         raise InputBindingError("development dataset snapshot changed")
@@ -512,14 +527,29 @@ def _load_binding(development_run: str | Path, *, allowed_root: str | Path, data
             )
     except Exception as error:
         raise InputBindingError("frozen model cannot be loaded") from error
+    scientific = None
+    if inclusive:
+        scientific, _ = _read_canonical_json(run / "artifacts/scientific_state.json")
+        if set(scientific) != {"schema_version", "dataset_binding", "protocol_sha256", "folds", "final_fit", "report_binning", "fold_statistics"} or scientific["schema_version"] != "inclusive-scientific-state-v1" or scientific["protocol_sha256"] != protocol_sha or scientific["dataset_binding"] != manifest["dataset_binding"]:
+            raise InputBindingError("inclusive scientific artifact binding changed")
+        if not isinstance(scientific["folds"], dict) or set(scientific["folds"]) != {str(index) for index in range(5)}:
+            raise InputBindingError("inclusive fold states changed")
+        for state in [*scientific["folds"].values(), scientific["final_fit"]]:
+            validate_scientific_state(state)
+        if scientific["report_binning"] != scientific["final_fit"]["mass_binning"]:
+            raise InputBindingError("inclusive report binning changed")
+        if not isinstance(payload, dict) or payload.get("scientific_state") != scientific["final_fit"]:
+            raise InputBindingError("frozen model scientific state changed")
     model_keys = {
         "dataset_binding", "schema_version", "protocol_sha256", "feature_tuple", "scaler", "target_lambda",
         "seed", "epochs", "classifier_state_dict", "adversary_state_dict", "environment",
     }
+    if inclusive:
+        model_keys.add("scientific_state")
     if (
         not isinstance(payload, dict)
         or set(payload) != model_keys
-        or payload.get("schema_version") != "adversarial-mlp-final-v2"
+        or payload.get("schema_version") != ("adversarial-mlp-final-v3" if inclusive else "adversarial-mlp-final-v2")
         or payload.get("dataset_binding") != manifest["dataset_binding"]
         or payload.get("protocol_sha256") != protocol_sha
         or tuple(payload.get("feature_tuple", ())) != FEATURE_COLUMNS
@@ -554,7 +584,7 @@ def _load_binding(development_run: str | Path, *, allowed_root: str | Path, data
     model.eval()
 
     preprocess = _resolve_preprocess(str(config.get("input_run")), allowed_root=root)
-    pre_manifest, pre_manifest_sha = _read_manifest(preprocess, debug=debug)
+    pre_manifest, pre_manifest_sha = _read_manifest(preprocess, debug=debug, inclusive=inclusive)
     if pre_manifest["dataset_binding"] != manifest["dataset_binding"]:
         raise InputBindingError("preprocess dataset mismatch")
     records = _output_records(preprocess, pre_manifest, debug=debug)
@@ -601,6 +631,7 @@ def _load_binding(development_run: str | Path, *, allowed_root: str | Path, data
         artifact_hashes,
         records["processed/test_events.csv.gz"],
         debug,
+        scientific,
     )
 
 
@@ -751,7 +782,7 @@ def _evaluate(binding: _Binding) -> tuple[pd.DataFrame, dict[str, Any]]:
             or _canonical_content_sha256(test_path) != binding.test_record["canonical_content_sha256"]):
         raise InputBindingError("test partition hash changed")
     torch.use_deterministic_algorithms(True)
-    test = read_test_rows_after_claim(binding.table, expected_rows=binding.expected_test_rows, dataset_binding=binding.development_manifest["dataset_binding"], debug=binding.debug)
+    test = read_test_rows_after_claim(binding.table, expected_rows=binding.expected_test_rows, dataset_binding=binding.development_manifest["dataset_binding"], debug=binding.debug, inclusive=binding.scientific_state is not None)
     raw = test.frame
     features = binding.scaler.transform(raw[list(FEATURE_COLUMNS)].to_numpy(dtype=np.float64))
     with torch.no_grad():
@@ -759,7 +790,8 @@ def _evaluate(binding: _Binding) -> tuple[pd.DataFrame, dict[str, Any]]:
         scores = torch.sigmoid(logits).cpu().numpy().astype(np.float64)
     if scores.shape != (binding.expected_test_rows,) or not np.isfinite(scores).all() or np.any(scores < 0.0) or np.any(scores > 1.0):
         raise RuntimeError("test prediction completeness changed")
-    frame = pd.DataFrame({name: raw[name].to_numpy(copy=True) for name in TEST_SCORE_COLUMNS[:-1]})
+    columns = tuple("metric_weight" if binding.scientific_state is not None and name == "train_weight" else name for name in TEST_SCORE_COLUMNS)
+    frame = pd.DataFrame({name: (np.abs(raw["physical_weight"].to_numpy(copy=True)) if name == "metric_weight" else raw[name].to_numpy(copy=True)) for name in columns[:-1]})
     frame["score"] = scores
     frame = frame.sort_values(["source_sample", "source_entry"], kind="stable", ignore_index=True)
     expected_identities = sorted(
@@ -768,7 +800,7 @@ def _evaluate(binding: _Binding) -> tuple[pd.DataFrame, dict[str, Any]]:
     )
     if list(zip(frame["source_sample"], frame["source_entry"], strict=True)) != expected_identities:
         raise RuntimeError("test prediction identity completeness changed")
-    auc = weighted_auc(frame["label"], frame["score"], frame["train_weight"])
+    auc = weighted_auc(frame["label"], frame["score"], metric_weights(frame))
     points = {
         name: frozen_working_point_metrics(
             frame, target=float(binding.protocol["working_points"][name]),
@@ -791,7 +823,8 @@ def _evaluate(binding: _Binding) -> tuple[pd.DataFrame, dict[str, Any]]:
     if binding.debug:
         status = "debug_diagnostic"
     return frame, {
-        "schema_version": "test-metrics-v1",
+        "schema_version": "test-metrics-v2" if binding.scientific_state is not None else "test-metrics-v1",
+        **({"mass_diagnostics": mass_diagnostics(frame, MassBinning.from_dict(binding.scientific_state["report_binning"]), points)} if binding.scientific_state is not None else {}),
         "status": status,
         **({"debug": True} if binding.debug else {}),
         "selected_lambda": binding.selected_lambda,
@@ -842,7 +875,7 @@ def _write_success_artifacts(
     write_canonical_json(artifacts / "test_metrics.json", metrics)
     csv_payload = canonical_csv_bytes(
         scores,
-        TEST_SCORE_COLUMNS,
+        tuple(scores.columns),
         integer_columns={"source_entry", "label"},
         string_columns={"source_sample", "source_file_id", "event_group_id"},
     )
@@ -858,9 +891,10 @@ def _write_success_artifacts(
         roc_points=roc,
         dataset_name=binding.development_manifest["dataset_binding"]["dataset_name"],
         medium_threshold=float(metrics["working_points"]["medium"]["threshold"]),
-        mass_edges=tuple(
+        mass_edges=(MassBinning.from_dict(binding.scientific_state["report_binning"]).boundaries if binding.scientific_state is not None else tuple(
             float(value) for value in binding.protocol["adversary"]["mass_edges_gev"]
-        ),
+        )),
+        **({"mass_diagnostics": metrics["mass_diagnostics"]} if binding.scientific_state is not None else {}),
     )
     paths = [
         "config.yaml",
@@ -883,7 +917,7 @@ def _write_success_artifacts(
         for path in paths
     ]
     manifest = {
-        "schema_version": "test-manifest-v2",
+        "schema_version": "test-manifest-v3" if binding.scientific_state is not None else "test-manifest-v2",
         "dataset_binding": binding.development_manifest["dataset_binding"],
         "run_type": "test_opening",
         "status": metrics["status"],
@@ -900,9 +934,9 @@ def _write_success_artifacts(
         "protocol_sha256": binding.protocol_sha256,
         "outputs": outputs,
         "schema": {
-            "score_columns": list(TEST_SCORE_COLUMNS),
+            "score_columns": list(scores.columns),
             "score_dtypes": {
-                name: str(scores[name].dtype) for name in TEST_SCORE_COLUMNS
+                name: str(scores[name].dtype) for name in scores.columns
             },
         },
         "counts": {"test_rows": len(scores)},

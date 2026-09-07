@@ -19,6 +19,14 @@ OOF_COLUMNS = (
 )
 
 
+def metric_weights(frame: pd.DataFrame):
+    return frame["metric_weight"] if "metric_weight" in frame else frame["train_weight"]
+
+
+def oof_columns(inclusive: bool = False):
+    return tuple("metric_weight" if inclusive and name == "train_weight" else name for name in OOF_COLUMNS)
+
+
 def validate_candidate_oof(
     frame: pd.DataFrame,
     development: ValidatedDevelopment,
@@ -26,14 +34,16 @@ def validate_candidate_oof(
     *,
     target_lambda: float,
 ) -> None:
-    if tuple(frame.columns) != OOF_COLUMNS or len(frame) != len(development.frame):
+    if tuple(frame.columns) != oof_columns(development.inclusive) or len(frame) != len(development.frame):
         raise InputBindingError("candidate OOF schema or row count changed")
     expected = development.frame
     if not np.array_equal(frame["target_lambda"].to_numpy(), np.full(len(frame), target_lambda)):
         raise InputBindingError("candidate OOF lambda binding changed")
     if not np.array_equal(frame["fold_index"].to_numpy(), folds):
         raise InputBindingError("candidate OOF fold binding changed")
-    for column in ("source_file_id", "event_group_id", "source_sample", "source_entry", "label", "m4l", "physical_weight", "train_weight"):
+    if development.inclusive and not np.array_equal(frame["metric_weight"], np.abs(expected["physical_weight"])):
+        raise InputBindingError("candidate OOF metric weight changed")
+    for column in ("source_file_id", "event_group_id", "source_sample", "source_entry", "label", "m4l", "physical_weight") + (() if development.inclusive else ("train_weight",)):
         if not np.array_equal(frame[column].to_numpy(), expected[column].to_numpy()):
             raise InputBindingError(f"candidate OOF field changed: {column}")
     identities = tuple(zip(frame["source_sample"], frame["source_entry"], strict=True))
@@ -67,12 +77,12 @@ def weighted_auc(labels: Iterable[int], scores: Iterable[float], weights: Iterab
 
 
 def weighted_roc_points(frame: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
-    required = {"label", "score", "train_weight"}
+    required = {"label", "score", "metric_weight" if "metric_weight" in frame else "train_weight"}
     if not required.issubset(frame.columns):
         raise InputBindingError("weighted ROC inputs are invalid")
     labels = frame["label"].to_numpy()
     scores = frame["score"].to_numpy(dtype=np.float64)
-    weights = frame["train_weight"].to_numpy(dtype=np.float64)
+    weights = metric_weights(frame).to_numpy(dtype=np.float64)
     weighted_auc(labels, scores, weights)
     false_positive, true_positive, _ = roc_curve(labels, scores, sample_weight=weights)
     if not np.isfinite(false_positive).all() or not np.isfinite(true_positive).all():
@@ -211,7 +221,7 @@ def frozen_working_point_metrics(
 
 def evaluate_candidate(frame: pd.DataFrame, protocol: TrainingProtocol) -> dict[str, Any]:
     candidate_lambda = float(frame["target_lambda"].iloc[0])
-    auc = weighted_auc(frame["label"], frame["score"], frame["train_weight"])
+    auc = weighted_auc(frame["label"], frame["score"], metric_weights(frame))
     points = {
         name: working_point_metrics(frame, target=target)
         for name, target in protocol.working_points

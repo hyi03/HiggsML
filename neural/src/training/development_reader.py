@@ -16,7 +16,7 @@ from src.artifacts.manifest import sha256_file
 from src.config import InputBindingError
 from src.dataset_binding import validate_dataset_snapshot
 from src.resource_seals import RESOURCE_HASHES
-from src.training.config import INPUT_COLUMNS
+from src.training.config import INPUT_COLUMNS, INCLUSIVE_INPUT_COLUMNS
 from src.training.dataset import ValidatedDevelopment, validate_development_frame
 
 
@@ -93,7 +93,10 @@ def _plain_descendant(run: Path, relative: Path) -> Path:
     return resolved
 
 
-def _read_manifest(run: Path, *, debug: bool = False) -> tuple[dict[str, Any], str]:
+def _read_manifest(run: Path, *, debug: bool = False, inclusive: bool = False) -> tuple[dict[str, Any], str]:
+    columns = INCLUSIVE_INPUT_COLUMNS if inclusive else INPUT_COLUMNS
+    resource = "preprocess_protocol_inclusive.yaml" if inclusive else "preprocess_protocol_mass_window.yaml"
+    expected_id = "higgsml-preprocess-inclusive" if inclusive else "higgsml-preprocess-v2"
     path = _plain_descendant(run, Path("artifacts/manifest.json"))
     try:
         payload = path.read_bytes()
@@ -114,10 +117,10 @@ def _read_manifest(run: Path, *, debug: bool = False) -> tuple[dict[str, Any], s
     if (
         not isinstance(manifest, dict)
         or set(manifest) != required_keys
-        or manifest.get("schema_version") != "2.0"
+        or manifest.get("schema_version") != ("3.0" if inclusive else "2.0")
         or manifest.get("status") != "success"
         or manifest.get("run_type") != "preprocess"
-        or (not debug and manifest.get("protocol_id") != "higgsml-preprocess-v2")
+        or (not debug and manifest.get("protocol_id") != expected_id)
         or (debug and type(manifest.get("protocol_id")) is not str)
         or not isinstance(manifest.get("inputs"), list)
         or not isinstance(manifest.get("outputs"), list)
@@ -126,7 +129,7 @@ def _read_manifest(run: Path, *, debug: bool = False) -> tuple[dict[str, Any], s
         or type(configuration.get("protocol_path")) is not str
         or type(configuration.get("run_config_path")) is not str
         or (not debug
-            and configuration.get("protocol_sha256") != RESOURCE_HASHES["preprocess_protocol_v2.yaml"])
+            and configuration.get("protocol_sha256") != RESOURCE_HASHES[resource])
         or (not debug and not _is_sha256(configuration.get("run_config_sha256")))
         or (debug and type(configuration.get("run_config_sha256")) is not str)
         or type(configuration.get("chunk_size_events")) is not int
@@ -134,9 +137,9 @@ def _read_manifest(run: Path, *, debug: bool = False) -> tuple[dict[str, Any], s
         or configuration.get("full_read") is not True
         or not isinstance(schema, dict)
         or set(schema) != {"ordered_columns", "dtypes"}
-        or schema.get("ordered_columns") != list(INPUT_COLUMNS)
+        or schema.get("ordered_columns") != list(columns)
         or not isinstance(schema.get("dtypes"), dict)
-        or tuple(schema["dtypes"]) != INPUT_COLUMNS
+        or tuple(schema["dtypes"]) != columns
     ):
         raise InputBindingError("preprocess manifest binding changed")
     validate_dataset_snapshot(manifest["dataset_binding"])
@@ -221,9 +224,9 @@ def _field_token(line: bytes, index: int) -> bytes:
     return line[start:end]
 
 
-def _development_frame(table: Path, *, expected_rows: int) -> tuple[pd.DataFrame, int]:
-    header = b",".join(name.encode("utf-8") for name in INPUT_COLUMNS) + b"\n"
-    split_index = INPUT_COLUMNS.index("split")
+def _development_frame(table: Path, *, expected_rows: int, columns: tuple[str, ...] = INPUT_COLUMNS) -> tuple[pd.DataFrame, int]:
+    header = b",".join(name.encode("utf-8") for name in columns) + b"\n"
+    split_index = columns.index("split")
     approved = bytearray(header)
     total_rows = 0
     test_rows = 0
@@ -270,9 +273,10 @@ def read_development_input(
     dataset: str,
     protocol_sha256: str,
     debug: bool = False,
+    inclusive: bool = False,
 ) -> DevelopmentInput:
     run = _bound_input_run(input_run, allowed_root)
-    manifest, manifest_sha = _read_manifest(run, debug=debug)
+    manifest, manifest_sha = _read_manifest(run, debug=debug, inclusive=inclusive)
     validate_dataset_snapshot(manifest["dataset_binding"], dataset)
     records = _output_records(run, manifest, debug=debug)
     try:
@@ -292,7 +296,7 @@ def read_development_input(
     table = run / "processed" / "development_events.csv.gz"
     if not debug and _canonical_content_sha256(table) != canonical_sha:
         raise InputBindingError("preprocess canonical content SHA-256 changed")
-    frame, _ = _development_frame(table, expected_rows=expected_rows)
+    frame, _ = _development_frame(table, expected_rows=expected_rows, columns=INCLUSIVE_INPUT_COLUMNS if inclusive else INPUT_COLUMNS)
     test_rows = records["processed/test_events.csv.gz"]["row_count"]
     if type(test_rows) is not int or test_rows < 0:
         raise InputBindingError("test partition count changed")
@@ -309,7 +313,7 @@ def read_development_input(
         raise InputBindingError("preprocess manifest split counts changed")
     development = validate_development_frame(
         frame, protocol_sha256=protocol_sha256,
-        dataset_binding=manifest["dataset_binding"], debug=debug,
+        dataset_binding=manifest["dataset_binding"], debug=debug, inclusive=inclusive,
     )
     configuration = manifest["configuration"]
     return DevelopmentInput(

@@ -2,7 +2,7 @@
 import numpy as np
 
 
-def development_statistics(frame, folds):
+def development_statistics(frame, folds, *, inclusive=False, binning=None):
     if not frame["split"].isin(["train", "validation"]).all():
         raise ValueError("statistics require development rows")
 
@@ -19,6 +19,6 @@ def development_statistics(frame, folds):
         "classes": {str(label): summarize(frame.loc[frame.label == label]) for label in (0, 1)},
         "folds": {str(fold): {str(label): summarize(frame.loc[(folds == fold) & (frame.label == label)])
                               for label in (0, 1)} for fold in range(5)},
-        "background_mass_bins": [summarize(frame.loc[(frame.label == 0) &
+        "background_mass_bins": ([] if binning is None else [summarize(frame.loc[(frame.label == 0) & (binning.indices(frame.m4l) == index)]) for index in range(11)]) if inclusive else [summarize(frame.loc[(frame.label == 0) &
             (frame.m4l >= low) & (frame.m4l < low + 5)]) for low in range(105, 160, 5)],
     }

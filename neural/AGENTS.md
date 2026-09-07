@@ -74,7 +74,17 @@ actually performed on the locked ARM64 environment with the bound ROOT inputs.
 ## Current dataset contract (v2)
 
 - All business CLIs require `--dataset`: `atlas2020_4lep` or `atlas2025_exactly4lep`.
-- Use v2 protocols and separate development/test files. Never infer identity for historical mixed runs.
+- Use the sealed semantic-name mass-window (schema 2.0) or inclusive (schema 3.0) protocol pair and separate development/test files. Never infer identity for historical mixed runs.
 - Physical event groups must remain in the same split/fold across source rows.
 - Root design v1 hashes/counts/golden apply only to historical v1 runs. New authority references require independent evidence.
 - Current operations: `docs/dataset-v2-runbook.md`. Preserve frozen/failed runs.
+
+## Formal inclusive protocol
+
+- The approved inclusive protocol supersedes the historical fixed mass window and all-selected weight normalization only for inclusive runs. See `docs/inclusive-protocol.md`.
+- No additional m4l window applies to preprocessing, training or primary evaluation. All development events are used; test remains held out.
+- Fit 11 right-closed, unbounded-tail background absolute-weight quantile bins per fitting fold, shared across lambdas. Final fitting uses development only.
+- Optimizer class means are fitting-fold local; metric weights are absolute physical weights. Neither bins nor optimizer normalization may use test or validation fitting statistics.
+- Duplicate quantile boundaries, empty effective bins or missing effective classes stop before optimization as `insufficient_statistics`; do not alter rules or fall back to debug.
+- Bind scientific state to checkpoints and final artifacts. Freeze development report bins for test diagnostics. Preserve legacy and frozen artifacts.
+- Inclusive protocols cannot use `--debug`. Existing qualification, architecture and candidate rules remain sealed.

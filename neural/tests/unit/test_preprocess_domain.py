@@ -22,7 +22,7 @@ PROJECT = Path(__file__).resolve().parents[2]
 
 
 def _selection_config() -> SelectionConfig:
-    protocol = load_preprocess_protocol(PROJECT / "config/preprocess_protocol_v2.yaml", dataset="atlas2020_4lep")
+    protocol = load_preprocess_protocol(PROJECT / "config/preprocess_protocol_mass_window.yaml", dataset="atlas2020_4lep")
     return SelectionConfig.from_mapping(protocol.selection)
 
 

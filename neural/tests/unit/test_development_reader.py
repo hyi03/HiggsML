@@ -18,7 +18,7 @@ from tests.development_fixtures import write_synthetic_preprocess_run
 
 
 PROJECT = Path(__file__).resolve().parents[2]
-PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_normal_v2.yaml"
+PROTOCOL = PROJECT / "config/adversarial_mlp_protocol_mass_window.yaml"
 
 
 def _manifest_path(run: Path) -> Path:
@@ -59,7 +59,7 @@ def test_reader_surfaces_preprocess_lineage_hashes(tmp_path: Path) -> None:
     root = tmp_path / "runs"
     run, _ = write_synthetic_preprocess_run(root)
     loaded = _read(run, root)
-    assert loaded.preprocess_protocol_sha256 == __import__("src.resource_seals",fromlist=["RESOURCE_HASHES"]).RESOURCE_HASHES["preprocess_protocol_v2.yaml"]
+    assert loaded.preprocess_protocol_sha256 == __import__("src.resource_seals",fromlist=["RESOURCE_HASHES"]).RESOURCE_HASHES["preprocess_protocol_mass_window.yaml"]
     assert loaded.preprocess_run_config_sha256 == "2" * 64
 
 

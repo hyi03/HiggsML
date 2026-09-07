@@ -10,7 +10,8 @@ from torch import Tensor
 
 from src.config import InputBindingError
 from src.dataset_binding import validate_frame_identity
-from src.training.config import BASE_SEED, FEATURES, INPUT_COLUMNS
+from src.training.config import BASE_SEED, FEATURES, INPUT_COLUMNS, INCLUSIVE_INPUT_COLUMNS
+from src.training.inclusive import MassBinning, fit_scientific_state, optimizer_weights, validate_scientific_state
 from src.training.losses import adversarial_bin_weights, mass_bin_indices
 
 
@@ -71,6 +72,7 @@ class ValidatedDevelopment:
     protocol_sha256: str
     dataset_binding: dict | None = None
     debug: bool = False
+    inclusive: bool = False
 
 
 @dataclass(frozen=True)
@@ -91,7 +93,15 @@ class ValidatedFold:
     protocol_sha256: str
     dataset_binding: dict | None = None
 
+    scientific_state: dict | None = None
+    validation_metric_weights: Tensor | None = None
+
     def __post_init__(self) -> None:
+        if self.scientific_state is not None:
+            validate_scientific_state(self.scientific_state)
+            metric = self.validation_metric_weights
+            if metric is None or metric.shape != self.validation_labels.shape or metric.dtype != torch.float64 or metric.device.type != "cpu" or not torch.isfinite(metric).all() or torch.any(metric < 0):
+                raise InputBindingError("fold metric weights changed")
         for name, values in (("fitting", self.fitting_features), ("validation", self.validation_features)):
             if values.ndim != 2 or values.shape[1] != 15 or values.dtype != torch.float32 or values.device.type != "cpu" or not torch.isfinite(values).all():
                 raise InputBindingError(f"{name} feature tensor changed")
@@ -152,8 +162,11 @@ class ValidatedFold:
 
 def validate_development_frame(frame: pd.DataFrame, *, protocol_sha256: str,
                                dataset_binding: dict | None = None,
-                               debug: bool = False) -> ValidatedDevelopment:
-    if tuple(frame.columns) != INPUT_COLUMNS:
+                               debug: bool = False, inclusive: bool = False) -> ValidatedDevelopment:
+    columns = INCLUSIVE_INPUT_COLUMNS if inclusive else INPUT_COLUMNS
+    if debug and inclusive:
+        raise InputBindingError("inclusive formal protocol cannot use --debug")
+    if tuple(frame.columns) != columns:
         raise InputBindingError("development frame columns changed")
     splits = frame["split"].to_numpy(copy=False)
     if len(splits) == 0:
@@ -170,14 +183,14 @@ def validate_development_frame(frame: pd.DataFrame, *, protocol_sha256: str,
             raise InputBindingError(f"integer column changed: {column}")
     if set(frame["label"].unique()) - {0, 1}:
         raise InputBindingError("label must be 0 or 1")
-    for column in INPUT_COLUMNS:
+    for column in columns:
         if column in _TEXT_COLUMNS:
             continue
         if not pd.api.types.is_numeric_dtype(frame[column].dtype) or not np.isfinite(frame[column].to_numpy(dtype=np.float64)).all():
             raise InputBindingError(f"numeric column must be finite: {column}")
-    if (frame["train_weight"] < 0).any():
+    if not inclusive and (frame["train_weight"] < 0).any():
         raise InputBindingError("train_weight must be non-negative")
-    if not debug and ((frame["m4l"] < 105.0) | (frame["m4l"] > 160.0)).any():
+    if not debug and not inclusive and ((frame["m4l"] < 105.0) | (frame["m4l"] > 160.0)).any():
         raise InputBindingError("m4l outside sealed range")
     if (
         type(protocol_sha256) is not str
@@ -187,7 +200,7 @@ def validate_development_frame(frame: pd.DataFrame, *, protocol_sha256: str,
         raise InputBindingError("protocol SHA-256 is invalid")
     if dataset_binding is not None:
         validate_frame_identity(frame, dataset_binding)
-    return ValidatedDevelopment(frame.copy(deep=True), protocol_sha256, dataset_binding, debug)
+    return ValidatedDevelopment(frame.copy(deep=True), protocol_sha256, dataset_binding, debug, inclusive)
 
 
 def _indices(values: np.ndarray, *, rows: int, name: str) -> np.ndarray:
@@ -206,6 +219,7 @@ def build_validated_fold(
     validation_indices: np.ndarray,
     *,
     fold_index: int,
+    scientific_state: dict | None = None,
 ) -> ValidatedFold:
     if fold_index not in range(5):
         raise InputBindingError("fold index changed")
@@ -225,14 +239,22 @@ def build_validated_fold(
     validation_features = torch.from_numpy(scaler.transform(frame.iloc[validation][list(FEATURE_COLUMNS)].to_numpy(dtype=np.float64)))
     labels = torch.tensor(frame.iloc[fitting]["label"].to_numpy(), dtype=torch.int64)
     validation_labels = torch.tensor(frame.iloc[validation]["label"].to_numpy(), dtype=torch.int64)
-    train_weights = torch.tensor(frame.iloc[fitting]["train_weight"].to_numpy(), dtype=torch.float32)
-    validation_weights = torch.tensor(frame.iloc[validation]["train_weight"].to_numpy(), dtype=torch.float32)
+    metric_weights = None
+    if development.inclusive:
+        scientific_state = scientific_state if scientific_state is not None else fit_scientific_state(frame.iloc[fitting])
+        train_weights = torch.tensor(optimizer_weights(frame.iloc[fitting], scientific_state), dtype=torch.float32)
+        validation_weights = torch.tensor(optimizer_weights(frame.iloc[validation], scientific_state), dtype=torch.float32)
+        metric_weights = torch.tensor(np.abs(frame.iloc[validation].physical_weight.to_numpy(dtype=np.float64)), dtype=torch.float64)
+    else:
+        train_weights = torch.tensor(frame.iloc[fitting]["train_weight"].to_numpy(), dtype=torch.float32)
+        validation_weights = torch.tensor(frame.iloc[validation]["train_weight"].to_numpy(), dtype=torch.float32)
     if set(validation_labels.tolist()) != {0, 1} or not torch.isfinite(validation_weights).all() or torch.any(validation_weights < 0) or validation_weights.sum().item() <= 0:
         raise InputBindingError("validation weighted AUC preconditions failed")
     background = labels == 0
     masses = torch.tensor(frame.iloc[fitting]["m4l"].to_numpy(), dtype=torch.float64)[background]
     physical = torch.tensor(frame.iloc[fitting]["physical_weight"].to_numpy(), dtype=torch.float32)[background]
-    bins = mass_bin_indices(masses, debug=development.debug)
+    bins = (torch.from_numpy(MassBinning.from_dict(scientific_state["mass_binning"]).indices(masses.numpy()))
+            if development.inclusive else mass_bin_indices(masses, debug=development.debug))
     adversarial_weights = adversarial_bin_weights(bins, physical)
     all_bins = torch.full_like(labels, -1)
     all_adv = torch.zeros_like(train_weights)
@@ -242,4 +264,5 @@ def build_validated_fold(
         fitting_features, validation_features, labels, validation_labels, train_weights,
         validation_weights, all_bins, all_adv, fit_identities, val_identities, scaler,
         fold_index, BASE_SEED + fold_index, development.protocol_sha256, development.dataset_binding,
+        scientific_state, metric_weights,
     )

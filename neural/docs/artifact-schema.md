@@ -21,7 +21,7 @@ artifacts/manifest.json
 
 Manifest 为 `schema_version: "2.0"`、`run_type: preprocess`、`protocol_id: higgsml-preprocess-v2`。记录 inputs、configuration、dataset_binding、outputs、schema、counts、software、platform、determinism、performance。
 
-两张表使用 `config/preprocess_protocol_v2.yaml` 的相同 31 列；原 29 列加 `source_file_id`、`event_group_id`。development 仅含 train/validation，test 仅含 test。来源行键为 file ID + source entry；事件分组字符串为 `channelNumber:eventNumber`。新身份字段、质量、权重、标识符均禁止进入 15 维模型输入。
+两张表使用 `config/preprocess_protocol_mass_window.yaml` 的相同 31 列；原 29 列加 `source_file_id`、`event_group_id`。development 仅含 train/validation，test 仅含 test。来源行键为 file ID + source entry；事件分组字符串为 `channelNumber:eventNumber`。新身份字段、质量、权重、标识符均禁止进入 15 维模型输入。
 
 Development reader 校验 manifest 和非 test 产物，只解码 development 分区；不会打开、计算哈希或 stat test 文件。test 文件的描述符此时只作为冻结的预期值，不能声称已重新验证。
 
@@ -90,3 +90,7 @@ and manifest boundaries contain `debug: true`. Metrics retain the original
 qualification failure reasons and frozen working points; this status never
 asserts formal test reproduction. The original development artifacts are
 immutable (apart from the existing optional state claim).
+
+## Inclusive schema 扩展
+
+正式无窗的预处理 schema 为 3.0，原 31 列移除 `train_weight`。development-config、development-manifest、adversarial-mlp-final 使用 v3 内部 schema；test-manifest 为 v3、test-metrics 为 v2。OOF/test 表使用 `metric_weight = abs(physical_weight)`。新增科学状态、报告分箱、分箱诊断及统计不足产物详见 [inclusive 协议手册](inclusive-protocol.md)。旧 schema 的含义不变。
