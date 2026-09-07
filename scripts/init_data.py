@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import stat
 import sys
@@ -31,7 +32,7 @@ DATASET_NAMES = _contract.DATASET_NAMES
 load_dataset = _contract.load_dataset
 
 CHUNK_SIZE = 1024 * 1024
-VERSION = "2.0"
+VERSION = "2.1"
 USER_AGENT = f"HiggsML-data-initializer/{VERSION}"
 TIMEOUT = 60
 MAX_ATTEMPTS = 3
@@ -107,43 +108,79 @@ def dataset_lock(directory: Path):
 
 
 def download(member: Member, destination: Path) -> None:
-    """Retry from zero in owned temporary files; publish only verified bytes."""
+    """Resume interrupted transfers in an owned temporary; publish verified bytes."""
     safe_path(destination)
-    for attempt in range(1, MAX_ATTEMPTS + 1):
-        descriptor, temporary_name = tempfile.mkstemp(
-            prefix=f".{destination.name}.", suffix=".part", dir=destination.parent
-        )
-        temporary = Path(temporary_name)
-        try:
-            print(f"Downloading {member.file_id} (attempt {attempt}/{MAX_ATTEMPTS})")
-            with os.fdopen(descriptor, "wb") as output:
-                request = Request(member.download_url, headers={"User-Agent": USER_AGENT})
-                with urlopen(request, timeout=TIMEOUT) as response:
-                    if response.status != 200:
-                        raise RuntimeError(f"HTTP status {response.status}")
-                    downloaded = 0
-                    while chunk := response.read(CHUNK_SIZE):
-                        downloaded += len(chunk)
-                        if downloaded > member.size_bytes:
-                            raise RuntimeError("response exceeds pinned size")
-                        output.write(chunk)
-                        print_progress(downloaded, member.size_bytes)
-                output.flush()
-                os.fsync(output.fileno())
-            print()
-            valid, detail = verify_file(temporary, member)
-            if not valid:
-                raise RuntimeError(f"download verification failed: {detail}")
-            safe_path(destination)
-            os.replace(temporary, destination)
-            return
-        except (OSError, RuntimeError, HTTPException) as error:
-            if attempt == MAX_ATTEMPTS:
-                raise RuntimeError(f"{member.file_id}: download failed: {error}") from error
-            print(f"  retry: {error}", file=sys.stderr)
-            time.sleep(attempt)
-        finally:
-            temporary.unlink(missing_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", suffix=".part", dir=destination.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb"):
+            pass
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            try:
+                offset = temporary.stat().st_size
+                print(f"Downloading {member.file_id} (attempt {attempt}/{MAX_ATTEMPTS})")
+                if offset:
+                    print(f"  resuming from {offset} bytes")
+                with temporary.open("r+b") as output:
+                    headers = {"User-Agent": USER_AGENT, "Accept-Encoding": "identity"}
+                    if offset:
+                        headers["Range"] = f"bytes={offset}-"
+                    request = Request(member.download_url, headers=headers)
+                    with urlopen(request, timeout=TIMEOUT) as response:
+                        end = member.size_bytes
+                        if response.status == 206 and offset:
+                            content_range = response.headers.get("Content-Range", "")
+                            match = re.fullmatch(r"bytes (\d+)-(\d+)/(\d+)", content_range)
+                            if (not match or int(match[1]) != offset
+                                    or int(match[3]) != member.size_bytes
+                                    or not offset <= int(match[2]) < member.size_bytes):
+                                raise RuntimeError(f"invalid Content-Range: {content_range!r}")
+                            end = int(match[2]) + 1
+                        elif response.status == 200:
+                            # A server may ignore Range. Never append a full response.
+                            if offset:
+                                print("  server ignored Range; restarting from zero")
+                            offset = 0
+                            output.seek(0)
+                            output.truncate()
+                        else:
+                            raise RuntimeError(f"HTTP status {response.status}")
+                        output.seek(offset)
+                        downloaded = offset
+                        while chunk := response.read(CHUNK_SIZE):
+                            downloaded += len(chunk)
+                            if downloaded > end:
+                                output.seek(0)
+                                output.truncate()
+                                raise RuntimeError("response exceeds pinned size")
+                            output.write(chunk)
+                            print_progress(downloaded, member.size_bytes)
+                    output.flush()
+                    os.fsync(output.fileno())
+                print()
+                valid, detail = verify_file(temporary, member)
+                if not valid:
+                    if temporary.stat().st_size >= member.size_bytes:
+                        # A complete but corrupt file cannot be repaired by appending.
+                        with temporary.open("wb"):
+                            pass
+                    raise RuntimeError(f"download verification failed: {detail}")
+                safe_path(destination)
+                os.replace(temporary, destination)
+                return
+            except (OSError, RuntimeError, HTTPException) as error:
+                if attempt == MAX_ATTEMPTS:
+                    raise RuntimeError(f"{member.file_id}: download failed: {error}") from error
+                if temporary.stat().st_size >= member.size_bytes:
+                    # A late read/fsync/publication error must not request bytes=N-.
+                    with temporary.open("wb"):
+                        pass
+                print(f"\n  retry: {error}", file=sys.stderr)
+                time.sleep(attempt)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def receipt_content(binding: DatasetBinding) -> dict:
