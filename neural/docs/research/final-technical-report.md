@@ -23,7 +23,7 @@ classifier inputs。Eligibility 由冻结 development OOF 规则决定，但永�
 ## 3. 已取得的证据
 
 命令、平台、data scope、authority 属性和 exit code 的唯一转录见
-[`M1-06 Verification Evidence`](m1-06-verification-evidence.md)。本地 Windows/AMD64 实际结果为：
+[`M1-06 Verification Evidence`](../engineering/m1-06-verification-evidence.md)。本地 Windows/AMD64 实际结果为：
 
 - scientific `src/` 与两个 sealed protocol YAML 相对 M1-05 commit `85b67d1` byte-identical；禁止的
   `xgboost/src` runtime reference 和两个已知真实数据 locator/DSID 静态审计无命中；
@@ -63,7 +63,7 @@ Authority test-opening：`not_run`。用户未对任何具体 eligible frozen de
 
 ## 6. 恢复路径
 
-在可用的原生 `osx-arm64` host 上按 [`runbook.md`](runbook.md) 从 environment preflight 重新开始，使用
+在可用的原生 `osx-arm64` host 上按 [`runbook.md`](../engineering/runbook.md) 从 environment preflight 重新开始，使用
 全新 ignored run paths，并把实际 artifact/hash/exit code 转录到 evidence。本地 scientific source 与
 两个 sealed protocol YAML 必须先相对 reviewed M1-05 commit `85b67d1` 保持 byte-identical。
 

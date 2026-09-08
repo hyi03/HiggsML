@@ -14,7 +14,7 @@
 - Sprint M1-02 已完成并冻结预处理 schema。
 - [`FR-001`](FR-001-adversarial-mlp-refactor.md) R3、R7。
 - 已确认设计第 8、11、12.2 节。
-- 自包含实现规范：[`Adversarial MLP Protocol V1`](adversarial-mlp-protocol-v1.md)。
+- 自包含实现规范：[`Adversarial MLP Protocol V1`](../research/adversarial-mlp-protocol-v1.md)。
 
 协同说明：
 
@@ -34,7 +34,7 @@
 
 协议内容门：
 
-- YAML 必须逐项转录并密封 [`Adversarial MLP Protocol V1`](adversarial-mlp-protocol-v1.md)
+- YAML 必须逐项转录并密封 [`Adversarial MLP Protocol V1`](../research/adversarial-mlp-protocol-v1.md)
   的 feature contract、dtype、scaler、网络、质量 bin、权重、optimizer、determinism、
   schedule、checkpoint 和 early-stopping 规则；loader 必须拒绝缺字段、额外字段、类型变化、
   顺序变化或值变化。
@@ -142,7 +142,7 @@
 
 完整测试绑定：
 
-- [x] [`Adversarial MLP Protocol V1`](adversarial-mlp-protocol-v1.md) §10 的每一条最小测试门
+- [x] [`Adversarial MLP Protocol V1`](../research/adversarial-mlp-protocol-v1.md) §10 的每一条最小测试门
   均必须有可执行证据；本节的摘要 checklist 不得用于跳过协议条目。
 
 ## 6. 验收标准

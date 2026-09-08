@@ -17,7 +17,7 @@ conda run -n pytorch python -m pip check
 
 ## 预处理
 
-本手册的正常命令展示有窗兼容流程；新增正式无窗流程、拟合折权重及分位数分箱见 [inclusive 协议手册](inclusive-protocol.md)。协议文件已改为用途名称，旧冻结 run 保留原记录。
+本手册的正常命令展示有窗兼容流程；新增正式无窗流程、拟合折权重及分位数分箱见 [inclusive 协议手册](../research/inclusive-protocol.md)。协议文件已改为用途名称，旧冻结 run 保留原记录。
 
 `config/preprocess_run.example.yaml` 只允许 `schema_version: "2.0"`、`data_root`、`resources.chunk_size_events`。相对 data root 按配置文件所在目录解析；样本路径由数据集定义构造，不允许分别指定 Higgs/ZZ 路径。
 

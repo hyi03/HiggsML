@@ -1,8 +1,8 @@
-> 历史 v1 文档。当前接口及数据边界以 [v2 手册](dataset-v2-runbook.md) 为准；旧协议原字节保留，当前入口不接受旧混用产物。
+> 历史 v1 文档。当前接口及数据边界以 [v2 手册](../engineering/dataset-v2-runbook.md) 为准；旧协议原字节保留，当前入口不接受旧混用产物。
 
-# Adversarial MLP Protocol V1
+# Adversarial MLP Normal Protocol
 
-- `协议 ID`: `adversarial-mlp-protocol-v1`
+- `协议 ID`: `adversarial-mlp-protocol-normal`
 - `文档状态`: 文档评审确认通过，等待实现验证
 - `日期`: 2026-09-02
 - `所属 Sprint`: `M1-03`
@@ -11,7 +11,7 @@
 
 ## 1. 状态、范围与权威边界
 
-- `schema_version`: `adversarial-mlp-protocol-v1`
+- `schema_version`: `1.0`
 - 适用 Sprint：`M1-03`
 - 数据边界：严格 MC-only，仅允许 synthetic development 测试；不得读取、哈希、探测、
   预处理或发布真实数据。
@@ -23,8 +23,14 @@
   权威 full-data gate。
 - 输出只能描述为 educational/technical demo，不得描述为 ATLAS 结果、发现或物理测量。
 
-本协议是 M1-03 的自包含实现规范。`neural/config/adversarial_mlp_protocol_v1.yaml` 必须
+本协议是 M1-03 的自包含实现规范。`neural/config/adversarial_mlp_protocol_normal.yaml` 必须
 逐项转录全部冻结字段；loader 必须拒绝缺字段、额外字段、类型变化、顺序变化或值变化。
+
+仓库另提供 `neural/config/adversarial_mlp_protocol_debug.yaml`。Debug 保留本协议的网络、特征、
+训练日程、候选、工作点和产物契约，只允许在运行前修改 `qualification.auc_minimum` 与
+`qualification.ks_maximum`。两项必须是 `[0.0, 1.0]` 内的有限浮点数；完整 Debug 文件及其
+SHA-256 仍绑定到每个 run。Debug run 可以生成模型，但不具备 authority 或 held-out test-opening
+资格。
 
 ## 2. Development frame 与 feature contract
 

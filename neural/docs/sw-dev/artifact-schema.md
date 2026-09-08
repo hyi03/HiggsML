@@ -93,4 +93,4 @@ immutable (apart from the existing optional state claim).
 
 ## Inclusive schema 扩展
 
-正式无窗的预处理 schema 为 3.0，原 31 列移除 `train_weight`。development-config、development-manifest、adversarial-mlp-final 使用 v3 内部 schema；test-manifest 为 v3、test-metrics 为 v2。OOF/test 表使用 `metric_weight = abs(physical_weight)`。新增科学状态、报告分箱、分箱诊断及统计不足产物详见 [inclusive 协议手册](inclusive-protocol.md)。旧 schema 的含义不变。
+正式无窗的预处理 schema 为 3.0，原 31 列移除 `train_weight`。development-config、development-manifest、adversarial-mlp-final 使用 v3 内部 schema；test-manifest 为 v3、test-metrics 为 v2。OOF/test 表使用 `metric_weight = abs(physical_weight)`。新增科学状态、报告分箱、分箱诊断及统计不足产物详见 [inclusive 协议手册](../research/inclusive-protocol.md)。旧 schema 的含义不变。
