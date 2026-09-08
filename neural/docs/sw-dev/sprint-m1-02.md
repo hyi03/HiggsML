@@ -14,7 +14,7 @@
 - Sprint M1-01 已通过文档/代码评审确认并完成验证。
 - [`FR-001`](FR-001-adversarial-mlp-refactor.md) R2、R6、R7。
 - 已确认设计第 7、12.1、12.3 节。
-- 已批准的自包含规范附录：[`Preprocess Protocol V1`](../research/preprocess-protocol-v1.md)。
+- 当前科学语义说明：[`数据预处理科研协议`](../research/preprocess-protocol.md)。
 
 协同说明：
 
@@ -36,7 +36,7 @@
 协议内容门：
 
 - `preprocess_protocol_v1.yaml` 必须逐项实现
-  [`Preprocess Protocol V1`](../research/preprocess-protocol-v1.md)，包括两个 per-sample ROOT profile、
+  [`数据预处理科研协议`](../research/preprocess-protocol.md)，包括两个 per-sample ROOT profile、
   完整 selection、重建/特征公式、normalization、identity、split、29 列 schema、canonical
   CSV/gzip、golden 和三份 JSON schema。
 - `preprocess_run.example.yaml` 只能包含 `schema_version`、`samples.higgs.path`、
@@ -178,7 +178,7 @@
   `osx-arm64`”的等价政策。
 - ROOT profile、selection、normalization、identity、split、Base14/Angular5、row/column
   order、canonical CSV、golden lineage 与 artifact schema 已写入
-  [`Preprocess Protocol V1`](../research/preprocess-protocol-v1.md)，双模型文档复审与逐条确认已通过。
+  当前 [`数据预处理科研协议`](../research/preprocess-protocol.md)；当时的双模型文档复审与逐条确认已通过。
 - 代码实现、双模型代码评审、逐条确认及所有 Accept/Partial 修订已完成；本地测试结果为
   `69 passed, 1 skipped`，依赖检查、两个 CLI help 和 `git diff --check` 均通过。
 - 唯一 skip 精确记录为 `authoritative_gate_not_run`。批准的 r3-ARM64 外部 golden table

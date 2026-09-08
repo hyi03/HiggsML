@@ -1,4 +1,4 @@
-> 版本说明（2026-09-05）：本文保留 v1 历史设计。输入、CLI、schema、事件分组和 golden 以 [v2 手册](neural/docs/dataset-v2-runbook.md) 为准；原物理选择、15 项特征、网络及资格边界继续适用。本文混用输入计数不得用于新配对验收。
+> 版本说明（2026-09-05）：本文保留 v1 历史设计。输入、CLI、schema、事件分组和 golden 以 [数据集隔离手册](neural/docs/sw-dev/dataset-v2-runbook.md) 为准；原物理选择、15 项特征、网络及资格边界继续适用。本文混用输入计数不得用于新配对验收。
 
 # HiggsML `neural` 对抗式 MLP 重构设计与实施计划
 
@@ -199,7 +199,7 @@ authorization reference 只记录外部批准，不代表软件能够自行证�
 针对该 run 的另行明确授权。命令通过原子 claim 文件占用唯一 test-opening 槽位。成功或失败均
 写入收据，后续重复开启被拒绝；崩溃留下的 claimed 状态也永久禁止重试。Test 结果只评价已冻结
 模型与阈值，不影响任何训练或选择决策。exact 行为见
-[`Test-opening Protocol V1`](neural/docs/test-opening-protocol-v1.md)。
+[`Held-out MC Test 科研协议`](neural/docs/research/test-opening-protocol.md)。
 
 ## 7. 预处理数据契约
 

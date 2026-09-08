@@ -6,10 +6,10 @@
 
 ## 1. 核对输入与证据边界
 
-- 目标：[H4l 项目方案](../../neural/docs/research/H4l-Research-Project-Proposal-2026-09-08.md)，重点核对 §2、§4.2、§5.3、§6—§8、§10—§12。
+- 目标：[H4l 项目方案](../../neural/docs/research/H4l-Research-Project.md)，重点核对 §2、§4.2、§5.3、§6—§8、§10—§12。
 - 评审来源：用户在本次对话提供的完整评审意见，以下按意见主题编号逐项答复。
 - 当前规则：[根 AGENTS.md](../../AGENTS.md)、[neural/AGENTS.md](../../neural/AGENTS.md)。
-- 相关协议：[普通训练协议](../../neural/docs/research/adversarial-mlp-protocol-normal.md) §7—§8、[inclusive 协议](../../neural/docs/research/inclusive-protocol.md)、[历史 test-opening 协议](../../neural/docs/research/test-opening-protocol-v1.md)。历史协议仅用于核对沿用规则的来源，不作为新研究必须保留旧 checkpoint 的理由；当前 test 使用边界以现行 AGENTS.md 为准。
+- 相关当前说明：[Adversarial MLP 科研协议](../../neural/docs/research/adversarial-mlp-protocol.md)、[inclusive 协议](../../neural/docs/research/inclusive-protocol.md)、[Held-out MC Test 科研协议](../../neural/docs/research/test-opening-protocol.md)。现有流程仅用于核对可复用规则，不作为新研究必须保留旧 checkpoint 的理由；当前 test 使用边界以现行 AGENTS.md 为准。
 - 目标文档本次读取的 SHA-256：`B26129E81FD14032B75702DEAA7CEE70F3858091309EADB3EF8E0110903F6F10`。
 
 本次核对的是文档统计设计及现行约束，不是实现审计。未读取 MC 事件、重新统计数据、训练、运行测试或打开 held-out test。背景 5,216 等计数和 `held_out_test_opened=true` 仍为目标文档提供的快照，本次不将其升级为独立核验结论。

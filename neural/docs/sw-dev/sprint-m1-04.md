@@ -13,10 +13,10 @@
 
 - Sprint M1-03 已完成确定性单 fold 训练原语。
 - Sprint M1-02 的预处理 manifest/schema 已冻结。
-- [`Preprocess Protocol V1`](../research/preprocess-protocol-v1.md) 的 input manifest、29 列 schema、file 与
+- [`数据预处理科研协议`](../research/preprocess-protocol.md) 的 input manifest、schema、file 与
   canonical-content SHA-256 contract。
 - [`FR-001`](FR-001-adversarial-mlp-refactor.md) R4、R6、R7。
-- 自包含实现规范：[`Development Protocol V1`](../research/development-protocol-v1.md)。
+- 当前科学语义说明：[`Development 科研协议`](../research/development-protocol.md)。
 
 协同说明：
 
