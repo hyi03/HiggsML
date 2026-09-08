@@ -13,7 +13,7 @@
 
 - Sprint M1-04 已完成并能生成冻结 eligible/no-eligible development run。
 - [`FR-001`](FR-001-adversarial-mlp-refactor.md) R5、R6、R7。
-- 自包含实现规范：[`Test-opening Protocol V1`](test-opening-protocol-v1.md)。
+- 自包含实现规范：[`Test-opening Protocol V1`](../research/test-opening-protocol-v1.md)。
 - 实际执行 `open-test` 前另有用户明确授权；本 Sprint 的实现与测试本身不构成该授权。
 
 协同说明：

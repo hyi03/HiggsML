@@ -8,7 +8,7 @@
 - `所属阶段`: 阶段 1 - Neural MC-only 主线建设
 - `开发顺序`: 1
 - `优先级`: P0
-- `前置依赖`: [`neural_adversarial_mlp_refactor_design.md`](../../neural_adversarial_mlp_refactor_design.md)
+- `前置依赖`: [`neural_adversarial_mlp_refactor_design.md`](../../../neural_adversarial_mlp_refactor_design.md)
 - `涉及包`: `neural/`、`neural/src/`、`neural/config/`、`neural/tests/`、`neural/docs/`
 - `是否属于原型阶段`: 是
 - `来源类型`: 设计补强
@@ -54,7 +54,7 @@
 - 必须同时保留 signed `physical_weight` 与按类别归一化的 `abs(physical_weight)` 训练权重语义。
 - M1-02 的 ROOT profile、selection、重建、Base14/Angular5、归一化、identity、split、
   输出 schema、序列化、artifact schema 与 golden 规则以
-  [`Preprocess Protocol V1`](preprocess-protocol-v1.md) 为规范来源；运行参数不得改变它们。
+  [`Preprocess Protocol V1`](../research/preprocess-protocol-v1.md) 为规范来源；运行参数不得改变它们。
 - 权威逐列 golden 固定为 legacy r3-ARM64 enrichment table
   `xgboost/runs/angular5-mc-363490-2026-08-26-r3-arm64/processed/mc_events_angular5.csv.gz`，
   SHA-256 `bc31f4e65ccecc0a1962648cfe240b67d8ecc6df8eda2478b3f46c93d2f34f09`。
@@ -152,7 +152,7 @@
 - 微型 ROOT 全链、确定性小型训练和 test-opening 关闭式失败集成测试。
 - 在具备权威只读 ROOT 时执行全量预处理 golden；development 全量训练须作为独立、可审计运行。
 - 全量预处理逐列 gate 只在 `osx.yml` 恢复的原生 `osx-arm64` 环境执行，并使用
-  [`Preprocess Protocol V1`](preprocess-protocol-v1.md) 第 7 节预注册的 exact/tolerance 谓词。
+  [`Preprocess Protocol V1`](../research/preprocess-protocol-v1.md) 第 7 节预注册的 exact/tolerance 谓词。
 
 ## 验收要点
 

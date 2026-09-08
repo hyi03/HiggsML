@@ -12,7 +12,7 @@
 ## 2. 前置依赖
 
 - [`FR-001`](FR-001-adversarial-mlp-refactor.md)
-- [`neural_adversarial_mlp_refactor_design.md`](../../neural_adversarial_mlp_refactor_design.md) 第 5、6、11、13 节
+- [`neural_adversarial_mlp_refactor_design.md`](../../../neural_adversarial_mlp_refactor_design.md) 第 5、6、11、13 节
 
 协同说明：
 

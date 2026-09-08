@@ -1,12 +1,12 @@
-> 历史 v1 文档。当前接口及数据边界以 [v2 手册](dataset-v2-runbook.md) 为准；旧协议原字节保留，当前入口不接受旧混用产物。
+> 历史 v1 文档。当前接口及数据边界以 [v2 手册](../engineering/dataset-v2-runbook.md) 为准；旧协议原字节保留，当前入口不接受旧混用产物。
 
 # Preprocess Protocol V1 规范附录
 
 - `协议 ID`: `higgsml-preprocess-v1`
 - `文档状态`: 文档复审通过，等待实现验证
 - `日期`: 2026-09-01
-- `所属 Sprint`: [`sprint-m1-02`](sprint-m1-02.md)
-- `需求来源`: [`FR-001`](FR-001-adversarial-mlp-refactor.md) R2、R6、R7
+- `所属 Sprint`: [`sprint-m1-02`](../engineering/sprint-m1-02.md)
+- `需求来源`: [`FR-001`](../engineering/FR-001-adversarial-mlp-refactor.md) R2、R6、R7
 - `权威平台`: 锁定的原生 `osx-arm64` `pytorch` Conda 环境（`osx.yml`）
 
 ## 1. 规范地位与安全边界

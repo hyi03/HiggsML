@@ -258,7 +258,7 @@ manifest 的通用 `dataset_binding` 至少包含名称、修订、定义 SHA-25
 | `src/logging_config.py` | 少量适配或复用 | 阶段日志增加名称/摘要，不输出事件特征 |
 | `pyproject.toml`、环境文件 | 资源打包检查 | 三个 console entry point 不增减；优先不新增依赖，不改权威环境锁 |
 | `tests/unit`、`tests/integration`、`tests/golden` 与 fixtures | 更新/补充 | 两套参数化 fixture、新 schema/错配拒绝、身份和 test 文件访问哨兵 |
-| 根 README、`neural/README.md`、`docs/runbook.md`、协议和 artifact 文档 | 更新当前运行指南 | 全部当前命令与目录改为数据集选择；历史报告保留历史事实及明确链接 |
+| 根 README、`neural/README.md`、`docs/engineering/runbook.md`、协议和 artifact 文档 | 更新当前运行指南 | 全部当前命令与目录改为数据集选择；历史报告保留历史事实及明确链接 |
 | `neural/AGENTS.md`、根设计文档相关契约 | 实施时同步修订适用版本说明 | 不放松 MC-only、冻结 run、特征与资格边界；旧数值要求标注 v1 历史范围 |
 
 性能优化采用有限范围：复用 ROOT 分块读取；尽早检查 schema/DSID；分区降低 development I/O；统计 wall time/峰值内存。pipeline 当前仍会累计所有选后行及 CSV bytes，先测实际峰值；只有构成瓶颈才改稳定分块写出。不要在同一轮引入并行重建、float32 物理计算、近似算法或更换存储引擎。

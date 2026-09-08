@@ -1,8 +1,8 @@
 # HiggsML Neural
 
-当前实现按 `atlas2020_4lep`（Higgs 345060 + ZZ 363490）和 `atlas2025_exactly4lep`（Higgs 345060 + ZZ 700600）两个受控 MC 配对运行。安装下载见[根 README](../README.md)，操作见 [v2 手册](docs/dataset-v2-runbook.md)。所有业务命令显式指定 `--dataset`。
+当前实现按 `atlas2020_4lep`（Higgs 345060 + ZZ 363490）和 `atlas2025_exactly4lep`（Higgs 345060 + ZZ 700600）两个受控 MC 配对运行。安装下载见[根 README](../README.md)，操作见 [v2 手册](docs/engineering/dataset-v2-runbook.md)。所有业务命令显式指定 `--dataset`。
 
-正式无质量窗方案见 [inclusive 协议手册](docs/inclusive-protocol.md)：无窗保留、全范围训练与评价、拟合折分位数对抗器和权重归一化。现有有窗与 debug 流程继续保留。协议文件按用途命名，内部 schema 负责兼容性。
+正式无质量窗方案见 [inclusive 协议手册](docs/research/inclusive-protocol.md)：无窗保留、全范围训练与评价、拟合折分位数对抗器和权重归一化。现有有窗与 debug 流程继续保留。协议文件按用途命名，内部 schema 负责兼容性。
 
 ## 处理链
 
@@ -28,9 +28,10 @@
 
 分区各有独立哈希；development 不打开 test 文件，test 阶段完成 gate/可选 claim 后才验证实际 test 字节。有窗/debug 训练权重仍按全部选后样本的类均值归一化，包含 test 权重影响；inclusive 协议改为拟合折内归一化，final fit 仅用 development。旧协议、固定计数与冻结结果仅是历史证据，不能充当新配对 golden。
 
-- [v2 运行手册](docs/dataset-v2-runbook.md)
-- [Artifact schema](docs/artifact-schema.md)
-- [v2 验证记录](docs/dataset-v2-verification.md)
-- [重构方案](docs/dataset-isolation-refactor-plan.md)
+- [文档索引](docs/README.md)
+- [v2 运行手册](docs/engineering/dataset-v2-runbook.md)
+- [Artifact schema](docs/engineering/artifact-schema.md)
+- [v2 验证记录](docs/engineering/dataset-v2-verification.md)
+- [重构方案](docs/engineering/dataset-isolation-refactor-plan.md)
 
 权威平台仍为锁定的原生 ARM64。本项目只作 educational/technical demo。
