@@ -3,16 +3,16 @@
 - **Review type**: Code review (implementation + uncommitted changes + tests)
 - **Date**: 2026-09-01
 - **Reviewer**: opencode-go / glm-5.2
-- **Sprint under review**: [`neural/docs/sprint-m1-02.md`](../../neural/docs/sprint-m1-02.md) — FR-001 MC-only behavior-equivalent preprocessing
+- **Sprint under review**: [`neural/docs/sw-dev/sprint-m1-02.md`](../../neural/docs/sw-dev/sprint-m1-02.md) — FR-001 MC-only behavior-equivalent preprocessing
 - **Result**: **Changes requested** — no Critical findings; 6 High, 5 Medium, 7 Low, 5 Info findings. The domain formulas and canonical serialization are faithful to the protocol, but several fail-closed rules are not enforced, the protocol loader binds only part of the frozen contract, artifact schemas deviate from §8, the authoritative-gate runner does not exist yet, and test coverage is well below the protocol's §9 enumeration.
 
 ## 1. Source-of-truth inputs
 
 Treated as authoritative for this review:
 
-1. [`neural/docs/preprocess-protocol-v1.md`](../../neural/docs/preprocess-protocol-v1.md) (self-contained scientific protocol, doc-reviewed)
-2. [`neural/docs/FR-001-adversarial-mlp-refactor.md`](../../neural/docs/FR-001-adversarial-mlp-refactor.md) v1.2 (R2, R6, R7)
-3. [`neural/docs/sprint-m1-02.md`](../../neural/docs/sprint-m1-02.md)
+1. [`neural/docs/research/preprocess-protocol.md`](../../neural/docs/research/preprocess-protocol.md) (current scientific semantics)
+2. [`neural/docs/sw-dev/FR-001-adversarial-mlp-refactor.md`](../../neural/docs/sw-dev/FR-001-adversarial-mlp-refactor.md) v1.2 (R2, R6, R7)
+3. [`neural/docs/sw-dev/sprint-m1-02.md`](../../neural/docs/sw-dev/sprint-m1-02.md)
 4. [`neural/AGENTS.md`](../../neural/AGENTS.md)
 5. Repository root [`AGENTS.md`](../../AGENTS.md)
 

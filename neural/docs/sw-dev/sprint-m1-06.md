@@ -25,8 +25,8 @@
   完成 M1-06，并提交”。该决定豁免剩余 authority/full-data/test 项作为本 Sprint 的 closure/commit
   gate，但不把任何 `blocked`/`not_run` 变成 `passed`，也不授权 `open-test`。
 
-绑定引用（唯一规范来源仍是 [`Preprocess Protocol V1`](../research/preprocess-protocol-v1.md) §7.1/§7.2
-与 `config/preprocess_protocol_v1.yaml`）：
+绑定引用（当前科学语义见 [`数据预处理科研协议`](../research/preprocess-protocol.md)；历史运行继续绑定
+`config/preprocess_protocol_v1.yaml` 的配置字节）：
 
 | 项目 | SHA-256 |
 |---|---|
@@ -39,7 +39,7 @@
 | r3-ARM64 golden table | `bc31f4e65ccecc0a1962648cfe240b67d8ecc6df8eda2478b3f46c93d2f34f09` |
 
 训练规则由 `config/adversarial_mlp_protocol_v1.yaml` 与
-[`Development Protocol V1`](../research/development-protocol-v1.md) 冻结。`osx.yml` SHA-256 必须在 authority
+[`Development 科研协议`](../research/development-protocol.md) 所说明的边界冻结。`osx.yml` SHA-256 必须在 authority
 执行时从实际 reviewed file 计算并转录，不在计划中手工预填。
 
 ## 3. 纳入范围
@@ -54,7 +54,7 @@
 - 新建 `neural/docs/engineering/runbook.md`
 - 新建 `neural/docs/engineering/artifact-schema.md`
 - 新建 `neural/docs/engineering/m1-06-verification-evidence.md`
-- 新建 `neural/docs/research/final-technical-report.md`
+- 当前状态文档见 `neural/docs/research/current-research-status.md`
 - `neural/config/`、`neural/tests/`
 - 新建且唯一的权威 preprocess/development run paths（保持 ignored，不提交产物）
 - 全部源码与 artifact schema 的最终一致性检查
