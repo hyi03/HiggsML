@@ -1,0 +1,191 @@
+{
+  "schema_version": "h4l-research-v1",
+  "protocol_id": "h4l-on-shell-software-v1",
+  "dataset": "atlas2020_4lep",
+  "final_state": "2e2mu",
+  "mass_window": [
+    105.0,
+    140.0
+  ],
+  "luminosity_pb": 10000.0,
+  "development_probability": 0.8,
+  "roles": {
+    "train": 0.4,
+    "validation": 0.1,
+    "calibration": 0.2,
+    "template": 0.2,
+    "assessment": 0.1
+  },
+  "role_hash": "sha256:h4l-role-v1:group:big64:mod100",
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "training": {
+    "max_epochs": 200,
+    "patience": 20,
+    "minimum_improvement": 0.0001,
+    "batch_size": 1024,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "warmup_epochs": 5,
+    "ramp_epochs": 10,
+    "adversary_bins": 11
+  },
+  "calibration": {
+    "mass_edges": [
+      105,
+      110,
+      115,
+      120,
+      125,
+      130,
+      135,
+      140
+    ],
+    "score_edges": [
+      0.0,
+      0.05,
+      0.1,
+      0.15,
+      0.2,
+      0.25,
+      0.3,
+      0.35,
+      0.4,
+      0.45,
+      0.5,
+      0.55,
+      0.6,
+      0.65,
+      0.7,
+      0.75,
+      0.8,
+      0.85,
+      0.9,
+      0.95,
+      1.0
+    ],
+    "min_effective_count": 20.0,
+    "min_cancellation_ratio": 0.2,
+    "interpolation": "linear-bin-cdf_mass-centers",
+    "ties": "same-score-same-cdf",
+    "tails": "score-clamp_mass-reject",
+    "merge_order": "leftmost-failing-right-else-left"
+  },
+  "g0": {
+    "min_neff_signed": 20.0,
+    "min_rho": 0.2
+  },
+  "templates": {
+    "mass_edges": [
+      105,
+      106,
+      107,
+      108,
+      109,
+      110,
+      111,
+      112,
+      113,
+      114,
+      115,
+      116,
+      117,
+      118,
+      119,
+      120,
+      121,
+      122,
+      123,
+      124,
+      125,
+      126,
+      127,
+      128,
+      129,
+      130,
+      131,
+      132,
+      133,
+      134,
+      135,
+      136,
+      137,
+      138,
+      139,
+      140
+    ],
+    "score_categories": 2,
+    "min_neff_signed": 20.0,
+    "min_rho": 0.2
+  },
+  "validation": {
+    "repository_authority_validation": "not_run",
+    "scientific_numerical_validation": "pending_independent_reference",
+    "bound_mc_pilot": "not_run",
+    "matrix_element": "blocked_missing_reference",
+    "external_robustness": "not_run"
+  },
+  "protocol_scope": "synthetic_software_defaults_not_physics_validation",
+  "assessment_access": "frozen_analysis_only",
+  "matrix_element": {
+    "reference_rtol": 1e-06,
+    "reference_atol": 1e-10,
+    "probability_semantics": "nonnegative_densities_common_input_support",
+    "score": "p_signal/(p_signal+p_background)"
+  },
+  "inference": {
+    "pyhf_version": "0.7.6",
+    "mu_bounds": [
+      0.0,
+      20.0
+    ],
+    "confidence_levels": [
+      0.68,
+      0.95
+    ],
+    "injections": [
+      0.0,
+      1.0,
+      2.0
+    ],
+    "toy_count": 500,
+    "toy_seed": 42,
+    "auxiliary_generation": "regenerated",
+    "template_modifier": "shapesys",
+    "template_correlation": "independent_process_bins",
+    "template_min_effective_count": 20.0,
+    "template_min_cancellation_ratio": 0.2,
+    "outer_replicas": 20,
+    "inner_toys": 100,
+    "validation_status": "unvalidated"
+  },
+  "stress": {
+    "amplitude": 0.1,
+    "nuisance_bounds": [
+      -1.0,
+      1.0
+    ],
+    "auxiliary": "normal",
+    "modifiers": {
+      "normalization": "normsys",
+      "shape": "histosys"
+    },
+    "interpolation": {
+      "normsys": "code4",
+      "histosys": "code4p"
+    },
+    "reference_strategy": "one_frozen_reference_mapping_shared_across_methods",
+    "allowed_directions": [
+      -1,
+      1
+    ],
+    "shape_normalization": "fixed_total_background_signed_yield",
+    "t1_variance": "constant_relative_MC_variance",
+    "reference_candidate": "M3:42"
+  }
+}

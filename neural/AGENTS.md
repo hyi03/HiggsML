@@ -42,6 +42,20 @@ authoritative ARM64 run.
 
 ## Package boundaries
 
+### H4l research exception
+
+The user-approved `docs/research/H4l-Research-Project.md` defines a separate
+`src.research` MC-only workflow. Only models bound to its versioned research
+protocol may explicitly receive `m4l` as the common mass condition, with
+variable ordered representations. The fixed 15-feature prohibition and all
+historical qualification/test-opening rules remain authoritative for the
+existing `higgsml-train` / `higgsml-test` workflow. Research does not open its
+held-out test partition. Research assessment access requires a frozen protocol;
+it cannot select models, mappings, grids, or statistics thresholds.
+
+Repository ARM64 authority validation and scientific numerical validation
+are separate recorded states; neither is inferred from synthetic tests.
+
 - Runtime code lives in `src/` and must not import or call `xgboost/src`.
 - CLI modules parse arguments and call application services; scientific
   calculations do not live in CLI or artifact-publication code.

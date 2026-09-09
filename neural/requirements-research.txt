@@ -1,0 +1,10 @@
+# Optional inference environment layered onto the existing locked neural environment.
+# Install with the same Python 3.12 interpreter; no changes to the historical model.
+pyhf==0.7.6
+jsonpatch==1.33
+jsonpointer==3.0.0
+jsonschema==4.26.0
+attrs==25.4.0
+referencing==0.37.0
+rpds-py==0.30.0
+jsonschema-specifications==2025.9.1
