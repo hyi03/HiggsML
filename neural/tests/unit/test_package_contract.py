@@ -14,6 +14,7 @@ def test_exact_console_entry_points() -> None:
     metadata = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
     assert metadata["project"]["scripts"] == {
+        "higgsml-research": "src.cli.research:main",
         "higgsml-preprocess": "src.cli.preprocess:main",
         "higgsml-train": "src.cli.train:main",
         "higgsml-test": "src.cli.test:main",
