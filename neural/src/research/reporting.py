@@ -88,3 +88,47 @@ def build_report(candidate_statuses, *, primary_records=(), environment=None, re
     if not candidate_statuses:
         raise ResearchError("Report must enumerate planned candidate states")
     return {"status":"software_report","scope":"MC-only educational/technical research","candidate_statuses":dict(candidate_statuses),"primary_comparison":main_comparison(primary_records),"environment":environment or {"repository_authority_validation":"not_run","scientific_numerical_validation":"not_run"},"results":results or {},"scientific_results_obtained":False,"future_R_experiments":"require_separate_registration"}
+
+
+def write_learning_curves(models, path):
+    """Plot bound histories without rescoring any event or choosing a checkpoint."""
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib import colormaps
+    if not models or any('history_contract' not in m for m in models):
+        raise ResearchError('Detailed learning curves unavailable for historical artifacts')
+    figure = Figure(figsize=(14, 9), constrained_layout=True)
+    FigureCanvasAgg(figure)
+    axes = figure.subplots(2, 3).ravel()
+    fields = ['classification_loss', 'adversary_loss', 'effective_lambda', 'validation_absolute_weight_auc']
+    for model_index, model in enumerate(models):
+        rows = model['history']
+        epochs = [r['epoch'] for r in rows]
+        label = f"{model['candidate']} seed={model['seed']} lambda={model['target_lambda']:g}"
+        for axis, field in zip(axes, fields):
+            axis.plot(epochs, [np.nan if r[field] is None else r[field] for r in rows], label=label)
+            axis.set_title(field.replace('_', ' '), fontsize=10)
+        axes[4].plot(epochs, [r['diagnostics']['absolute_weight_mass_ks'] for r in rows], label=label)
+        for k in range(len(rows[0]['diagnostics']['mass_bin_acceptance'])):
+            axes[5].plot(epochs, [r['diagnostics']['mass_bin_acceptance'][k] for r in rows], alpha=.7,
+                         color=colormaps['tab20'](k), linestyle='--' if model_index else '-',
+                         label=f'bin {k+1}' if not model_index else '_nolegend_')
+        for axis in axes:
+            axis.axvline(model['selected_epoch'], color=f'C{model_index}', linestyle=':', alpha=.5)
+    axes[4].set_title('Validation background mass KS', fontsize=10)
+    axes[5].set_title('Background acceptance by mass bin\nsolid=first model, dashed=second model', fontsize=10)
+    axes[5].legend(fontsize=6, ncol=4, loc='lower center')
+    adversarial = any(m['candidate'] in {'M6','M3-fixed200'} for m in models)
+    if all(all(r['adversary_loss'] is None for r in m['history']) for m in models):
+        axes[1].text(.5,.5,'No adversary for this model',ha='center',transform=axes[1].transAxes)
+    for axis in axes:
+        if adversarial:
+            axis.axvspan(1, 5, color='gray', alpha=.12)
+            axis.axvspan(5, 15, color='orange', alpha=.10)
+        axis.set_xlim(1, max(r['epoch'] for m in models for r in m['history']))
+        axis.set_xlabel('Epoch')
+    axes[0].legend(fontsize=7)
+    phase = 'gray=warm-up, orange=ramp, ' if adversarial else ''
+    figure.suptitle(f'Training diagnostics: {phase}dotted=selected checkpoint\n'
+                   'Train-median working point recomputed each epoch; fixed train mass bins. No convergence claim.')
+    figure.savefig(path, dpi=130)

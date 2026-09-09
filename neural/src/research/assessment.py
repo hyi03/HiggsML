@@ -11,6 +11,7 @@ from .discriminants import predict_discriminant
 from .errors import ResearchError, ResearchStateError
 from .inference import build_model, paired_event_toys, profile_interval, run_asimov, run_t2_procedure, stress_weights
 from .protocol import protocol_dict
+from .diagnostics import signed_mu_fit, signed_mu_summary
 from .reporting import coverage_summary, fit_diagnostics, paired_coverage_error
 from .templates import build_templates
 from .stress import build_stress_templates,build_stress_model,sample_auxiliary,validate_stress_contract
@@ -150,6 +151,12 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
                 data = np.r_[observation[active], aux]
                 toys.append({"toy": i, "observations": observation.tolist(), "auxiliary": aux.tolist(),
                              "intervals": [profile_interval(model, data, level) for level in levels]})
+                if mu == 0 and 'diagnostics' in p:
+                    toys[-1]['signed_mu_diagnostic'] = (
+                        signed_mu_fit(template, observation[active], p['diagnostics']['signed_mu'])
+                        if stress_responses is None else
+                        {'status':'not_supported_modeled_stress', 'muhat':None,
+                         'reason':'Signed diagnostic fixes nominal templates; no stress/T1 nuisance profiling'})
             if stress_responses is None:
                 asimov = run_asimov(template, protocol=p, layer=layer, t1_validation=t1_validation, injections=[mu])
             else:
@@ -178,6 +185,8 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
                 intervals = [r["intervals"][index] for r in toys]
                 result["coverage"][str(level)] = coverage_summary(intervals, mu=mu)
                 result["diagnostics"][str(level)] = fit_diagnostics(intervals, mu=mu)
+            if mu == 0 and 'diagnostics' in p:
+                result['diagnostics']['signed_mu'] = signed_mu_summary([t['signed_mu_diagnostic'] for t in toys])
             results[key] = result
         except ResearchStateError as exc:
             results[key] = {"status": exc.status, "reason": str(exc)}

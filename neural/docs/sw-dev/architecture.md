@@ -2,7 +2,7 @@
 
 ## 1. 系统边界
 
-**当前代码已实现。** `neural/` 是独立 Python package，不以 `xgboost/src` 为运行时依赖。包提供三个产品入口：`higgsml-preprocess`、`higgsml-train` 和 `higgsml-test`。CLI 层只负责参数、日志与稳定退出码适配，科学计算和发布事务位于 application/domain 层。
+**当前代码已实现。** `neural/` 是独立 Python package，不以 `xgboost/src` 为运行时依赖。包提供三个历史入口：`higgsml-preprocess`、`higgsml-train`、`higgsml-test`，以及独立研究入口`higgsml-research`。CLI 层只负责参数、日志与稳定退出码适配，科学计算和发布事务位于 application/domain 层。
 
 所有产品路径只接受受控 MC 数据集。真实数据、跨数据集联合训练、test 反馈调参以及对冻结 run 的覆盖均在系统边界之外。
 
@@ -53,8 +53,8 @@ CLI 稳定退出码为：`0` 成功，`2` 用法错误，`3` 输入/schema/hash/
 
 Windows 与 synthetic 测试可证明软件行为；锁定原生 ARM64 才能产生 authority 级平台证据。Authority reference 必须预先独立登记，首次输出不能自认证为 golden。模型、运行产物和本地配置不得提交 Git。
 
-## 6. 规划边界
+## 6. 研究实现与验证边界
 
-**最新方案规划中。** H4l 方案需要独立的 `src.research`、`higgsml-research`、ResearchProtocol、五角色研究数据、可变表示、MELA、条件 CDF、模板和 μ inference。其目标架构见 [`research-software-design.md`](research-software-design.md)，不能借用当前五折 OOF 或 `eligible` 状态冒充完成。
+**当前代码已实现。** 独立的`src.research`提供ResearchProtocol、五角色导出、可变表示、MELA适配、条件CDF、共同模板、freeze与μ inference。研究事务会保存带明确失败状态的manifest，不伪造成功。研究v2新增训练曲线与独立固定模板带符号μ诊断；正式T1物理区间仍为μ≥0。详见[`research-software-design.md`](research-software-design.md)，不能借用五折OOF或`eligible`状态冒充研究验收。
 
 **需要外部或权威验证。** 当前架构的锁定 ARM64 重放、完整 MC 科学运行、跨 release 物理等价和外部矩阵元参考仍需独立证据。

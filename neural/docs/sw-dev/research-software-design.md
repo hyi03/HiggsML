@@ -1,6 +1,6 @@
 # H4l 研究软件方案
 
-本文把 [`../research/H4l-Research-Project.md`](../research/H4l-Research-Project.md) 的软件建设目标映射为长期架构方案。除明确写为当前能力的适配边界外，本文件内容均为 **最新方案规划中**，不是完成声明。
+本文把[`../research/H4l-Research-Project.md`](../research/H4l-Research-Project.md)映射为长期架构。2026-09-09已核对独立研究软件实现；“已实现”不代表绑定MC、独立MELA、T1近似或ARM64验收通过。
 
 ## 1. 隔离原则
 
@@ -12,15 +12,15 @@
 
 | 组件 | 责任 | 当前状态 |
 |---|---|---|
-| Research export adapter | 从受控 preprocess development 数据导出逐轻子四动量、终态、权重、身份和支持域信息 | 规划中 |
-| Role partitioner | 按物理事件组生成 train/validation/calibration/template/assessment 五个冻结角色 | 规划中 |
-| Representation registry | 提供 decay7、engineered19、mass-only 等可审计输入契约 | 规划中 |
-| Model runner | 训练 baseline/conditional/adversarial 模型，禁止隐式读取 assessment | 规划中 |
-| MELA adapter | 导入独立矩阵元判别量并保存版本、参数和参考绑定 | 规划中；需外部验证 |
-| Conditional CDF calibrator | 仅用 calibration 角色拟合背景条件 CDF，输出可复用校准 artifact | 规划中 |
-| Template builder | 用 template 角色构造共同分箱的二维信号/背景模板及稀疏失败状态 | 规划中 |
-| Inference engine | 构造 pyhf/workspace，执行 μ fit、区间、Asimov 与伪实验 | 规划中 |
-| Assessment reporter | 只在冻结设计后消费 assessment，输出 G0/G1 与结论门结果 | 规划中 |
+| Research export adapter | 受控ROOT先判定development身份再导出逐轻子信息 | 已实现；需来源审计 |
+| Role partitioner | 事件组固定五角色与采样概率校正 | 已实现 |
+| Representation registry | decay7、engineered19、mass-only、lab-extension | 已实现 |
+| Model runner | 普通/对抗模型及v2逐轮诊断 | 已实现 |
+| MELA adapter | 后端、配置、输入与独立参考绑定 | 已实现适配；需实际外部验证 |
+| Conditional CDF calibrator | 独立calibration、物理与绝对权重目标 | 已实现；桥接受G1约束 |
+| Template builder | 共同分箱、事件组统计与稀疏失败 | 已实现 |
+| Inference engine | pyhf T0/T1区间、Toy覆盖检查；独立固定模板带符号μ诊断 | 已实现；T1剖面伪信号及Toy区间校准待设计 |
+| Assessment reporter | freeze/claim/预算、配对Toy及完整状态报告 | 已实现；科学结论需证据 |
 
 ## 3. 角色与反馈控制
 
@@ -61,6 +61,6 @@
 
 **当前代码已实现。** 现有系统只提供受控 MC 预处理、legacy15 adversarial MLP、五折 OOF、资格、final fit 和冻结分类评价，可作为 export/transaction/binding 设计的基础。
 
-**最新方案规划中。** `src.research`、新 CLI、五角色、MELA、CDF、模板与 μ inference 当前均不存在。
+**当前研究代码已实现。** `src.research`、新CLI、五角色、MELA适配、CDF、模板与μ inference见[运行手册](h4l-research-runbook.md)。完整R阶段实验、带nuisance的T1剖面伪信号诊断和Toy区间校准仍需独立设计及预注册。
 
 **需要外部或权威验证。** 锁定 ARM64、独立 MELA、完整 MC、外部样本、似然 closure、伪实验覆盖和系统稳健性在获得证据前不得写成结果。最终表述仍限于 educational/technical demo。

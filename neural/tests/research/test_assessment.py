@@ -45,6 +45,22 @@ def test_actual_pyhf_assessment_toys_share_observations_and_mass_projection():
     assert result["A"]["diagnostics"]["0.68"]["budget"]==2
 
 
+def test_background_assessment_adds_separate_signed_diagnostics_on_same_observations():
+    pytest.importorskip('pyhf')
+    p,grid,bundles=fixture()
+    result=infer_assessment(grid,bundles,population('assessment'),p,layer='T0',t1_validation=None,
+        mu=0.,count=2,seed=42,prepared_id='prepared',freeze_id='frozen',categorize=categorize)
+    for key in ('A','B','M0'):
+        candidate=result[key]
+        assert candidate['diagnostics']['signed_mu']['budget']==2
+        for row in candidate['toys']['results']:
+            diag=row['signed_mu_diagnostic']
+            # Each bin has s=b=20; combined MLE equals total observed / total b - 1.
+            assert diag['muhat']==pytest.approx(sum(row['observations'])/40.-1.,abs=1e-8)
+            assert diag['layer']=='T0_fixed_template_diagnostic'
+            assert row['intervals'][0]['lower']>=0
+
+
 def test_positive_mother_in_inactive_template_bin_is_not_discarded():
     p,grid,bundles=fixture()
     grid["templates"]["A"]["active_bins"]=[0]

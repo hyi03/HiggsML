@@ -3,7 +3,7 @@ project_id: h4l-mass-conditional-information
 status: draft
 date: 2026-09-08
 source: 本次项目讨论、用户评审意见及 H4l-Research-Project-Proposal-2026-09-08-review-confirm.md
-revision: review-revised-1
+revision: review-revised-2
 code_baseline: d22aaec78e62fdb780dacd9343d03a812c33d791
 ---
 
@@ -130,6 +130,8 @@ m_{ij}^{2}=2p_{Ti}p_{Tj}[\cosh(\Delta\eta)-\cos(\Delta\phi)].
 
 ## 5. 数据基础、输入审计与实验隔离
 
+截至2026-09-09，`src.research`、`higgsml-research`、研究导出、可变表示、MELA适配、CDF、模板与μ推断已有软件实现。下表保留初稿历史快照，不作为当前能力清单；当前能力与验证状态见[科研状态](current-research-status.md)和[运行手册](../sw-dev/h4l-research-runbook.md)。软件实现、合成验证、绑定MC先导、独立MELA参考及ARM64权威验收分别记录，不能相互替代。
+
 ### 5.1 当前证据与缺口
 
 | 项目 | 当前事实或已识别缺口 | 处理 |
@@ -149,6 +151,7 @@ m_{ij}^{2}=2p_{Ti}p_{Tj}[\cosh(\Delta\eta)-\cos(\Delta\phi)].
 ### 5.2 P0 必须核对的物理定义
 
 - 信号产生模式、衰变链、背景具体组分、生成器及版本、微扰阶数、PDF、淋浴、生成级过滤和探测器链。
+- 负权重的生成机制与来源证据；NLO减除/匹配等也可产生负权重，不能仅凭权重符号归因于干涉。
 - 截面是否已包含分支比、k-factor、filter efficiency 和 sum-of-weights 的口径；禁止重复乘分支比或效率。
 - Z1/Z2 配对、负电轻子方向、角范围、FSR处理和无效角处理；原始信息不足时明确缺失项。
 - 各角色和质量区域的 signed yield、sum of absolute weights、sumw²、负权重比例及有效统计量。
@@ -181,6 +184,8 @@ m_{ij}^{2}=2p_{Ti}p_{Tj}[\cosh(\Delta\eta)-\cos(\Delta\phi)].
 ### 5.4 有效统计的两级推进门槛
 
 按初稿背景 5,216 个事件和角色比例作算术示意，template 约 1,043、assessment 约 522；若分成35个质量箱×2个类别，未筛选终态前平均约14.9和7.5个事件/格。这些不是2e2μ实际统计，也未计入权重不均、局部稀疏和正负抵消。
+
+14.9/7.5仅为原始MC条目计数示意，不是10 fb⁻¹的预期观测产额，也不是有效样本量。
 
 | 门槛 | 检查范围 | 推进条件 |
 |---|---|---|
@@ -226,6 +231,8 @@ adversarial模型采用单独的固定轮数checkpoint规则：
 4. 所选checkpoint保存选择规则ID、selected_epoch、target_lambda、effective_lambda、验证绝对权重AUC，以及预注册的背景质量依赖指标及其分箱/阈值来源。诊断包括固定背景工作点的绝对权重质量KS和质量箱接受率，不使用assessment决定checkpoint。
 
 固定轮数消除选回约束生效前模型的风险，但不证明训练已收敛。记录学习曲线与最终状态；若后续采用联合分类/去相关判据，应在新协议中预注册，不能从本次assessment反调。
+
+新软件协议v2逐epoch保存分类BCE、背景adversary CE、有效λ、验证绝对权重AUC及背景质量KS/分箱接受率。分类损失以train内类别归一化绝对权重加权后除以事件行数；对抗损失除以背景归一化绝对权重和，均按该轮优化前各batch累计。另存原batch合并loss均值，不能将其解释为梯度反转下的纯分类目标。质量箱固定来自train；每轮在eval模式下重算train背景绝对权重中位数作为50%工作点，只在validation评价质量诊断。诊断不参与checkpoint选择、不消耗训练dropout随机数，也不访问assessment。附录图标明warm-up/ramp、最终checkpoint及同种子M3-fixed200对照；这与R2的训练样本量学习曲线是不同交付。
 
 ### 6.2 矩阵元基线
 
@@ -319,6 +326,10 @@ T2-procedure的每个副本r依次执行：按事件组重采样calibration → 
 
 物理区间使用μ≥0并单独检验边界覆盖；纯背景伪信号诊断另设允许带符号μ估计但保证所有期望计数正的拟合。边界造成的估计正偏不能直接算成模型失配。渐近区间覆盖不足时，记录不足并以玩具实验校准区间构造后再声称可靠覆盖。
 
+当前v2实现的带符号μ诊断是独立固定名义模板Poisson点估计，随μ_true=0的Toy输出，同一伪数据仍执行原μ≥0物理区间。诊断将所有nuisance固定为名义值，即使主区间为T1也明确标为T0固定模板辅助诊断，不声称完成T1剖面伪信号估计。搜索预算为[-20,20]，下界与所有活跃箱满足b+μs>0的交集内侧绑定，内侧比例0.99999999；不修补模板yield。无信号灵敏度、非正背景或触及搜索边界均单列状态，不能把受限估计当作无偏证据。若要扩展到T1剖面，需另行设计和验证nuisance变化下的正率约束。
+
+当前区间使用profile-likelihood χ²(1)临界值；运行Toy仅检查覆盖，不自动校准区间。Toy临界值/区间校准仍待独立预注册和实现，且校准后的覆盖必须使用未参与选择的验证，不能在同一assessment上调规则后自证有效。
+
 首期记录每个结果与统计误差，不事后挑选“通过”的偏差阈值。论文声称可靠增益所需的偏差预算和覆盖容差，在完整实验预注册时给出，不能从本次assessment中倒推。
 
 ## 8. 完整特征归因与表示研究
@@ -394,7 +405,7 @@ Atlas2025不自动等同于另一生成器或完全独立样本。跨release等�
 
 新增src.research，按data、representations、discriminants、calibration、templates、inference、reporting分层。复用现有域计算和产物事务；避免将科学计算放入CLI、绘图层或通用框架。
 
-新增入口higgsml-research及audit、prepare、me-export、me-import、train、calibrate、templates、infer、report子命令。每个阶段显式绑定dataset、protocol、上游run及新输出目录。
+现有入口higgsml-research包含audit、prepare、me-export、me-import、train、calibrate、templates、freeze、infer、report子命令。每个阶段显式绑定dataset、protocol、上游run及新输出目录。M5-abs属于G1后的扩展；absolute校准须在读取payload和构建映射前校验同总体、同协议且passed的G1。
 
 | 契约 | 核心内容 |
 |---|---|
@@ -437,7 +448,7 @@ MELA放在独立Linux/WSL环境，pyhf及其依赖在研究可选环境中锁定
 
 ### 10.3 旧计划兼容与优先级
 
-[旧neural-mass-decorrelation-v2计划](../sw-dev/changes/neural-mass-decorrelation-v2/plan.md)旨在固定15特征下找到首个满足AUC/KS门槛的模型，与本项目目标不同。
+旧neural-mass-decorrelation-v2计划旨在固定15特征下找到首个满足AUC/KS门槛的模型，与本项目目标不同。原`sw-dev/changes/neural-mass-decorrelation-v2/plan.md`在当前工作区缺失；这里只保留历史比较，不将缺失计划作为现行依据。
 
 | 旧设计 | 本项目处理 |
 |---|---|
@@ -475,6 +486,8 @@ MELA放在独立Linux/WSL环境，pyhf及其依赖在研究可选环境中锁定
 
 ## 12. 风险、待冻结事项与资源安排
 
+软件规则已具体化到`config/research_protocol_v2.json`：包含CDF/共同网格/统计阈值、pyhf与辅助观测、Toy预算和新增诊断规则。其scope仍为合成软件默认值，不能作为绑定MC科学适用性验证。v1文件和历史产物不改写；v2改变协议摘要，需新run和对应验证证据。下文“待冻结”指适用于实际MC的精确协议与外部证据，不表示源码和默认配置尚不存在。
+
 | 风险 | 影响 | 应对 |
 |---|---|---|
 | 2e2μ背景有限且有负权重 | CDF、二维模板和有效计数近似不稳定 | G0/G1前置、事件组统计和共同合箱；模型未验证或统计不足即停止 |
@@ -509,6 +522,7 @@ MELA放在独立Linux/WSL环境，pyhf及其依赖在研究可选环境中锁定
 核心图表：
 
 - 特征表示与可用物理信息对照表；质量切片内的ME/MLP比较。
+- 逐epoch分类/对抗损失、λ、验证AUC及质量诊断，标记训练阶段与选定checkpoint，并展示同种子λ=0配对。
 - M0/M0c质量分箱诊断、MELA/MLP匹配CDF比较，以及提前的lab-extension解释结果。
 - 普通分数、两类权重CDF与adversary的绝对权重质量依赖、物理背景接受率及峰区形状变化。
 - M5/M4的μ=1、T1 Asimov W68主比较和逐种子配对改善；辅助误差层/指标、偏差、pull、覆盖及失败分别标明。
@@ -533,4 +547,4 @@ MELA放在独立Linux/WSL环境，pyhf及其依赖在研究可选环境中锁定
 10. [Datta, Larkoski, How Much Information is in a Jet?](https://arxiv.org/abs/1704.08249)
 11. [pyhf likelihood与modifier说明](https://pyhf.readthedocs.io/en/stable/likelihood.html)；精确协议须记录锁定软件版本及对应文档版本，不能只绑定可变的stable页面。
 
-相关仓库资料：[本轮评审确认及修改依据](../../../docs/4-Reviews/H4l-Research-Project-Proposal-2026-09-08-review-confirm.md)、[inclusive协议](inclusive-protocol.md)、[旧去相关优化计划](../sw-dev/changes/neural-mass-decorrelation-v2/plan.md)。
+相关仓库资料：[首次评审确认](../../../docs/4-Reviews/H4l-Research-Project-Proposal-2026-09-08-review-confirm.md)、[导师评审确认](../../../docs/4-Reviews/H4l-Research-Project-Mentor-2026-09-09-review-confirm.md)、[本次修订记录](../sw-dev/h4l-review-revision-2026-09-09.md)、[inclusive协议](inclusive-protocol.md)。

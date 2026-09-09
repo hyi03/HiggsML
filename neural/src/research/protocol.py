@@ -7,7 +7,20 @@ from pathlib import Path
 
 from .errors import ResearchError
 
-DEFAULT_PATH = Path(__file__).resolve().parents[2] / "config/research_protocol_v1.json"
+DEFAULT_PATH = Path(__file__).resolve().parents[2] / "config/research_protocol_v2.json"
+
+# New diagnostic rules are bound only by v2; v1 remains readable unchanged.
+DIAGNOSTICS = {
+    "training": "epoch_components_and_train_median_validation_mass_v1",
+    "signed_mu": {
+        "kind": "fixed_nominal_template_poisson_mle",
+        "mu_bounds": [-20.0, 20.0],
+        "positive_domain_fraction": 0.99999999,
+        "injection": 0.0,
+        "nuisance_policy": "fixed_nominal_no_T1_profiling",
+    },
+    "interval_calibration": "not_implemented_requires_separate_registration",
+}
 
 
 def canonical(value):
@@ -40,11 +53,15 @@ def _grid(value, name, support):
 
 
 def validate_protocol(raw, dataset):
+    version = raw.get("schema_version") if isinstance(raw, dict) else None
+    extra = ("diagnostics",) if version == "h4l-research-v2" else ()
     _keys(raw, ("schema_version","protocol_id","dataset","final_state","mass_window","luminosity_pb",
           "development_probability","roles","role_hash","seeds","training","calibration","g0","templates",
-          "validation","protocol_scope","assessment_access","matrix_element","inference","stress"), "protocol")
-    if raw["schema_version"] != "h4l-research-v1" or raw["dataset"] != dataset:
+          "validation","protocol_scope","assessment_access","matrix_element","inference","stress", *extra), "protocol")
+    if version not in {"h4l-research-v1", "h4l-research-v2"} or raw["dataset"] != dataset:
         raise ResearchError("research protocol dataset/schema mismatch")
+    if extra and raw["diagnostics"] != DIAGNOSTICS:
+        raise ResearchError("unsupported registered diagnostic contract")
     if dataset != "atlas2020_4lep" or raw["final_state"] != "2e2mu":
         raise ResearchError("pilot supports atlas2020_4lep 2e2mu only")
     if not isinstance(raw["protocol_id"],str) or not raw["protocol_id"].strip():

@@ -97,8 +97,10 @@ state/test_opening.json
 
 Authority evidence 与普通 run 分离。当前 comparator 只在 native osx-arm64 上针对相同 dataset 的 development 特征/结构比较预登记 reference；空 `config/validation/registry.json` 表示没有可自认证的 golden。运行产物和模型不提交 Git。
 
-## 6. 规划 artifact
+## 6. 独立研究 artifact
 
-**最新方案规划中。** ResearchProtocol、五角色 research dataset、MELA、conditional-CDF calibration、共同二维 templates、workspace、fit/interval 和 pseudoexperiment artifact 尚无生产 schema。其 namespace、lineage 与失败状态须独立设计，见 [`research-software-design.md`](research-software-design.md)。
+**当前代码已实现。** `research-run-v1` manifest绑定协议快照、上游、文件摘要、代码/环境及状态。各阶段保存events、model、ME、calibration、templates、freeze和inference的独立JSON产物。v2协议不改写v1协议字节；新model中的history_contract绑定分项损失与逐轮质量诊断，`learning-curves.png`进入manifest；report可从已绑定的train产物生成同种子M6/λ=0配对图。
+
+μ=0的v2 Toy另存`signed_mu_diagnostic`及汇总，标为固定名义模板T0点估计、非T1剖面；搜索边界/不可用状态保留，不替代原物理区间或覆盖状态。历史模型缺少分项history时不补造曲线。阶段文件及失败契约见[运行手册](h4l-research-runbook.md)。
 
 **需要外部或权威验证。** 任何未来 schema 只有通过合成数值测试、独立参考和锁定平台重放后，才可支持方案中的科学结论。

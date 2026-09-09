@@ -7,6 +7,7 @@ from scipy.optimize import brentq
 from scipy.stats import chi2
 
 from .errors import ResearchError, ResearchStateError
+from .diagnostics import signed_mu_fit, signed_mu_summary
 
 
 def require_pyhf():
@@ -102,7 +103,7 @@ def run_asimov(template, *, protocol=None, layer="T0", t1_validation=None, injec
 
 def run_toys(template, *, mu=1., count=500, seed=42, layer="T0", t1_validation=None,
              auxiliary_generation="regenerated", expectation_kind="model_self", mother_rates=None,
-             mother_id=None, mu_max=20.):
+             mother_id=None, mu_max=20., signed_diagnostic=None):
     if expectation_kind not in {"model_self", "assessment", "mismatch"} or auxiliary_generation not in {"fixed", "regenerated"}:
         raise ResearchError("Explicit supported toy source and auxiliary policy required")
     if int(count) != count or count < 1 or not 0 <= mu <= mu_max:
@@ -125,8 +126,14 @@ def run_toys(template, *, mu=1., count=500, seed=42, layer="T0", t1_validation=N
         data[:model.config.nmaindata] = rng.poisson(expected[:model.config.nmaindata])
         if auxiliary_generation == "regenerated":
             data[model.config.nmaindata:] = rng.poisson(expected[model.config.nmaindata:])
-        results.append({"toy": index, "intervals": [profile_interval(model,data,cl) for cl in (.68,.95)]})
-    return {**metadata,"status": "valid" if all(i["status"] == "valid" for r in results for i in r["intervals"]) else "inference_incomplete", "mu": mu,"seed": seed,"count":count,"expectation_kind":expectation_kind,"mother_id":mother_id,"auxiliary_generation":auxiliary_generation,"paired":False,"results":results}
+        row = {"toy": index, "intervals": [profile_interval(model,data,cl) for cl in (.68,.95)]}
+        if signed_diagnostic is not None and mu == 0:
+            row['signed_mu_diagnostic'] = signed_mu_fit(template, data[:model.config.nmaindata], signed_diagnostic)
+        results.append(row)
+    output = {**metadata,"status": "valid" if all(i["status"] == "valid" for r in results for i in r["intervals"]) else "inference_incomplete", "mu": mu,"seed": seed,"count":count,"expectation_kind":expectation_kind,"mother_id":mother_id,"auxiliary_generation":auxiliary_generation,"paired":False,"results":results}
+    if signed_diagnostic is not None and mu == 0:
+        output['signed_mu_diagnostic'] = signed_mu_summary([r['signed_mu_diagnostic'] for r in results])
+    return output
 
 
 def paired_event_toys(frame, *, category_columns, mass_edges, mu, count, seed, mother_id):

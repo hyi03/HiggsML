@@ -132,3 +132,52 @@ def test_primary_report_rejects_method_specific_grid_or_t1_cohorts(tmp_path):
                 'results':[{'mu':1.,'intervals':[{'status':'valid','width':1.}]}]}}})
     with pytest.raises(ResearchError,match='cohorts'):
         invoke(tmp_path,'report','mixed-grid','--result-run',tmp_path/'M4','--result-run',tmp_path/'M5')
+
+
+def test_absolute_bridge_requires_matching_passed_g1_before_payload(tmp_path, monkeypatch):
+    p=load_protocol().to_dict()
+    with ResearchRun(tmp_path/'prepared',allowed_root=tmp_path,stage='prepare',dataset=p['dataset'],protocol=p) as run:
+        run.manifest['source_kind']='synthetic'
+        run.write_json('audit.json',{'status':'passed'})
+        (run.path/'events.jsonl').write_text('never decode before G1')
+        run.register_file('events.jsonl')
+    prepared=read_run(tmp_path/'prepared',dataset=p['dataset'],protocol=p)
+    with ResearchRun(tmp_path/'model',allowed_root=tmp_path,stage='train',dataset=p['dataset'],protocol=p,upstreams=[prepared]) as run:
+        run.write_json('model.json',{'candidate':'M3','seed':42})
+    for name, state, parents in [('blocked','blocked',[prepared]),('wrong','passed',[]),('passed','passed',[prepared])]:
+        with ResearchRun(tmp_path/name,allowed_root=tmp_path,stage='templates',dataset=p['dataset'],protocol=p,upstreams=parents) as run:
+            run.write_json('g1.json',{'status':state})
+    def payload(*a,**kw):
+        raise ResearchError('matching G1 allowed payload access')
+    monkeypatch.setattr('src.research.workflow.load_research_data',payload)
+    extra=['--input-run',prepared.path,'--model-run',tmp_path/'model','--transform','absolute']
+    assert invoke(tmp_path,'calibrate','no-gate',*extra).manifest['status']=='g1_not_passed'
+    assert invoke(tmp_path,'calibrate','bad-gate',*extra,'--gate-run',tmp_path/'blocked').manifest['status']=='g1_not_passed'
+    with pytest.raises(ResearchError,match='different prepared'):
+        invoke(tmp_path,'calibrate','other-gate',*extra,'--gate-run',tmp_path/'wrong')
+    with pytest.raises(ResearchError,match='allowed payload'):
+        invoke(tmp_path,'calibrate','good-gate',*extra,'--gate-run',tmp_path/'passed')
+    with pytest.raises(ResearchError,match='prepared --input-run'):
+        invoke(tmp_path,'calibrate','missing-input','--transform','absolute','--gate-run',tmp_path/'passed')
+
+
+def test_report_binds_paired_curves_and_does_not_substitute_another_seed(tmp_path, monkeypatch):
+    p=load_protocol().to_dict()
+    plotted=[]
+    def plot(models,path):
+        plotted.append([(m['candidate'],m['seed']) for m in models])
+        path.write_bytes(b'synthetic plot receipt')
+    monkeypatch.setattr('src.research.workflow.write_learning_curves',plot)
+    for name,candidate,seed in [('adv','M6',42),('other','M3-fixed200',43),('control','M3-fixed200',42)]:
+        with ResearchRun(tmp_path/name,allowed_root=tmp_path,stage='train',dataset=p['dataset'],protocol=p,
+            context={'prepared_artifact_id':'same-source'}) as run:
+            run.write_json('model.json',{'candidate':candidate,'seed':seed,'target_lambda':.1 if candidate=='M6' else 0.,
+                'groups':None,'model_id':name,'history_contract':{},'status':'trained'})
+    missing=invoke(tmp_path,'report','missing','--result-run',tmp_path/'adv','--result-run',tmp_path/'other')
+    assert not plotted
+    assert missing.read_json('report.json')['learning_curves'][0]['status']=='paired_control_missing_or_ambiguous'
+    report=invoke(tmp_path,'report','paired','--result-run',tmp_path/'adv','--result-run',tmp_path/'control')
+    assert plotted==[[('M3-fixed200',42),('M6',42)]]
+    curve=report.read_json('report.json')['learning_curves'][0]
+    assert report.file(curve['file']).read_bytes()==b'synthetic plot receipt'
+    assert curve['control_model_id']=='control'
