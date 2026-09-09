@@ -91,7 +91,7 @@ actually performed on the locked ARM64 environment with the bound ROOT inputs.
 - Use the sealed semantic-name mass-window (schema 2.0) or inclusive (schema 3.0) protocol pair and separate development/test files. Never infer identity for historical mixed runs.
 - Physical event groups must remain in the same split/fold across source rows.
 - Root design v1 hashes/counts/golden apply only to historical v1 runs. New authority references require independent evidence.
-- Current operations: `docs/engineering/dataset-v2-runbook.md`. Preserve frozen/failed runs.
+- Current software contracts: `docs/sw-dev/README.md` and `docs/sw-dev/artifact-schema.md`. Preserve frozen/failed runs.
 
 ## Formal inclusive protocol
 

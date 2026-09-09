@@ -49,4 +49,4 @@
 - 当前预处理：[`preprocess-protocol.md`](preprocess-protocol.md)
 - 当前模型：[`adversarial-mlp-protocol.md`](adversarial-mlp-protocol.md)
 - 当前 development/test：[`development-protocol.md`](development-protocol.md)、[`test-opening-protocol.md`](test-opening-protocol.md)
-- 工程操作与 schema：[`../sw-dev/dataset-v2-runbook.md`](../sw-dev/dataset-v2-runbook.md)、[`../sw-dev/artifact-schema.md`](../sw-dev/artifact-schema.md)
+- 软件架构与 schema：[`../sw-dev/architecture.md`](../sw-dev/architecture.md)、[`../sw-dev/artifact-schema.md`](../sw-dev/artifact-schema.md)

@@ -1,6 +1,6 @@
 # Neural 文档索引
 
-本目录按文档的主要用途分为两类。科研文档描述当前科学语义和下一阶段方案；工程文档保存实现、运行、产物与迭代记录。
+本目录按文档的主要用途分为两类。科研文档描述当前科学语义和下一阶段方案；软件文档保存长期有效的架构、需求、接口与方案设计。
 
 ## `research/`：当前科研方案与物理技术资料
 
@@ -16,16 +16,14 @@
 - [质量去相关、KS 与条件校准](research/mass-decorrelation.md)
 - [当前科研与软件状态](research/current-research-status.md)
 
-## `sw-dev/`：软件开发与工程交付资料
+## `sw-dev/`：软件架构、需求与方案
 
-面向需求、实现方案、运行操作、工件契约、测试验证与迭代记录：
+本目录不保存 Sprint、任务清单、runbook 或一次性验证记录：
 
-- [当前运行手册](sw-dev/runbook.md)
-- [数据集隔离运行手册](sw-dev/dataset-v2-runbook.md)
-- [Artifact schema](sw-dev/artifact-schema.md)
-- [数据集隔离重构方案](sw-dev/dataset-isolation-refactor-plan.md)
-- [数据集隔离执行与验证记录](sw-dev/dataset-v2-verification.md)
-- [FR-001 对抗式 MLP 独立工程重构](sw-dev/FR-001-adversarial-mlp-refactor.md)
-- [下载器重构计划与验证记录](sw-dev/init-data-refactor-plan.md) / [验证记录](sw-dev/init-data-verification.md)
-- [Sprint M1-01 至 M1-06](sw-dev/)
-- [变更计划](sw-dev/changes/)
+- [软件设计文档索引](sw-dev/README.md)
+- [软件架构](sw-dev/architecture.md)
+- [软件需求](sw-dev/software-requirements.md)
+- [数据集与预处理设计](sw-dev/dataset-and-preprocessing-design.md)
+- [训练与评价设计](sw-dev/training-and-evaluation-design.md)
+- [Artifact 契约](sw-dev/artifact-schema.md)
+- [H4l 研究软件方案](sw-dev/research-software-design.md)

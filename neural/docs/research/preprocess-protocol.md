@@ -2,7 +2,7 @@
 
 状态：**当前代码已实现；完整 MC 与权威环境结论需要单独验证。**
 
-本文说明当前预处理实现承载的科学语义。CLI、运行目录和 artifact 字段见 [`../sw-dev/dataset-v2-runbook.md`](../sw-dev/dataset-v2-runbook.md) 与 [`../sw-dev/artifact-schema.md`](../sw-dev/artifact-schema.md)。
+本文说明当前预处理实现承载的科学语义。软件流程、数据接口和 artifact 字段见 [`../sw-dev/dataset-and-preprocessing-design.md`](../sw-dev/dataset-and-preprocessing-design.md) 与 [`../sw-dev/artifact-schema.md`](../sw-dev/artifact-schema.md)。
 
 ## 数据边界
 

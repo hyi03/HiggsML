@@ -1,14 +1,16 @@
-# HiggsML Neural Artifact Schema v2
+# Artifact 契约
 
-本文描述当前按数据集隔离的产物；历史 v1 字段见相应历史协议文档。精确字段和列序以版本化协议及 reader 为准。所有 run 使用 `neural/runs/<dataset>/<new-run>/` 新路径，冻结和失败 run 不可覆盖。
+**当前代码已实现。** 本文描述当前持久化接口。文件名保持稳定；正文中的 schema identifier 可版本化，因为 reader 需要据此拒绝不兼容 artifact。精确字段和列序最终以当前配置与 reader 常量为准。
 
-## 通用绑定
+## 1. 通用运行契约
 
-`dataset_binding` 包含数据集名称、定义修订与字节摘要、release、collection、profile/science 摘要、事件身份策略及两个成员的受控元数据。下载定义在 `config/datasets/`；科学规则、profile 独立封存。名称不能重标记其他数据集的文件或模型。
+所有 run 位于允许根下的具名 dataset 与全新 run 目录中。运行先在同父目录 staging，成功后原子发布。成功 manifest 最后发布并列出自身之外每个产物的大小和 SHA-256；失败发布 `failure.json`，不发布成功 manifest。
 
-成功 manifest 最后发布，列出自身以外的产物文件大小与 SHA-256。CSV gzip 另记录解压后 canonical 内容摘要、行数。snapshot 保存协议及绑定，development snapshot 还保存精确训练协议文本以校验 Debug 字节。
+`dataset_binding` 包含 dataset 名、定义 revision/摘要、release、collection、profile/science 摘要、事件身份策略和两个受控 MC 成员。配置 snapshot 保存调用时的精确协议与绑定，不能用后来修改的同名配置解释旧 run。
 
-## Preprocess
+CSV gzip 记录压缩文件摘要、解压后 canonical CSV 摘要和行数。Canonical JSON/CSV 固定编码、键/列顺序、数值和换行规则。
+
+## 2. Preprocess run
 
 ```text
 config.yaml
@@ -19,13 +21,11 @@ artifacts/mc_summary.json
 artifacts/manifest.json
 ```
 
-Manifest 为 `schema_version: "2.0"`、`run_type: preprocess`、`protocol_id: higgsml-preprocess-v2`。记录 inputs、configuration、dataset_binding、outputs、schema、counts、software、platform、determinism、performance。
+Mass-window/debug manifest 使用当前 2.x 内部契约，两个表各 31 列；inclusive 使用当前 3.x 内部契约，各 30 列且无 `train_weight`。共同尾部身份字段为 `source_file_id` 和 `event_group_id`。Development 表只含 train/validation，test 表只含 test。
 
-两张表使用 `config/preprocess_protocol_mass_window.yaml` 的相同 31 列；原 29 列加 `source_file_id`、`event_group_id`。development 仅含 train/validation，test 仅含 test。来源行键为 file ID + source entry；事件分组字符串为 `channelNumber:eventNumber`。新身份字段、质量、权重、标识符均禁止进入 15 维模型输入。
+Manifest 至少绑定：输入文件与摘要、dataset/profile/science、协议和 run config、ordered columns/dtypes、每成员 cutflow、split 计数、软件/平台、确定性和性能。
 
-Development reader 校验 manifest 和非 test 产物，只解码 development 分区；不会打开、计算哈希或 stat test 文件。test 文件的描述符此时只作为冻结的预期值，不能声称已重新验证。
-
-## Development
+## 3. Development run
 
 ```text
 config.yaml
@@ -33,64 +33,72 @@ artifacts/candidate_metrics.csv
 artifacts/fold_metrics.csv
 artifacts/qualification.json
 artifacts/working_points.json
-artifacts/manifest.json
 predictions/oof_scores.csv.gz
 plots/auc_vs_lambda.png
 plots/ks_vs_lambda.png
 plots/oof_roc.png
 plots/oof_mass_sculpting.png
-model/model.pt                  # eligible only
-model/scaler.json               # eligible only
+artifacts/manifest.json
+model/model.pt                 # 仅允许终态
+model/scaler.json              # 仅允许终态
 ```
 
-Manifest 使用 `development-manifest-v2`，config 使用 `development-config-v2`。记录上游分区与 manifest 摘要、协议、数据绑定、OOF 完整性、候选资格、环境及性能；`statistics` 为 development 各类、fold、背景质量 bin 的计数、负权重数、绝对权重和、平方和与有效样本量。
-
-OOF 精确列序：
+Inclusive 还要求：
 
 ```text
-source_file_id,event_group_id,target_lambda,source_sample,source_entry,fold_index,label,m4l,physical_weight,train_weight,score
+artifacts/scientific_state.json
+artifacts/mass_diagnostics.json
 ```
 
-资格与工作点算法未变，分别保留 `development-qualification-v1` 和 `development-working-points-v1` schema。状态为 `eligible` 或 `no_eligible_candidate`；后者不发布 final model。Final payload 为 `adversarial-mlp-final-v2`；scaler 为 `fold-local-scaler-v2`，携带同一绑定。模型、scaler 和阈值不可跨数据集使用。
+有窗 OOF 列为：
 
-## Test-opening
+```text
+source_file_id,event_group_id,target_lambda,source_sample,source_entry,
+fold_index,label,m4l,physical_weight,train_weight,score
+```
+
+Inclusive 将 `train_weight` 列替换为 `metric_weight`。Fold/candidate 表字段由训练协议中的 `development_artifacts` 固定。
+
+Manifest 绑定上游 preprocess partition/manifest、dataset、协议、OOF 完整性、候选资格、环境与统计。Final payload 使用当前 `adversarial-mlp-final` 内部 schema；scaler 使用 `fold-local-scaler-v2`，二者都携带同一 dataset/protocol/feature binding。
+
+状态与发布规则：
+
+| 状态 | Manifest | Final model/scaler | 含义 |
+|---|---|---|---|
+| `eligible` | 是 | 是 | 正式 development 候选通过 |
+| `no_eligible_candidate` | 是 | 否 | 正常完成但无合格候选 |
+| `insufficient_statistics` | 是 | 否 | Inclusive 统计前提不足 |
+| `debug_diagnostic` | 是 | 可有 | 仅诊断，不构成正式资格 |
+
+## 4. Test-opening run
 
 ```text
 config.yaml
 artifacts/test_metrics.json
-artifacts/manifest.json
 predictions/test_scores.csv.gz
 plots/test_roc.png
 plots/test_mass_sculpting.png
+artifacts/manifest.json
 ```
 
-Manifest 为 `test-manifest-v2`，记录数据绑定及 development/preprocess/model/scaler/working-points lineage。指标保留 `test-metrics-v1`；正常终态为 `test_reproduced` 或 `test_nonreproduction`。预测列为 source_file_id、event_group_id 及原 source_sample、source_entry、label、m4l、physical_weight、train_weight、score，精确顺序以 test reader 常量为准。
+Test manifest 绑定 preprocess/development/model/scaler/working-points 的 lineage、dataset、协议和所有摘要。普通预测列包含来源行/事件组身份、sample/entry、label、`m4l`、physical/train weight 和 score；inclusive 使用 `metric_weight` 替代 `train_weight`。
 
-完成数据集与资格 gate 后才校验/解码 test 分区。提供 authorization reference 时，在 development 的 `state/test_opening.json` 建立 `test-opening-state-v2` 一次性 claim；成功或 `failed_after_claim` 均为不可重试终态。已有空、partial 或不可解析 state 也拒绝重试。省略 reference 时保持原有不同新输出目录的可重复评价模式。
+状态为 `test_reproduced`、`test_nonreproduction` 或显式 `debug_diagnostic`。有 authorization reference 时，development run 下另有：
 
-## 失败及独立验证
+```text
+state/test_opening.json
+```
 
-事务 `failure.json` 包含失败类型、退出码、时间、消息、可用的阶段及 dataset_binding；不同时发布成功 manifest。test claim 后消息经过清理，禁止泄漏事件特征、预测及阈值。
+其内部 schema 为 `test-opening-state-v2`，记录 claim、成功或 `failed_after_claim` 终态。该 state 是 one-shot 协调状态，不得手工删除以重试。
 
-Authority 使用 `authority-development-v2`，仅在 native osx-arm64 上比较同数据集 development 特征及结构计数，要求独立登记且摘要固定的 reference。`config/validation/registry.json` 当前为空，因此不会把首次输出自认证为 golden。test 特征比较未纳入此 gate。
+## 5. 失败、安全与 authority
 
-实际验证范围见 [dataset-v2-verification.md](dataset-v2-verification.md)，命令见 [dataset-v2-runbook.md](dataset-v2-runbook.md)。
+`failure.json` 记录异常类别、稳定退出码、时间、已知 stage 和可安全公开的 binding；test claim 后只允许清理过的阶段消息。它不能包含事件行、特征值、预测、模型参数或阈值。
 
-## Explicit debug diagnostics
+Authority evidence 与普通 run 分离。当前 comparator 只在 native osx-arm64 上针对相同 dataset 的 development 特征/结构比较预登记 reference；空 `config/validation/registry.json` 表示没有可自认证的 golden。运行产物和模型不提交 Git。
 
-Explicit `higgsml-train --debug` publishes `debug_diagnostic` in the development
-manifest and qualification artifact, with a final model/scaler. Candidate
-eligibility and rejection reasons remain unchanged. When none qualifies,
-`tie_rule.reference` is `maximum_oof_auc`; otherwise it is `maximum_eligible_auc`.
-Normal-mode artifact schemas and terminal states remain unchanged.
+## 6. 规划 artifact
 
-`higgsml-test --debug` publishes `debug_diagnostic` in metrics, manifest and any
-successful one-shot state receipt. Its config and metrics contain `debug: true`,
-and manifest boundaries contain `debug: true`. Metrics retain the original
-qualification failure reasons and frozen working points; this status never
-asserts formal test reproduction. The original development artifacts are
-immutable (apart from the existing optional state claim).
+**最新方案规划中。** ResearchProtocol、五角色 research dataset、MELA、conditional-CDF calibration、共同二维 templates、workspace、fit/interval 和 pseudoexperiment artifact 尚无生产 schema。其 namespace、lineage 与失败状态须独立设计，见 [`research-software-design.md`](research-software-design.md)。
 
-## Inclusive schema 扩展
-
-正式无窗的预处理 schema 为 3.0，原 31 列移除 `train_weight`。development-config、development-manifest、adversarial-mlp-final 使用 v3 内部 schema；test-manifest 为 v3、test-metrics 为 v2。OOF/test 表使用 `metric_weight = abs(physical_weight)`。新增科学状态、报告分箱、分箱诊断及统计不足产物详见 [inclusive 协议手册](../research/inclusive-protocol.md)。旧 schema 的含义不变。
+**需要外部或权威验证。** 任何未来 schema 只有通过合成数值测试、独立参考和锁定平台重放后，才可支持方案中的科学结论。

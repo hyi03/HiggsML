@@ -4,7 +4,7 @@
 
 ## 权威顺序
 
-1. 根目录与 [`../../AGENTS.md`](../../AGENTS.md) 的安全约束优先。
+1. 仓库根 [`../../../AGENTS.md`](../../../AGENTS.md) 与 Neural [`../../AGENTS.md`](../../AGENTS.md) 的安全约束优先。
 2. 当前行为以 `src/`、`config/`、`pyproject.toml` 和测试为准。
 3. 本目录描述稳定的软件契约和设计意图。
 4. 科学语义以 [`../research/`](../research/) 为准；下一阶段研究以 [`../research/H4l-Research-Project.md`](../research/H4l-Research-Project.md) 为最高层方案。
