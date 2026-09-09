@@ -116,6 +116,8 @@ def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0
     edges = _quantile(train.m4l.to_numpy()[bg], w[bg], np.arange(1, 11) / 11)
     bins = np.searchsorted(edges, train.m4l.to_numpy(), side='left')
     fixed = candidate in {'M6', 'M3-fixed200'}
+    detailed = 'diagnostics' in protocol
+    vb = valid.label.to_numpy() == 0
     if fixed and (len(np.unique(edges)) != 10 or any(w[bg & (bins == k)].sum() <= 0 for k in range(11))):
         raise ResearchStateError('ineffective adversarial diagnostic mass bins', status='insufficient_statistics')
     # Both fixed candidates construct the adversary, sharing initialization and RNG consumption.
@@ -133,16 +135,21 @@ def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0
                 adversary.train()
             lam = effective_lambda(epoch, target_lambda)
             losses = []
+            classification_sum = adversary_sum = adversary_weight = 0.
             for indices in torch.randperm(len(train), generator=generator).split(1024):
                 optimizer.zero_grad()
                 logits = model(x[indices])
-                loss = (nn.functional.binary_cross_entropy_with_logits(logits, y[indices], reduction='none') * opt_w[indices]).mean()
+                classification = nn.functional.binary_cross_entropy_with_logits(logits, y[indices], reduction='none') * opt_w[indices]
+                loss = classification.mean()
+                classification_sum += float(classification.detach().sum())
                 mask = y[indices] == 0
                 if adversary is not None and mask.any():
                     adv = adversary(logits[mask], lambda_effective=lam)
                     bw = opt_w[indices][mask]
                     ce = nn.functional.cross_entropy(adv, torch.tensor(bins[indices.numpy()][mask.numpy()], dtype=torch.long), reduction='none')
                     loss = loss + (ce * bw).sum() / bw.sum()
+                    adversary_sum += float((ce * bw).detach().sum())
+                    adversary_weight += float(bw.sum())
                 if not torch.isfinite(loss):
                     raise ResearchStateError('nonfinite training loss', status='training_failed')
                 loss.backward()
@@ -155,6 +162,17 @@ def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0
                 raise ResearchStateError('nonfinite validation scores', status='training_failed')
             auc = float(roc_auc_score(valid.label, scores, sample_weight=np.abs(valid.physical_weight)))
             history.append(dict(epoch=epoch, effective_lambda=lam, validation_absolute_weight_auc=auc, loss=float(np.mean(losses))))
+            if detailed:
+                # Evaluation mode consumes no dropout RNG and cannot change training.
+                with torch.no_grad():
+                    epoch_train_scores = torch.sigmoid(model(x)).numpy()
+                threshold = _quantile(epoch_train_scores[bg], w[bg], [.5])[0]
+                history[-1].update(
+                    classification_loss=classification_sum / len(train),
+                    adversary_loss=adversary_sum / adversary_weight if adversary_weight else None,
+                    classification_denominator=len(train), adversary_denominator=adversary_weight,
+                    diagnostics=_diagnostics(valid.m4l.to_numpy()[vb], scores[vb],
+                        np.abs(valid.physical_weight.to_numpy()[vb]), edges, threshold))
             if auc > best + 1e-4:
                 best, best_epoch = auc, epoch
                 best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
@@ -177,6 +195,14 @@ def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0
             validation_absolute_weight_auc=float(roc_auc_score(valid.label,scores,sample_weight=np.abs(valid.physical_weight))),
             diagnostics=_diagnostics(valid.m4l.to_numpy()[vb],scores[vb],np.abs(valid.physical_weight.to_numpy()[vb]),edges,threshold),
             status='trained', eligibility_gate='not_applicable_research')
+        if detailed:
+            result['history_contract'] = dict(
+                version=protocol['diagnostics']['training'],
+                classification_loss='sum_train_normalized_absolute_weight_BCE / train_rows; online pre-update batches',
+                adversary_loss='sum_background_normalized_absolute_weight_CE / sum_background_weights; online pre-update batches',
+                loss='unweighted mean of batch composite losses; not classifier objective under gradient reversal',
+                threshold='recomputed each epoch from train background absolute-weight median; validation evaluation only',
+                selection='diagnostics never select checkpoint')
     result['model_id'] = digest(result)
     return result
 

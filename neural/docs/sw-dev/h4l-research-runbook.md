@@ -1,9 +1,12 @@
 # H4l 质量条件研究运行手册
 
 本入口实现 [H4l 项目方案](../research/H4l-Research-Project.md)的软件链路，运行命令均从 `neural/` 执行。
-仅处理受控 MC 或显式标记的合成事件。默认协议为 `config/research_protocol_v1.json`；
+仅处理受控 MC 或显式标记的合成事件。默认协议为 `config/research_protocol_v2.json`；
 其 `protocol_scope=synthetic_software_defaults_not_physics_validation` 明确表示可测试的软件默认规则，
 不表示真实 MC、signed 模板近似、矩阵元参考或独立验证已经通过。
+
+v2新增逐epoch诊断和独立带符号μ诊断。`research_protocol_v1.json`保持字节不变，旧产物仍须用原协议读取；
+不能将旧run改绑v2。新协议摘要要求新run及同协议的P0/G1/T1证据，不继承旧assessment独立性。
 
 ## 环境与入口
 
@@ -74,9 +77,9 @@ assessment 必须绑定冻结分析。历史反馈是否影响当前设计仍需
 以下以已完成受控来源审计的 `runs/h4l-prepare-001` 为输入。目录名仅为示例，已有目录不可覆盖。
 
 ```powershell
-python -m src.cli.research train --dataset atlas2020_4lep --protocol config/research_protocol_v1.json --input-run runs/h4l-prepare-001 --candidate M2 --seed 42 --run-dir runs/h4l-m2-42
-python -m src.cli.research calibrate --dataset atlas2020_4lep --protocol config/research_protocol_v1.json --input-run runs/h4l-prepare-001 --model-run runs/h4l-m2-42 --transform physical --run-dir runs/h4l-m4-42
-python -m src.cli.research calibrate --dataset atlas2020_4lep --protocol config/research_protocol_v1.json --input-run runs/h4l-prepare-001 --model-run runs/h4l-m2-42 --transform raw --run-dir runs/h4l-m2-raw-42
+python -m src.cli.research train --dataset atlas2020_4lep --protocol config/research_protocol_v2.json --input-run runs/h4l-prepare-001 --candidate M2 --seed 42 --run-dir runs/h4l-m2-42
+python -m src.cli.research calibrate --dataset atlas2020_4lep --protocol config/research_protocol_v2.json --input-run runs/h4l-prepare-001 --model-run runs/h4l-m2-42 --transform physical --run-dir runs/h4l-m4-42
+python -m src.cli.research calibrate --dataset atlas2020_4lep --protocol config/research_protocol_v2.json --input-run runs/h4l-prepare-001 --model-run runs/h4l-m2-42 --transform raw --run-dir runs/h4l-m2-raw-42
 ```
 
 同样建立 M0c、M3 及 M3 的物理 CDF（M5）；`templates` 一次传入所有共同候选的 calibration run。
@@ -85,12 +88,32 @@ G1 未通过时其余种子、M6、固定200轮 λ=0、绝对权重桥接和 L1 
 全体候选和终态记录完成后才冻结 assessment。新增协议版本不能把既有反馈重新标成独立验证。
 
 ```powershell
-python -m src.cli.research infer --dataset atlas2020_4lep --protocol config/research_protocol_v1.json --template-run runs/h4l-templates-001 --layer T0 --mu 1 --run-dir runs/h4l-t0-001
-python -m src.cli.research report --dataset atlas2020_4lep --protocol config/research_protocol_v1.json --result-run runs/h4l-t0-001 --run-dir runs/h4l-report-001
+python -m src.cli.research infer --dataset atlas2020_4lep --protocol config/research_protocol_v2.json --template-run runs/h4l-templates-001 --layer T0 --mu 1 --run-dir runs/h4l-t0-001
+python -m src.cli.research report --dataset atlas2020_4lep --protocol config/research_protocol_v2.json --result-run runs/h4l-t0-001 --run-dir runs/h4l-report-001
 ```
 
 M2→M4、M3→M5/M5-abs 的校准不重新训练网络。M6 和 M3-fixed200 都固定选择第200轮；
 前5轮 λ=0，第6–15轮线性 ramp，第16–200轮为完整目标 λ。普通 M3 的早停结果不能冒充固定轮数对照。
+
+M5-abs校准也属于G1后的候选扩展，必须传入同prepared、同协议且passed的`--gate-run`，
+否则在读取校准payload前拒绝。例如（各路径须替换为实际已验证的上游）：
+
+```powershell
+python -m src.cli.research calibrate --dataset atlas2020_4lep --protocol config/research_protocol_v2.json --input-run runs/h4l-prepare-001 --model-run runs/h4l-m3-42 --gate-run runs/h4l-g1-passed --transform absolute --run-dir runs/h4l-m5-abs-42
+```
+
+## 训练曲线与附录
+
+v2 `model.json`的`history_contract`绑定逐轮损失口径：分类BCE按train类别归一化绝对权重加权，
+除以train行数；adversary CE除以背景归一化绝对权重和，均由该轮更新前各batch累计。
+`loss`保留batch合并loss的算术均值，不是梯度反转下的纯分类目标。无adversary时其损失为null。
+每轮另存λ、validation绝对权重AUC及质量KS/分箱接受率。train质量箱固定；每轮eval模式下重算
+train背景绝对权重中位数作为工作点，validation只用于评价。诊断不参与checkpoint选择。
+
+train产出已绑定摘要的`learning-curves.png`，标记warm-up、ramp和selected epoch。
+report传入M6及同种子、同分组的M3-fixed200训练run时，生成配对曲线；缺失或多个控制模型时记录
+`paired_control_missing_or_ambiguous`，不自动选择另一种子或最好控制模型。历史v1模型没有分项日志，
+不补造曲线。图表是训练诊断，不等于收敛证明，也不替代R2的训练样本量学习曲线。
 
 ## 数值规则与失败
 
@@ -109,6 +132,24 @@ T1 证据须绑定协议，明确 `modifier=shapesys`、`correlation=independent
 简单单箱数值检查不是 bound-MC signed 近似验证。若实际组协方差违背独立箱假设，即使有标记也拒绝。
 区间为 μ≥0 的 profile-likelihood χ² 构造；未找到上界或优化失败保留失败，不伪造有限区间。
 低计数及 μ=0 边界的覆盖适用性仍需先导验证。
+
+v2在μ=0的model-self或冻结assessment Toy中，使用同一组观测计数额外执行`signed_mu_diagnostic`。
+这条独立Poisson点估计固定名义模板和全部nuisance，允许负μ；即使主区间选择T1，也标明为
+`T0_fixed_template_diagnostic`，不宣称包含T1剖面误差。`signed_mu`契约独立于原物理区间的μ≥0限制。
+搜索范围为[-20,20]与逐箱`b+μs>0`支持域的交集，负物理边界取0.99999999内侧比例；不把负/零yield
+替换成epsilon。没有信号灵敏度或背景不正时记录`signed_domain_unavailable`，端点最优记录
+`search_bound_reached`，其计数保留但不进入有效估计均值。modeled stress不执行这条名义模板诊断。
+旧v1协议不自动启用新增诊断；T1剖面带符号μ需单独设计正率约束和预注册。
+
+示例（先满足该路径的全部门槛，`--toys 500`为协议内的先导预算）：
+
+```powershell
+python -m src.cli.research infer --dataset atlas2020_4lep --protocol config/research_protocol_v2.json --template-run runs/h4l-templates-001 --layer T0 --mu 0 --toys 500 --run-dir runs/h4l-background-model-self
+```
+
+model-self覆盖不能代替assessment验证。当前区间仍使用χ²(1)临界值；Toy只检查覆盖，
+`interval_calibration=not_implemented_requires_separate_registration`。不得把500次覆盖检查写成
+已经校准了区间；临界值校准及其独立验证预算需后续预注册。
 
 T2-procedure 在外层按 calibration 事件组 bootstrap，并用各副本的同一映射同时变换模板和共同母事件。
 它有独立预算和随机化范围，不是额外加到 T1 的 nuisance。首期 ±10% 扰动标为人工压力测试，

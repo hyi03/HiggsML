@@ -18,7 +18,7 @@ from .calibration import fit_calibration, apply_calibration, fit_thresholds, ass
 from .matrix_element import export_me_inputs, import_me_results
 from .templates import common_mass_grid, gate_g1
 from .inference import run_asimov, run_toys
-from .reporting import build_report, coverage_summary
+from .reporting import build_report, coverage_summary, write_learning_curves
 
 
 def _required(args, name):
@@ -31,6 +31,16 @@ def _required(args, name):
 def _same_data(upstream, prepared):
     if not any(u['artifact_id'] == prepared.manifest['artifact_id'] for u in upstream.manifest['upstreams']):
         raise ResearchError("upstream belongs to a different prepared event population")
+
+
+def _require_expansion_gate(gate_run, prepared):
+    if prepared is None:
+        raise ResearchError('Candidate expansion requires a prepared --input-run')
+    if gate_run is None:
+        raise ResearchStateError('Candidate expansion requires a passed G1 run', status='g1_not_passed')
+    _same_data(gate_run, prepared)
+    if gate_run.read_json('g1.json')['status'] != 'passed':
+        raise ResearchStateError('G1 did not pass', status='g1_not_passed')
 
 
 def _candidate_key(model):
@@ -342,15 +352,14 @@ def execute(args, *, allowed_root=None):
             frame = events()
             minimal = args.seed == 42 and args.candidate in ('M0c','M2','M3') and args.groups is None
             if not minimal:
-                if gate_run is None:
-                    raise ResearchStateError('Candidate expansion requires a passed G1 run', status='g1_not_passed')
-                _same_data(gate_run, prepared)
-                if gate_run.read_json('g1.json')['status'] != 'passed':
-                    raise ResearchStateError('G1 did not pass', status='g1_not_passed')
+                _require_expansion_gate(gate_run, prepared)
             model = train_discriminant(frame.loc[frame.role.isin(['train','validation'])].copy(), protocol,
                                        candidate=args.candidate, seed=args.seed, target_lambda=args.strength,
                                        groups=list(args.groups) if args.groups is not None else None)
             run.write_json('model.json', model)
+            if 'history_contract' in model:
+                write_learning_curves([model], run.path/'learning-curves.png')
+                run.register_file('learning-curves.png')
 
         elif stage == 'me-export':
             frame = events(assessment=bool(freeze_run))
@@ -376,6 +385,8 @@ def execute(args, *, allowed_root=None):
             run.write_json('me-evidence.json',evidence)
 
         elif stage == 'calibrate':
+            if args.transform == 'absolute':
+                _require_expansion_gate(gate_run, prepared)
             frame = events()
             if model_run is None:
                 raise ResearchError('calibrate requires --model-run')
@@ -537,7 +548,8 @@ def execute(args, *, allowed_root=None):
                         result={'status':asimov['status'],'asimov':asimov,'seed':template.get('seed')}
                         if args.toys:
                             toys=run_toys(template,mu=args.mu,count=args.toys,seed=args.seed,layer=args.layer,
-                                t1_validation=evidence,auxiliary_generation=cfg['auxiliary_generation'],mu_max=cfg['mu_bounds'][1])
+                                t1_validation=evidence,auxiliary_generation=cfg['auxiliary_generation'],mu_max=cfg['mu_bounds'][1],
+                                signed_diagnostic=protocol.get('diagnostics',{}).get('signed_mu'))
                             result['toys']=toys
                             result['coverage']={str(cl):coverage_summary([r['intervals'][i] for r in toys['results']],mu=args.mu)
                                                 for i,cl in enumerate((.68,.95))}
@@ -551,6 +563,7 @@ def execute(args, *, allowed_root=None):
             if not result_runs:
                 raise ResearchError('report requires one or more --result-run')
             statuses, primary, records = expected_candidates(), [], {}
+            training_models = {}
             state_history={}; source_ids=set(); unknown_population=False; terminal_runs=[]; procedures={}; primary_cohorts=set()
             def record_state(key,status,artifact_id):
                 state_history.setdefault(key,[]).append({'status':status,'artifact_id':artifact_id})
@@ -574,6 +587,7 @@ def execute(args, *, allowed_root=None):
                         record_state(key,status,manifest['artifact_id'])
                 elif manifest['stage']=='train':
                     model=item.read_json('model.json')
+                    training_models[model['model_id']] = model
                     record_state(_candidate_key(model),model['status'],manifest['artifact_id'])
                 elif manifest['stage']=='calibrate':
                     bundle=item.read_json('calibration.json')
@@ -610,6 +624,22 @@ def execute(args, *, allowed_root=None):
                                 'expectation_kind':result['asimov']['expectation_kind'],
                                 'status':interval['status'],'width68':interval.get('width')})
             report=build_report(statuses,primary_records=primary,results=records)
+            curves = []
+            for model in training_models.values():
+                if model['candidate'] != 'M6' or 'history_contract' not in model:
+                    continue
+                controls = [m for m in training_models.values() if m['candidate']=='M3-fixed200'
+                            and m['seed']==model['seed'] and m.get('groups')==model.get('groups')
+                            and 'history_contract' in m]
+                if len(controls) != 1:
+                    curves.append({'model_id':model['model_id'],'status':'paired_control_missing_or_ambiguous'})
+                    continue
+                filename=f'learning-pair-{model["model_id"]}.png'
+                write_learning_curves([controls[0], model], run.path/filename)
+                run.register_file(filename)
+                curves.append({'model_id':model['model_id'],'control_model_id':controls[0]['model_id'],
+                               'status':'complete','file':filename})
+            report['learning_curves'] = curves
             report.update(candidate_state_history=state_history,terminal_runs=terminal_runs,procedures=procedures,
                           prepared_artifact_id=next(iter(source_ids)) if source_ids else None,
                           primary_comparison_cohort_id=next(iter(primary_cohorts)) if primary_cohorts else None)
@@ -618,6 +648,9 @@ def execute(args, *, allowed_root=None):
                      '',f"Primary M5/M4 comparison: {report['primary_comparison']['status']}",
                      '', '| Candidate | Status |','|---|---|']
             lines += [f'| {k} | {v} |' for k,v in statuses.items()]
+            for curve in curves:
+                if curve['status']=='complete':
+                    lines += ['', f'![Paired training diagnostics]({curve["file"]})']
             lines += ['', 'Repository ARM64 authority: not_run.',
                       'Scientific numerical validation and external robustness require independent evidence.']
             (run.path/'report.md').write_text('\n'.join(lines)+'\n', encoding='utf-8')

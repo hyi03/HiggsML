@@ -79,6 +79,15 @@ def test_fixed_200_matched_zero_and_lambda_schedule(monkeypatch):
     assert c['effective_lambda']==.2 and c['selected_epoch']==200
     assert [c['history'][i-1]['effective_lambda'] for i in [1,5,6,15,16,200]]==pytest.approx([0,0,.02,.2,.2,.2])
     assert c['state_dict']!=a['state_dict']
+    assert all(r['classification_loss'] >= 0 and r['adversary_loss'] >= 0 for r in c['history'])
+    assert all(len(r['diagnostics']['mass_bin_acceptance'])==11 for r in c['history'])
+    assert c['history'][-1]['diagnostics'] == c['diagnostics']
+    # Additional evaluation must not consume training RNG or alter optimization.
+    from src.research.protocol import DEFAULT_PATH
+    old = load_protocol(DEFAULT_PATH.with_name('research_protocol_v1.json'))
+    legacy = train_discriminant(data,old,'M6',target_lambda=.2)
+    assert legacy['state_dict'] == c['state_dict']
+    assert 'history_contract' not in legacy
     with pytest.raises(ResearchError):
         train_discriminant(data,protocol,'M6',target_lambda=0.)
 
@@ -106,3 +115,18 @@ def test_bad_mass_bins_fail_before_fixed_training():
     with pytest.raises(ResearchStateError) as exc:
         train_discriminant(data,load_protocol(),'M6',target_lambda=.1)
     assert exc.value.status=='insufficient_statistics'
+
+
+def test_loss_components_use_declared_denominators_and_curves(tmp_path, monkeypatch):
+    from src.research.reporting import write_learning_curves
+    monkeypatch.setattr(torch.nn.functional, 'binary_cross_entropy_with_logits',
+                        lambda logits, target, **kw: logits*0 + 2.)
+    monkeypatch.setattr(torch.nn.functional, 'cross_entropy',
+                        lambda logits, target, **kw: logits.sum(dim=1)*0 + 3.)
+    result = train_discriminant(frame(),load_protocol(),'M3-fixed200')
+    assert [r['classification_loss'] for r in result['history']] == pytest.approx([2.]*200)
+    assert [r['adversary_loss'] for r in result['history']] == pytest.approx([3.]*200)
+    assert [r['loss'] for r in result['history']] == pytest.approx([5.]*200)
+    target = tmp_path/'curves.png'
+    write_learning_curves([result], target)
+    assert target.read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
