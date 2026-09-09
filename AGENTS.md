@@ -55,6 +55,12 @@ Run project commands from `xgboost/`, where `src`, `scripts`, `config`, and
 
 ## Change Discipline
 
+The approved `neural/docs/research/H4l-Research-Project.md` has a scoped
+exception for `src.research` models: `m4l` may be an explicit common mass
+condition under a new bound research protocol. This does not change the
+historical classifiers, scientific gates, or test-opening rules. See
+`neural/AGENTS.md` for the research isolation and validation boundaries.
+
 - Make the smallest change that satisfies the task and preserve unrelated user
   edits.
 - Add or update tests for behavior changes.

@@ -1,5 +1,9 @@
 # HiggsML Neural
 
+新增质量条件研究开发入口 `higgsml-research`，对应 [H4l 项目方案](docs/research/H4l-Research-Project.md)。
+操作、协议冻结、外部验证和当前交付边界见 [研究运行手册](docs/engineering/h4l-research-runbook.md)；
+软件测试与真实 MC 先导、MELA 物理参考、ARM64 权威验收分别记录。
+
 当前实现按 `atlas2020_4lep`（Higgs 345060 + ZZ 363490）和 `atlas2025_exactly4lep`（Higgs 345060 + ZZ 700600）两个受控 MC 配对运行。安装下载见[根 README](../README.md)，操作见 [v2 手册](docs/engineering/dataset-v2-runbook.md)。所有业务命令显式指定 `--dataset`。
 
 正式无质量窗方案见 [inclusive 协议手册](docs/research/inclusive-protocol.md)：无窗保留、全范围训练与评价、拟合折分位数对抗器和权重归一化。现有有窗与 debug 流程继续保留。协议文件按用途命名，内部 schema 负责兼容性。

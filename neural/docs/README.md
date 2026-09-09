@@ -7,6 +7,7 @@
 面向论文方法、物理对象、分析选择与可复核技术结论：
 
 - [KS、λ 与质量去相关技术说明](research/mass-decorrelation-ks-lambda.md)
+- [H4l 质量条件研究项目](research/H4l-Research-Project.md)
 - [正式无质量窗协议](research/inclusive-protocol.md)
 - [预处理协议 V1](research/preprocess-protocol-v1.md)
 - [Adversarial MLP 协议 V1](research/adversarial-mlp-protocol-v1.md)
@@ -20,6 +21,8 @@
 面向需求、实现方案、运行操作、工件契约、测试验证与迭代记录：
 
 - [当前运行手册](engineering/runbook.md)
+- [H4l 研究运行手册](engineering/h4l-research-runbook.md)
+- [H4l 开发与验证记录](engineering/h4l-research-development.md)
 - [数据集隔离 v2 运行手册](engineering/dataset-v2-runbook.md)
 - [Artifact schema](engineering/artifact-schema.md)
 - [数据集隔离重构方案](engineering/dataset-isolation-refactor-plan.md)
