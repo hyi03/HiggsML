@@ -6,7 +6,7 @@
 
 1. [`H4l-Research-Project.md`](H4l-Research-Project.md) 是下一阶段 H→ZZ*→4ℓ 研究的最高层方案。它描述目标、实验设计、软件建设和结论门槛，但不表示相应代码或结果已经存在。
 2. 当前代码能够执行的 MC 预处理、固定 15 特征 adversarial MLP、development OOF 和冻结 test 评价，以代码及 `config/` 下实际协议为准；本目录的专题文档解释其科学含义。
-3. 运行方法、artifact 契约和验证证据以 [`../sw-dev/runbook.md`](../sw-dev/runbook.md)、[`../sw-dev/dataset-v2-runbook.md`](../sw-dev/dataset-v2-runbook.md) 和 [`../sw-dev/artifact-schema.md`](../sw-dev/artifact-schema.md) 为准。
+3. 软件架构、需求与 artifact 契约以 [`../sw-dev/README.md`](../sw-dev/README.md) 和 [`../sw-dev/artifact-schema.md`](../sw-dev/artifact-schema.md) 为准；一次性操作与验证记录不作为长期文档维护。
 
 发生冲突时，不得用下一阶段方案反向改变现有协议，也不得把现有 legacy15 流程冒充为新研究实现。
 

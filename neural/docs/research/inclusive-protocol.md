@@ -26,7 +26,7 @@ OOF AUC、ROC、工作点效率和 KS 使用 `metric_weight = abs(physical_weigh
 
 inclusive 预处理表不持久化 `train_weight`。模型和 checkpoint 绑定 fold/final scientific state，包含质量边界、类别归一化、协议哈希和数据集身份。development 与 test 的质量诊断使用同一冻结科学状态。
 
-工程命令、产物字段和正常/统计不足布局见 [`../sw-dev/dataset-v2-runbook.md`](../sw-dev/dataset-v2-runbook.md) 与 [`../sw-dev/artifact-schema.md`](../sw-dev/artifact-schema.md)。
+软件流程、产物字段和正常/统计不足布局见 [`../sw-dev/training-and-evaluation-design.md`](../sw-dev/training-and-evaluation-design.md) 与 [`../sw-dev/artifact-schema.md`](../sw-dev/artifact-schema.md)。
 
 ## 与新 H4l 研究的关系
 
