@@ -1,0 +1,17 @@
+{
+  "schema_version": "h4l-p0-validation-v1",
+  "status": "pending",
+  "dataset": "atlas2020_4lep",
+  "protocol_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "source_evidence_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "evidence_id": null,
+  "independent_reference": null,
+  "physical_definitions": {
+    "processes": {"status": "pending", "reference": null},
+    "units": {"status": "pending", "reference": null},
+    "four_vectors": {"status": "pending", "reference": null},
+    "pairing": {"status": "pending", "reference": null},
+    "weights": {"status": "pending", "reference": null},
+    "selection": {"status": "pending", "reference": null}
+  }
+}

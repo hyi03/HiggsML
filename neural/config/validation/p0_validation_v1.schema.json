@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "p0_validation_v1.schema.json",
+  "title": "H4l P0 independent validation evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "status", "dataset", "protocol_sha256", "source_evidence_sha256", "evidence_id", "independent_reference", "physical_definitions"],
+  "properties": {
+    "schema_version": {"const": "h4l-p0-validation-v1"},
+    "status": {"enum": ["pending", "validated"]},
+    "dataset": {"const": "atlas2020_4lep"},
+    "protocol_sha256": {"$ref": "#/$defs/digest"},
+    "source_evidence_sha256": {"$ref": "#/$defs/digest"},
+    "evidence_id": {"type": ["string", "null"]},
+    "independent_reference": {"type": ["string", "null"]},
+    "physical_definitions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["processes", "units", "four_vectors", "pairing", "weights", "selection"],
+      "properties": {
+        "processes": {"$ref": "#/$defs/definition"},
+        "units": {"$ref": "#/$defs/definition"},
+        "four_vectors": {"$ref": "#/$defs/definition"},
+        "pairing": {"$ref": "#/$defs/definition"},
+        "weights": {"$ref": "#/$defs/definition"},
+        "selection": {"$ref": "#/$defs/definition"}
+      }
+    }
+  },
+  "allOf": [{
+    "if": {"properties": {"status": {"const": "validated"}}, "required": ["status"]},
+    "then": {
+      "properties": {
+        "evidence_id": {"type": "string", "minLength": 1},
+        "independent_reference": {"type": "string", "minLength": 1},
+        "physical_definitions": {
+          "properties": {
+            "processes": {"$ref": "#/$defs/validated_definition"},
+            "units": {"$ref": "#/$defs/validated_definition"},
+            "four_vectors": {"$ref": "#/$defs/validated_definition"},
+            "pairing": {"$ref": "#/$defs/validated_definition"},
+            "weights": {"$ref": "#/$defs/validated_definition"},
+            "selection": {"$ref": "#/$defs/validated_definition"}
+          }
+        }
+      }
+    }
+  }],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reference"],
+      "properties": {
+        "status": {"enum": ["pending", "validated"]},
+        "reference": {"type": ["string", "null"]}
+      }
+    },
+    "validated_definition": {
+      "type": "object",
+      "properties": {
+        "status": {"const": "validated"},
+        "reference": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}
