@@ -253,7 +253,8 @@ python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/datas
 脚本把三个绑定文件保存在 `<run-root>/inputs/`，成功后打印可直接执行的 `Next batch command`。
 正式执行时会在标准错误流显示 `H4l prerequisites` 总进度条，共 11 个阶段：audit、prepare、
 3 次训练、5 次校准和 templates。进度条后缀显示当前阶段；只有当前子命令成功结束后才推进，
-任一步失败仍保留原始错误信息和退出码。
+任一步失败仍保留原始错误信息和退出码。每个子命令运行期间还会每秒输出累计运行秒数，
+即使终端无法绘制动态进度条，也能确认进程仍在运行。
 
 如只需预览前置命令，在上述命令末尾追加 `--plan-only`；计划模式不创建 run，也不显示动态进度条。
 在 CI 或需要保存纯文本日志时，可关闭进度条，命令执行内容不变：
@@ -276,8 +277,9 @@ python scripts/h4l_run.py --seed 42 --prepared-run runs/h4l-feature-combinations
 
 正式执行时会在标准错误流显示 `H4l batch seed <seed>` 总进度条，共 35 个阶段：16 次训练、
 16 次校准、templates、infer 和 report。进度条后缀显示当前基线、特征组合或收尾阶段；只有子命令
-成功结束后才推进。`--plan-only` 不显示动态进度条；在 CI 或需要纯文本日志时，可在批次命令末尾
-追加 `--no-progress`，执行内容和科学门禁不变。
+成功结束后才推进。每个子命令运行期间还会每秒输出累计运行秒数，即使终端无法绘制动态进度条，
+也能确认进程仍在运行。`--plan-only` 不显示动态进度条；在 CI 或需要纯文本日志时，可在批次命令
+末尾追加 `--no-progress`，执行内容和科学门禁不变。
 
 #### 5.1.4 查看和检查结果
 
