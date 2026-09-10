@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 from urllib.error import HTTPError, URLError
@@ -203,20 +204,28 @@ def test_symlink_rejected(setup, tmp_path, target):
     assert not calls
 
 
-def test_retry_restarts_when_server_ignores_range(setup, monkeypatch):
-    data, _, _, _ = setup
-    binding, directory, receipt = pair_paths(setup)
+def test_retry_reuses_matching_prefix_when_server_ignores_range(setup, monkeypatch, capsys):
+    _, _, payloads, _ = setup
+    binding, directory, _ = pair_paths(setup)
+    directory.mkdir(parents=True)
+    destination = directory / binding.members[0].filename
+    monkeypatch.setattr(init, 'CHUNK_SIZE', 2)
     original = init.urlopen; count = 0
     def transient(request, timeout):
         nonlocal count
         count += 1
-        if count == 1: return Response(b'partial')
+        if count == 1: return Response(payloads[0][:7])
         if count == 2: assert request.get_header('Range') == 'bytes=7-'
         return original(request, timeout)
     monkeypatch.setattr(init, 'urlopen', transient)
-    init.initialize(data, dataset=binding.dataset_name)
-    assert count == 3
-    assert receipt.exists()
+    init.download(binding.members[0], destination)
+    assert count == 2
+    assert destination.read_bytes() == payloads[0]
+    output = capsys.readouterr().out
+    assert 'server ignored Range; validating saved prefix' in output
+    assert 'restarting from zero' not in output
+    percentages = [float(value) for value in re.findall(r']\s+([0-9.]+)%', output)]
+    assert percentages == sorted(percentages)
     assert not list(directory.glob('*.part'))
 
 

@@ -32,10 +32,10 @@ DATASET_NAMES = _contract.DATASET_NAMES
 load_dataset = _contract.load_dataset
 
 CHUNK_SIZE = 1024 * 1024
-VERSION = "2.1"
+VERSION = "2.2"
 USER_AGENT = f"HiggsML-data-initializer/{VERSION}"
 TIMEOUT = 60
-MAX_ATTEMPTS = 3
+MAX_ATTEMPTS = 10
 RECEIPT_SCHEMA = "higgsml.download-receipt.v1"
 
 
@@ -139,12 +139,17 @@ def download(member: Member, destination: Path) -> None:
                                 raise RuntimeError(f"invalid Content-Range: {content_range!r}")
                             end = int(match[2]) + 1
                         elif response.status == 200:
-                            # A server may ignore Range. Never append a full response.
                             if offset:
-                                print("  server ignored Range; restarting from zero")
-                            offset = 0
-                            output.seek(0)
-                            output.truncate()
+                                print("  server ignored Range; validating saved prefix")
+                                output.seek(0)
+                                remaining = offset
+                                while remaining:
+                                    replayed = response.read(min(CHUNK_SIZE, remaining))
+                                    if not replayed:
+                                        raise RuntimeError("full response ended before saved prefix")
+                                    if output.read(len(replayed)) != replayed:
+                                        raise RuntimeError("full response does not match saved prefix")
+                                    remaining -= len(replayed)
                         else:
                             raise RuntimeError(f"HTTP status {response.status}")
                         output.seek(offset)
