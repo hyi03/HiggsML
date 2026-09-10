@@ -26,6 +26,7 @@
 - [`test-opening-protocol.md`](test-opening-protocol.md)：冻结 held-out MC 评价边界。
 - [`inclusive-protocol.md`](inclusive-protocol.md)：正式无固定质量窗流程。
 - [`mass-decorrelation.md`](mass-decorrelation.md)：质量雕刻、AUC、KS、λ 和条件 CDF。
+- [`mu-precision-as-primary-objective.md`](mu-precision-as-primary-objective.md)：μ 精度的定义、论文主目标理由及其与 AUC 的关系。
 - [`current-research-status.md`](current-research-status.md)：当前能力与 H4l 方案缺口。
 
 所有内容均为 MC-only educational/technical demo，不是 ATLAS 结果、Higgs discovery 或物理测量。

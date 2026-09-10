@@ -84,10 +84,51 @@ def exact_shapley(values, *, family_id, seed, groups=("A","B","C","D")):
     return {"status":"valid","family_id":family_id,"seed":seed,"value_function":"negative_mu_interval_width","unit":"mu_interval_width","contributions":phi,"efficiency_residual":residual,"interactions":interactions}
 
 
-def build_report(candidate_statuses, *, primary_records=(), environment=None, results=None):
+def feature_combination_comparison(results, *, seed, family_id="engineered19_raw_T1"):
+    """Build a complete single-seed comparison for all nonempty A/B/C/D subsets."""
+    groups=("A","B","C","D")
+    subsets=["".join(value) for size in range(5) for value in itertools.combinations(groups,size)]
+    expected={subset:(f"M0c:{seed}" if not subset else f"M3:{seed}:groups={subset}") for subset in subsets}
+    widths={}; failures=[]; rows=[]
+    for subset,candidate_key in expected.items():
+        result=results.get(candidate_key)
+        if result is None:
+            failures.append({"subset":subset,"candidate_key":candidate_key,"reason":"missing_result"})
+            continue
+        asimov=result.get("asimov",{})
+        injections=[item for item in asimov.get("results",[]) if item.get("mu")==1]
+        interval=injections[0].get("intervals",[{}])[0] if len(injections)==1 and injections[0].get("intervals") else {}
+        expected_candidate="M0c" if not subset else "M3"
+        valid=(result.get("status")=="valid" and result.get("seed")==seed and
+               asimov.get("candidate_id")==expected_candidate and asimov.get("layer")=="T1" and
+               asimov.get("expectation_kind")=="model_self_asimov" and len(injections)==1 and
+               interval.get("status")=="valid" and np.isfinite(interval.get("width",np.nan)) and interval.get("width",0)>0)
+        if not valid:
+            failures.append({"subset":subset,"candidate_key":candidate_key,"reason":"invalid_or_incomparable_result"})
+            continue
+        width=float(interval["width"]); widths[subset]=width
+        rows.append({"subset":subset,"candidate_key":candidate_key,"width68":width})
+    if failures:
+        return {"status":"feature_combination_incomplete","family_id":family_id,"seed":seed,
+                "expected_nonempty_combinations":15,"expected_total_with_baseline":16,
+                "failures":failures,"available_subsets":sorted(widths,key=lambda value:(len(value),value))}
+    baseline=next(row for row in rows if row["subset"]=="")
+    nonempty=[row for row in rows if row["subset"]]
+    for row in nonempty:
+        row["relative_improvement_vs_empty"]=1-row["width68"]/baseline["width68"]
+    nonempty.sort(key=lambda row:(row["width68"],len(row["subset"]),row["subset"]))
+    values={subset:-width for subset,width in widths.items()}
+    return {"status":"valid","family_id":family_id,"seed":seed,
+            "comparison_contract":"same_population_common_grid_T1_mu1_model_self_asimov",
+            "expected_nonempty_combinations":15,"expected_total_with_baseline":16,
+            "baseline":baseline,"nonempty_combinations":nonempty,
+            "shapley":exact_shapley(values,family_id=family_id,seed=seed)}
+
+
+def build_report(candidate_statuses, *, primary_records=(), environment=None, results=None, feature_comparisons=()):
     if not candidate_statuses:
         raise ResearchError("Report must enumerate planned candidate states")
-    return {"status":"software_report","scope":"MC-only educational/technical research","candidate_statuses":dict(candidate_statuses),"primary_comparison":main_comparison(primary_records),"environment":environment or {"repository_authority_validation":"not_run","scientific_numerical_validation":"not_run"},"results":results or {},"scientific_results_obtained":False,"future_R_experiments":"require_separate_registration"}
+    return {"status":"software_report","scope":"MC-only educational/technical research","candidate_statuses":dict(candidate_statuses),"primary_comparison":main_comparison(primary_records),"feature_combination_comparisons":list(feature_comparisons),"environment":environment or {"repository_authority_validation":"not_run","scientific_numerical_validation":"not_run"},"results":results or {},"scientific_results_obtained":False,"future_R_experiments":"require_separate_registration"}
 
 
 def write_learning_curves(models, path):

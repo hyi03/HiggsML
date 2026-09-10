@@ -43,7 +43,7 @@ python -m pip install --no-deps -e .
 python -m pip check
 ```
 
-已有 `pytorch` 环境时跳过创建步骤。后续命令均在 `neural/` 目录、已激活的环境中执行。锁定环境的使用见 [v2 运行手册](neural/docs/dataset-v2-runbook.md)。
+已有 `pytorch` 环境时跳过创建步骤。后续命令均在 `neural/` 目录、已激活的环境中执行。锁定环境的使用见 [v2 运行手册](neural/docs/sw-dev/dataset-v2-runbook.md)。
 
 ### 1.4 运行约定
 
@@ -56,7 +56,7 @@ python -m pip check
 
 本流程不额外施加 `m4l` 质量窗，保留通过现有 trigger、轻子、SFOS、Z1/Z2 等选择的全部 MC。所有 development 事件参与训练，早停、候选选择和主评价均使用全范围；test 仍独立封存。`m4l` 不进入分类器，固定 15 个输入特征及现有 AUC、KS、效率门槛保持不变。
 
-预处理和训练必须使用配套的 `inclusive` 协议，不添加 `--debug`。文件名描述用途，内部 schema 和精确内容哈希用于兼容性与绑定校验。算法及科学边界详见 [inclusive 协议手册](neural/docs/inclusive-protocol.md)。
+预处理和训练必须使用配套的 `inclusive` 协议，不添加 `--debug`。文件名描述用途，内部 schema 和精确内容哈希用于兼容性与绑定校验。算法及科学边界详见 [inclusive 协议手册](neural/docs/research/inclusive-protocol.md)。
 
 ### 2.1 higgsml-preprocess：无窗预处理
 
@@ -176,7 +176,410 @@ higgsml-test `
 
 可选 `--authorization-reference` 的用法与正式模式相同：提供公开审计引用时启用一次性 claim；省略时允许重复评价，每次仍须使用新输出目录。
 
-## 5. 验证与参考
+## 5. H4l 质量条件研究流程
+
+项目方案对应的研究软件入口是 `higgsml-research`。它是独立的 MC-only 研究流程，
+不改变历史 `higgsml-preprocess`、`higgsml-train` 和 `higgsml-test` 的固定 15 维分类器、
+资格门槛或 test-opening 规则。只有绑定版本化研究协议的新模型，才允许把 `m4l` 作为共同质量条件输入；
+不得把这一例外用于历史模型或真实数据。
+
+以下命令均从仓库的 `neural/` 目录执行。`runs/<名称>` 只是命名示例；成功、科学终态或失败的
+run 均不可覆盖，重跑时必须更换目录名。尖括号变量表示必须由外部审计或实际运行提供的文件，
+不能用自行编造的 JSON 代替独立验证证据。
+
+### 5.1 环境与公共变量
+
+```powershell
+cd neural
+conda activate pytorch
+python -m pip install -r requirements-research.txt
+python -m pip install --no-deps -e .
+higgsml-research --help
+
+$Dataset = "atlas2020_4lep"
+$Protocol = "config/research_protocol_v1.json"
+$Profile = "config/profiles/open_data_2020.yaml"
+$RootManifest = "<受控的-h4l-root-input-v1-manifest.json>"
+$P0Validation = "<已完成外部审计的-p0-validation.json>"
+$T1Validation = "<已完成独立验证的-t1-validation.json>"
+$BackendConfig = "<固定ME后端与过程定义.json>"
+$MeReference = "<独立MELA数值参考.json>"
+$PrepareRun = "runs/h4l-prepare-001"
+```
+
+受控 ROOT manifest 必须来自已有下载校验记录并绑定 `mc_only: true`、两个 MC 文件的 SHA256、
+大小和 mtime。首先只记录来源元数据，再使用封存 profile 和已完成的 P0 外部审计生成 prepared run：
+
+```powershell
+higgsml-research audit `
+  --dataset $Dataset `
+  --protocol $Protocol `
+  --input-manifest $RootManifest `
+  --run-dir runs/h4l-audit-metadata-001
+
+higgsml-research prepare `
+  --dataset $Dataset `
+  --protocol $Protocol `
+  --input-manifest $RootManifest `
+  --profile $Profile `
+  --p0-validation $P0Validation `
+  --run-dir $PrepareRun
+```
+
+只有显式标记的合成输入才能改用下面的 prepare 命令；该路径不构成真实 MC 或 P0 验证：
+
+```powershell
+$SyntheticEvents = "<显式标记的合成-events.jsonl>"
+higgsml-research prepare `
+  --dataset $Dataset `
+  --protocol $Protocol `
+  --events $SyntheticEvents `
+  --run-dir runs/h4l-prepare-synthetic-001
+```
+
+### 5.2 最小候选矩阵与 G1
+
+先运行种子 42 的 M0c、M2、M3；其中 M2 的 physical CDF 产生 M4，M3 的 physical CDF 产生 M5。
+`raw` 校准仍负责冻结阈值和模型身份。以下五个 calibration run 构成 G1 的最小候选矩阵：
+
+```powershell
+foreach ($candidate in @("M0c", "M2", "M3")) {
+  higgsml-research train `
+    --dataset $Dataset `
+    --protocol $Protocol `
+    --input-run $PrepareRun `
+    --candidate $candidate `
+    --seed 42 `
+    --run-dir "runs/h4l-$($candidate.ToLower())-42"
+}
+
+higgsml-research calibrate --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --model-run runs/h4l-m0c-42 --transform raw --run-dir runs/h4l-m0c-raw-42
+higgsml-research calibrate --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --model-run runs/h4l-m2-42  --transform raw --run-dir runs/h4l-m2-raw-42
+higgsml-research calibrate --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --model-run runs/h4l-m2-42  --transform physical --run-dir runs/h4l-m4-42
+higgsml-research calibrate --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --model-run runs/h4l-m3-42  --transform raw --run-dir runs/h4l-m3-raw-42
+higgsml-research calibrate --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --model-run runs/h4l-m3-42  --transform physical --run-dir runs/h4l-m5-42
+
+$GateRun = "runs/h4l-templates-g1-001"
+higgsml-research templates `
+  --dataset $Dataset `
+  --protocol $Protocol `
+  --input-run $PrepareRun `
+  --calibration-run runs/h4l-m0c-raw-42 `
+  --calibration-run runs/h4l-m2-raw-42 `
+  --calibration-run runs/h4l-m4-42 `
+  --calibration-run runs/h4l-m3-raw-42 `
+  --calibration-run runs/h4l-m5-42 `
+  --t1-validation $T1Validation `
+  --run-dir $GateRun
+```
+
+继续之前应检查 `$GateRun/g1.json` 的 `status` 确实为 `passed`。不能通过放宽支持域、signed yield、
+有效统计量或 T1 门槛来强行通过 G1。
+
+### 5.3 矩阵元 M1/M1c
+
+MELA 在独立 Linux/WSL 环境运行。后端配置必须精确记录 backend 的 name/version/configuration SHA256，
+以及 signal/background/PDF/approximation；`$MeReference` 必须是绑定相同 adapter SHA256 的独立数值参考。
+
+```powershell
+$MeExportRun = "runs/h4l-me-export-development-001"
+higgsml-research me-export `
+  --dataset $Dataset `
+  --protocol $Protocol `
+  --input-run $PrepareRun `
+  --backend-config $BackendConfig `
+  --run-dir $MeExportRun
+```
+
+在 Linux/WSL 的 MELA 环境中执行；不要用任意替代概率公式：
+
+```bash
+python scripts/research_mela.py \
+  --input runs/h4l-me-export-development-001/me-input.json \
+  --adapter /path/to/verified_mela_adapter.py \
+  --adapter-sha256 <64位小写SHA256> \
+  --output /path/to/me-development-output.json
+```
+
+回到 `neural/` 和 `pytorch` 环境后导入并生成 M1/M1c：
+
+```powershell
+$MeDevelopmentResults = "<Linux或WSL产生的-me-development-output.json>"
+$MeImportRun = "runs/h4l-me-import-development-001"
+higgsml-research me-import `
+  --dataset $Dataset `
+  --protocol $Protocol `
+  --input-run $PrepareRun `
+  --export-run $MeExportRun `
+  --results $MeDevelopmentResults `
+  --reference $MeReference `
+  --run-dir $MeImportRun
+
+higgsml-research calibrate --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --model-run $MeImportRun --transform raw --run-dir runs/h4l-m1-raw
+higgsml-research calibrate --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --model-run $MeImportRun --transform physical --run-dir runs/h4l-m1c
+```
+
+### 5.4 完整候选矩阵
+
+G1 通过后，补齐种子 43–46 的基础候选、五个种子的固定 200 轮对照与 M6 λ 扫描，最后运行 L1:42。
+下面的 `$AllCalibrationRuns` 同时收集最终共同模板所需的全部 calibration run：
+
+```powershell
+$AllCalibrationRuns = [System.Collections.Generic.List[string]]::new()
+@(
+  "runs/h4l-m0c-raw-42", "runs/h4l-m2-raw-42", "runs/h4l-m4-42",
+  "runs/h4l-m3-raw-42", "runs/h4l-m5-42", "runs/h4l-m1-raw", "runs/h4l-m1c"
+) | ForEach-Object { $AllCalibrationRuns.Add($_) }
+
+foreach ($seed in 43..46) {
+  foreach ($candidate in @("M0c", "M2", "M3")) {
+    $modelRun = "runs/h4l-$($candidate.ToLower())-$seed"
+    $rawRun = "runs/h4l-$($candidate.ToLower())-raw-$seed"
+    higgsml-research train --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --candidate $candidate --seed $seed --gate-run $GateRun --run-dir $modelRun
+    higgsml-research calibrate --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --model-run $modelRun --transform raw --run-dir $rawRun
+    $AllCalibrationRuns.Add($rawRun)
+
+    if ($candidate -eq "M2") {
+      $derivedRun = "runs/h4l-m4-$seed"
+      higgsml-research calibrate --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --model-run $modelRun --transform physical --run-dir $derivedRun
+      $AllCalibrationRuns.Add($derivedRun)
+    }
+    if ($candidate -eq "M3") {
+      $physicalRun = "runs/h4l-m5-$seed"
+      $absoluteRun = "runs/h4l-m5-abs-$seed"
+      higgsml-research calibrate --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --model-run $modelRun --transform physical --run-dir $physicalRun
+      higgsml-research calibrate --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --model-run $modelRun --transform absolute --run-dir $absoluteRun
+      $AllCalibrationRuns.Add($physicalRun)
+      $AllCalibrationRuns.Add($absoluteRun)
+    }
+  }
+}
+
+# 种子 42 的 M5-abs 尚未在最小矩阵中生成。
+higgsml-research calibrate --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --model-run runs/h4l-m3-42 --transform absolute --run-dir runs/h4l-m5-abs-42
+$AllCalibrationRuns.Add("runs/h4l-m5-abs-42")
+
+foreach ($seed in 42..46) {
+  $modelRun = "runs/h4l-m3-fixed200-$seed"
+  $calibrationRun = "runs/h4l-m3-fixed200-raw-$seed"
+  higgsml-research train --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --candidate M3-fixed200 --seed $seed --gate-run $GateRun --run-dir $modelRun
+  higgsml-research calibrate --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --model-run $modelRun --transform raw --run-dir $calibrationRun
+  $AllCalibrationRuns.Add($calibrationRun)
+
+  foreach ($strength in @("0.05", "0.1", "0.2", "0.5")) {
+    $tag = $strength.Replace(".", "p")
+    $m6ModelRun = "runs/h4l-m6-$seed-lambda-$tag"
+    $m6CalibrationRun = "runs/h4l-m6-raw-$seed-lambda-$tag"
+    higgsml-research train --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --candidate M6 --seed $seed --strength $strength --gate-run $GateRun --run-dir $m6ModelRun
+    higgsml-research calibrate --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --model-run $m6ModelRun --transform raw --run-dir $m6CalibrationRun
+    $AllCalibrationRuns.Add($m6CalibrationRun)
+  }
+}
+
+higgsml-research train --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --candidate L1 --seed 42 --gate-run $GateRun --run-dir runs/h4l-l1-42
+higgsml-research calibrate --dataset $Dataset --protocol $Protocol --input-run $PrepareRun --model-run runs/h4l-l1-42 --transform raw --run-dir runs/h4l-l1-raw-42
+$AllCalibrationRuns.Add("runs/h4l-l1-raw-42")
+```
+
+### 5.5 最终共同模板与冻结
+
+将所有候选放到同一个质量网格中。PowerShell 数组 splatting 用来为每个路径重复传入
+`--calibration-run`：
+
+```powershell
+$FinalTemplateRun = "runs/h4l-templates-final-001"
+$TemplateArgs = @(
+  "templates", "--dataset", $Dataset, "--protocol", $Protocol,
+  "--input-run", $PrepareRun, "--t1-validation", $T1Validation,
+  "--run-dir", $FinalTemplateRun
+)
+foreach ($runPath in $AllCalibrationRuns) {
+  $TemplateArgs += @("--calibration-run", $runPath)
+}
+higgsml-research @TemplateArgs
+
+$FreezeRun = "runs/h4l-freeze-001"
+higgsml-research freeze `
+  --dataset $Dataset `
+  --protocol $Protocol `
+  --input-run $PrepareRun `
+  --template-run $FinalTemplateRun `
+  --run-dir $FreezeRun
+```
+
+如果候选已形成 `blocked_missing_reference`、`insufficient_statistics`、`training_failed` 或 `fit_failed`
+等允许的终态，应根据已有不可变失败产物制作完整的外部 candidate ledger，并在 freeze 命令中增加
+`--candidate-ledger <candidate-ledger.json>`；不得把未运行项伪报为终态。freeze 同时把压力测试参考固定为 `M3:42`。
+
+### 5.6 冻结后的 assessment ME 补充
+
+冻结前的 ME 导出不会包含 assessment 事件。M1/M1c 进入最终模板时，冻结后必须用同一 prepared population、
+同一后端、adapter 和独立参考重新导出并只补充缺失的 assessment 分数：
+
+```powershell
+$AssessmentMeExportRun = "runs/h4l-me-export-assessment-001"
+higgsml-research me-export `
+  --dataset $Dataset `
+  --protocol $Protocol `
+  --input-run $PrepareRun `
+  --freeze-run $FreezeRun `
+  --backend-config $BackendConfig `
+  --run-dir $AssessmentMeExportRun
+```
+
+```bash
+python scripts/research_mela.py \
+  --input runs/h4l-me-export-assessment-001/me-input.json \
+  --adapter /path/to/verified_mela_adapter.py \
+  --adapter-sha256 <与冻结前完全相同的64位小写SHA256> \
+  --output /path/to/me-assessment-output.json
+```
+
+```powershell
+$AssessmentMeResults = "<Linux或WSL产生的-me-assessment-output.json>"
+$AssessmentMeImportRun = "runs/h4l-me-import-assessment-001"
+higgsml-research me-import `
+  --dataset $Dataset `
+  --protocol $Protocol `
+  --input-run $PrepareRun `
+  --export-run $AssessmentMeExportRun `
+  --results $AssessmentMeResults `
+  --reference $MeReference `
+  --run-dir $AssessmentMeImportRun
+```
+
+### 5.7 推断、T2、压力测试与报告
+
+先运行不打开 assessment 的共同模板 Asimov/T0 和 Asimov+toys/T1。随后 assessment 调用必须绑定 freeze；
+由于上一节的冻结后 ME 导出已经建立一次持久 claim，后续命令显式使用 `--repeat-assessment`：
+
+```powershell
+$ResultRuns = [System.Collections.Generic.List[string]]::new()
+
+$T0Run = "runs/h4l-infer-model-self-t0-mu1-001"
+higgsml-research infer --dataset $Dataset --protocol $Protocol --template-run $FinalTemplateRun --layer T0 --mu 1 --run-dir $T0Run
+$ResultRuns.Add($T0Run)
+
+$T1Run = "runs/h4l-infer-model-self-t1-mu1-001"
+higgsml-research infer --dataset $Dataset --protocol $Protocol --template-run $FinalTemplateRun --layer T1 --mu 1 --toys 500 --seed 42 --run-dir $T1Run
+$ResultRuns.Add($T1Run)
+
+$AssessmentRun = "runs/h4l-infer-assessment-fixed-t1-mu1-001"
+higgsml-research infer `
+  --dataset $Dataset --protocol $Protocol `
+  --input-run $PrepareRun --template-run $FinalTemplateRun --freeze-run $FreezeRun `
+  --assessment-me-run $AssessmentMeImportRun `
+  --expectation-kind assessment --procedure fixed --layer T1 `
+  --mu 1 --toys 500 --seed 42 --repeat-assessment `
+  --run-dir $AssessmentRun
+$ResultRuns.Add($AssessmentRun)
+
+$T2Run = "runs/h4l-infer-assessment-t2-t1-mu1-001"
+higgsml-research infer `
+  --dataset $Dataset --protocol $Protocol `
+  --input-run $PrepareRun --template-run $FinalTemplateRun --freeze-run $FreezeRun `
+  --assessment-me-run $AssessmentMeImportRun `
+  --expectation-kind assessment --procedure t2 --layer T1 `
+  --mu 1 --toys 0 --seed 42 --repeat-assessment `
+  --run-dir $T2Run
+$ResultRuns.Add($T2Run)
+
+foreach ($kind in @("normalization", "mass", "score", "correlation")) {
+  foreach ($direction in @(-1, 1)) {
+    foreach ($mode in @("omitted", "modeled")) {
+      $directionTag = if ($direction -eq -1) { "minus" } else { "plus" }
+      $stressRun = "runs/h4l-infer-stress-$kind-$directionTag-$mode-001"
+      higgsml-research infer `
+        --dataset $Dataset --protocol $Protocol `
+        --input-run $PrepareRun --template-run $FinalTemplateRun --freeze-run $FreezeRun `
+        --assessment-me-run $AssessmentMeImportRun `
+        --expectation-kind assessment --procedure stress --layer T1 `
+        --stress-kind $kind --stress-direction $direction --stress-mode $mode `
+        --reference-candidate "M3:42" `
+        --mu 1 --toys 500 --seed 42 --repeat-assessment `
+        --run-dir $stressRun
+      $ResultRuns.Add($stressRun)
+    }
+  }
+}
+
+$ReportRun = "runs/h4l-report-001"
+$ReportArgs = @("report", "--dataset", $Dataset, "--protocol", $Protocol, "--run-dir", $ReportRun)
+foreach ($runPath in $ResultRuns) {
+  $ReportArgs += @("--result-run", $runPath)
+}
+higgsml-research @ReportArgs
+```
+
+如未运行 M1/M1c，并已通过 candidate ledger 将它们记为允许的终态，则省略 ME 两节、从
+`$AllCalibrationRuns` 中移除 `runs/h4l-m1-raw` / `runs/h4l-m1c`，并省略所有
+`--assessment-me-run` 参数。其他候选若形成允许的终态，也不得把不存在的 calibration run 加入最终模板。
+assessment 首次打开若不是由冻结后 `me-export` 触发，则首次 infer 不加
+`--repeat-assessment`；只有相同冻结分析的后续调用才增加该参数。每个 μ、seed、procedure、压力方向和
+重复实验仍须使用新的 run 目录，不能复用上面的 `-001`。
+
+### 5.8 验证与解释边界
+
+```powershell
+python -m pytest tests/research -q
+python -m pip check
+python -m pytest -q
+python -m build --wheel --no-isolation
+```
+
+冻结后 assessment 只能使用已冻结的模型、CDF、阈值、共同质量网格和 `M3:42` 压力测试参考。
+内部异常会保留可报告的失败 manifest，并以退出码 70 结束。任何阶段失败后都应检查该 run 的
+`manifest.json` / `failure.json`，修正根因后改用新目录，不能覆盖失败产物。
+
+该流程的默认协议明确标记为软件合成验证，不等于真实 MC、MELA 物理参考、signed-MC T1 近似或论文实验已经完成。
+真实 MC 先导、独立 MELA 验证、原生 ARM64 权威验收和 R1–R4 实验仍需分别通过各自门槛。
+详见 [H4l 项目方案](neural/docs/research/H4l-Research-Project.md)、
+[研究运行手册](neural/docs/sw-dev/h4l-research-runbook.md) 和
+[开发与验证记录](neural/docs/sw-dev/h4l-research-development.md)。
+
+### 5.9 单种子完整特征组合训练
+
+`scripts/run_h4l_feature_combinations.ps1` 自动训练 A、B、C、D 的15种非空组合，
+并额外训练同流程 M0c 空集基线。随后统一执行 raw 分数校准、共同模板、μ=1 的 T1 Asimov 推断、
+15组合排序和精确 Shapley 比较。该批处理不打开 assessment 或历史 held-out test。
+
+默认配置为 `config/research_feature_combinations_seed42.json`。执行前将其中以下路径改为当前尚未打开 assessment 的同一事件总体：
+
+- `prepared_run`：已通过 P0/G0 的 prepare run；
+- `g1_gate_run`：同一 prepared run 上已经通过 G1 的 templates run；
+- `t1_validation`：与当前研究协议摘要绑定的独立 T1 验证证据；
+- `output_root`：`runs/` 下尚不存在的新批次目录。
+
+先只输出计划，不创建 run：
+
+```powershell
+cd neural
+conda activate pytorch
+./scripts/run_h4l_feature_combinations.ps1 -Seed 42 -PlanOnly
+```
+
+确认路径后执行 seed42 完整批次：
+
+```powershell
+./scripts/run_h4l_feature_combinations.ps1 -Seed 42
+```
+
+也可以不修改配置文件，直接覆盖运行路径：
+
+```powershell
+./scripts/run_h4l_feature_combinations.ps1 `
+  -Seed 42 `
+  -PreparedRun runs/h4l-prepare-001 `
+  -GateRun runs/h4l-g1-001 `
+  -T1Validation runs/h4l-t1-validation-001/t1-validation.json `
+  -OutputRoot runs/h4l-feature-combinations-seed42-001
+```
+
+批次包含16次训练：15个非空组合加1个 M0c 空集基线。最终结果位于
+`<output_root>/report/report.json` 和 `report.md`。只有16个同总体、同网格、T1、μ=1 的结果全部有效时，
+报告才生成有效 Shapley；缺失或失败组合不会用零值替代。更换 `-Seed` 时必须使用新的 `OutputRoot`。
+
+## 6. 验证与参考
 
 在已激活的 `pytorch` 环境、`neural/` 目录下检查依赖并运行测试套件：
 
@@ -185,11 +588,11 @@ python -m pip check
 python -m pytest -q
 ```
 
-- [正式无质量窗协议与产物说明](neural/docs/inclusive-protocol.md)
-- [Artifact schema](neural/docs/artifact-schema.md)
-- [有窗兼容与数据集运行手册](neural/docs/dataset-v2-runbook.md)
+- [正式无质量窗协议与产物说明](neural/docs/research/inclusive-protocol.md)
+- [Artifact schema](neural/docs/sw-dev/artifact-schema.md)
+- [有窗兼容与数据集运行手册](neural/docs/sw-dev/dataset-v2-runbook.md)
 - [Neural 实现说明](neural/README.md)
-- [数据下载验证记录](neural/docs/init-data-verification.md)
-- [v2 实际验证记录](neural/docs/dataset-v2-verification.md)
+- [数据下载验证记录](neural/docs/sw-dev/init-data-verification.md)
+- [v2 实际验证记录](neural/docs/sw-dev/dataset-v2-verification.md)
 
 Windows 或合成测试不能替代原生锁定 ARM64 与实际绑定数据的权威验证。项目仅用于 educational/technical demo。

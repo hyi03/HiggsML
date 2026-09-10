@@ -14,6 +14,7 @@
 - [Held-out MC Test 科研协议](research/test-opening-protocol.md)
 - [正式无固定质量窗协议](research/inclusive-protocol.md)
 - [质量去相关、KS 与条件校准](research/mass-decorrelation.md)
+- [为什么以 μ 精度作为论文主目标](research/mu-precision-as-primary-objective.md)
 - [当前科研与软件状态](research/current-research-status.md)
 
 ## `sw-dev/`：软件架构、需求与方案
