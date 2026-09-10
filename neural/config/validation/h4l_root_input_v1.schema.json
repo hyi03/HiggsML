@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "h4l_root_input_v1.schema.json",
+  "title": "H4l controlled ROOT input manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "dataset", "mc_only", "files"],
+  "properties": {
+    "schema_version": {"const": "h4l-root-input-v1"},
+    "dataset": {"const": "atlas2020_4lep"},
+    "mc_only": {"const": true},
+    "files": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["higgs", "zz"],
+      "properties": {
+        "higgs": {"$ref": "#/$defs/member"},
+        "zz": {"$ref": "#/$defs/member"}
+      }
+    }
+  },
+  "$defs": {
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "verified_size_bytes", "verified_mtime_ns"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "verified_size_bytes": {"type": "integer", "minimum": 1},
+        "verified_mtime_ns": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "t1_validation_v1.schema.json",
+  "title": "H4l T1 independent numerical validation evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "status", "dataset", "protocol_sha256", "evidence_id", "independent_reference", "correlation", "auxiliary", "modifier", "pyhf_version", "validation_summary"],
+  "properties": {
+    "schema_version": {"const": "h4l-t1-validation-v1"},
+    "status": {"enum": ["pending", "validated"]},
+    "dataset": {"const": "atlas2020_4lep"},
+    "protocol_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "evidence_id": {"type": ["string", "null"]},
+    "independent_reference": {"type": ["string", "null"]},
+    "correlation": {"const": "independent_process_bins"},
+    "auxiliary": {"const": "poisson_tau_gamma"},
+    "modifier": {"const": "shapesys"},
+    "pyhf_version": {"const": "0.7.6"},
+    "validation_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewed_by", "reviewed_at", "numerical_tests"],
+      "properties": {
+        "reviewed_by": {"type": ["string", "null"]},
+        "reviewed_at": {"type": ["string", "null"]},
+        "numerical_tests": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    }
+  },
+  "allOf": [{
+    "if": {"properties": {"status": {"const": "validated"}}, "required": ["status"]},
+    "then": {
+      "properties": {
+        "evidence_id": {"type": "string", "minLength": 1},
+        "independent_reference": {"type": "string", "minLength": 1},
+        "validation_summary": {
+          "properties": {
+            "reviewed_by": {"type": "string", "minLength": 1},
+            "reviewed_at": {"type": "string", "minLength": 1},
+            "numerical_tests": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+          }
+        }
+      }
+    }
+  }]
+}
