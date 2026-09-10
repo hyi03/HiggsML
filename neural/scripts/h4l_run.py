@@ -13,6 +13,7 @@ import sys
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
+from tqdm.auto import tqdm
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +50,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--t1-validation", type=Path)
     parser.add_argument("--output-root", type=Path)
     parser.add_argument("--plan-only", action="store_true")
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable the batch-stage progress bar.",
+    )
     return parser
 
 
@@ -172,46 +178,52 @@ def _run(args: argparse.Namespace) -> None:
     calibration_runs: list[Path] = []
     baseline_train = batch_root / "train" / "empty"
     baseline_calibration = batch_root / "calibrate" / "empty"
-    _invoke(
-        [
-            "train", *common,
-            "--input-run", str(prepared), "--gate-run", str(gate),
-            "--candidate", "M0c", "--seed", str(args.seed),
-            "--run-dir", str(baseline_train),
-        ],
-        plan_only=args.plan_only,
-    )
-    _invoke(
-        [
-            "calibrate", *common,
-            "--input-run", str(prepared), "--model-run", str(baseline_train),
-            "--transform", "raw", "--seed", str(args.seed),
-            "--run-dir", str(baseline_calibration),
-        ],
-        plan_only=args.plan_only,
-    )
+    steps = [
+        (
+            "train M0c baseline",
+            [
+                "train", *common,
+                "--input-run", str(prepared), "--gate-run", str(gate),
+                "--candidate", "M0c", "--seed", str(args.seed),
+                "--run-dir", str(baseline_train),
+            ],
+        ),
+        (
+            "calibrate M0c baseline",
+            [
+                "calibrate", *common,
+                "--input-run", str(prepared), "--model-run", str(baseline_train),
+                "--transform", "raw", "--seed", str(args.seed),
+                "--run-dir", str(baseline_calibration),
+            ],
+        ),
+    ]
     calibration_runs.append(baseline_calibration)
 
     for groups in EXPECTED_COMBINATIONS:
         train_run = batch_root / "train" / f"groups-{groups}"
         calibration_run = batch_root / "calibrate" / f"groups-{groups}"
-        _invoke(
+        steps.extend(
             [
-                "train", *common,
-                "--input-run", str(prepared), "--gate-run", str(gate),
-                "--candidate", "M3", "--groups", groups,
-                "--seed", str(args.seed), "--run-dir", str(train_run),
-            ],
-            plan_only=args.plan_only,
-        )
-        _invoke(
-            [
-                "calibrate", *common,
-                "--input-run", str(prepared), "--model-run", str(train_run),
-                "--transform", "raw", "--seed", str(args.seed),
-                "--run-dir", str(calibration_run),
-            ],
-            plan_only=args.plan_only,
+                (
+                    f"train groups {groups}",
+                    [
+                        "train", *common,
+                        "--input-run", str(prepared), "--gate-run", str(gate),
+                        "--candidate", "M3", "--groups", groups,
+                        "--seed", str(args.seed), "--run-dir", str(train_run),
+                    ],
+                ),
+                (
+                    f"calibrate groups {groups}",
+                    [
+                        "calibrate", *common,
+                        "--input-run", str(prepared), "--model-run", str(train_run),
+                        "--transform", "raw", "--seed", str(args.seed),
+                        "--run-dir", str(calibration_run),
+                    ],
+                ),
+            ]
         )
         calibration_runs.append(calibration_run)
 
@@ -225,27 +237,41 @@ def _run(args: argparse.Namespace) -> None:
     ]
     for calibration_run in calibration_runs:
         template_arguments.extend(["--calibration-run", str(calibration_run)])
-    _invoke(template_arguments, plan_only=args.plan_only)
+    steps.append(("templates", template_arguments))
 
     inference_run = batch_root / "inference"
-    _invoke(
-        [
-            "infer", *common,
-            "--template-run", str(template_run),
-            "--layer", "T1", "--mu", "1", "--seed", str(args.seed),
-            "--run-dir", str(inference_run),
-        ],
-        plan_only=args.plan_only,
+    steps.append(
+        (
+            "infer T1",
+            [
+                "infer", *common,
+                "--template-run", str(template_run),
+                "--layer", "T1", "--mu", "1", "--seed", str(args.seed),
+                "--run-dir", str(inference_run),
+            ],
+        )
     )
     report_run = batch_root / "report"
-    _invoke(
-        [
-            "report", *common,
-            "--result-run", str(inference_run),
-            "--seed", str(args.seed), "--run-dir", str(report_run),
-        ],
-        plan_only=args.plan_only,
+    steps.append(
+        (
+            "report",
+            [
+                "report", *common,
+                "--result-run", str(inference_run),
+                "--seed", str(args.seed), "--run-dir", str(report_run),
+            ],
+        )
     )
+
+    with tqdm(
+        steps,
+        desc=f"H4l batch seed {args.seed}",
+        unit="stage",
+        disable=args.plan_only or args.no_progress,
+    ) as progress:
+        for label, arguments in progress:
+            progress.set_postfix_str(label, refresh=True)
+            _invoke(arguments, plan_only=args.plan_only)
 
     if args.plan_only:
         print("Plan complete: 15 nonempty combinations plus the M0c empty baseline; no run was created.")

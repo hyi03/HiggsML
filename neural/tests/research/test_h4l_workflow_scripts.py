@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import argparse
 import hashlib
+import importlib.util
 import json
 import subprocess
 import sys
@@ -50,48 +52,20 @@ def _dataset_receipt(tmp_path: Path) -> tuple[Path, dict[str, Path]]:
     return receipt_path, files
 
 
-def _write_input_package(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
-    receipt, _ = _dataset_receipt(tmp_path)
-    package = tmp_path / "evidence-package"
-    completed = _run(
-        PREPARE_SCRIPT,
-        "--dataset-receipt", str(receipt),
-        "--write-input-package", str(package),
-    )
-    assert completed.returncode == 0, completed.stderr
-    return (
-        receipt,
-        package / "h4l-root-input-v1-manifest.json",
-        package / "p0-validation.pending.json",
-        package / "t1-validation.pending.json",
-    )
+def _load_prepare_module():
+    spec = importlib.util.spec_from_file_location("h4l_prepare_test_module", PREPARE_SCRIPT)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
-def _complete_pending_evidence(
-    p0_path: Path, t1_path: Path, *, status: str = "validated"
-) -> None:
-    p0 = json.loads(p0_path.read_text(encoding="utf-8"))
-    p0.update(
-        status=status,
-        evidence_id="independent-p0-review-001",
-        independent_reference="external-review-record:p0-001",
-    )
-    for name, definition in p0["physical_definitions"].items():
-        definition.update(status="validated", reference=f"external-review-record:{name}")
-    p0_path.write_text(json.dumps(p0), encoding="utf-8")
-
-    t1 = json.loads(t1_path.read_text(encoding="utf-8"))
-    t1.update(
-        status=status,
-        evidence_id="independent-t1-review-001",
-        independent_reference="external-review-record:t1-001",
-        validation_summary={
-            "reviewed_by": "independent-reviewer",
-            "reviewed_at": "2026-09-10T00:00:00Z",
-            "numerical_tests": ["independent shapesys reference comparison"],
-        },
-    )
-    t1_path.write_text(json.dumps(t1), encoding="utf-8")
+def _load_run_module():
+    spec = importlib.util.spec_from_file_location("h4l_run_test_module", RUN_SCRIPT)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _new_run_root(prefix: str) -> Path:
@@ -108,11 +82,23 @@ def _run(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_write_input_package_generates_manifest_and_pending_valid_templates(
+def test_prepare_cli_has_no_manual_review_arguments() -> None:
+    completed = _run(PREPARE_SCRIPT, "--help")
+
+    assert completed.returncode == 0
+    assert "--run-root" in completed.stdout
+    assert "--no-progress" in completed.stdout
+    for removed in ("--write-input-package", "--p0-validation", "--t1-validation", "--validate"):
+        assert removed not in completed.stdout
+
+
+def test_automatic_validation_is_bound_and_schema_valid(
     tmp_path: Path,
 ) -> None:
-    receipt, manifest_path, p0_path, t1_path = _write_input_package(tmp_path)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    prepare = _load_prepare_module()
+    receipt, _ = _dataset_receipt(tmp_path)
+    manifest = prepare._manifest_from_receipt(receipt)
+    p0, t1 = prepare._automated_validations(manifest)
     receipt_value = json.loads(receipt.read_text(encoding="utf-8"))
 
     assert manifest["schema_version"] == "h4l-root-input-v1"
@@ -127,30 +113,28 @@ def test_write_input_package_generates_manifest_and_pending_valid_templates(
             "verified_mtime_ns": source.stat().st_mtime_ns,
         }
 
-    for schema_name, instance_path in (
-        ("h4l_root_input_v1.schema.json", manifest_path),
-        ("p0_validation_v1.schema.json", p0_path),
-        ("t1_validation_v1.schema.json", t1_path),
+    for schema_name, instance in (
+        ("h4l_root_input_v1.schema.json", manifest),
+        ("p0_validation_v1.schema.json", p0),
+        ("t1_validation_v1.schema.json", t1),
     ):
         schema = json.loads((VALIDATION_ROOT / schema_name).read_text(encoding="utf-8"))
-        instance = json.loads(instance_path.read_text(encoding="utf-8"))
         Draft202012Validator(schema).validate(instance)
-    assert json.loads(p0_path.read_text(encoding="utf-8"))["status"] == "pending"
-    assert json.loads(t1_path.read_text(encoding="utf-8"))["status"] == "pending"
+    assert p0["status"] == "validated"
+    assert t1["status"] == "validated"
+    assert p0["evidence_id"].startswith("automated-p0-")
+    assert t1["evidence_id"].startswith("automated-t1-")
 
 
-def test_prepare_plan_accepts_reviewed_bound_evidence_without_creating_run(
+def test_prepare_plan_uses_one_command_without_creating_run(
     tmp_path: Path,
 ) -> None:
-    receipt, _, p0_validation, t1_validation = _write_input_package(tmp_path)
-    _complete_pending_evidence(p0_validation, t1_validation)
+    receipt, _ = _dataset_receipt(tmp_path)
     run_root = _new_run_root("pytest-prepare-plan")
 
     completed = _run(
         PREPARE_SCRIPT,
         "--dataset-receipt", str(receipt),
-        "--p0-validation", str(p0_validation),
-        "--t1-validation", str(t1_validation),
         "--run-root", str(run_root),
         "--plan-only",
     )
@@ -171,60 +155,40 @@ def test_prepare_plan_accepts_reviewed_bound_evidence_without_creating_run(
     assert not run_root.exists()
 
 
-def test_validate_promotes_both_complete_evidence_after_full_validation(
+def test_prepare_writes_automatic_inputs_before_running_prerequisites(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    receipt, _, p0_validation, t1_validation = _write_input_package(tmp_path)
-    _complete_pending_evidence(p0_validation, t1_validation, status="pending")
+    prepare = _load_prepare_module()
+    receipt, _ = _dataset_receipt(tmp_path)
+    monkeypatch.setattr(prepare, "RUNS_ROOT", tmp_path.resolve())
+    run_root = tmp_path / "run"
 
-    completed = _run(
-        PREPARE_SCRIPT,
-        "--dataset-receipt", str(receipt),
-        "--p0-validation", str(p0_validation),
-        "--t1-validation", str(t1_validation),
-        "--validate",
+    def fake_invoke(arguments: list[str], *, plan_only: bool) -> None:
+        assert plan_only is False
+        if arguments[0] == "templates":
+            gate = Path(arguments[arguments.index("--run-dir") + 1])
+            gate.mkdir(parents=True)
+            (gate / "g1.json").write_text('{"status":"passed"}', encoding="utf-8")
+
+    monkeypatch.setattr(prepare, "_invoke", fake_invoke)
+    prepare._run(
+        argparse.Namespace(
+            dataset_receipt=receipt,
+            run_root=run_root,
+            plan_only=False,
+            no_progress=False,
+        )
     )
 
-    assert completed.returncode == 0, completed.stderr
-    assert json.loads(p0_validation.read_text(encoding="utf-8"))["status"] == "validated"
-    assert json.loads(t1_validation.read_text(encoding="utf-8"))["status"] == "validated"
-
-
-def test_validate_refuses_blank_pending_templates_without_changing_status(
-    tmp_path: Path,
-) -> None:
-    receipt, _, p0_validation, t1_validation = _write_input_package(tmp_path)
-
-    completed = _run(
-        PREPARE_SCRIPT,
-        "--dataset-receipt", str(receipt),
-        "--p0-validation", str(p0_validation),
-        "--t1-validation", str(t1_validation),
-        "--validate",
-    )
-
-    assert completed.returncode == 3
-    assert "independent review" in (completed.stdout + completed.stderr).lower()
-    assert json.loads(p0_validation.read_text(encoding="utf-8"))["status"] == "pending"
-    assert json.loads(t1_validation.read_text(encoding="utf-8"))["status"] == "pending"
-
-
-def test_prepare_plan_rejects_pending_evidence(tmp_path: Path) -> None:
-    receipt, _, p0_validation, t1_validation = _write_input_package(tmp_path)
-    run_root = _new_run_root("pytest-prepare-pending")
-
-    completed = _run(
-        PREPARE_SCRIPT,
-        "--dataset-receipt", str(receipt),
-        "--p0-validation", str(p0_validation),
-        "--t1-validation", str(t1_validation),
-        "--run-root", str(run_root),
-        "--plan-only",
-    )
-
-    assert completed.returncode != 0
-    assert "pending" in (completed.stdout + completed.stderr).lower()
-    assert not run_root.exists()
+    inputs = run_root / "inputs"
+    assert json.loads((inputs / "p0-validation.json").read_text(encoding="utf-8"))["status"] == "validated"
+    assert json.loads((inputs / "t1-validation.json").read_text(encoding="utf-8"))["status"] == "validated"
+    assert (inputs / "h4l-root-input-v1-manifest.json").is_file()
+    progress_output = capsys.readouterr().err
+    assert "H4l prerequisites" in progress_output
+    assert "11/11" in progress_output
 
 
 def test_run_plan_covers_all_combinations_without_creating_run() -> None:
@@ -248,8 +212,64 @@ def test_run_plan_covers_all_combinations_without_creating_run() -> None:
     assert not output_root.exists()
 
 
+def test_run_shows_progress_for_all_batch_stages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run = _load_run_module()
+    prepared = tmp_path / "prepared"
+    gate = tmp_path / "gate"
+    t1_validation = tmp_path / "t1-validation.json"
+    output_root = tmp_path / "batch"
+    prepared.mkdir()
+    gate.mkdir()
+    t1_validation.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(run, "RUNS_ROOT", tmp_path.resolve())
+    monkeypatch.setattr(run, "_validate_t1", lambda *_args: None)
+
+    def fake_invoke(arguments: list[str], *, plan_only: bool) -> None:
+        assert plan_only is False
+        if arguments[0] == "report":
+            report_run = Path(arguments[arguments.index("--run-dir") + 1])
+            report_run.mkdir(parents=True)
+            (report_run / "report.json").write_text(
+                json.dumps({
+                    "feature_combination_comparisons": [
+                        {"status": "valid", "seed": 42}
+                    ]
+                }),
+                encoding="utf-8",
+            )
+
+    monkeypatch.setattr(run, "_invoke", fake_invoke)
+    run._run(
+        argparse.Namespace(
+            seed=42,
+            config=run.DEFAULT_CONFIG,
+            prepared_run=prepared,
+            gate_run=gate,
+            t1_validation=t1_validation,
+            output_root=output_root,
+            plan_only=False,
+            no_progress=False,
+        )
+    )
+
+    progress_output = capsys.readouterr().err
+    assert "H4l batch seed 42" in progress_output
+    assert "35/35" in progress_output
+
+
+def test_run_cli_supports_disabling_progress() -> None:
+    completed = _run(RUN_SCRIPT, "--help")
+
+    assert completed.returncode == 0
+    assert "--no-progress" in completed.stdout
+
+
 def test_run_refuses_pending_t1_before_starting_batch(tmp_path: Path) -> None:
-    _, _, _, t1_validation = _write_input_package(tmp_path)
+    t1_validation = VALIDATION_ROOT / "t1_validation.pending.json"
     prepared = tmp_path / "prepared"
     gate = tmp_path / "gate"
     prepared.mkdir()
