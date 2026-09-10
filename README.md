@@ -88,131 +88,7 @@ python -m pip check
 - 仅使用 MC 数据，不读取或处理真实数据。不得根据 test 结果调参或选择数据集。
 - 三个命令均支持追加 `--no-progress` 关闭进度显示。
 
-## 2. 正式无质量窗模式（inclusive）
-
-本流程不额外施加 `m4l` 质量窗，保留通过现有 trigger、轻子、SFOS、Z1/Z2 等选择的全部 MC。所有 development 事件参与训练，早停、候选选择和主评价均使用全范围；test 仍独立封存。`m4l` 不进入分类器，固定 15 个输入特征及现有 AUC、KS、效率门槛保持不变。
-
-预处理和训练必须使用配套的 `inclusive` 协议，不添加 `--debug`。文件名描述用途，内部 schema 和精确内容哈希用于兼容性与绑定校验。算法及科学边界详见 [inclusive 协议手册](neural/docs/research/inclusive-protocol.md)。
-
-### 2.1 higgsml-preprocess：无窗预处理
-
-```bash
-higgsml-preprocess \
-  --dataset atlas2020_4lep \
-  --protocol config/preprocess_protocol_inclusive.yaml \
-  --run-config config/preprocess_run.example.yaml \
-  --run-dir runs/atlas2020_4lep/preprocess-inclusive-001
-```
-
-输出包含 `processed/development_events.csv.gz` 和 `processed/test_events.csv.gz`。两张表均为 30 列，保留 `physical_weight`，不预先生成 `train_weight`。cutflow 将 `m4l_analysis_window.enabled` 标记为 `false`，其余物理选择继续执行。
-
-### 2.2 higgsml-train：全范围开发训练
-
-```bash
-higgsml-train \
-  --dataset atlas2020_4lep \
-  --input-run runs/atlas2020_4lep/preprocess-inclusive-001 \
-  --protocol config/adversarial_mlp_protocol_inclusive.yaml \
-  --run-dir runs/atlas2020_4lep/development-inclusive-001
-```
-
-训练仅读取 development 分区，每个拟合折独立确定：
-
-- 背景绝对物理权重的 11 个质量分位数 bin，区间右闭、首尾无界；同一折的所有 λ 候选共用边界。
-- 各类绝对物理权重均值，用于归一化优化器权重；scaler 同样只拟合该折的拟合数据。
-
-final fit 使用全部 development 重新确定统计参数。验证和 test 不参与拟合折统计；AUC、ROC、效率和 KS 使用绝对物理权重，预测表以 `metric_weight` 记录。signed 物理权重只用于产额报告。
-
-训练后先检查 `artifacts/qualification.json` 和 `artifacts/manifest.json`：
-
-| 状态 | 含义与后续操作 |
-|---|---|
-| `eligible` | 已冻结最终模型、scaler 和 OOF 阈值，可在满足开测条件后进入下一步。 |
-| `no_eligible_candidate` | 没有候选满足预先固定的资格规则；不生成最终模型，不得开启 test。 |
-| `insufficient_statistics` | 分位数边界重复、有效 bin 为空或某类缺少有效权重等，优化开始前停止；保留原因，不生成模型或预测。 |
-
-后两项均为声明的科学终态，命令退出码为 0；不能仅凭退出码判断模型可用于 test，也不能自动放宽规则或改用 `--debug`。
-
-`artifacts/scientific_state.json` 保存各折、final fit 和报告分箱的冻结统计及绑定信息；`artifacts/mass_diagnostics.json` 保存各候选 OOF 的分箱效率、背景占比、局部质量 KS 和有效样本量。不可计算的局部指标为 `null` 并附原因，不改变主资格判定。图表覆盖全部事件，以分箱占比、效率和质量 CDF 展示结果。
-
-### 2.3 higgsml-test：冻结模型测试
-
-仅在 development run 为 `eligible`、数据集一致且已获得明确开测授权后执行：
-
-```bash
-higgsml-test \
-  --dataset atlas2020_4lep \
-  --train-run runs/atlas2020_4lep/development-inclusive-001 \
-  --run-dir runs/atlas2020_4lep/test-inclusive-001
-```
-
-测试使用冻结模型、scaler、全范围 OOF 阈值和 development 报告分箱，不重新拟合、训练或选择候选。测试分箱诊断保存在 `artifacts/test_metrics.json`，预测保存在 `predictions/test_scores.csv.gz`，结果为 `test_reproduced` 或 `test_nonreproduction`。不得根据结果反馈调参。
-
-可追加 `--authorization-reference <公开审计引用>` 启用持久化一次性 claim；省略时允许使用新输出目录重复评价，但仍须遵守开测授权边界。
-
-## 3. 有窗模式兼容说明
-
-现有有窗正式流程继续保留，使用以下配套协议，不添加 `--debug`：
-
-| 环节 | 协议文件 |
-|---|---|
-| 预处理 | `config/preprocess_protocol_mass_window.yaml` |
-| 训练 | `config/adversarial_mlp_protocol_mass_window.yaml` |
-
-沿用第 2 节命令结构，将两个 `--protocol` 替换为上表文件，并将全部上下游 run 路径一致改为 `preprocess-mass-window-001`、`development-mass-window-001`、`test-mass-window-001`。
-
-此流程保留 `105 ≤ m4l < 160 GeV` 的预处理质量窗、固定 5 GeV 对抗分箱及原权重定义。预处理表仍含 `train_weight`，其类均值使用全部选后样本，包含 test 权重统计的影响；只有新 `inclusive` 流程改为拟合折内归一化。
-
-有窗文件由原 `preprocess_protocol_v2.yaml` 和 `adversarial_mlp_protocol_normal_v2.yaml` 重命名，内容字节、内部 ID 和 SHA-256 不变，旧文件名不保留副本。历史冻结 run 的记录不改写。新无窗训练不能直接使用旧有窗或 debug 预处理产物，必须在新目录重新预处理。
-
-## 4. DEBUG 诊断模式
-
-本节仅用于既有 debug 诊断流程。正式 `inclusive` 协议拒绝 `--debug`，不能将正式无窗 run 直接转为本节流程。诊断训练和测试均须显式传入 `--debug`，不会根据协议文件名自动启用。以下预处理协议关闭 `m4l` 质量窗；输入有效且训练成功时，DEBUG 训练无论候选是否 eligible 都生成模型，DEBUG 测试忽略 eligible 判定。训练和测试结果均标记为 `debug_diagnostic`，保留资格失败原因，不代表正式测试通过，也不得用于根据 test 结果调参。
-
-### 4.1 higgsml-preprocess：预处理
-
-```bash
-higgsml-preprocess \
-  --dataset atlas2020_4lep \
-  --protocol config/preprocess_protocol_debug.yaml \
-  --run-config config/preprocess_run.example.yaml \
-  --run-dir runs/atlas2020_4lep/preprocess-debug-001
-```
-
-### 4.2 higgsml-train：训练
-
-将上一步的输出目录传给 `--input-run`：
-
-```bash
-higgsml-train \
-  --debug \
-  --dataset atlas2020_4lep \
-  --input-run runs/atlas2020_4lep/preprocess-debug-001 \
-  --protocol config/adversarial_mlp_protocol_debug_v2.yaml \
-  --run-dir runs/atlas2020_4lep/development-debug-001
-```
-
-`--debug` 跳过输入 run 的 SHA 和训练协议封存校验。若有合格候选，按原规则选择；若没有，则选择 development OOF AUC 最高的候选，AUC 差值在协议的 `auc_tie_atol` 内时优先较小 λ。随后仅使用 development 数据完成 final fit，epoch 仍取所选候选五折 best epoch 的中位数，无论候选是否 eligible 都输出 `model/model.pt` 和 `model/scaler.json`。
-
-### 4.3 higgsml-test：测试
-
-已有模型、scaler 和冻结阈值，且数据集一致时，显式使用 `--debug` 进行诊断评分，无需模型或候选为 eligible：
-
-```bash
-higgsml-test \
-  --debug \
-  --dataset atlas2020_4lep \
-  --train-run runs/atlas2020_4lep/development-debug-001 \
-  --run-dir runs/atlas2020_4lep/test-debug-001
-```
-
-`higgsml-test --debug` 忽略 run/candidate 的 eligible 判定及候选排名复核，跳过预处理 lineage/分区哈希比对和训练协议封存快照校验，并允许任意有限 `m4l`。仍校验 development 产物哈希、协议精确字节、数据集身份、固定 15 项特征、模型/scaler/阈值绑定，以及 test 分区结构和行数。测试阶段不补训模型、不重新选择候选或阈值；省略 `--debug` 时仍执行正式资格检查，拒绝 `debug_diagnostic` run。
-
-旧版本生成的 `no_eligible_candidate` run 没有最终模型和 scaler，追加 `--debug` 也无法直接评分。需使用 `higgsml-train --debug` 在新目录（例如 `development-debug-002`）重新训练，再将该目录传给 `--train-run`，并使用新的测试输出目录。不得修改或覆盖旧 run。
-
-可选 `--authorization-reference` 的用法与正式模式相同：提供公开审计引用时启用一次性 claim；省略时允许重复评价，每次仍须使用新输出目录。
-
-## 5. H4l 质量条件研究流程
+## 2. H4l 质量条件研究流程
 
 项目方案对应的研究软件入口是 `higgsml-research`。它是独立的 MC-only 研究流程，
 不改变历史 `higgsml-preprocess`、`higgsml-train` 和 `higgsml-test` 的固定 15 维分类器、
@@ -222,13 +98,11 @@ higgsml-test \
 以下命令均从仓库的 `neural/` 目录执行。`runs/<名称>` 只是命名示例；成功、科学终态或失败的
 run 均不可覆盖，重跑时必须更换目录名。
 
-### 5.1 脚本自动执行方案
-
 两个跨平台 Python 脚本覆盖完整流程：`scripts/h4l_prepare.py` 自动生成绑定输入和 P0/T1 验证，
 执行 audit、prepare 和前置 G1，并准备下一阶段命令；`scripts/h4l_run.py` 执行单个 seed 的
 A、B、C、D 全组合研究。整个流程不打开 assessment 或历史 held-out test。
 
-#### 5.1.1 安装研究依赖
+### 2.1 安装研究依赖
 
 从仓库根目录开始，进入 `neural/` 并确认研究 CLI 可用：
 
@@ -241,7 +115,7 @@ python -m pip check
 higgsml-research --help
 ```
 
-#### 5.1.2 完成准备
+### 2.2 完成准备
 
 执行下面命令自动检查下载收据、生成并校验 ROOT manifest 和 P0/T1 绑定验证，随后执行
 audit、prepare、M0c/M2/M3、校准、共同 templates 和 G1 检查：
@@ -256,6 +130,20 @@ python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/datas
 任一步失败仍保留原始错误信息和退出码。每个子命令运行期间还会每秒输出累计运行秒数，
 即使终端无法绘制动态进度条，也能确认进程仍在运行。
 
+| 阶段 | 子命令 | 主要输入 | 输出目录 | 作用 |
+|---:|---|---|---|---|
+| 1 | `audit` | ROOT manifest、研究协议 | `<run-root>/audit` | 核对受控 MC 来源、协议绑定和角色隔离，并按角色与类别检查 signed yield、有效统计量及权重抵消率；只生成 G0/P0 审计证据，不读取 assessment。 |
+| 2 | `prepare` | ROOT manifest、profile、P0 验证 | `<run-root>/prepare` | 重建并筛选四轻子事件，计算冻结研究变量和物理权重，按物理事件组划分 train、validation、calibration、template、assessment 五种角色；保存后续阶段共用且身份绑定的 prepared run，但不打开 assessment 内容。 |
+| 3 | `train M0c` | prepared run、候选 `M0c`、seed 42 | `<run-root>/g1/train/m0c` | 训练 mass-only 空集基线：只输入 `m4l`（1 维）；`c` 表示它是产生分类分数的质量模型，用于区别无分类器、仅使用质量模板的 M0。 |
+| 4 | `train M2` | prepared run、候选 `M2`、seed 42 | `<run-root>/g1/train/m2` | 训练 decay7 + `m4l` 普通 MLP：输入 `mZ1`、`mZ2`、5 个衰变角和 `m4l`（共 8 维），其冻结分数经 physical CDF 校准后形成 M4。 |
+| 5 | `train M3` | prepared run、候选 `M3`、seed 42 | `<run-root>/g1/train/m3` | 训练 engineered19 + `m4l` 普通 MLP：输入 19 个工程化运动学变量和 `m4l`（共 20 维），其冻结分数经 physical CDF 校准后形成 M5。 |
+| 6 | `calibrate M0c raw` | prepared run、M0c 模型 | `<run-root>/g1/calibrate/m0c-raw` | 保留 M0c 的原始网络分数，不做 CDF 变换；仅使用独立 calibration 角色拟合冻结分类阈值，作为同流程的纯质量空集参照。 |
+| 7 | `calibrate M2 raw` | prepared run、M2 模型 | `<run-root>/g1/calibrate/m2-raw` | 保留 M2 的原始网络分数，并在 calibration 角色上拟合冻结阈值；用于观察未经质量条件校准的 decay7 基线。 |
+| 8 | `calibrate M2 physical` | prepared run、M2 模型 | `<run-root>/g1/calibrate/m4-physical` | 用 calibration 背景及 signed physical weight 拟合质量条件 CDF，将冻结的 M2 分数变换并重新拟合阈值，派生出 M4；不重新训练网络。 |
+| 9 | `calibrate M3 raw` | prepared run、M3 模型 | `<run-root>/g1/calibrate/m3-raw` | 保留 M3 的原始网络分数，并在 calibration 角色上拟合冻结阈值；用于观察未经质量条件校准的 engineered19 表示。 |
+| 10 | `calibrate M3 physical` | prepared run、M3 模型 | `<run-root>/g1/calibrate/m5-physical` | 用 calibration 背景及 signed physical weight 拟合质量条件 CDF，将冻结的 M3 分数变换并重新拟合阈值，派生出 M5；不重新训练网络。 |
+| 11 | `templates` | prepared run、5 个 calibration run、T1 验证 | `<run-root>/g1/templates` | 将 M0、M0c、M2、M3、M4、M5 放在同一质量网格上构建分类模板，必要时对所有候选共同合并统计不足的质量箱；G1 同时检查校准状态、非负产额、有效模板统计、协方差结构和 T1 `shapesys` 契约。只有 `g1.json` 为 `passed` 才给出下一批次命令。 |
+
 如只需预览前置命令，在上述命令末尾追加 `--plan-only`；计划模式不创建 run，也不显示动态进度条。
 在 CI 或需要保存纯文本日志时，可关闭进度条，命令执行内容不变：
 
@@ -263,7 +151,7 @@ python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/datas
 python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/dataset_receipt.json --run-root runs/h4l-feature-combinations-prerequisites-001 --no-progress
 ```
 
-#### 5.1.3 执行完整批次
+### 2.3 执行完整批次
 
 确认预览中的 prepared run、G1 gate、T1 文件、seed 和新输出目录正确后，直接执行前置脚本打印的
 原始 `Next batch command`，不要附加计划参数。该命令调用跨平台的 `scripts/h4l_run.py`。
@@ -281,7 +169,21 @@ python scripts/h4l_run.py --seed 42 --prepared-run runs/h4l-feature-combinations
 也能确认进程仍在运行。`--plan-only` 不显示动态进度条；在 CI 或需要纯文本日志时，可在批次命令
 末尾追加 `--no-progress`，执行内容和科学门禁不变。
 
-#### 5.1.4 查看和检查结果
+| 阶段 | 数量 | 子命令与对象 | 输出目录 | 作用 |
+|---:|---:|---|---|---|
+| 1 | 1 | `train M0c baseline` | `<output-root>/train/empty` | 使用当前 seed 重新训练只输入 `m4l` 的 M0c（1 维），作为本批次同流程、同总体的空集基线；执行前校验 prepared run 与前置 G1 gate 的绑定。 |
+| 2 | 1 | `calibrate M0c baseline` | `<output-root>/calibrate/empty` | 保留 M0c 原始分数，并只在 calibration 角色上拟合冻结阈值；该结果代表不含 A/B/C/D 工程特征的空集价值。 |
+| 3、5、…、31 | 15 | `train groups <组合>` | `<output-root>/train/groups-<组合>` | 分别训练 `A`、`B`、`C`、`D`、`AB`、`AC`、`AD`、`BC`、`BD`、`CD`、`ABC`、`ABD`、`ACD`、`BCD`、`ABCD`；每个 M3 子模型只使用指定的 engineered19 特征组，并共同额外输入 `m4l`。 |
+| 4、6、…、32 | 15 | `calibrate groups <组合>` | `<output-root>/calibrate/groups-<组合>` | 对紧邻的组合模型保留 raw 分数，并在相同 calibration 角色上独立拟合冻结阈值，使 15 个组合与 M0c 基线采用一致的后处理流程。 |
+| 33 | 1 | `templates` | `<output-root>/templates` | 汇总 M0c 和 15 个组合的 calibration run，在所有候选共享的质量网格上构建模板并绑定已验证的 T1 有限模板 MC 统计模型；统计不足时采用共同合箱，不能为单个组合单独优化网格。 |
+| 34 | 1 | `infer T1` | `<output-root>/inference` | 在共同 T1 模板模型下对 16 个候选执行 `mu=1` 的 model-self Asimov 推断，得到可比较的预期信号强度区间。 |
+| 35 | 1 | `report` | `<output-root>/report` | 汇总同一 seed 的 16 个推断结果，核对组合是否完整，并以 M0c 为空集计算 A/B/C/D 的精确 Shapley 贡献；任一组合缺失或无效时不得用零填补。 |
+
+其中，A 为 4 个轻子的 `pt`/`eta`（8 项），B 为 `mZ1`、`mZ2`、`deltaR_Z1`、
+`deltaR_Z2`（4 项），C 为 `pt4l`、`deltaPhi_ZZ`（2 项），D 为 5 个产生与衰变角变量；
+四组共 19 项，`m4l` 是所有组合共同的质量条件，不计入 A/B/C/D。
+
+### 2.4 查看和检查结果
 
 批次共执行 16 次训练：15 个非空组合和 1 个 M0c 空集基线。批次输出固定在
 `<run-root>/batch/seed42/`。`h4l_run.py` 会在结束前读取 `report/report.json`，确认完整组合比较的
@@ -302,324 +204,54 @@ python -c "import json; from pathlib import Path; r=json.loads(Path('runs/h4l-fe
 只有 16 个同总体、同网格、T1、μ=1 的结果全部有效时，报告才生成有效 Shapley；缺失或失败组合
 不会用零值替代。软件命令成功也不等于完成了原生 ARM64 权威验收或独立科学数值验证。
 
-### 5.2 手工执行方案
+## 3. DEBUG 诊断模式
 
-手工方案用于逐阶段执行完整 H4l 研究流程，适合检查每个中间产物、候选状态和冻结条件。
+本节仅用于既有 debug 诊断流程。正式 `inclusive` 协议拒绝 `--debug`，不能将正式无窗 run 直接转为本节流程。诊断训练和测试均须显式传入 `--debug`，不会根据协议文件名自动启用。以下预处理协议关闭 `m4l` 质量窗；输入有效且训练成功时，DEBUG 训练无论候选是否 eligible 都生成模型，DEBUG 测试忽略 eligible 判定。训练和测试结果均标记为 `debug_diagnostic`，保留资格失败原因，不代表正式测试通过，也不得用于根据 test 结果调参。
 
-#### 5.2.1 环境与公共变量
-
-```bash
-cd neural
-conda activate pytorch
-python -m pip install -r requirements-research.txt
-python -m pip install --no-deps -e .
-higgsml-research --help
-
-DATASET="atlas2020_4lep"
-PROTOCOL="config/research_protocol_v1.json"
-PROFILE="config/profiles/open_data_2020.yaml"
-ROOT_MANIFEST="<受控的-h4l-root-input-v1-manifest.json>"
-P0_VALIDATION="<已完成外部审计的-p0-validation.json>"
-T1_VALIDATION="<已完成独立验证的-t1-validation.json>"
-BACKEND_CONFIG="<固定ME后端与过程定义.json>"
-ME_REFERENCE="<独立MELA数值参考.json>"
-PREPARE_RUN="runs/h4l-prepare-001"
-```
-
-受控 ROOT manifest 必须来自已有下载校验记录并绑定 `mc_only: true`、两个 MC 文件的 SHA256、
-大小和 mtime。首先只记录来源元数据，再使用封存 profile 和已完成的 P0 外部审计生成 prepared run：
+### 3.1 higgsml-preprocess：预处理
 
 ```bash
-higgsml-research audit \
-  --dataset "$DATASET" \
-  --protocol "$PROTOCOL" \
-  --input-manifest "$ROOT_MANIFEST" \
-  --run-dir runs/h4l-audit-metadata-001
-
-higgsml-research prepare \
-  --dataset "$DATASET" \
-  --protocol "$PROTOCOL" \
-  --input-manifest "$ROOT_MANIFEST" \
-  --profile "$PROFILE" \
-  --p0-validation "$P0_VALIDATION" \
-  --run-dir "$PREPARE_RUN"
+higgsml-preprocess \
+  --dataset atlas2020_4lep \
+  --protocol config/preprocess_protocol_debug.yaml \
+  --run-config config/preprocess_run.example.yaml \
+  --run-dir runs/atlas2020_4lep/preprocess-debug-001
 ```
 
-只有显式标记的合成输入才能改用下面的 prepare 命令；该路径不构成真实 MC 或 P0 验证：
+### 3.2 higgsml-train：训练
+
+将上一步的输出目录传给 `--input-run`：
 
 ```bash
-SYNTHETIC_EVENTS="<显式标记的合成-events.jsonl>"
-higgsml-research prepare \
-  --dataset "$DATASET" \
-  --protocol "$PROTOCOL" \
-  --events "$SYNTHETIC_EVENTS" \
-  --run-dir runs/h4l-prepare-synthetic-001
+higgsml-train \
+  --debug \
+  --dataset atlas2020_4lep \
+  --input-run runs/atlas2020_4lep/preprocess-debug-001 \
+  --protocol config/adversarial_mlp_protocol_debug_v2.yaml \
+  --run-dir runs/atlas2020_4lep/development-debug-001
 ```
 
-#### 5.2.2 最小候选矩阵与 G1
+`--debug` 跳过输入 run 的 SHA 和训练协议封存校验。若有合格候选，按原规则选择；若没有，则选择 development OOF AUC 最高的候选，AUC 差值在协议的 `auc_tie_atol` 内时优先较小 λ。随后仅使用 development 数据完成 final fit，epoch 仍取所选候选五折 best epoch 的中位数，无论候选是否 eligible 都输出 `model/model.pt` 和 `model/scaler.json`。
 
-先运行种子 42 的 M0c、M2、M3；其中 M2 的 physical CDF 产生 M4，M3 的 physical CDF 产生 M5。
-`raw` 校准仍负责冻结阈值和模型身份。以下五个 calibration run 构成 G1 的最小候选矩阵：
+### 3.3 higgsml-test：测试
+
+已有模型、scaler 和冻结阈值，且数据集一致时，显式使用 `--debug` 进行诊断评分，无需模型或候选为 eligible：
 
 ```bash
-for candidate in M0c M2 M3; do
-  higgsml-research train \
-    --dataset "$DATASET" \
-    --protocol "$PROTOCOL" \
-    --input-run "$PREPARE_RUN" \
-    --candidate "$candidate" \
-    --seed 42 \
-    --run-dir "runs/h4l-${candidate,,}-42"
-done
-
-higgsml-research calibrate --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --model-run runs/h4l-m0c-42 --transform raw --run-dir runs/h4l-m0c-raw-42
-higgsml-research calibrate --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --model-run runs/h4l-m2-42 --transform raw --run-dir runs/h4l-m2-raw-42
-higgsml-research calibrate --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --model-run runs/h4l-m2-42 --transform physical --run-dir runs/h4l-m4-42
-higgsml-research calibrate --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --model-run runs/h4l-m3-42 --transform raw --run-dir runs/h4l-m3-raw-42
-higgsml-research calibrate --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --model-run runs/h4l-m3-42 --transform physical --run-dir runs/h4l-m5-42
-
-GATE_RUN="runs/h4l-templates-g1-001"
-higgsml-research templates \
-  --dataset "$DATASET" \
-  --protocol "$PROTOCOL" \
-  --input-run "$PREPARE_RUN" \
-  --calibration-run runs/h4l-m0c-raw-42 \
-  --calibration-run runs/h4l-m2-raw-42 \
-  --calibration-run runs/h4l-m4-42 \
-  --calibration-run runs/h4l-m3-raw-42 \
-  --calibration-run runs/h4l-m5-42 \
-  --t1-validation "$T1_VALIDATION" \
-  --run-dir "$GATE_RUN"
+higgsml-test \
+  --debug \
+  --dataset atlas2020_4lep \
+  --train-run runs/atlas2020_4lep/development-debug-001 \
+  --run-dir runs/atlas2020_4lep/test-debug-001
 ```
 
-继续之前应检查 `$GATE_RUN/g1.json` 的 `status` 确实为 `passed`。不能通过放宽支持域、signed yield、
-有效统计量或 T1 门槛来强行通过 G1。
+`higgsml-test --debug` 忽略 run/candidate 的 eligible 判定及候选排名复核，跳过预处理 lineage/分区哈希比对和训练协议封存快照校验，并允许任意有限 `m4l`。仍校验 development 产物哈希、协议精确字节、数据集身份、固定 15 项特征、模型/scaler/阈值绑定，以及 test 分区结构和行数。测试阶段不补训模型、不重新选择候选或阈值；省略 `--debug` 时仍执行正式资格检查，拒绝 `debug_diagnostic` run。
 
-#### 5.2.3 矩阵元 M1/M1c
+旧版本生成的 `no_eligible_candidate` run 没有最终模型和 scaler，追加 `--debug` 也无法直接评分。需使用 `higgsml-train --debug` 在新目录（例如 `development-debug-002`）重新训练，再将该目录传给 `--train-run`，并使用新的测试输出目录。不得修改或覆盖旧 run。
 
-MELA 在独立 Linux 环境运行。后端配置必须精确记录 backend 的 name/version/configuration SHA256，
-以及 signal/background/PDF/approximation；`$ME_REFERENCE` 必须是绑定相同 adapter SHA256 的独立数值参考。
+可选 `--authorization-reference` 的用法与正式模式相同：提供公开审计引用时启用一次性 claim；省略时允许重复评价，每次仍须使用新输出目录。
 
-```bash
-ME_EXPORT_RUN="runs/h4l-me-export-development-001"
-higgsml-research me-export \
-  --dataset "$DATASET" \
-  --protocol "$PROTOCOL" \
-  --input-run "$PREPARE_RUN" \
-  --backend-config "$BACKEND_CONFIG" \
-  --run-dir "$ME_EXPORT_RUN"
-```
-
-在 Linux 的 MELA 环境中执行；不要用任意替代概率公式：
-
-```bash
-python scripts/research_mela.py \
-  --input runs/h4l-me-export-development-001/me-input.json \
-  --adapter /path/to/verified_mela_adapter.py \
-  --adapter-sha256 <64位小写SHA256> \
-  --output /path/to/me-development-output.json
-```
-
-回到 `neural/` 和 `pytorch` 环境后导入并生成 M1/M1c：
-
-```bash
-ME_DEVELOPMENT_RESULTS="<Linux产生的-me-development-output.json>"
-ME_IMPORT_RUN="runs/h4l-me-import-development-001"
-higgsml-research me-import \
-  --dataset "$DATASET" \
-  --protocol "$PROTOCOL" \
-  --input-run "$PREPARE_RUN" \
-  --export-run "$ME_EXPORT_RUN" \
-  --results "$ME_DEVELOPMENT_RESULTS" \
-  --reference "$ME_REFERENCE" \
-  --run-dir "$ME_IMPORT_RUN"
-
-higgsml-research calibrate --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --model-run "$ME_IMPORT_RUN" --transform raw --run-dir runs/h4l-m1-raw
-higgsml-research calibrate --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --model-run "$ME_IMPORT_RUN" --transform physical --run-dir runs/h4l-m1c
-```
-
-#### 5.2.4 完整候选矩阵
-
-G1 通过后，补齐种子 43–46 的基础候选、五个种子的固定 200 轮对照与 M6 λ 扫描，最后运行 L1:42。
-下面的 `ALL_CALIBRATION_RUNS` 同时收集最终共同模板所需的全部 calibration run：
-
-```bash
-ALL_CALIBRATION_RUNS=(
-  runs/h4l-m0c-raw-42 runs/h4l-m2-raw-42 runs/h4l-m4-42
-  runs/h4l-m3-raw-42 runs/h4l-m5-42 runs/h4l-m1-raw runs/h4l-m1c
-)
-
-for seed in 43 44 45 46; do
-  for candidate in M0c M2 M3; do
-    candidate_lower=${candidate,,}
-    model_run="runs/h4l-${candidate_lower}-${seed}"
-    raw_run="runs/h4l-${candidate_lower}-raw-${seed}"
-    higgsml-research train --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --candidate "$candidate" --seed "$seed" --gate-run "$GATE_RUN" --run-dir "$model_run"
-    higgsml-research calibrate --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --model-run "$model_run" --transform raw --run-dir "$raw_run"
-    ALL_CALIBRATION_RUNS+=("$raw_run")
-    if [[ "$candidate" == M2 ]]; then
-      derived_run="runs/h4l-m4-${seed}"
-      higgsml-research calibrate --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --model-run "$model_run" --transform physical --run-dir "$derived_run"
-      ALL_CALIBRATION_RUNS+=("$derived_run")
-    elif [[ "$candidate" == M3 ]]; then
-      physical_run="runs/h4l-m5-${seed}"
-      absolute_run="runs/h4l-m5-abs-${seed}"
-      higgsml-research calibrate --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --model-run "$model_run" --transform physical --run-dir "$physical_run"
-      higgsml-research calibrate --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --model-run "$model_run" --transform absolute --run-dir "$absolute_run"
-      ALL_CALIBRATION_RUNS+=("$physical_run" "$absolute_run")
-    fi
-  done
-done
-
-# Seed 42 M5-abs, fixed-200 and M6 lambda scans.
-higgsml-research calibrate --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --model-run runs/h4l-m3-42 --transform absolute --run-dir runs/h4l-m5-abs-42
-ALL_CALIBRATION_RUNS+=(runs/h4l-m5-abs-42)
-for seed in 42 43 44 45 46; do
-  model_run="runs/h4l-m3-fixed200-${seed}"
-  calibration_run="runs/h4l-m3-fixed200-raw-${seed}"
-  higgsml-research train --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --candidate M3-fixed200 --seed "$seed" --gate-run "$GATE_RUN" --run-dir "$model_run"
-  higgsml-research calibrate --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --model-run "$model_run" --transform raw --run-dir "$calibration_run"
-  ALL_CALIBRATION_RUNS+=("$calibration_run")
-  for strength in 0.05 0.1 0.2 0.5; do
-    tag=${strength//./p}
-    m6_model_run="runs/h4l-m6-${seed}-lambda-${tag}"
-    m6_calibration_run="runs/h4l-m6-raw-${seed}-lambda-${tag}"
-    higgsml-research train --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --candidate M6 --seed "$seed" --strength "$strength" --gate-run "$GATE_RUN" --run-dir "$m6_model_run"
-    higgsml-research calibrate --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --model-run "$m6_model_run" --transform raw --run-dir "$m6_calibration_run"
-    ALL_CALIBRATION_RUNS+=("$m6_calibration_run")
-  done
-done
-higgsml-research train --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --candidate L1 --seed 42 --gate-run "$GATE_RUN" --run-dir runs/h4l-l1-42
-higgsml-research calibrate --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --model-run runs/h4l-l1-42 --transform raw --run-dir runs/h4l-l1-raw-42
-ALL_CALIBRATION_RUNS+=(runs/h4l-l1-raw-42)
-```
-
-#### 5.2.5 最终共同模板与冻结
-
-将所有候选放到同一个质量网格中。Bash 数组循环用来为每个路径重复传入
-`--calibration-run`：
-
-```bash
-FINAL_TEMPLATE_RUN="runs/h4l-templates-final-001"
-TEMPLATE_ARGS=(templates --dataset "$DATASET" --protocol "$PROTOCOL"
-  --input-run "$PREPARE_RUN" --t1-validation "$T1_VALIDATION" --run-dir "$FINAL_TEMPLATE_RUN")
-for run_path in "${ALL_CALIBRATION_RUNS[@]}"; do
-  TEMPLATE_ARGS+=(--calibration-run "$run_path")
-done
-higgsml-research "${TEMPLATE_ARGS[@]}"
-
-FREEZE_RUN="runs/h4l-freeze-001"
-higgsml-research freeze \
-  --dataset "$DATASET" \
-  --protocol "$PROTOCOL" \
-  --input-run "$PREPARE_RUN" \
-  --template-run "$FINAL_TEMPLATE_RUN" \
-  --run-dir "$FREEZE_RUN"
-```
-
-如果候选已形成 `blocked_missing_reference`、`insufficient_statistics`、`training_failed` 或 `fit_failed`
-等允许的终态，应根据已有不可变失败产物制作完整的外部 candidate ledger，并在 freeze 命令中增加
-`--candidate-ledger <candidate-ledger.json>`；不得把未运行项伪报为终态。freeze 同时把压力测试参考固定为 `M3:42`。
-
-#### 5.2.6 冻结后的 assessment ME 补充
-
-冻结前的 ME 导出不会包含 assessment 事件。M1/M1c 进入最终模板时，冻结后必须用同一 prepared population、
-同一后端、adapter 和独立参考重新导出并只补充缺失的 assessment 分数：
-
-```bash
-ASSESSMENT_ME_EXPORT_RUN="runs/h4l-me-export-assessment-001"
-higgsml-research me-export \
-  --dataset "$DATASET" \
-  --protocol "$PROTOCOL" \
-  --input-run "$PREPARE_RUN" \
-  --freeze-run "$FREEZE_RUN" \
-  --backend-config "$BACKEND_CONFIG" \
-  --run-dir "$ASSESSMENT_ME_EXPORT_RUN"
-```
-
-```bash
-python scripts/research_mela.py \
-  --input runs/h4l-me-export-assessment-001/me-input.json \
-  --adapter /path/to/verified_mela_adapter.py \
-  --adapter-sha256 <与冻结前完全相同的64位小写SHA256> \
-  --output /path/to/me-assessment-output.json
-```
-
-```bash
-ASSESSMENT_ME_RESULTS="<Linux产生的-me-assessment-output.json>"
-ASSESSMENT_ME_IMPORT_RUN="runs/h4l-me-import-assessment-001"
-higgsml-research me-import \
-  --dataset "$DATASET" \
-  --protocol "$PROTOCOL" \
-  --input-run "$PREPARE_RUN" \
-  --export-run "$ASSESSMENT_ME_EXPORT_RUN" \
-  --results "$ASSESSMENT_ME_RESULTS" \
-  --reference "$ME_REFERENCE" \
-  --run-dir "$ASSESSMENT_ME_IMPORT_RUN"
-```
-
-#### 5.2.7 推断、T2、压力测试与报告
-
-先运行不打开 assessment 的共同模板 Asimov/T0 和 Asimov+toys/T1。随后 assessment 调用必须绑定 freeze；
-由于上一节的冻结后 ME 导出已经建立一次持久 claim，后续命令显式使用 `--repeat-assessment`：
-
-```bash
-RESULT_RUNS=()
-T0_RUN="runs/h4l-infer-model-self-t0-mu1-001"
-higgsml-research infer --dataset "$DATASET" --protocol "$PROTOCOL" --template-run "$FINAL_TEMPLATE_RUN" --layer T0 --mu 1 --run-dir "$T0_RUN"
-RESULT_RUNS+=("$T0_RUN")
-T1_RUN="runs/h4l-infer-model-self-t1-mu1-001"
-higgsml-research infer --dataset "$DATASET" --protocol "$PROTOCOL" --template-run "$FINAL_TEMPLATE_RUN" --layer T1 --mu 1 --toys 500 --seed 42 --run-dir "$T1_RUN"
-RESULT_RUNS+=("$T1_RUN")
-ASSESSMENT_RUN="runs/h4l-infer-assessment-fixed-t1-mu1-001"
-higgsml-research infer --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --template-run "$FINAL_TEMPLATE_RUN" --freeze-run "$FREEZE_RUN" --assessment-me-run "$ASSESSMENT_ME_IMPORT_RUN" --expectation-kind assessment --procedure fixed --layer T1 --mu 1 --toys 500 --seed 42 --repeat-assessment --run-dir "$ASSESSMENT_RUN"
-RESULT_RUNS+=("$ASSESSMENT_RUN")
-T2_RUN="runs/h4l-infer-assessment-t2-t1-mu1-001"
-higgsml-research infer --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --template-run "$FINAL_TEMPLATE_RUN" --freeze-run "$FREEZE_RUN" --assessment-me-run "$ASSESSMENT_ME_IMPORT_RUN" --expectation-kind assessment --procedure t2 --layer T1 --mu 1 --toys 0 --seed 42 --repeat-assessment --run-dir "$T2_RUN"
-RESULT_RUNS+=("$T2_RUN")
-for kind in normalization mass score correlation; do
-  for direction in -1 1; do
-    for mode in omitted modeled; do
-      direction_tag=plus; [[ "$direction" == -1 ]] && direction_tag=minus
-      stress_run="runs/h4l-infer-stress-${kind}-${direction_tag}-${mode}-001"
-      higgsml-research infer --dataset "$DATASET" --protocol "$PROTOCOL" --input-run "$PREPARE_RUN" --template-run "$FINAL_TEMPLATE_RUN" --freeze-run "$FREEZE_RUN" --assessment-me-run "$ASSESSMENT_ME_IMPORT_RUN" --expectation-kind assessment --procedure stress --layer T1 --stress-kind "$kind" --stress-direction "$direction" --stress-mode "$mode" --reference-candidate M3:42 --mu 1 --toys 500 --seed 42 --repeat-assessment --run-dir "$stress_run"
-      RESULT_RUNS+=("$stress_run")
-    done
-  done
-done
-REPORT_RUN="runs/h4l-report-001"
-REPORT_ARGS=(report --dataset "$DATASET" --protocol "$PROTOCOL" --run-dir "$REPORT_RUN")
-for run_path in "${RESULT_RUNS[@]}"; do REPORT_ARGS+=(--result-run "$run_path"); done
-higgsml-research "${REPORT_ARGS[@]}"
-```
-
-如未运行 M1/M1c，并已通过 candidate ledger 将它们记为允许的终态，则省略 ME 两节、从
-`ALL_CALIBRATION_RUNS` 中移除 `runs/h4l-m1-raw` / `runs/h4l-m1c`，并省略所有
-`--assessment-me-run` 参数。其他候选若形成允许的终态，也不得把不存在的 calibration run 加入最终模板。
-assessment 首次打开若不是由冻结后 `me-export` 触发，则首次 infer 不加
-`--repeat-assessment`；只有相同冻结分析的后续调用才增加该参数。每个 μ、seed、procedure、压力方向和
-重复实验仍须使用新的 run 目录，不能复用上面的 `-001`。
-
-#### 5.2.8 验证与解释边界
-
-```bash
-python -m pytest tests/research -q
-python -m pip check
-python -m pytest -q
-python -m build --wheel --no-isolation
-```
-
-冻结后 assessment 只能使用已冻结的模型、CDF、阈值、共同质量网格和 `M3:42` 压力测试参考。
-内部异常会保留可报告的失败 manifest，并以退出码 70 结束。任何阶段失败后都应检查该 run 的
-`manifest.json` / `failure.json`，修正根因后改用新目录，不能覆盖失败产物。
-
-该流程的默认协议明确标记为软件合成验证，不等于真实 MC、MELA 物理参考、signed-MC T1 近似或论文实验已经完成。
-真实 MC 先导、独立 MELA 验证、原生 ARM64 权威验收和 R1–R4 实验仍需分别通过各自门槛。
-详见 [H4l 项目方案](neural/docs/research/H4l-Research-Project.md)、
-[研究运行手册](neural/docs/sw-dev/h4l-research-runbook.md) 和
-[开发与验证记录](neural/docs/sw-dev/h4l-research-development.md)。
-
-## 6. 验证与参考
+## 4. 验证与参考
 
 在已激活的 `pytorch` 环境、`neural/` 目录下检查依赖并运行测试套件：
 
