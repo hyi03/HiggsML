@@ -220,15 +220,13 @@ higgsml-test \
 不得把这一例外用于历史模型或真实数据。
 
 以下命令均从仓库的 `neural/` 目录执行。`runs/<名称>` 只是命名示例；成功、科学终态或失败的
-run 均不可覆盖，重跑时必须更换目录名。尖括号变量表示必须由外部审计或实际运行提供的文件，
-不能用自行编造的 JSON 代替独立验证证据。
+run 均不可覆盖，重跑时必须更换目录名。
 
 ### 5.1 脚本自动执行方案
 
-两个跨平台 Python 脚本覆盖完整流程：`scripts/h4l_prepare.py` 从下载收据生成 ROOT manifest，
-管理 P0/T1 审核门禁，并自动执行 audit、prepare 和前置 G1；`scripts/h4l_run.py` 自动执行单个
-seed 的 A、B、C、D 全组合研究。Linux 和 Windows 使用相同的 Python 文件，不再需要 `.sh`
-或 `.ps1` 包装脚本。整个流程不打开 assessment 或历史 held-out test。
+两个跨平台 Python 脚本覆盖完整流程：`scripts/h4l_prepare.py` 自动生成绑定输入和 P0/T1 验证，
+执行 audit、prepare 和前置 G1，并准备下一阶段命令；`scripts/h4l_run.py` 执行单个 seed 的
+A、B、C、D 全组合研究。整个流程不打开 assessment 或历史 held-out test。
 
 #### 5.1.1 安装研究依赖
 
@@ -243,112 +241,61 @@ python -m pip check
 higgsml-research --help
 ```
 
-#### 5.1.2 准备脚本需要的三个输入文件
+#### 5.1.2 完成准备
 
-仓库已经提供完整 schema 和待审核模板，不需要手工编写三个 JSON。先用已下载数据的收据一次性
-生成本机输入包：
-
-```bash
-python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/dataset_receipt.json --write-input-package review/h4l-input-001
-```
-
-该命令只读取下载收据和两份 ROOT 文件的本机元数据，不读取 ROOT 事件内容，也不重新计算约
-229 MB 文件的 SHA256。它会检查收据为 `complete`、`mc_only: true`，Higgs/ZZ 角色、收据内部
-大小和摘要以及本机文件大小一致，然后生成：
-
-| 文件 | 用途 | 初始状态 |
-|---|---|---|
-| `review/h4l-input-001/h4l-root-input-v1-manifest.json` | 将 Higgs/ZZ ROOT 的绝对路径、收据 SHA256、大小和 mtime 绑定到本机输入 | 可直接使用 |
-| `review/h4l-input-001/p0-validation.pending.json` | 供独立审核者记录 processes、units、four-vectors、pairing、weights、selection 六项 P0 结果 | `pending` |
-| `review/h4l-input-001/t1-validation.pending.json` | 供独立审核者记录 shapesys、逐过程逐箱独立相关、Poisson tau/gamma 辅助模型和 pyhf 0.7.6 的数值验证 | `pending` |
-
-对应的版本化定义位于 `config/validation/h4l_root_input_v1.schema.json`、
-`p0_validation_v1.schema.json` 和 `t1_validation_v1.schema.json`；仓库中的
-`p0_validation.pending.json`、`t1_validation.pending.json` 是未绑定的参考模板，生成命令会自动写入
-当前协议和本机 ROOT 来源摘要。
-
-此时不要运行受控 MC。把两份 `*.pending.json` 交给真正独立的审核者：审核者应填写非空的
-`evidence_id`、`independent_reference` 和审核结果；P0 六项分别改为 `status: validated` 并填写
-`reference`；T1 填写 `reviewed_by`、`reviewed_at` 和至少一项 `numerical_tests`。文件顶层
-`status` 暂时保持 `pending`，由下一节的门禁命令转换。
-
-如需单独检查 JSON 结构，可运行下面三条命令；这一步不是必需的，因为 `h4l_prepare.py` 会自动
-执行相同检查：
+执行下面命令自动检查下载收据、生成并校验 ROOT manifest 和 P0/T1 绑定验证，随后执行
+audit、prepare、M0c/M2/M3、校准、共同 templates 和 G1 检查：
 
 ```bash
-python -m jsonschema -i review/h4l-input-001/h4l-root-input-v1-manifest.json config/validation/h4l_root_input_v1.schema.json
-python -m jsonschema -i review/h4l-input-001/p0-validation.pending.json config/validation/p0_validation_v1.schema.json
-python -m jsonschema -i review/h4l-input-001/t1-validation.pending.json config/validation/t1_validation_v1.schema.json
+python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/dataset_receipt.json --run-root runs/h4l-feature-combinations-prerequisites-001
 ```
 
-Schema 通过只表示字段结构正确，不表示独立审核已经完成。
+脚本把三个绑定文件保存在 `<run-root>/inputs/`，成功后打印可直接执行的 `Next batch command`。
+正式执行时会在标准错误流显示 `H4l prerequisites` 总进度条，共 11 个阶段：audit、prepare、
+3 次训练、5 次校准和 templates。进度条后缀显示当前阶段；只有当前子命令成功结束后才推进，
+任一步失败仍保留原始错误信息和退出码。
 
-#### 5.1.3 审核完成后转换为 validated
-
-审核者填写完两份文件后，执行一条命令完成最终结构、数据集、协议摘要、ROOT 来源摘要和固定 T1
-统计模型绑定检查，并把两份文件的顶层状态从 `pending` 改为 `validated`：
+如只需预览前置命令，在上述命令末尾追加 `--plan-only`；计划模式不创建 run，也不显示动态进度条。
+在 CI 或需要保存纯文本日志时，可关闭进度条，命令执行内容不变：
 
 ```bash
-python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/dataset_receipt.json --p0-validation review/h4l-input-001/p0-validation.pending.json --t1-validation review/h4l-input-001/t1-validation.pending.json --validate
+python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/dataset_receipt.json --run-root runs/h4l-feature-combinations-prerequisites-001 --no-progress
 ```
 
-`--validate` 不是自动产生审核结论。任一审核字段为空、P0 六项未完成、T1 契约不匹配或摘要绑定
-不一致时，命令以退出码 3 失败，并保持两个文件为 `pending`。不要只手工把顶层状态改成
-`validated` 来绕过独立审核。
-
-#### 5.1.4 一条命令完成前置流程
-
-先用计划模式确认全部路径、证据和将要执行的命令；它不会创建 run：
-
-```bash
-python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/dataset_receipt.json --p0-validation review/h4l-input-001/p0-validation.pending.json --t1-validation review/h4l-input-001/t1-validation.pending.json --run-root runs/h4l-feature-combinations-prerequisites-001 --plan-only
-```
-
-确认无误后删除末尾的 `--plan-only`，只执行下面一条命令：
-
-```bash
-python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/dataset_receipt.json --p0-validation review/h4l-input-001/p0-validation.pending.json --t1-validation review/h4l-input-001/t1-validation.pending.json --run-root runs/h4l-feature-combinations-prerequisites-001
-```
-
-Linux shell 和 Windows PowerShell 都可原样执行以上单行命令。`run-root` 必须是 `neural/runs/`
-下尚不存在的新目录；脚本会在 `<run-root>/inputs/` 自动重建并保存本次实际使用的 ROOT manifest，
-不再要求手工传入 `--root-manifest`。
-
-#### 5.1.5 自动执行内容和完成条件
-
-`h4l_prepare.py` 会按顺序自动完成：输入及路径检查、`audit`、`prepare`、M0c/M2/M3 训练、五个 raw/physical
-校准、共同 templates，以及读取 `g1/templates/g1.json` 检查 `status == passed`。任一步命令非零退出
-或 G1 未通过都会立即停止；已有的失败 run 保留，下一次必须换新的 run root，不能覆盖或续写。
-
-成功后脚本会打印 `Next batch command`，其中已经填入生成的 prepared run、G1 gate、T1 文件和
-新的批次输出路径。不得在前置或组合批次运行期间执行 assessment `me-export`、assessment
-`me-import` 或 assessment inference，也不得在看到结果后放宽支持域、signed yield、有效统计量或
-T1 门槛。
-
-#### 5.1.6 预览完整批次
-
-前置脚本成功后会打印已经填好实际路径的 `Next batch command`。如需先预览，在任一操作系统上
-复制该命令并在末尾追加 `--plan-only`。
-
-计划模式只打印命令，不创建 run，并且不会检查三个输入路径是否存在。因此 `--plan-only` 成功只表示
-命令能够展开，不表示前置证据或 G1 已经有效。
-
-#### 5.1.7 执行完整批次
+#### 5.1.3 执行完整批次
 
 确认预览中的 prepared run、G1 gate、T1 文件、seed 和新输出目录正确后，直接执行前置脚本打印的
 原始 `Next batch command`，不要附加计划参数。该命令调用跨平台的 `scripts/h4l_run.py`。
 
-正式执行会在第一条训练命令之前拒绝缺失或仍为 `pending` 的 T1 证据，以及已存在的
-`OUTPUT_ROOT`。研究 CLI 还会校验协议、数据总体和
-前置 gate 绑定；不能只凭目录名称判断它们兼容。批次运行期间不要执行 assessment `me-export`、
-assessment `me-import` 或 assessment inference。脚本接受 seed 42–46，每个 seed 和每次重跑均须使用
-新的 `OUTPUT_ROOT`，且该目录必须位于 `neural/runs/` 下。
+```bash
+python scripts/h4l_run.py --seed 42 --prepared-run runs/h4l-feature-combinations-prerequisites-001/prepare --gate-run runs/h4l-feature-combinations-prerequisites-001/g1/templates --t1-validation runs/h4l-feature-combinations-prerequisites-001/inputs/t1-validation.json --output-root runs/h4l-feature-combinations-prerequisites-001/batch/seed42
+```
 
-#### 5.1.8 查看和检查结果
+研究 CLI 会校验协议、数据总体和前置 gate 绑定。脚本接受 seed 42–46，每个 seed 和每次重跑均须
+使用新的 `OUTPUT_ROOT`，且该目录必须位于 `neural/runs/` 下。
+
+正式执行时会在标准错误流显示 `H4l batch seed <seed>` 总进度条，共 35 个阶段：16 次训练、
+16 次校准、templates、infer 和 report。进度条后缀显示当前基线、特征组合或收尾阶段；只有子命令
+成功结束后才推进。`--plan-only` 不显示动态进度条；在 CI 或需要纯文本日志时，可在批次命令末尾
+追加 `--no-progress`，执行内容和科学门禁不变。
+
+#### 5.1.4 查看和检查结果
 
 批次共执行 16 次训练：15 个非空组合和 1 个 M0c 空集基线。批次输出固定在
 `<run-root>/batch/seed42/`。`h4l_run.py` 会在结束前读取 `report/report.json`，确认完整组合比较的
 状态、数量和 seed；检查通过后打印 `report/report.md` 的实际路径，无需再执行额外检查命令。
+
+查看 Markdown 报告：
+
+```bash
+python -c "from pathlib import Path; print(Path('runs/h4l-feature-combinations-prerequisites-001/batch/seed42/report/report.md').read_text(encoding='utf-8'))"
+```
+
+检查 JSON 中的完整组合比较状态，并输出该项结果：
+
+```bash
+python -c "import json; from pathlib import Path; r=json.loads(Path('runs/h4l-feature-combinations-prerequisites-001/batch/seed42/report/report.json').read_text(encoding='utf-8')); c=r.get('feature_combination_comparisons', []); assert len(c)==1 and c[0].get('status')=='valid' and c[0].get('seed')==42, c; print(json.dumps(c[0], indent=2, ensure_ascii=False))"
+```
 
 只有 16 个同总体、同网格、T1、μ=1 的结果全部有效时，报告才生成有效 Shapley；缺失或失败组合
 不会用零值替代。软件命令成功也不等于完成了原生 ARM64 权威验收或独立科学数值验证。
