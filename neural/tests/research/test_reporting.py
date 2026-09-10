@@ -1,6 +1,7 @@
 import itertools
 import pytest
-from src.research.reporting import main_comparison,coverage_summary,paired_coverage_error,exact_shapley
+from src.research.reporting import (main_comparison,coverage_summary,paired_coverage_error,
+                                    exact_shapley,feature_combination_comparison)
 from src.research.errors import ResearchStateError
 
 
@@ -26,3 +27,22 @@ def test_exact_shapley_efficiency_and_interaction_no_empty_fallback():
     assert result["efficiency_residual"]==pytest.approx(0)
     del values[""]
     with pytest.raises(ResearchStateError): exact_shapley(values,family_id="physical_cdf_T1",seed=42)
+
+
+def test_complete_feature_combination_comparison_requires_all_fifteen_and_baseline():
+    widths={"" : 10.0}
+    widths.update({"".join(subset):10.0-sum("ABCD".index(group)+1 for group in subset)*.1
+                   for size in range(1,5) for subset in itertools.combinations("ABCD",size)})
+    results={}
+    for subset,width in widths.items():
+        key="M0c:42" if not subset else f"M3:42:groups={subset}"
+        candidate="M0c" if not subset else "M3"
+        results[key]={"status":"valid","seed":42,"asimov":{"candidate_id":candidate,"layer":"T1",
+            "expectation_kind":"model_self_asimov","results":[{"mu":1.0,"intervals":[{"status":"valid","width":width}]}]}}
+    report=feature_combination_comparison(results,seed=42,family_id="engineered19_raw_T1")
+    assert report["status"]=="valid" and len(report["nonempty_combinations"])==15
+    assert report["baseline"]["subset"]=="" and report["shapley"]["status"]=="valid"
+    del results["M3:42:groups=AB"]
+    incomplete=feature_combination_comparison(results,seed=42,family_id="engineered19_raw_T1")
+    assert incomplete["status"]=="feature_combination_incomplete"
+    assert incomplete["failures"]==[{"subset":"AB","candidate_key":"M3:42:groups=AB","reason":"missing_result"}]

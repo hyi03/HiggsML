@@ -18,7 +18,8 @@ from .calibration import fit_calibration, apply_calibration, fit_thresholds, ass
 from .matrix_element import export_me_inputs, import_me_results
 from .templates import common_mass_grid, gate_g1
 from .inference import run_asimov, run_toys
-from .reporting import build_report, coverage_summary, write_learning_curves
+from .reporting import (build_report, coverage_summary,
+                        feature_combination_comparison, write_learning_curves)
 
 
 def _required(args, name):
@@ -565,6 +566,7 @@ def execute(args, *, allowed_root=None):
             statuses, primary, records = expected_candidates(), [], {}
             training_models = {}
             state_history={}; source_ids=set(); unknown_population=False; terminal_runs=[]; procedures={}; primary_cohorts=set()
+            feature_comparisons=[]
             def record_state(key,status,artifact_id):
                 state_history.setdefault(key,[]).append({'status':status,'artifact_id':artifact_id})
                 unique={entry['status'] for entry in state_history[key]}
@@ -597,12 +599,19 @@ def execute(args, *, allowed_root=None):
                         record_state(key,value['status'],manifest['artifact_id'])
                 elif manifest['stage']=='infer':
                     scope=item_context.get('inference_scope',{})
+                    inference_results=item.read_json('inference.json')
                     if 'procedure.json' in manifest['files']:
                         procedure_key=digest_json({'population':source,'scope':scope})
                         if procedure_key in procedures:
                             raise ResearchError('Duplicate procedure scope; no run selection allowed')
                         procedures[procedure_key]=item.read_json('procedure.json')
-                    for key,result in item.read_json('inference.json').items():
+                    if any(':groups=' in key for key in inference_results):
+                        comparison=feature_combination_comparison(inference_results,seed=scope.get('seed'),
+                            family_id='engineered19_raw_T1')
+                        comparison.update(source_artifact_id=manifest['artifact_id'],
+                                          comparison_cohort_id=scope.get('comparison_cohort_id'))
+                        feature_comparisons.append(comparison)
+                    for key,result in inference_results.items():
                         scoped_key=key+'|'+digest_json({'population':source,'scope':scope})
                         if scoped_key in records:
                             raise ResearchError('Duplicate candidate inference scope; reports never choose the best run')
@@ -623,7 +632,8 @@ def execute(args, *, allowed_root=None):
                                 'layer':result['asimov']['layer'],'mu':injection['mu'],
                                 'expectation_kind':result['asimov']['expectation_kind'],
                                 'status':interval['status'],'width68':interval.get('width')})
-            report=build_report(statuses,primary_records=primary,results=records)
+            report=build_report(statuses,primary_records=primary,results=records,
+                                feature_comparisons=feature_comparisons)
             curves = []
             for model in training_models.values():
                 if model['candidate'] != 'M6' or 'history_contract' not in model:
@@ -646,6 +656,7 @@ def execute(args, *, allowed_root=None):
             run.write_json('report.json', report)
             lines = ['# H4l research software report','','MC-only educational/technical demo.',
                      '',f"Primary M5/M4 comparison: {report['primary_comparison']['status']}",
+                     '',f"Feature combination comparison: {feature_comparisons[0]['status'] if feature_comparisons else 'not_present'}",
                      '', '| Candidate | Status |','|---|---|']
             lines += [f'| {k} | {v} |' for k,v in statuses.items()]
             for curve in curves:

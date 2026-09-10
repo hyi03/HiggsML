@@ -62,6 +62,26 @@ def test_report_keeps_terminal_context_and_records_multiple_scopes(tmp_path):
         invoke(tmp_path,'report','duplicate','--result-run',tmp_path/'infer0','--result-run',tmp_path/'infer0')
 
 
+def test_report_publishes_complete_feature_combination_comparison(tmp_path):
+    import itertools
+    p=load_protocol().to_dict(); results={}
+    for size in range(5):
+        for groups in itertools.combinations('ABCD',size):
+            subset=''.join(groups); key='M0c:42' if not subset else f'M3:42:groups={subset}'
+            candidate='M0c' if not subset else 'M3'; width=10.-.1*sum('ABCD'.index(g)+1 for g in groups)
+            results[key]={'status':'valid','seed':42,'asimov':{'candidate_id':candidate,'layer':'T1',
+                'expectation_kind':'model_self_asimov','results':[{'mu':1.,'intervals':[{'status':'valid','width':width}]}]}}
+    scope={'mu':1.,'layer':'T1','expectation_kind':'model_self','procedure':'fixed','seed':42,
+           'comparison_cohort_id':'synthetic-common-cohort'}
+    with ResearchRun(tmp_path/'infer-groups',allowed_root=tmp_path,stage='infer',dataset=p['dataset'],protocol=p,
+        context={'prepared_artifact_id':'source','inference_scope':scope}) as run:
+        run.write_json('inference.json',results)
+    report=invoke(tmp_path,'report','group-report','--result-run',tmp_path/'infer-groups').read_json('report.json')
+    comparison=report['feature_combination_comparisons'][0]
+    assert comparison['status']=='valid' and len(comparison['nonempty_combinations'])==15
+    assert comparison['source_artifact_id']
+
+
 def test_report_rejects_mixed_populations_and_input_errors_keep_context(tmp_path):
     p=load_protocol().to_dict()
     for name in ('a','b'):

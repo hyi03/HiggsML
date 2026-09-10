@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
@@ -8,6 +9,9 @@ from src.research.data import (assign_roles, audit_g0, grouped_statistics, load_
 from src.research.errors import ResearchError
 from src.research.protocol import load_protocol
 from src.research.representations import ENGINEERED19, ordered_group_subsets, representation_features
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def frame_for_roles():
@@ -31,6 +35,16 @@ def test_representations_and_empty_shapley_baseline():
     assert len(ordered_group_subsets()) == 15
     with pytest.raises(ResearchError):
         representation_features("engineered19", ["physical_weight"])
+
+
+def test_seed42_batch_config_registers_all_fifteen_combinations_once():
+    config = json.loads((PROJECT_ROOT / "config/research_feature_combinations_seed42.json").read_text(encoding="utf-8"))
+    expected = ["".join(groups) for groups in ordered_group_subsets()]
+    assert config["default_seed"] == 42
+    assert config["feature_combinations"] == expected
+    assert len(config["feature_combinations"]) == len(set(config["feature_combinations"])) == 15
+    assert config["empty_baseline_candidate"] == "M0c"
+    assert config["combination_candidate"] == "M3"
 
 
 def test_roles_stable_and_variance_uses_event_groups():
