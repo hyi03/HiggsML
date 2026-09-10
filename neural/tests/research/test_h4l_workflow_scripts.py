@@ -268,6 +268,31 @@ def test_run_cli_supports_disabling_progress() -> None:
     assert "--no-progress" in completed.stdout
 
 
+@pytest.mark.parametrize("load_module", [_load_prepare_module, _load_run_module])
+def test_invoke_uses_single_line_dot_progress(
+    load_module,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = load_module()
+
+    class FakeProcess:
+        waits = 0
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            self.waits += 1
+            if self.waits <= 2:
+                raise subprocess.TimeoutExpired(cmd="research", timeout=timeout)
+            return 0
+
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *_args, **_kwargs: FakeProcess())
+
+    module._invoke(["prepare"], plan_only=False)
+
+    assert capsys.readouterr().err == "[h4l] stage 'prepare' running ..\n"
+
+
 def test_run_refuses_pending_t1_before_starting_batch(tmp_path: Path) -> None:
     t1_validation = VALIDATION_ROOT / "t1_validation.pending.json"
     prepared = tmp_path / "prepared"

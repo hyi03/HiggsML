@@ -10,7 +10,6 @@ from pathlib import Path
 import shlex
 import subprocess
 import sys
-import time
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
@@ -112,19 +111,21 @@ def _invoke(arguments: list[str], *, plan_only: bool) -> None:
     print(_display(command), flush=True)
     if plan_only:
         return
-    started = time.monotonic()
     process = subprocess.Popen(command, cwd=PROJECT_ROOT)
+    progress_started = False
     while True:
         try:
             return_code = process.wait(timeout=1)
             break
         except subprocess.TimeoutExpired:
-            elapsed = max(1, int(time.monotonic() - started))
-            print(
-                f"[h4l] stage '{arguments[0]}' running: {elapsed}s elapsed",
-                file=sys.stderr,
-                flush=True,
-            )
+            if not progress_started:
+                sys.stderr.write(f"[h4l] stage '{arguments[0]}' running ")
+                progress_started = True
+            sys.stderr.write(".")
+            sys.stderr.flush()
+    if progress_started:
+        sys.stderr.write("\n")
+        sys.stderr.flush()
     if return_code != 0:
         raise WorkflowError(
             f"higgsml-research failed with exit code {return_code}",
