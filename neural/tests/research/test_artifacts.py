@@ -1,4 +1,6 @@
+import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -22,6 +24,36 @@ def test_artifact_binding_and_tampering(tmp_path):
     (tmp_path / "first" / "audit.json").write_text('{}', encoding="utf-8")
     with pytest.raises(ResearchError, match="digest"):
         loaded.read_json("audit.json")
+
+
+def test_streamed_artifact_receipt_avoids_publication_reread(tmp_path, monkeypatch):
+    import src.research.artifacts as artifacts
+
+    calls = []
+    original = artifacts.sha256_file
+
+    def recording_sha256(path):
+        calls.append(Path(path).name)
+        return original(path)
+
+    monkeypatch.setattr(artifacts, "sha256_file", recording_sha256)
+    payload = b"streamed research events\n"
+    digest = hashlib.sha256(payload).hexdigest()
+    with ResearchRun(tmp_path / "streamed", allowed_root=tmp_path, stage="prepare",
+                     dataset="atlas2020_4lep", protocol={}) as run:
+        (run.path / "events.jsonl").write_bytes(payload)
+        run.register_streamed_file(
+            "events.jsonl", sha256=digest, size_bytes=len(payload)
+        )
+        run.write_json("audit.json", {"status": "passed"})
+
+    manifest = json.loads((tmp_path / "streamed" / "manifest.json").read_text())
+    assert manifest["files"]["events.jsonl"] == {
+        "sha256": digest,
+        "size_bytes": len(payload),
+    }
+    assert "events.jsonl" not in calls
+    assert "audit.json" in calls
 
 
 def test_upstream_binding_and_no_overwrite(tmp_path):

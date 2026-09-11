@@ -45,6 +45,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--seed", type=int, choices=range(42, 47), default=42)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    parser.add_argument("--protocol", type=Path)
     parser.add_argument("--prepared-run", type=Path)
     parser.add_argument("--gate-run", type=Path)
     parser.add_argument("--t1-validation", type=Path)
@@ -159,7 +160,7 @@ def _validate_t1(path: Path, protocol_path: Path, dataset: str) -> None:
 
 def _run(args: argparse.Namespace) -> None:
     config = _load_config(_resolve(args.config))
-    protocol = _resolve(config["protocol"])
+    protocol = _resolve(args.protocol or config["protocol"])
     prepared = _resolve(args.prepared_run or config["prepared_run"])
     gate = _resolve(args.gate_run or config["g1_gate_run"])
     t1_validation = _resolve(args.t1_validation or config["t1_validation"])

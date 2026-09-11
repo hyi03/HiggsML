@@ -90,6 +90,7 @@ class ResearchRun:
         self.path = self.transaction.path
         self.protocol = protocol
         self.status = "complete"
+        self._stream_verified_files: set[str] = set()
         self.manifest = {
             "schema_version": "research-run-v1", "stage": stage, "dataset": dataset,
             "protocol_sha256": digest_json(protocol), "seed": seed,
@@ -138,6 +139,22 @@ class ResearchRun:
             raise ResearchError("invalid artifact payload path")
         self.manifest["files"][name] = {"sha256": sha256_file(path), "size_bytes": path.stat().st_size}
 
+    def register_streamed_file(self, name: str, *, sha256: str, size_bytes: int) -> None:
+        """Register bytes hashed by the writer without rereading the payload."""
+        name = _filename(name)
+        path = self.path / name
+        if name == "manifest.json" or name in self.manifest["files"]:
+            raise ResearchError("artifact filename already reserved")
+        if path.is_symlink() or not path.is_file() or path.resolve().parent != self.path.resolve():
+            raise ResearchError("invalid artifact payload path")
+        if (not isinstance(sha256, str) or len(sha256) != 64
+                or any(character not in "0123456789abcdef" for character in sha256)
+                or type(size_bytes) is not int or size_bytes < 0
+                or path.stat().st_size != size_bytes):
+            raise ResearchError("invalid streamed artifact receipt")
+        self.manifest["files"][name] = {"sha256": sha256, "size_bytes": size_bytes}
+        self._stream_verified_files.add(name)
+
     def __exit__(self, kind, error, traceback):
         terminal = isinstance(error, ResearchStateError)
         recorded_failure = error is not None
@@ -153,7 +170,8 @@ class ResearchRun:
                 # registered by stages that stream data directly to disk.
                 bound = LoadedRun(self.path, self.manifest)
                 for name in self.manifest["files"]:
-                    bound.file(name)
+                    if name not in self._stream_verified_files:
+                        bound.file(name)
                 self.manifest["artifact_id"] = digest_json(self.manifest)
                 (self.path / "manifest.json").write_bytes(canonical_json_bytes(self.manifest))
             except BaseException as publish_error:

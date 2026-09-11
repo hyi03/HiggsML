@@ -195,9 +195,9 @@ def test_streamed_population_digest_and_multichunk_roundtrip(tmp_path):
     # Technical replicas have unique row IDs, preserving each physical group.
     frame=pd.concat([frame.assign(event_id=frame.event_id+f'-{i}',source_row_id=frame.source_row_id+f'-{i}') for i in range(12)],ignore_index=True)
     path=tmp_path/'data.jsonl'
-    population=write_research_data(frame,path,load_protocol())
+    receipt=write_research_data(frame,path,load_protocol())
     loaded=load_research_data(path,'atlas2020_4lep',load_protocol())
-    assert loaded.attrs['population_id']==population==_population_id(path,'atlas2020_4lep')
+    assert loaded.attrs['population_id']==receipt.population_id==_population_id(path,'atlas2020_4lep')
     expected=frame.loc[frame.role!='assessment'].reset_index(drop=True)
     from src.research.data import IDENTITY
     columns=sorted(IDENTITY)+sorted(set(frame)-set(IDENTITY))

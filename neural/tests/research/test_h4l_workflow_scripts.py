@@ -15,6 +15,7 @@ from jsonschema import Draft202012Validator
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PREPARE_SCRIPT = PROJECT_ROOT / "scripts" / "h4l_prepare.py"
+G1_SCRIPT = PROJECT_ROOT / "scripts" / "h4l_g1.py"
 RUN_SCRIPT = PROJECT_ROOT / "scripts" / "h4l_run.py"
 VALIDATION_ROOT = PROJECT_ROOT / "config" / "validation"
 
@@ -68,6 +69,14 @@ def _load_run_module():
     return module
 
 
+def _load_g1_module():
+    spec = importlib.util.spec_from_file_location("h4l_g1_test_module", G1_SCRIPT)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _new_run_root(prefix: str) -> Path:
     return PROJECT_ROOT / "runs" / f"{prefix}-{uuid.uuid4().hex}"
 
@@ -88,6 +97,7 @@ def test_prepare_cli_has_no_manual_review_arguments() -> None:
     assert completed.returncode == 0
     assert "--run-root" in completed.stdout
     assert "--no-progress" in completed.stdout
+    assert "--protocol" in completed.stdout
     for removed in ("--write-input-package", "--p0-validation", "--t1-validation", "--validate"):
         assert removed not in completed.stdout
 
@@ -126,7 +136,7 @@ def test_automatic_validation_is_bound_and_schema_valid(
     assert t1["evidence_id"].startswith("automated-t1-")
 
 
-def test_prepare_plan_uses_one_command_without_creating_run(
+def test_prepare_plan_stops_after_audit_and_prepare(
     tmp_path: Path,
 ) -> None:
     receipt, _ = _dataset_receipt(tmp_path)
@@ -141,17 +151,12 @@ def test_prepare_plan_uses_one_command_without_creating_run(
 
     assert completed.returncode == 0, completed.stderr
     output = completed.stdout
-    for expected in (
-        "src.cli.research audit",
-        "src.cli.research prepare",
-        "--candidate M0c",
-        "--candidate M2",
-        "--candidate M3",
-        "--transform physical",
-        "src.cli.research templates",
-        "h4l_run.py",
-    ):
+    for expected in ("src.cli.research audit", "src.cli.research prepare", "h4l_g1.py"):
         assert expected in output
+    assert "src.cli.research train" not in output
+    assert "src.cli.research calibrate" not in output
+    assert "src.cli.research templates" not in output
+    assert "h4l_run.py" not in output
     assert not run_root.exists()
 
 
@@ -165,18 +170,18 @@ def test_prepare_writes_automatic_inputs_before_running_prerequisites(
     monkeypatch.setattr(prepare, "RUNS_ROOT", tmp_path.resolve())
     run_root = tmp_path / "run"
 
+    invoked: list[str] = []
+
     def fake_invoke(arguments: list[str], *, plan_only: bool) -> None:
         assert plan_only is False
-        if arguments[0] == "templates":
-            gate = Path(arguments[arguments.index("--run-dir") + 1])
-            gate.mkdir(parents=True)
-            (gate / "g1.json").write_text('{"status":"passed"}', encoding="utf-8")
+        invoked.append(arguments[0])
 
     monkeypatch.setattr(prepare, "_invoke", fake_invoke)
     prepare._run(
         argparse.Namespace(
             dataset_receipt=receipt,
             run_root=run_root,
+            protocol=None,
             plan_only=False,
             no_progress=False,
         )
@@ -186,9 +191,58 @@ def test_prepare_writes_automatic_inputs_before_running_prerequisites(
     assert json.loads((inputs / "p0-validation.json").read_text(encoding="utf-8"))["status"] == "validated"
     assert json.loads((inputs / "t1-validation.json").read_text(encoding="utf-8"))["status"] == "validated"
     assert (inputs / "h4l-root-input-v1-manifest.json").is_file()
+    assert invoked == ["audit", "prepare"]
     progress_output = capsys.readouterr().err
-    assert "H4l prerequisites" in progress_output
-    assert "11/11" in progress_output
+    assert "H4l prepare" in progress_output
+    assert "2/2" in progress_output
+
+
+def test_g1_plan_reuses_prepared_run_without_preparing_root_again() -> None:
+    prepared = _new_run_root("pytest-g1-prepared")
+    t1_validation = prepared.parent / f"{prepared.name}-t1.json"
+    output_root = _new_run_root("pytest-g1-output")
+
+    completed = _run(
+        G1_SCRIPT,
+        "--prepared-run", str(prepared),
+        "--t1-validation", str(t1_validation),
+        "--output-root", str(output_root),
+        "--plan-only",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    output = completed.stdout
+    assert output.count("src.cli.research train") == 3
+    assert output.count("src.cli.research calibrate") == 5
+    assert output.count("src.cli.research templates") == 1
+    assert "src.cli.research prepare" not in output
+    assert output.count(f"--input-run {prepared}") == 9
+    assert "h4l_run.py" in output
+    assert not output_root.exists()
+
+
+def test_exploratory_protocol_propagates_prepare_to_g1_to_batch(tmp_path: Path) -> None:
+    receipt, _ = _dataset_receipt(tmp_path)
+    protocol = PROJECT_ROOT / "config" / "research_protocol_exploratory_all_mc_v1.json"
+    run_root = _new_run_root("pytest-exploratory-plan")
+    prepare = _run(PREPARE_SCRIPT, "--dataset-receipt", str(receipt),
+                   "--run-root", str(run_root), "--protocol", str(protocol), "--plan-only")
+    assert prepare.returncode == 0, prepare.stderr
+    assert prepare.stdout.count(f"--protocol {protocol}") == 3
+
+    g1 = _run(G1_SCRIPT, "--prepared-run", str(run_root / "prepare"),
+              "--t1-validation", str(run_root / "inputs" / "t1-validation.json"),
+              "--output-root", str(run_root / "g1"), "--protocol", str(protocol), "--plan-only")
+    assert g1.returncode == 0, g1.stderr
+    assert g1.stdout.count(f"--protocol {protocol}") == 10
+
+    batch = _run(RUN_SCRIPT, "--seed", "42", "--prepared-run", str(run_root / "prepare"),
+                 "--gate-run", str(run_root / "g1" / "templates"),
+                 "--t1-validation", str(run_root / "inputs" / "t1-validation.json"),
+                 "--output-root", str(run_root / "batch" / "seed42"),
+                 "--protocol", str(protocol), "--plan-only")
+    assert batch.returncode == 0, batch.stderr
+    assert batch.stdout.count(f"--protocol {protocol}") == 35
 
 
 def test_run_plan_covers_all_combinations_without_creating_run() -> None:
@@ -247,6 +301,7 @@ def test_run_shows_progress_for_all_batch_stages(
         argparse.Namespace(
             seed=42,
             config=run.DEFAULT_CONFIG,
+            protocol=None,
             prepared_run=prepared,
             gate_run=gate,
             t1_validation=t1_validation,
@@ -268,7 +323,7 @@ def test_run_cli_supports_disabling_progress() -> None:
     assert "--no-progress" in completed.stdout
 
 
-@pytest.mark.parametrize("load_module", [_load_prepare_module, _load_run_module])
+@pytest.mark.parametrize("load_module", [_load_prepare_module, _load_g1_module, _load_run_module])
 def test_invoke_uses_single_line_dot_progress(
     load_module,
     monkeypatch: pytest.MonkeyPatch,

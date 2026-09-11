@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 import numpy as np
@@ -120,6 +121,26 @@ def test_protocol_roundtrip_digest_and_dataset_rejection(tmp_path):
         load_protocol(path, "atlas2025_exactly4lep")
 
 
+def test_exploratory_protocol_accepts_all_mc_population():
+    path = PROJECT_ROOT / "config" / "research_protocol_exploratory_all_mc_v1.json"
+    protocol = load_protocol(path)
+    assert protocol["schema_version"] == "h4l-research-v3"
+    assert protocol["source_population"] == "all_mc"
+    assert protocol["development_probability"] == 1.0
+    assert protocol["historical_held_out_test_preserved"] is False
+    assert protocol["protocol_scope"] == "exploratory_all_mc_not_independent_validation"
+
+
+def test_write_research_data_returns_streamed_digest_and_size(tmp_path):
+    protocol, frame = load_protocol(), frame_for_roles()
+    path = tmp_path / "events.jsonl"
+    receipt = write_research_data(frame, path, protocol)
+    payload = path.read_bytes()
+    assert receipt.population_id
+    assert receipt.sha256 == hashlib.sha256(payload).hexdigest()
+    assert receipt.size_bytes == len(payload)
+
+
 @pytest.mark.parametrize("section,key,value",[
     ("training","learning_rate",float("nan")),("training","batch_size",True),
     ("training","max_epochs",201),("calibration","mass_edges",[105,120,119,140]),
@@ -154,7 +175,18 @@ def test_mc_source_rejected_before_uproot_open(tmp_path, monkeypatch):
         export_research_data(manifest, tmp_path / "missing.yaml", load_protocol())
 
 
-def test_root_export_selects_identity_before_payload(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "protocol_name,expected_rows,expected_ranges,expected_split,payload_access",
+    [
+        ("research_protocol_v2.json", 2, [(0, 1), (0, 1)], "development", "development_entries_only"),
+        ("research_protocol_exploratory_all_mc_v1.json", 4,
+         [(0, 1), (1, 2), (0, 1), (1, 2)], "exploratory", "all_mc_entries"),
+    ],
+)
+def test_root_export_selects_protocol_population_before_payload(
+    tmp_path, monkeypatch, protocol_name, expected_rows, expected_ranges,
+    expected_split, payload_access,
+):
     import copy
     import math
     import awkward as ak
@@ -197,22 +229,29 @@ def test_root_export_selects_identity_before_payload(tmp_path, monkeypatch):
             if kwargs["library"] == "np":
                 assert branches == ["eventNumber", "channelNumber"]
                 return {"eventNumber":np.array(numbers[self.role]),"channelNumber":np.array([channel,channel])}
-            assert kwargs["entry_start"] == 0 and kwargs["entry_stop"] == 1
-            payload_calls.append(self.role)
+            start, stop = kwargs["entry_start"], kwargs["entry_stop"]
+            payload_calls.append((self.role, start, stop))
             pt, eta = [38.,33.,27.,22.], [.2,-.2,.4,-.4]
             event = dict(lep_n=4,lep_pt=[v*1000 for v in pt],lep_eta=eta,lep_phi=[0.,math.pi,1.1,1.1+math.pi],
                 lep_e=[a*math.cosh(b)*1000 for a,b in zip(pt,eta)],lep_charge=[-1,1,-1,1],lep_type=[11,11,13,13],
                 trigE=True,trigM=False,lep_isTrigMatched=[True,False,False,False],lep_isTightID=[True]*4,
                 lep_track_iso=[1000.]*4,lep_calo_iso=[1000.]*4,lep_d0sig=[1.]*4,lep_z0=[.1]*4,
-                runNumber=1,eventNumber=numbers[self.role][0],channelNumber=channel,mcWeight=1.)
-            return ak.Array({original.profile["branches"][k]:[v] for k,v in event.items()})
+                runNumber=1,eventNumber=0,channelNumber=channel,mcWeight=1.)
+            events = [dict(event, eventNumber=numbers[self.role][entry]) for entry in range(start, stop)]
+            return ak.Array({original.profile["branches"][k]:[item[k] for item in events]
+                             for k in event})
     class Root:
         def __init__(self, source): self.role = next(r for r,m in members.items() if m["filename"] == source.name)
         def __enter__(self): return self
         def __exit__(self,*args): pass
         def __getitem__(self,key): return Tree(self.role)
     monkeypatch.setattr(uproot,"open",Root)
-    frame = export_research_data(manifest,profile,load_protocol())
-    assert len(frame) == 2 and payload_calls == ["higgs", "zz"]
-    assert set(frame.split) == {"development"}
+    protocol = load_protocol(PROJECT_ROOT / "config" / protocol_name)
+    frame = export_research_data(manifest, profile, protocol, max_entries=1)
+    assert len(frame) == expected_rows
+    assert [(start, stop) for _, start, stop in payload_calls] == expected_ranges
+    assert set(frame.split) == {expected_split}
+    assert frame.attrs["source_evidence"]["payload_access"] == payload_access
+    if expected_split == "exploratory":
+        assert frame.attrs["source_evidence"]["historical_held_out_test_preserved"] is False
     assert all(len(v)==4 for v in frame.lep_pt)

@@ -7,6 +7,8 @@
 
 v2新增逐epoch诊断和独立带符号μ诊断。`research_protocol_v1.json`保持字节不变，旧产物仍须用原协议读取；
 不能将旧run改绑v2。新协议摘要要求新run及同协议的P0/G1/T1证据，不继承旧assessment独立性。
+`research_protocol_exploratory_all_mc_v1.json`是明确标记的v3探索协议，使用全部MC并声明
+`historical_held_out_test_preserved=false`；它不能提供独立held-out验证或论文级泛化证据。
 
 ## 环境与入口
 
@@ -45,6 +47,8 @@ Windows 开发验证不能代替锁定原生 ARM64 权威验收。MELA 另在 Li
 `manifest.json` 绑定数据集、协议快照、上游产物 ID、文件 SHA256/大小、代码版本及 dirty 状态、
 环境和种子。JSON 模型只包含数值张量，不使用可执行 pickle 加载。
 模型、CDF 和阈值还分别校验自身摘要。产物完整性与科研资格是不同状态。
+prepare写出`events.jsonl`时同步累计SHA256和字节数，使用写入收据登记并直接发布，避免写完后两次
+完整重读大文件。下游每次加载已发布产物时仍会按manifest重新校验文件摘要，因此跨阶段篡改检测不变。
 未预期的内部异常也保留绑定候选身份的 `internal_error` manifest 和 `failure.json`，
 可纳入报告，并继续以退出码 70 报错。
 
@@ -63,6 +67,11 @@ profile 必须与该数据集的封存 profile 字节一致。导出前校验来
 事件组使用固定哈希划分 train/validation/calibration/template/assessment，比例为 40/10/20/20/10%。
 产额使用 `physical_weight/(0.8 * role_probability)`，分组方差按同组行之和的平方计算。
 
+exploratory all-MC v3不执行上述历史development/test筛选。它对ROOT中的全部MC条目按
+`root_max_entries`读取有界连续区间，把导出身份标为`exploratory`，并使用
+`sampling_probability=role_probability`。五种内部角色和assessment冻结门禁仍保留，但这些角色来自
+已经合并的全MC总体，不能视为旧test边界的替代品或新的独立验证集。v1/v2的development-only行为不变。
+
 受控 MC 的训练还要求 prepare 阶段提供 `--p0-validation`。证据 JSON 必须带
 `status=validated`、dataset、protocol_sha256、source_evidence_sha256、evidence_id、independent_reference，
 并完整记录 physical_definitions 下的 processes、units、four_vectors、pairing、weights、selection。
@@ -71,6 +80,37 @@ profile 必须与该数据集的封存 profile 字节一致。导出前校验来
 事件文件每行把身份 envelope 与特征 payload 分开；读取器先验证身份和角色哈希，才决定是否解码 payload。
 训练只拟合 train 与 validation；CDF/阈值只拟合 calibration；模板只使用 template。
 assessment 必须绑定冻结分析。历史反馈是否影响当前设计仍需独立来源审计。
+
+## 自动分段脚本
+
+`scripts/h4l_prepare.py`只运行`audit`和`prepare`，完成ROOT读取后产生可复用的
+`<run-root>/prepare`。它不会继续训练、校准或构建模板。脚本完成时会打印下一条G1命令：
+
+```powershell
+python scripts/h4l_prepare.py --run-root runs/h4l-pilot-001
+```
+
+`scripts/h4l_g1.py`从已有prepared artifact运行seed 42的M0c、M2、M3、五个校准和共同模板：
+
+```powershell
+python scripts/h4l_g1.py --prepared-run runs/h4l-pilot-001/prepare --t1-validation runs/h4l-pilot-001/inputs/t1-validation.json --output-root runs/h4l-pilot-001/g1
+```
+
+训练、校准或模板失败时，失败的G1输出目录保持不可变。修复问题后应指定新的
+`--output-root`，继续传入同一个`--prepared-run`；这不会重新执行ROOT prepare。G1通过后，
+脚本打印绑定同一prepared artifact和新gate run的`h4l_run.py`命令。三个脚本都接受`--protocol`，
+并把选择传播到所有子命令；省略时保持原有`research_protocol_v1.json`默认值。
+
+使用全部MC的探索链路必须在每一步显式传入同一协议：
+
+```powershell
+python scripts/h4l_prepare.py --run-root runs/h4l-all-mc-001 --protocol config/research_protocol_exploratory_all_mc_v1.json
+python scripts/h4l_g1.py --prepared-run runs/h4l-all-mc-001/prepare --t1-validation runs/h4l-all-mc-001/inputs/t1-validation.json --output-root runs/h4l-all-mc-001/g1 --protocol config/research_protocol_exploratory_all_mc_v1.json
+python scripts/h4l_run.py --seed 42 --prepared-run runs/h4l-all-mc-001/prepare --gate-run runs/h4l-all-mc-001/g1/templates --t1-validation runs/h4l-all-mc-001/inputs/t1-validation.json --output-root runs/h4l-all-mc-001/batch/seed42 --protocol config/research_protocol_exploratory_all_mc_v1.json
+```
+
+该链路的协议范围固定为`exploratory_all_mc_not_independent_validation`。报告只能用于探索性方法比较；
+不得写成独立held-out评估、论文就绪证据或物理测量。
 
 ## 最小链路
 
