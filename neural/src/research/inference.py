@@ -8,6 +8,7 @@ from scipy.stats import chi2
 
 from .errors import ResearchError, ResearchStateError
 from .diagnostics import signed_mu_fit, signed_mu_summary
+from .resources import ordered_map
 
 
 def require_pyhf():
@@ -53,8 +54,15 @@ def build_model(template, *, layer="T0", t1_validation=None, mu_max=20.):
 
 
 def profile_interval(model, data, confidence=.68):
+    """Compatibility wrapper for one confidence level."""
+    return profile_intervals(model, data, [confidence])[0]
+
+
+def profile_intervals(model, data, levels=(.68, .95)):
+    """One unconditional fit per observation; independent interval failures."""
     pyhf = require_pyhf()
-    if not 0 < confidence < 1:
+    levels = tuple(levels)
+    if not levels or any(not 0 < confidence < 1 for confidence in levels):
         raise ResearchError("Confidence must lie between zero and one")
     data = np.asarray(data, float)
     if data.shape != (model.config.nmaindata + model.config.nauxdata,) or not np.isfinite(data).all() or (data[:model.config.nmaindata] < 0).any():
@@ -72,6 +80,13 @@ def profile_interval(model, data, confidence=.68):
         best, objective = pyhf.infer.mle.fit(data, model, return_fitted_val=True)
         muhat = float(best[model.config.poi_index]); minimum = float(np.asarray(objective).reshape(-1)[0])
         lo, hi = model.config.suggested_bounds()[model.config.poi_index]
+    except Exception as exc:
+        return [{"status": "fit_failed", "confidence": level, "error": str(exc)} for level in levels]
+    return [_profile_from_fit(pyhf, model, data, level, muhat, minimum, lo, hi) for level in levels]
+
+
+def _profile_from_fit(pyhf, model, data, confidence, muhat, minimum, lo, hi):
+    try:
         target = float(chi2.ppf(confidence, 1))
         def residual(mu):
             _, nll = pyhf.infer.mle.fixed_poi_fit(float(mu), data, model, return_fitted_val=True)
@@ -86,29 +101,29 @@ def profile_interval(model, data, confidence=.68):
         return {"status": "fit_failed", "confidence": confidence, "error": str(exc)}
 
 
-def run_asimov(template, *, protocol=None, layer="T0", t1_validation=None, injections=(0.,1.,2.), mu_max=20.):
+def run_asimov(template, *, protocol=None, layer="T0", t1_validation=None, injections=(0.,1.,2.), mu_max=20., _built_model=None):
     if protocol is not None:
         config = (protocol if isinstance(protocol, dict) else protocol.to_dict()).get("inference", {})
         mu_max = config.get("mu_bounds", [0.,20.])[1]
-    model, metadata = build_model(template, layer=layer, t1_validation=t1_validation, mu_max=mu_max)
+    model, metadata = _built_model or build_model(template, layer=layer, t1_validation=t1_validation, mu_max=mu_max)
     results = []
     for mu in injections:
         if not 0 <= mu <= mu_max:
             raise ResearchError("Injection outside frozen mu bounds")
         pars = model.config.suggested_init(); pars[model.config.poi_index] = float(mu)
         data = np.asarray(model.expected_data(pars), float)
-        results.append({"mu": float(mu), "intervals": [profile_interval(model, data, cl) for cl in (.68,.95)]})
+        results.append({"mu": float(mu), "intervals": profile_intervals(model, data)})
     return {**metadata, "status": "valid" if all(i["status"] == "valid" for r in results for i in r["intervals"]) else "inference_incomplete", "expectation_kind": "model_self_asimov", "results": results}
 
 
 def run_toys(template, *, mu=1., count=500, seed=42, layer="T0", t1_validation=None,
              auxiliary_generation="regenerated", expectation_kind="model_self", mother_rates=None,
-             mother_id=None, mu_max=20., signed_diagnostic=None):
+             mother_id=None, mu_max=20., signed_diagnostic=None, workers=1, worker_threads=1, _built_model=None):
     if expectation_kind not in {"model_self", "assessment", "mismatch"} or auxiliary_generation not in {"fixed", "regenerated"}:
         raise ResearchError("Explicit supported toy source and auxiliary policy required")
     if int(count) != count or count < 1 or not 0 <= mu <= mu_max:
         raise ResearchError("Invalid frozen toy budget or injection")
-    model, metadata = build_model(template, layer=layer,t1_validation=t1_validation,mu_max=mu_max)
+    model, metadata = _built_model or build_model(template, layer=layer,t1_validation=t1_validation,mu_max=mu_max)
     pars = model.config.suggested_init(); pars[model.config.poi_index] = float(mu)
     expected = np.asarray(model.expected_data(pars), float)
     if expectation_kind != "model_self":
@@ -120,23 +135,28 @@ def run_toys(template, *, mu=1., count=500, seed=42, layer="T0", t1_validation=N
         expected[:model.config.nmaindata] = rates
     elif mother_rates is not None:
         raise ResearchError("Model-self generation may not silently use another mother")
-    rng = np.random.default_rng(seed); results = []
-    for index in range(int(count)):
-        data = expected.copy()
-        data[:model.config.nmaindata] = rng.poisson(expected[:model.config.nmaindata])
-        if auxiliary_generation == "regenerated":
-            data[model.config.nmaindata:] = rng.poisson(expected[model.config.nmaindata:])
-        row = {"toy": index, "intervals": [profile_interval(model,data,cl) for cl in (.68,.95)]}
+    rng = np.random.default_rng(seed)
+    def tasks():
+        for index in range(int(count)):
+            data = expected.copy()
+            data[:model.config.nmaindata] = rng.poisson(expected[:model.config.nmaindata])
+            if auxiliary_generation == "regenerated":
+                data[model.config.nmaindata:] = rng.poisson(expected[model.config.nmaindata:])
+            yield index, data
+    def fit(task):
+        index, data = task
+        row = {"toy": index, "intervals": profile_intervals(model, data)}
         if signed_diagnostic is not None and mu == 0:
             row['signed_mu_diagnostic'] = signed_mu_fit(template, data[:model.config.nmaindata], signed_diagnostic)
-        results.append(row)
+        return row
+    results = list(ordered_map(fit, tasks(), workers=workers, worker_threads=worker_threads))
     output = {**metadata,"status": "valid" if all(i["status"] == "valid" for r in results for i in r["intervals"]) else "inference_incomplete", "mu": mu,"seed": seed,"count":count,"expectation_kind":expectation_kind,"mother_id":mother_id,"auxiliary_generation":auxiliary_generation,"paired":False,"results":results}
     if signed_diagnostic is not None and mu == 0:
         output['signed_mu_diagnostic'] = signed_mu_summary([r['signed_mu_diagnostic'] for r in results])
     return output
 
 
-def paired_event_toys(frame, *, category_columns, mass_edges, mu, count, seed, mother_id):
+def paired_event_toys(frame, *, category_columns, mass_edges, mu, count, seed, mother_id, _joint_cells=None):
     """Draw joint-bin Poisson counts once and project into each candidate.
 
     Signed rows are aggregated into physical joint cells first; a negative
@@ -156,12 +176,28 @@ def paired_event_toys(frame, *, category_columns, mass_edges, mu, count, seed, m
     if any(not frame[category_columns[c]].isin([0,1]).all() for c in columns):
         raise ResearchError("Paired categories must be zero or one")
     rates = frame.yield_weight.to_numpy(float) * np.where(frame.label.to_numpy()==1, mu, 1.)
-    cells, inverse = np.unique(joint,axis=0,return_inverse=True)
+    if _joint_cells is None:
+        cells, inverse = np.unique(joint,axis=0,return_inverse=True)
+    else:
+        cells, inverse = _joint_cells
+        if not np.array_equal(cells[inverse],joint):
+            raise ResearchError('Joint-cell cache does not match event/category order')
     sums = np.bincount(inverse,weights=rates,minlength=len(cells))
     if not np.isfinite(sums).all() or (sums<0).any():
         raise ResearchStateError("Joint physical mother has negative rates",status="insufficient_statistics")
-    draws = np.random.default_rng(seed).poisson(sums,size=(count,len(cells)))
-    observations = {c: np.column_stack([draws[:,cells[:,j]==i].sum(axis=1) for i in range(2*n)]).tolist() for j,c in enumerate(columns)}
+    # Sparse integer projection bounds scratch memory by occupied joint cells.
+    from scipy.sparse import csr_matrix
+    projections = [csr_matrix((np.ones(len(cells), dtype=np.int64),
+                              (np.arange(len(cells)), cells[:, j])), shape=(len(cells), 2*n))
+                   for j in range(len(columns))]
+    rng = np.random.default_rng(seed)
+    observations = {c: [] for c in columns}
+    chunk = max(1, (8 * 1024 * 1024) // max(8*len(cells), 1))
+    for start in range(0, count, chunk):
+        draws = rng.poisson(sums, size=(min(chunk, count-start), len(cells)))
+        for c, projection in zip(columns, projections):
+            observations[c].extend(np.asarray(draws @ projection).tolist())
+
     return {"status":"valid","paired":True,"pairing":"shared_joint_physical_event_cells","mother_id":mother_id,"observations":observations,"seed":seed,"mu":mu}
 
 
@@ -184,7 +220,7 @@ def stress_weights(frame, *, kind, direction, reference_score_column="reference_
 
 
 def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mapping, evaluate,
-                     outer_replicas, inner_toys, seed, model_id, mother_id):
+                     outer_replicas, inner_toys, seed, model_id, mother_id, workers=1, worker_threads=1):
     """Bounded paired group-bootstrap; callbacks retain scientific binding checks."""
     if not model_id or not mother_id or min(outer_replicas,inner_toys)<1:
         raise ResearchError("T2 requires frozen identities and positive budgets")
@@ -196,21 +232,39 @@ def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mappin
     groups = sorted(calibration.event_group_id.unique()); rng=np.random.default_rng(seed); replicas=[]
     if not groups:
         raise ResearchStateError("Empty calibration",status="insufficient_statistics")
-    for replica in range(outer_replicas):
-        multiplicity = rng.multinomial(len(groups),np.full(len(groups),1/len(groups)))
-        bootstrap = calibration.copy(); factor = bootstrap.event_group_id.map(dict(zip(groups,multiplicity))).to_numpy()
-        bootstrap["bootstrap_multiplicity"] = factor
-        for column in ("physical_weight","yield_weight"):
-            if column in bootstrap:
-                bootstrap[column] *= factor
-        bootstrap = bootstrap.loc[factor>0].copy()
+    group_index = {group: i for i,group in enumerate(groups)}
+    codes = calibration.event_group_id.map(group_index).to_numpy(int)
+    probabilities = np.full(len(groups),1/len(groups))
+    def tasks():
+        for replica in range(outer_replicas):
+            multiplicity = rng.multinomial(len(groups), probabilities)
+            bootstrap = calibration.copy(); factor = multiplicity[codes]
+            bootstrap["bootstrap_multiplicity"] = factor
+            for column in ("physical_weight","yield_weight"):
+                if column in bootstrap:
+                    bootstrap[column] *= factor
+            bootstrap = bootstrap.loc[factor>0].copy()
+            row = {"replica": replica, "bootstrap_group_multiplicities": dict(zip(map(str,groups),map(int,multiplicity)))}
+            try:
+                mapping = fit_mapping(bootstrap)
+                mapped_template = apply_mapping(mapping,template.copy())
+                mapped_mother = apply_mapping(mapping,mother.copy())
+                # Failures above MUST NOT consume this draw (legacy random stream).
+                inner_seed = int(rng.integers(0,2**31))
+                yield row, (mapped_template,mapped_mother,mapping,inner_toys,inner_seed)
+            except ResearchError as exc:
+                row.update(status=exc.status,error=str(exc))
+                yield row, None
+    def finish(task):
+        row, arguments = task
+        if arguments is None:
+            return row
         try:
-            mapping = fit_mapping(bootstrap)
-            mapped_template = apply_mapping(mapping,template.copy())
-            mapped_mother = apply_mapping(mapping,mother.copy())
-            inner_seed = int(rng.integers(0,2**31))
-            result = evaluate(mapped_template,mapped_mother,mapping,inner_toys,inner_seed)
-            replicas.append({"replica":replica,"mapping_id":mapping["mapping_id"],"result":result,"status":result.get("status","unknown"),"bootstrap_group_multiplicities":dict(zip(map(str,groups),map(int,multiplicity))),"inner_seed":inner_seed})
+            result = evaluate(*arguments)
+            row.update(mapping_id=arguments[2]['mapping_id'],result=result,
+                       status=result.get('status','unknown'),inner_seed=arguments[-1])
         except ResearchError as exc:
-            replicas.append({"replica":replica,"status":exc.status,"error":str(exc),"bootstrap_group_multiplicities":dict(zip(map(str,groups),map(int,multiplicity)))})
+            row.update(status=exc.status,error=str(exc))
+        return row
+    replicas = list(ordered_map(finish, tasks(), workers=workers, worker_threads=worker_threads))
     return {"status":"valid" if all(r["status"]=="valid" for r in replicas) else "inference_incomplete","layer":"T2-procedure","model_id":model_id,"mother_id":mother_id,"randomization":"calibration_physical_group_bootstrap_and_inner_pseudodata","fixed":"trained_model_template_and_assessment_mother_events","outer_replicas":outer_replicas,"inner_toys":inner_toys,"seed":seed,"replicas":replicas}

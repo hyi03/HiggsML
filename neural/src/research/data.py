@@ -1,6 +1,7 @@
 """MC research export with identity-first reads and role-aware payload access."""
 import hashlib
 import json
+import time
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +13,69 @@ from .representations import ENGINEERED19
 
 ROLES = ("train", "validation", "calibration", "template", "assessment")
 IDENTITY = ("event_id", "source_row_id", "event_group_id", "split", "dataset", "label", "role")
+
+
+def iter_records(frame):
+    """Bounded row objects, with pandas' native scalar boxing and column order."""
+    columns = list(frame.columns)
+    boxed = [i for i,dtype in enumerate(frame.dtypes)
+             if dtype.kind == 'O' or isinstance(dtype,pd.api.extensions.ExtensionDtype)]
+    for values in frame.itertuples(index=False, name=None):
+        values = list(values)
+        for i in boxed:
+            value = values[i]
+            if value is pd.NA:
+                values[i] = None
+            elif isinstance(value,np.integer):
+                values[i] = int(value)
+            elif isinstance(value,np.floating):
+                values[i] = float(value)
+            elif isinstance(value,np.bool_):
+                values[i] = bool(value)
+        yield dict(zip(columns, values))
+
+
+def _roles(groups, protocol):
+    lookup = {g: role_for_group(g, protocol) for g in groups.unique()}
+    return groups.map(lookup)
+
+
+def population_digest(groups, dataset):
+    from .artifacts import digest_json
+    return digest_json({'dataset':dataset, 'physical_groups':sorted(groups)})
+
+
+def development_spans(mask, max_entries=4096):
+    """Ascending half-open development runs; never bridge a forbidden entry."""
+    if type(max_entries) is not int or max_entries < 1:
+        raise ResearchError("ROOT read limit must be a positive integer")
+    mask = np.asarray(mask, dtype=bool)
+    if mask.ndim != 1:
+        raise ResearchError("Development mask must be one-dimensional")
+    boundaries = np.flatnonzero(np.diff(np.r_[False, mask, False]))
+    for start, stop in zip(boundaries[::2], boundaries[1::2]):
+        for left in range(int(start), int(stop), max_entries):
+            yield left, min(left + max_entries, int(stop))
+
+
+def iter_development_events(tree, branches, identities, mask, max_entries=4096, *, metrics=None):
+    identity_branches = {branches['eventNumber'], branches['channelNumber']}
+    payload = [b for b in branches.values() if b not in identity_branches]
+    for start, stop in development_spans(mask, max_entries):
+        began = time.perf_counter() if metrics is not None else None
+        values = tree.arrays(payload, entry_start=start, entry_stop=stop, library='ak')
+        if metrics is not None:
+            metrics['payload_seconds'] = metrics.get('payload_seconds',0.) + time.perf_counter()-began
+            metrics['payload_requests'] = metrics.get('payload_requests',0)+1
+            metrics['payload_entries'] = metrics.get('payload_entries',0)+stop-start
+            histogram = metrics.setdefault('span_length_counts',{})
+            histogram[str(stop-start)] = histogram.get(str(stop-start),0)+1
+        for entry in range(start, stop):
+            event = {}
+            for name, branch in branches.items():
+                value = identities[branch][entry] if branch in identity_branches else values[branch][entry-start]
+                event[name] = value.to_list() if hasattr(value, 'to_list') else value
+            yield entry, event
 
 
 def role_for_group(group, protocol):
@@ -32,18 +96,24 @@ def assign_roles(frame, protocol):
     result = frame.copy()
     if not (result["split"] == "development").all():
         raise ResearchError("research accepts development only")
-    assigned = result.event_group_id.map(lambda g: role_for_group(g, p))
+    assigned = _roles(result.event_group_id, p)
     if "role" in result and not (result.role == assigned).all():
         raise ResearchError("role differs from frozen group assignment")
     result["role"] = assigned
     result["sampling_probability"] = assigned.map(p["roles"]) * p["development_probability"]
     result["yield_weight"] = result.physical_weight / result.sampling_probability
-    validate_role_isolation(result, p)
+    _validate_identity(result, p)
     return result
 
 
 def validate_role_isolation(frame, protocol):
     p = protocol_dict(protocol)
+    _validate_identity(frame,p)
+    if not (frame.role == _roles(frame.event_group_id, p)).all():
+        raise ResearchError("role hash binding changed")
+
+
+def _validate_identity(frame, p):
     if not set(IDENTITY).issubset(frame):
         raise ResearchError("research identity columns missing")
     if frame[list(IDENTITY)].isna().any().any() or frame.source_row_id.duplicated().any() or frame.event_id.duplicated().any():
@@ -54,8 +124,6 @@ def validate_role_isolation(frame, protocol):
         raise ResearchError("invalid role or label")
     if (frame.groupby("event_group_id")["role"].nunique() > 1).any() or (frame.groupby("event_group_id")["label"].nunique() > 1).any():
         raise ResearchError("event group crosses roles or labels")
-    if not (frame.role == frame.event_group_id.map(lambda g: role_for_group(g, p))).all():
-        raise ResearchError("role hash binding changed")
 
 
 def grouped_statistics(frame, weight="yield_weight"):
@@ -102,11 +170,14 @@ def write_research_data(frame, path, protocol):
     header = {"schema_version": "h4l-events-v1", "dataset": p["dataset"], "source_kind": kind,
               "mc_only": True, "protocol_digest": hashlib.sha256(canonical(p)).hexdigest(),
               "source_evidence": frame.attrs.get("source_evidence", {})}
+    population = set()
     with Path(path).open("x", encoding="utf-8", newline="\n") as stream:
         stream.write(canonical(header).decode() + "\n")
-        for row in frame.to_dict(orient="records"):
+        for row in iter_records(frame):
             identity = {k: row.pop(k) for k in IDENTITY}
+            population.add(tuple(identity[k] for k in ('event_group_id','label','split','dataset')))
             stream.write(canonical(identity).decode() + "\t" + canonical(row).decode() + "\n")
+    return population_digest(population,p['dataset'])
 
 
 def load_research_data(path, dataset, protocol, *, allow_assessment=False, assessment_freeze=None):
@@ -117,7 +188,8 @@ def load_research_data(path, dataset, protocol, *, allow_assessment=False, asses
                 or not assessment_freeze.get("evidence_id")
                 or assessment_freeze.get("protocol_sha256") != digest_json(p)):
             raise ResearchError("assessment requires bound frozen-analysis evidence")
-    rows, identities = [], []
+    rows, identities, chunks = [], [], []
+    roles, population = {}, set()
     try:
         with Path(path).open(encoding="utf-8") as stream:
             header = json.loads(next(stream))
@@ -131,17 +203,26 @@ def load_research_data(path, dataset, protocol, *, allow_assessment=False, asses
                 identity = json.loads(first)
                 if set(identity) != set(IDENTITY) or identity["split"] != "development" or identity["dataset"] != dataset:
                     raise ResearchError("non-development or malformed research identity")
-                if identity["role"] != role_for_group(identity["event_group_id"], p):
+                group = identity['event_group_id']
+                if group not in roles:
+                    roles[group] = role_for_group(group,p)
+                if identity["role"] != roles[group]:
                     raise ResearchError("role hash binding changed before payload access")
-                identities.append(identity)
+                identities.append(tuple(identity[k] for k in IDENTITY))
+                population.add((group,identity['label'],identity['split'],identity['dataset']))
                 if identity["role"] == "assessment" and not allow_assessment:
                     continue
                 value = json.loads(payload)
                 if set(value) & set(IDENTITY):
                     raise ResearchError("payload attempts identity override")
                 rows.append(dict(identity, **value))
-        validate_role_isolation(pd.DataFrame(identities, columns=IDENTITY), p)
-        frame = pd.DataFrame(rows)
+                if len(rows) >= 4096:
+                    chunks.append(pd.DataFrame(rows))
+                    rows.clear()
+        _validate_identity(pd.DataFrame(identities, columns=IDENTITY), p)
+        if rows:
+            chunks.append(pd.DataFrame(rows))
+        frame = pd.concat(chunks,ignore_index=True) if chunks else pd.DataFrame()
         if frame.empty:
             raise ResearchStateError("no accessible research events", status="insufficient_statistics")
         for name in (*ENGINEERED19, "m4l", "y4l", "physical_weight", "sampling_probability", "yield_weight"):
@@ -153,7 +234,8 @@ def load_research_data(path, dataset, protocol, *, allow_assessment=False, asses
         expected = frame.role.map(p["roles"]) * p["development_probability"]
         if not np.allclose(frame.sampling_probability, expected, rtol=0, atol=1e-15) or not np.allclose(frame.yield_weight, frame.physical_weight / expected, rtol=1e-12, atol=1e-12):
             raise ResearchError("sampling/yield normalization changed")
-        frame.attrs.update(source_kind=header["source_kind"], source_evidence=header["source_evidence"])
+        frame.attrs.update(source_kind=header["source_kind"], source_evidence=header["source_evidence"],
+                           population_id=population_digest(population,dataset))
         return frame
     except (OSError, StopIteration, KeyError, TypeError, ValueError) as exc:
         if isinstance(exc, ResearchError):
@@ -161,11 +243,11 @@ def load_research_data(path, dataset, protocol, *, allow_assessment=False, asses
         raise ResearchError("invalid research data") from exc
 
 
-def export_research_data(manifest_path, profile_path, protocol):
-    """Read controlled MC. Uproot decodes payload only for development entries.
+def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4096, metrics=None):
+    """Read controlled MC with development-only payload request ranges.
 
-    ROOT baskets may contain neighboring test bytes; this is an array-decoding
-    boundary, not a promise that storage reads never touch a mixed basket.
+    ROOT baskets may contain neighboring test bytes. Application request ranges
+    alone do not establish the underlying interpretation/decompression boundary.
     Input SHA evidence is pre-existing acquisition evidence, never a test scan.
     """
     from src.dataset_binding import dataset_context
@@ -204,22 +286,27 @@ def export_research_data(manifest_path, profile_path, protocol):
             tree = root[profile["tree_name"]]
             if tree.num_entries != member["entry_count"] or not set(branches.values()).issubset(tree.keys()):
                 raise ResearchError("MC tree schema/count mismatch")
+            began = time.perf_counter() if metrics is not None else None
             identities = tree.arrays([branches["eventNumber"], branches["channelNumber"]], library="np")
             if not np.all(identities[branches["channelNumber"]] == member["dsid"]):
                 raise ResearchError("DSID differs before payload access")
-            for entry in range(tree.num_entries):
-                event_number = int(identities[branches["eventNumber"]][entry])
-                channel = int(identities[branches["channelNumber"]][entry])
-                if event_split(event_number, channel) == "test":
-                    continue
-                values = tree.arrays(list(branches.values()), entry_start=entry, entry_stop=entry + 1, library="ak")
-                event = {name: values[branch][0].to_list() if hasattr(values[branch][0], "to_list") else values[branch][0] for name, branch in branches.items()}
+            mask = np.fromiter((event_split(int(number),int(dsid)) != 'test'
+                for number,dsid in zip(identities[branches['eventNumber']],identities[branches['channelNumber']])),
+                dtype=bool,count=tree.num_entries)
+            if metrics is not None:
+                metrics['identity_seconds'] = metrics.get('identity_seconds',0.) + time.perf_counter()-began
+            for entry, event in iter_development_events(tree, branches, identities, mask, max_entries, metrics=metrics):
+                event_number, channel = int(event['eventNumber']), int(event['channelNumber'])
+                began = time.perf_counter() if metrics is not None else None
                 result = select_event(event, selection, profile["momentum_unit"])
+                if metrics is not None:
+                    metrics['selection_seconds'] = metrics.get('selection_seconds',0.) + time.perf_counter()-began
                 if not result.accepted:
                     continue
                 c = result.candidate
                 if sorted(np.abs(c.normalized.flavour).tolist()) != [11, 11, 13, 13]:
                     continue
+                began = time.perf_counter() if metrics is not None else None
                 features = build_candidate_features(event, c)
                 try:
                     features.update(build_angular5(c))
@@ -237,6 +324,8 @@ def export_research_data(manifest_path, profile_path, protocol):
                     lep_e=c.normalized.energy.tolist(), lep_charge=c.normalized.charge.tolist(), lep_type=c.normalized.flavour.tolist(),
                     pairing=[list(c.pairing.z1_indices), list(c.pairing.z2_indices)])
                 rows.append(features)
+                if metrics is not None:
+                    metrics['feature_seconds'] = metrics.get('feature_seconds',0.) + time.perf_counter()-began
     if not rows:
         raise ResearchStateError("no selected 2e2mu development events", status="insufficient_statistics")
     frame = assign_roles(pd.DataFrame(rows), p)

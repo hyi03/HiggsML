@@ -1,0 +1,5 @@
+{
+  "workers": 1,
+  "worker_threads": 1,
+  "root_max_entries": 4096
+}

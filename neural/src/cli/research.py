@@ -17,6 +17,7 @@ def build_parser():
         sub.add_argument('--dataset', choices=['atlas2020_4lep'], required=True)
         sub.add_argument('--protocol', required=True)
         sub.add_argument('--run-dir', required=True)
+        sub.add_argument('--resources', help='JSON resource settings: workers, worker_threads, root_max_entries')
         for flag in ('input-run','events','input-manifest','profile','model-run','template-run','gate-run',
                      'freeze-run','backend-config','export-run','results','reference','t1-validation','p0-validation','candidate-ledger'):
             sub.add_argument('--'+flag)

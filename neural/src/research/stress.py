@@ -44,7 +44,8 @@ def build_stress_templates(frame, nominal_template, *, kind, reference_mapping_i
     args=dict(mass_edges=nominal_template['mass_edges'],mapping_id=nominal_template['mapping_id'],
               candidate_id=nominal_template['candidate_id'],categories=nominal_template['categories'],
               thresholds=thresholds,structural_zero_evidence=nominal_template.get('structural_zero_evidence'))
-    rebuilt=build_templates(frame,**args)
+    statistics = {}
+    rebuilt=build_templates(frame,**args,_statistics=statistics)
     # Bind the actual source and category assignment to the frozen nominal rates.
     for key in ('dataset','active_bins','samples'):
         if rebuilt[key] != nominal_template[key]:
@@ -53,7 +54,10 @@ def build_stress_templates(frame, nominal_template, *, kind, reference_mapping_i
     for direction,name in ((-1,'down'),(1,'up')):
         varied=frame.copy()
         varied['yield_weight']=stress_weights(varied,kind=kind,direction=direction,reference_mapping_id=reference_mapping_id)
-        artifact=build_templates(varied,**args)
+        process_column = 'process' if 'process' in frame else 'label'
+        for process, indices in frame.groupby(process_column, sort=True).indices.items():
+            statistics[process][1].reweight(varied.yield_weight.to_numpy()[indices])
+        artifact=build_templates(varied,**args,_statistics=statistics)
         if artifact['status'] != 'valid' or artifact['active_bins'] != nominal_template['active_bins']:
             raise ResearchStateError('stress endpoint fails frozen support; no adaptive merging',status='insufficient_statistics')
         endpoints[name]=artifact
@@ -120,43 +124,51 @@ def build_stress_model(template, responses, *, protocol,layer='T0',t1_validation
         'template_variance_contract':'constant_relative_MC_variance' if layer=='T1' else 'T0_endpoint_moments_recorded_no_MC_nuisance'}
 
 
-def sample_auxiliary(model, parameters, rng, *, policy='regenerated',shared_normals=None):
-    """Generate each actual pyhf auxiliary distribution, including signed normals.
-
-    ``shared_normals`` maps parameter names to common standard-normal deviates,
-    allowing the same artificial measurement to be paired across candidates.
-    """
-    if policy not in {'fixed','regenerated'}:
-        raise ResearchError('unknown auxiliary-generation policy')
-    if model.config.nauxdata==0:
-        return np.empty(0,dtype=float)
-    expected=np.asarray(model.expected_auxdata(parameters),float)
+def auxiliary_sampler(model, parameters):
+    """Prepare immutable auxiliary means/layout once for this model and truth."""
+    expected = np.asarray(model.expected_auxdata(parameters),float) if model.config.nauxdata else np.empty(0)
     if not np.isfinite(expected).all():
         raise ResearchError('nonfinite expected auxiliary observations')
-    output=expected.copy()
+    layout=[]
     offset=0
     for name in model.config.auxdata_order:
         parameter=model.config.param_set(name)
         n=parameter.n_parameters
-        means=expected[offset:offset+n]
+        means=expected[offset:offset+n].copy()
+        sigma=None
         if parameter.pdf_type=='poisson':
             if (means<0).any():
                 raise ResearchError('negative Poisson auxiliary intensity')
-            if policy=='regenerated':
-                output[offset:offset+n]=rng.poisson(means)
         elif parameter.pdf_type=='normal':
             sigma=np.asarray(parameter.width(),float)
             if sigma.shape != (n,) or not np.isfinite(sigma).all() or (sigma<=0).any():
                 raise ResearchError('invalid normal auxiliary width')
-            if policy=='regenerated':
+        else:
+            raise ResearchStateError('unsupported auxiliary distribution',status='stress_model_unvalidated')
+        layout.append((name,parameter.pdf_type,offset,n,means,sigma))
+        offset+=n
+    if offset != len(expected):
+        raise ResearchError('auxiliary parameter ordering mismatch')
+
+    def sample(rng, *, policy='regenerated', shared_normals=None):
+        if policy not in {'fixed','regenerated'}:
+            raise ResearchError('unknown auxiliary-generation policy')
+        output=expected.copy()
+        for name,kind,offset,n,means,sigma in layout:
+            if policy=='fixed':
+                continue
+            if kind=='poisson':
+                output[offset:offset+n]=rng.poisson(means)
+            else:
                 z=(np.asarray(shared_normals[name],float) if shared_normals is not None and name in shared_normals
                    else rng.normal(size=n))
                 if z.shape != (n,) or not np.isfinite(z).all():
                     raise ResearchError('shared auxiliary deviate shape invalid')
                 output[offset:offset+n]=means+sigma*z
-        else:
-            raise ResearchStateError('unsupported auxiliary distribution',status='stress_model_unvalidated')
-        offset+=n
-    if offset != len(output):
-        raise ResearchError('auxiliary parameter ordering mismatch')
-    return output
+        return output
+    return sample
+
+
+def sample_auxiliary(model, parameters, rng, *, policy='regenerated',shared_normals=None):
+    """Sample exact Poisson/normal auxiliaries, with optional paired normals."""
+    return auxiliary_sampler(model,parameters)(rng,policy=policy,shared_normals=shared_normals)

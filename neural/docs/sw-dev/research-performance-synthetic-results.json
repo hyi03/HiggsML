@@ -1,0 +1,372 @@
+{
+  "baseline": "66784d3af0a4b73c6001acc94404da3540040866",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.12.13",
+  "implementation_sha256": {
+    "__init__.py": "8f010ba4aee31f316cc4ceef0c59b4f63c9637d4e9384c3371f721775255f45d",
+    "artifacts.py": "685419a7027811695b6483a40e678910ed21e7c1b77fdb4769f056e87bae870f",
+    "assessment.py": "2f35db76346598b20ba716a067257e4f8dacf60807e00bcfb2871d7ed21b60a6",
+    "calibration.py": "c8949e7d920aa54bdf4d2739f6e946155af676dcbadf3ad6ab0841168063be52",
+    "data.py": "3c70638e05ab36db4784956388f6897fa74dd7ca0ae87cea76ee217018caea70",
+    "diagnostics.py": "4e6a81ab9602a729ed4765bd89abb5dcd0022ed5d23716bee3588f080a31f834",
+    "discriminants.py": "4240063f1b8c9ad1649f6817a0b154f31abddb5cefc89777a9d32520a865b837",
+    "errors.py": "c83157651d1e35ccd09369a4131cd968e851e62b9ce10477aa8807813e48380d",
+    "inference.py": "7d1f797057d563c61d335dbb2f99228f6a6edf44a4eb1747775dbc38a00c9d3f",
+    "matrix_element.py": "ab47d80450352958cbb9c50acdec8f1faba9bb17c3ebea6c8f7fab2c1715daf4",
+    "protocol.py": "3aa47aff840b20277889494a2cda0288860fe6dcb6df3b4f25ab2c40b829d8f6",
+    "reporting.py": "843083439bdd0376f57b1a7ccaf89447938eb237a35241ccef3587f585cd0f2f",
+    "representations.py": "93f7f1a77a251da53a577b520e89369a39c98dd6b64b407f2e4655562be0537e",
+    "resources.py": "69277d85092545600640f32efbd633129614c2acefad41e7f6ca833a02e5adfe",
+    "statistics.py": "897dd9196a5c0fd45caef5c5f422b1c0eaa0c29e7d469db0cf147fd8f55f9f47",
+    "stress.py": "aa32d32182a88f0fc44a81ff324cfd732d775be8af146bb6dce70b0444f9d3fe",
+    "templates.py": "c47a25f1fbbc03776edc3de6ea484b26caf70782113683aa6c2e9c6e0c4ddf8d",
+    "workflow.py": "5f5efae36b781f4d354453e65cfeb41e0eb903d0c6245a4069ff419d3a27d0e3"
+  },
+  "packages": {
+    "numpy": "2.5.1",
+    "pandas": "3.0.5",
+    "torch": "2.7.1",
+    "scipy": "1.18.0",
+    "uproot": "5.7.5",
+    "pyhf": "0.7.6"
+  },
+  "resources": {
+    "workers": 1,
+    "torch_threads": 1
+  },
+  "input": "synthetic only",
+  "cache": "in-process repeated, OS cache not flushed",
+  "tolerance": {
+    "rtol": 1e-12,
+    "atol": 1e-12,
+    "discrete": "exact"
+  },
+  "results": {
+    "cdf_interpolation": {
+      "baseline": {
+        "wall_seconds": [
+          0.6717444998212159,
+          0.687199299922213,
+          0.6701809000223875
+        ],
+        "median": 0.6717444998212159,
+        "range": [
+          0.6701809000223875,
+          0.687199299922213
+        ],
+        "cpu_seconds": [
+          0.65625,
+          0.6875,
+          0.65625
+        ],
+        "sampled_peak_rss_bytes": [
+          317886464,
+          319696896,
+          320249856
+        ]
+      },
+      "optimized": {
+        "wall_seconds": [
+          0.05269600008614361,
+          0.05430449987761676,
+          0.05370409996248782
+        ],
+        "median": 0.05370409996248782,
+        "range": [
+          0.05269600008614361,
+          0.05430449987761676
+        ],
+        "cpu_seconds": [
+          0.046875,
+          0.046875,
+          0.046875
+        ],
+        "sampled_peak_rss_bytes": [
+          324386816,
+          327139328,
+          327598080
+        ]
+      },
+      "speedup": 12.508253565192001,
+      "numerical_equivalence": true,
+      "differences": []
+    },
+    "calibration_fit": {
+      "baseline": {
+        "wall_seconds": [
+          0.11442349990829825,
+          0.1145512000657618,
+          0.11538879992440343
+        ],
+        "median": 0.1145512000657618,
+        "range": [
+          0.11442349990829825,
+          0.11538879992440343
+        ],
+        "cpu_seconds": [
+          0.109375,
+          0.109375,
+          0.09375
+        ],
+        "sampled_peak_rss_bytes": [
+          310775808,
+          310796288,
+          310796288
+        ]
+      },
+      "optimized": {
+        "wall_seconds": [
+          0.09181270003318787,
+          0.09027789998799562,
+          0.08958630007691681
+        ],
+        "median": 0.09027789998799562,
+        "range": [
+          0.08958630007691681,
+          0.09181270003318787
+        ],
+        "cpu_seconds": [
+          0.078125,
+          0.09375,
+          0.09375
+        ],
+        "sampled_peak_rss_bytes": [
+          309194752,
+          309198848,
+          309202944
+        ]
+      },
+      "speedup": 1.2688731138074083,
+      "numerical_equivalence": true,
+      "differences": [],
+      "payload_digest_equal": true
+    },
+    "common_grid": {
+      "baseline": {
+        "wall_seconds": [
+          3.6784297998528928,
+          3.627949600107968,
+          3.5349005998577923
+        ],
+        "median": 3.627949600107968,
+        "range": [
+          3.5349005998577923,
+          3.6784297998528928
+        ],
+        "cpu_seconds": [
+          3.609375,
+          3.578125,
+          3.4375
+        ],
+        "sampled_peak_rss_bytes": [
+          316973056,
+          322138112,
+          320184320
+        ]
+      },
+      "optimized": {
+        "wall_seconds": [
+          1.3957996000535786,
+          1.3292880000080913,
+          1.3143794999923557
+        ],
+        "median": 1.3292880000080913,
+        "range": [
+          1.3143794999923557,
+          1.3957996000535786
+        ],
+        "cpu_seconds": [
+          1.390625,
+          1.3125,
+          1.296875
+        ],
+        "sampled_peak_rss_bytes": [
+          312389632,
+          312389632,
+          312393728
+        ]
+      },
+      "speedup": 2.729242722484431,
+      "numerical_equivalence": true,
+      "differences": [],
+      "payload_digest_equal": true
+    },
+    "asimov": {
+      "baseline": {
+        "wall_seconds": [
+          0.5845921000000089,
+          0.11067080008797348,
+          0.09902650001458824
+        ],
+        "median": 0.11067080008797348,
+        "range": [
+          0.09902650001458824,
+          0.5845921000000089
+        ],
+        "cpu_seconds": [
+          0.46875,
+          0.109375,
+          0.09375
+        ],
+        "sampled_peak_rss_bytes": [
+          316342272,
+          316346368,
+          316346368
+        ]
+      },
+      "optimized": {
+        "wall_seconds": [
+          0.09324000007472932,
+          0.0954965001437813,
+          0.11330849980004132
+        ],
+        "median": 0.0954965001437813,
+        "range": [
+          0.09324000007472932,
+          0.11330849980004132
+        ],
+        "cpu_seconds": [
+          0.09375,
+          0.09375,
+          0.09375
+        ],
+        "sampled_peak_rss_bytes": [
+          316354560,
+          316362752,
+          316379136
+        ]
+      },
+      "speedup": 1.1588990164178317,
+      "numerical_equivalence": true,
+      "differences": [],
+      "payload_digest_equal": true
+    },
+    "training_200_epochs": {
+      "baseline": {
+        "wall_seconds": [
+          5.173289199825376,
+          1.828808099962771,
+          1.9058805999811739
+        ],
+        "median": 1.9058805999811739,
+        "range": [
+          1.828808099962771,
+          5.173289199825376
+        ],
+        "cpu_seconds": [
+          4.75,
+          1.796875,
+          1.921875
+        ],
+        "sampled_peak_rss_bytes": [
+          395022336,
+          396128256,
+          396242944
+        ]
+      },
+      "optimized": {
+        "wall_seconds": [
+          1.5974721000529826,
+          1.5415489000733942,
+          1.5866554002277553
+        ],
+        "median": 1.5866554002277553,
+        "range": [
+          1.5415489000733942,
+          1.5974721000529826
+        ],
+        "cpu_seconds": [
+          1.5625,
+          1.5,
+          1.546875
+        ],
+        "sampled_peak_rss_bytes": [
+          396365824,
+          397004800,
+          397037568
+        ]
+      },
+      "speedup": 1.2011937814018063,
+      "numerical_equivalence": true,
+      "differences": [],
+      "payload_digest_equal": true,
+      "checkpoint_exact": true,
+      "selected_epoch_exact": true
+    },
+    "unconditional_mle_calls": {
+      "baseline": 6,
+      "optimized": 3
+    },
+    "synthetic_root_reader": {
+      "baseline": {
+        "wall_seconds": [
+          2.9257648999337107,
+          3.0518333001527935,
+          3.146438099909574
+        ],
+        "median": 3.0518333001527935,
+        "range": [
+          2.9257648999337107,
+          3.146438099909574
+        ],
+        "cpu_seconds": [
+          2.90625,
+          3.0625,
+          3.109375
+        ],
+        "sampled_peak_rss_bytes": [
+          417800192,
+          421138432,
+          424001536
+        ]
+      },
+      "optimized": {
+        "wall_seconds": [
+          0.5659111000131816,
+          0.5875593000091612,
+          0.582755499985069
+        ],
+        "median": 0.582755499985069,
+        "range": [
+          0.5659111000131816,
+          0.5875593000091612
+        ],
+        "cpu_seconds": [
+          0.578125,
+          0.578125,
+          0.59375
+        ],
+        "sampled_peak_rss_bytes": [
+          424030208,
+          424140800,
+          424157184
+        ]
+      },
+      "speedup": 5.236901754219369,
+      "numerical_equivalence": true,
+      "entries": 1000,
+      "interpretation_probe": {
+        "requested": 1,
+        "basket_array_lengths": [
+          1000
+        ],
+        "meaning": "Whole-basket numerical views exist before final_array slices; this does not prove a strict no-interpretation contract for bound ROOT branch types"
+      },
+      "scope": "synthetic scalar/jagged ROOT reader, excludes selection and feature reconstruction"
+    },
+    "root_request_model": {
+      "entries": 100000,
+      "development_entries": 80081,
+      "baseline_requests": 80081,
+      "optimized_requests": 15938,
+      "max_span": 44,
+      "median_span": 4.0,
+      "scope": "synthetic request count, no ROOT throughput claim"
+    }
+  },
+  "limitations": [
+    "Not bound MC or ARM64 authority validation",
+    "RSS sampled every 10ms in one process, includes retained allocations; not isolated per-operation high-water marks",
+    "Production end-to-end and worker memory acceptance require representative measurement"
+  ]
+}

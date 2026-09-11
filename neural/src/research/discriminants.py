@@ -67,16 +67,14 @@ def _quantile(values, weights, q):
     return v[np.searchsorted(np.cumsum(w), np.asarray(q) * w.sum(), side='left')]
 
 
-def _diagnostics(mass, score, weight, edges, threshold):
+def _diagnostics(mass, score, weight, edges, threshold, *, layout=None):
     selected = score >= threshold
-    order = np.argsort(mass, kind='stable')
+    order, bins = layout if layout is not None else (np.argsort(mass, kind='stable'), np.searchsorted(edges, mass, side='left'))
     w, selected_w = weight[order], (weight * selected)[order]
     ks = None if selected_w.sum() == 0 else float(np.max(np.abs(np.cumsum(w) / w.sum() - np.cumsum(selected_w) / selected_w.sum())))
-    bins = np.searchsorted(edges, mass, side='left')
-    rates = []
-    for k in range(len(edges) + 1):
-        mask = bins == k
-        rates.append(None if weight[mask].sum() == 0 else float(weight[mask & selected].sum() / weight[mask].sum()))
+    totals = np.bincount(bins, weights=weight, minlength=len(edges)+1)
+    accepted = np.bincount(bins[selected], weights=weight[selected], minlength=len(edges)+1)
+    rates = [float(a/w) if w else None for a,w in zip(accepted,totals)]
     return dict(absolute_weight_mass_ks=ks, mass_bin_acceptance=rates, threshold=float(threshold), absolute_weight_working_point=.5,
                 threshold_source='train_background_absolute_weight_median', bin_source='train_background_absolute_weight_quantiles', evaluation_source='validation_background')
 
@@ -118,6 +116,12 @@ def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0
     fixed = candidate in {'M6', 'M3-fixed200'}
     detailed = 'diagnostics' in protocol
     vb = valid.label.to_numpy() == 0
+    bin_tensor = torch.tensor(bins, dtype=torch.long)
+    background_tensor = y == 0
+    valid_labels = valid.label.to_numpy()
+    valid_weights = np.abs(valid.physical_weight.to_numpy())
+    valid_mass = valid.m4l.to_numpy()[vb]
+    diagnostic_layout = (np.argsort(valid_mass, kind='stable'), np.searchsorted(edges, valid_mass, side='left'))
     if fixed and (len(np.unique(edges)) != 10 or any(w[bg & (bins == k)].sum() <= 0 for k in range(11))):
         raise ResearchStateError('ineffective adversarial diagnostic mass bins', status='insufficient_statistics')
     # Both fixed candidates construct the adversary, sharing initialization and RNG consumption.
@@ -142,11 +146,11 @@ def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0
                 classification = nn.functional.binary_cross_entropy_with_logits(logits, y[indices], reduction='none') * opt_w[indices]
                 loss = classification.mean()
                 classification_sum += float(classification.detach().sum())
-                mask = y[indices] == 0
+                mask = background_tensor[indices]
                 if adversary is not None and mask.any():
                     adv = adversary(logits[mask], lambda_effective=lam)
                     bw = opt_w[indices][mask]
-                    ce = nn.functional.cross_entropy(adv, torch.tensor(bins[indices.numpy()][mask.numpy()], dtype=torch.long), reduction='none')
+                    ce = nn.functional.cross_entropy(adv, bin_tensor[indices][mask], reduction='none')
                     loss = loss + (ce * bw).sum() / bw.sum()
                     adversary_sum += float((ce * bw).detach().sum())
                     adversary_weight += float(bw.sum())
@@ -160,7 +164,7 @@ def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0
                 scores = torch.sigmoid(model(xv)).numpy()
             if not np.isfinite(scores).all():
                 raise ResearchStateError('nonfinite validation scores', status='training_failed')
-            auc = float(roc_auc_score(valid.label, scores, sample_weight=np.abs(valid.physical_weight)))
+            auc = float(roc_auc_score(valid_labels, scores, sample_weight=valid_weights))
             history.append(dict(epoch=epoch, effective_lambda=lam, validation_absolute_weight_auc=auc, loss=float(np.mean(losses))))
             if detailed:
                 # Evaluation mode consumes no dropout RNG and cannot change training.
@@ -171,8 +175,8 @@ def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0
                     classification_loss=classification_sum / len(train),
                     adversary_loss=adversary_sum / adversary_weight if adversary_weight else None,
                     classification_denominator=len(train), adversary_denominator=adversary_weight,
-                    diagnostics=_diagnostics(valid.m4l.to_numpy()[vb], scores[vb],
-                        np.abs(valid.physical_weight.to_numpy()[vb]), edges, threshold))
+                    diagnostics=_diagnostics(valid_mass, scores[vb],
+                        valid_weights[vb], edges, threshold, layout=diagnostic_layout))
             if auc > best + 1e-4:
                 best, best_epoch = auc, epoch
                 best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
@@ -193,7 +197,7 @@ def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0
             selected_epoch=selected, target_lambda=target_lambda, effective_lambda=effective_lambda(selected,target_lambda),
             checkpoint_rule='fixed-epoch-200' if fixed else 'validation-absolute-auc-patience20-delta1e-4',
             validation_absolute_weight_auc=float(roc_auc_score(valid.label,scores,sample_weight=np.abs(valid.physical_weight))),
-            diagnostics=_diagnostics(valid.m4l.to_numpy()[vb],scores[vb],np.abs(valid.physical_weight.to_numpy()[vb]),edges,threshold),
+            diagnostics=_diagnostics(valid_mass,scores[vb],valid_weights[vb],edges,threshold,layout=diagnostic_layout),
             status='trained', eligibility_gate='not_applicable_research')
         if detailed:
             result['history_contract'] = dict(

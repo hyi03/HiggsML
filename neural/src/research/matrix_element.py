@@ -6,6 +6,7 @@ import pandas as pd
 
 from .errors import ResearchError, ResearchStateError
 from .protocol import canonical, protocol_dict
+from .data import iter_records
 
 
 def _digest(value):
@@ -21,7 +22,7 @@ def export_me_inputs(frame, protocol, backend, process):
     if frame.event_id.duplicated().any() or not (frame.split == "development").all():
         raise ResearchError("ME export requires unique development rows")
     events = []
-    for row in frame.to_dict(orient="records"):
+    for row in iter_records(frame):
         item = {key: row[key] for key in ("event_id", "event_group_id", "lep_pt", "lep_eta", "lep_phi", "lep_e", "lep_charge", "lep_type", "pairing")}
         arrays = [item[key] for key in ("lep_pt", "lep_eta", "lep_phi", "lep_e", "lep_charge", "lep_type")]
         if any(len(v) != 4 for v in arrays) or not np.isfinite(np.asarray(arrays, float)).all():
