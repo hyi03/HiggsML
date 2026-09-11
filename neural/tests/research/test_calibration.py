@@ -5,6 +5,7 @@ import pytest
 
 from src.research.calibration import (constrained_distribution,fit_calibration,apply_calibration,
     fit_thresholds,assign_categories,bootstrap_calibration)
+from src.research.discriminants import digest
 from src.research.errors import ResearchError,ResearchStateError
 from src.research.protocol import load_protocol
 
@@ -41,6 +42,21 @@ def test_uniform_cdf_interpolation_ties_tails_and_model_binding():
     broken['slices'][0]['probabilities'][0]=.9
     with pytest.raises(ResearchError,match='digest'):
         apply_calibration(broken,[120],[.5],model_id='model')
+
+
+def test_cdf_roundoff_at_upper_endpoint_stays_on_registered_grid():
+    data=frame()
+    protocol=load_protocol()
+    probabilities=[0.]*19+[1.0000000000000002]
+    mapping=dict(model_id='m',mass_support=[105.,140.],
+                 score_edges=protocol.to_dict()['calibration']['score_edges'],
+                 slices=[dict(center=122.5,probabilities=probabilities)])
+    mapping['mapping_id']=digest(mapping)
+
+    cdf=apply_calibration(mapping,data.m4l.to_numpy(),np.ones(len(data)),model_id='m')
+
+    assert np.max(cdf)==1.
+    fit_thresholds(data,cdf,protocol,model_id='m',mapping_id=mapping['mapping_id'])
 
 
 def test_negative_bridge_and_deterministic_support_merges():
