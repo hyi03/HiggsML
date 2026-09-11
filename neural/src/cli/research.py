@@ -17,7 +17,14 @@ def build_parser():
         sub.add_argument('--dataset', choices=['atlas2020_4lep'], required=True)
         sub.add_argument('--protocol', required=True)
         sub.add_argument('--run-dir', required=True)
-        sub.add_argument('--resources', help='JSON resource settings: workers, worker_threads, root_max_entries')
+        sub.add_argument(
+            '--resources',
+            help='JSON resource settings: workers, worker_threads, root_max_entries, root_threads',
+        )
+        sub.add_argument('--diagnostic-entries-per-file', type=int,
+                         help='Prepare only: profile a fixed eligible-entry count per ROOT file; publishes a terminal diagnostic run')
+        sub.add_argument('--show-prepare-metrics', action='store_true',
+                         help='Prepare only: print periodic, per-file, and final ROOT performance metrics')
         for flag in ('input-run','events','input-manifest','profile','model-run','template-run','gate-run',
                      'freeze-run','backend-config','export-run','results','reference','t1-validation','p0-validation','candidate-ledger'):
             sub.add_argument('--'+flag)

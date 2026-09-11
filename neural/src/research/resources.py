@@ -7,7 +7,7 @@ from multiprocessing import get_context
 
 from .errors import ResearchError, ResearchStateError
 
-DEFAULTS = dict(workers=1, worker_threads=1, root_max_entries=4096)
+DEFAULTS = dict(workers=1, worker_threads=1, root_max_entries=4096, root_threads=4)
 
 
 def load_resources(path=None):

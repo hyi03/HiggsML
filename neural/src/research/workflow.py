@@ -6,6 +6,7 @@ from copy import deepcopy
 import json
 import os
 import shutil
+import sys
 import time
 import numpy as np
 import pandas as pd
@@ -13,7 +14,8 @@ import pandas as pd
 from .artifacts import ResearchRun, LoadedRun, read_run, read_json, digest_json
 from .errors import ResearchError, ResearchStateError
 from .protocol import load_protocol
-from .data import load_research_data, write_research_data, export_research_data, audit_g0
+from .data import (load_research_data, write_research_data, export_research_data,
+                   audit_g0, finalize_prepare_metrics)
 from .discriminants import train_discriminant, predict_discriminant
 from .calibration import fit_calibration, apply_calibration, fit_thresholds, assign_categories
 from .matrix_element import export_me_inputs, import_me_results
@@ -242,7 +244,17 @@ def execute(args, *, allowed_root=None):
     if cfg['template_min_effective_count']!=protocol['templates']['min_neff_signed'] or cfg['template_min_cancellation_ratio']!=protocol['templates']['min_rho']:
         raise ResearchError('Template and inference statistical thresholds disagree')
     stage = args.command
+    diagnostic_limit = getattr(args, 'diagnostic_entries_per_file', None)
+    show_prepare_metrics = getattr(args, 'show_prepare_metrics', False)
+    if diagnostic_limit is not None:
+        if stage != 'prepare' or not args.input_manifest:
+            raise ResearchError('--diagnostic-entries-per-file requires prepare --input-manifest')
+        if diagnostic_limit < 1:
+            raise ResearchError('--diagnostic-entries-per-file must be positive')
+    if show_prepare_metrics and (stage != 'prepare' or not args.input_manifest):
+        raise ResearchError('--show-prepare-metrics requires prepare --input-manifest')
     upstreams = []
+    root_metrics = None
 
     def upstream(path, stages=None, terminal=False):
         value = read_run(path, dataset=args.dataset, protocol=protocol, stages=stages, allow_terminal=terminal)
@@ -337,24 +349,40 @@ def execute(args, *, allowed_root=None):
                         'missing_evidence': ['independent_physics_sources', 'development_support_audit'],
                         'test_features_read': False})
                     return {'status':'complete','run_dir':str(args.run_dir)}
-                root_metrics = {}
+                root_metrics = {'diagnostic_entries_per_file': diagnostic_limit}
                 run.manifest['root_prepare_metrics'] = root_metrics
                 frame = export_research_data(args.input_manifest, _required(args, 'profile'), protocol,
-                                             max_entries=resources['root_max_entries'],metrics=root_metrics)
+                                             max_entries=resources['root_max_entries'], metrics=root_metrics,
+                                             diagnostic_entries_per_file=diagnostic_limit,
+                                             root_threads=resources['root_threads'],
+                                             show_prepare_metrics=show_prepare_metrics)
                 write_started = time.perf_counter()
                 receipt = write_research_data(frame, run.path / 'events.jsonl', protocol)
                 frame.attrs['population_id'] = receipt.population_id
-                root_metrics['write_seconds'] = time.perf_counter()-write_started
+                root_metrics['write_and_digest_seconds'] = time.perf_counter()-write_started
+                registration_started = time.perf_counter()
                 run.register_streamed_file('events.jsonl', sha256=receipt.sha256,
                                            size_bytes=receipt.size_bytes)
+                root_metrics['artifact_registration_seconds'] = time.perf_counter()-registration_started
+                artifact_started = time.perf_counter()
                 run.write_json('input-evidence.json', read_json(Path(args.input_manifest)))
+                root_metrics['artifact_metadata_seconds'] = time.perf_counter()-artifact_started
             else:
                 frame = events()
+            audit_started = time.perf_counter() if root_metrics is not None else None
             audit = audit_g0(frame, protocol)
+            if root_metrics is not None:
+                root_metrics['g0_seconds'] = time.perf_counter()-audit_started
+            p0_started = time.perf_counter() if root_metrics is not None else None
             audit,p0 = _p0_audit(frame,protocol,audit,getattr(args,'p0_validation',None))
+            if root_metrics is not None:
+                root_metrics['p0_seconds'] = time.perf_counter()-p0_started
+            artifact_started = time.perf_counter() if root_metrics is not None else None
             run.write_json('audit.json', audit)
             if p0 is not None:
                 run.write_json('p0-validation.json',p0)
+            if root_metrics is not None:
+                root_metrics['artifact_metadata_seconds'] += time.perf_counter()-artifact_started
             run.manifest['source_kind'] = frame.attrs.get('source_kind')
             if stage=='prepare':
                 # A caller-owned source may change between parsing and copying.
@@ -689,6 +717,34 @@ def execute(args, *, allowed_root=None):
         if template_run is not None:
             template_run.file('templates.json')
             template_run.file('t1-validation.json')
-        run.manifest['performance'] = {'wall_seconds':time.perf_counter()-stage_started,
+        stage_wall = time.perf_counter()-stage_started
+        run.manifest['performance'] = {'wall_seconds':stage_wall,
                                        'cpu_seconds':time.process_time()-stage_cpu}
-    return {'status':run.status,'run_dir':str(args.run_dir)}
+        if root_metrics is not None:
+            root_metrics['wall_seconds'] = stage_wall
+            finalize_prepare_metrics(root_metrics)
+            diagnosis = root_metrics['diagnosis']
+            if show_prepare_metrics:
+                print(
+                    "[h4l prepare] diagnosis="
+                    f"{diagnosis['classification']} dominant={diagnosis['dominant_phase']} "
+                    f"average_span={root_metrics['average_span_length']} "
+                    f"throughput={root_metrics['throughput_entries_per_second']:.1f} entries/s "
+                    f"peak_rss={root_metrics.get('peak_rss_bytes')}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+        if diagnostic_limit is not None:
+            raise ResearchStateError(
+                'Fixed-workload prepare diagnosis completed; this run is not a training input',
+                status='diagnostic_complete',
+            )
+    result = {'status':run.status,'run_dir':str(args.run_dir),
+              'publication_seconds':run.publication_seconds}
+    if root_metrics is not None:
+        returned_metrics = deepcopy(root_metrics)
+        returned_metrics['publication_seconds'] = run.publication_seconds
+        returned_metrics['wall_seconds'] += run.publication_seconds
+        finalize_prepare_metrics(returned_metrics)
+        result['prepare_diagnostics'] = returned_metrics
+    return result

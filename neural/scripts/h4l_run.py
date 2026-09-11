@@ -31,6 +31,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.research.artifacts import digest_json  # noqa: E402
 from src.research.errors import ResearchError  # noqa: E402
 from src.research.protocol import load_protocol  # noqa: E402
+from src.research.run_names import workflow_directory_name  # noqa: E402
 
 
 class WorkflowError(Exception):
@@ -44,6 +45,11 @@ def _parser() -> argparse.ArgumentParser:
         description="Run the registered H4l feature-combination batch.",
     )
     parser.add_argument("--seed", type=int, choices=range(42, 47), default=42)
+    parser.add_argument(
+        "--run-name",
+        help=("Short shared workflow name; for example 001 resolves all inputs "
+              "and the seed-specific batch output below the shared run root."),
+    )
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--protocol", type=Path)
     parser.add_argument("--prepared-run", type=Path)
@@ -161,13 +167,30 @@ def _validate_t1(path: Path, protocol_path: Path, dataset: str) -> None:
 def _run(args: argparse.Namespace) -> None:
     config = _load_config(_resolve(args.config))
     protocol = _resolve(args.protocol or config["protocol"])
-    prepared = _resolve(args.prepared_run or config["prepared_run"])
-    gate = _resolve(args.gate_run or config["g1_gate_run"])
-    t1_validation = _resolve(args.t1_validation or config["t1_validation"])
-    output_value = str(args.output_root or config["output_root"]).replace(
-        "{seed}", str(args.seed)
-    )
-    batch_root = _resolve(output_value)
+    run_name = getattr(args, "run_name", None)
+    explicit = (args.prepared_run, args.gate_run, args.t1_validation, args.output_root)
+    if run_name is not None:
+        if any(value is not None for value in explicit):
+            raise WorkflowError(
+                "--run-name cannot be combined with --prepared-run, --gate-run, "
+                "--t1-validation, or --output-root", 2
+            )
+        try:
+            root = RUNS_ROOT / workflow_directory_name(run_name)
+        except ValueError as error:
+            raise WorkflowError(str(error), 2) from error
+        prepared = root / "prepare"
+        gate = root / "g1" / "templates"
+        t1_validation = root / "inputs" / "t1-validation.json"
+        batch_root = root / "batch" / f"seed{args.seed}"
+    else:
+        prepared = _resolve(args.prepared_run or config["prepared_run"])
+        gate = _resolve(args.gate_run or config["g1_gate_run"])
+        t1_validation = _resolve(args.t1_validation or config["t1_validation"])
+        output_value = str(args.output_root or config["output_root"]).replace(
+            "{seed}", str(args.seed)
+        )
+        batch_root = _resolve(output_value)
 
     try:
         relative = batch_root.relative_to(RUNS_ROOT)
