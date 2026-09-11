@@ -54,11 +54,13 @@ def _grid(value, name, support):
 
 def validate_protocol(raw, dataset):
     version = raw.get("schema_version") if isinstance(raw, dict) else None
-    extra = ("diagnostics",) if version == "h4l-research-v2" else ()
+    exploratory = version == "h4l-research-v3"
+    extra = (("diagnostics", "source_population", "historical_held_out_test_preserved")
+             if exploratory else (("diagnostics",) if version == "h4l-research-v2" else ()))
     _keys(raw, ("schema_version","protocol_id","dataset","final_state","mass_window","luminosity_pb",
           "development_probability","roles","role_hash","seeds","training","calibration","g0","templates",
           "validation","protocol_scope","assessment_access","matrix_element","inference","stress", *extra), "protocol")
-    if version not in {"h4l-research-v1", "h4l-research-v2"} or raw["dataset"] != dataset:
+    if version not in {"h4l-research-v1", "h4l-research-v2", "h4l-research-v3"} or raw["dataset"] != dataset:
         raise ResearchError("research protocol dataset/schema mismatch")
     if extra and raw["diagnostics"] != DIAGNOSTICS:
         raise ResearchError("unsupported registered diagnostic contract")
@@ -69,12 +71,20 @@ def validate_protocol(raw, dataset):
     expected_roles={"train":.4,"validation":.1,"calibration":.2,"template":.2,"assessment":.1}
     if raw["roles"] != expected_roles:
         raise ResearchError("role probabilities changed; implement a new protocol version")
-    if raw["development_probability"] != .8 or raw["mass_window"] != [105.,140.] or raw["luminosity_pb"] != 10000.:
+    expected_development_probability = 1.0 if exploratory else .8
+    if (raw["development_probability"] != expected_development_probability
+            or raw["mass_window"] != [105.,140.] or raw["luminosity_pb"] != 10000.):
         raise ResearchError("split/support/luminosity contract changed")
     if raw["role_hash"] != "sha256:h4l-role-v1:group:big64:mod100" or raw["seeds"] != [42,43,44,45,46]:
         raise ResearchError("unsupported role hash or paired network seeds")
-    if raw["assessment_access"] != "frozen_analysis_only" or raw["protocol_scope"] != "synthetic_software_defaults_not_physics_validation":
+    expected_scope = ("exploratory_all_mc_not_independent_validation" if exploratory
+                      else "synthetic_software_defaults_not_physics_validation")
+    if (raw["assessment_access"] != "frozen_analysis_only"
+            or raw["protocol_scope"] != expected_scope):
         raise ResearchError("research evidence/access scope changed")
+    if exploratory and (raw["source_population"] != "all_mc"
+                        or raw["historical_held_out_test_preserved"] is not False):
+        raise ResearchError("exploratory all-MC population contract changed")
     train=raw["training"]
     _keys(train,("max_epochs","patience","minimum_improvement","batch_size","learning_rate","weight_decay","warmup_epochs","ramp_epochs","adversary_bins"),"training")
     for key in ("max_epochs","patience","batch_size","warmup_epochs","ramp_epochs","adversary_bins"):

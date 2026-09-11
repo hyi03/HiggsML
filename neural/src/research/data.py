@@ -2,6 +2,7 @@
 import hashlib
 import json
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +14,34 @@ from .representations import ENGINEERED19
 
 ROLES = ("train", "validation", "calibration", "template", "assessment")
 IDENTITY = ("event_id", "source_row_id", "event_group_id", "split", "dataset", "label", "role")
+
+
+@dataclass(frozen=True)
+class ResearchDataWriteReceipt:
+    population_id: str
+    sha256: str
+    size_bytes: int
+
+
+def _is_all_mc(protocol):
+    return protocol_dict(protocol).get("source_population") == "all_mc"
+
+
+def _research_split(protocol):
+    return "exploratory" if _is_all_mc(protocol) else "development"
+
+
+def source_access_record(protocol):
+    if _is_all_mc(protocol):
+        return {
+            "payload_access": "all_mc_entries",
+            "acquisition_hash_reverified": False,
+            "historical_held_out_test_preserved": False,
+        }
+    return {
+        "payload_access": "development_entries_only",
+        "acquisition_hash_reverified": False,
+    }
 
 
 def iter_records(frame):
@@ -94,8 +123,8 @@ def role_for_group(group, protocol):
 def assign_roles(frame, protocol):
     p = protocol_dict(protocol)
     result = frame.copy()
-    if not (result["split"] == "development").all():
-        raise ResearchError("research accepts development only")
+    if not (result["split"] == _research_split(p)).all():
+        raise ResearchError("research source population differs from protocol")
     assigned = _roles(result.event_group_id, p)
     if "role" in result and not (result.role == assigned).all():
         raise ResearchError("role differs from frozen group assignment")
@@ -118,7 +147,7 @@ def _validate_identity(frame, p):
         raise ResearchError("research identity columns missing")
     if frame[list(IDENTITY)].isna().any().any() or frame.source_row_id.duplicated().any() or frame.event_id.duplicated().any():
         raise ResearchError("missing or repeated row identity")
-    if not (frame.dataset == p["dataset"]).all() or not (frame.split == "development").all():
+    if not (frame.dataset == p["dataset"]).all() or not (frame.split == _research_split(p)).all():
         raise ResearchError("dataset/split boundary violation")
     if not set(frame.label).issubset({0, 1}) or not set(frame.role).issubset(ROLES):
         raise ResearchError("invalid role or label")
@@ -171,13 +200,26 @@ def write_research_data(frame, path, protocol):
               "mc_only": True, "protocol_digest": hashlib.sha256(canonical(p)).hexdigest(),
               "source_evidence": frame.attrs.get("source_evidence", {})}
     population = set()
-    with Path(path).open("x", encoding="utf-8", newline="\n") as stream:
-        stream.write(canonical(header).decode() + "\n")
+    digest = hashlib.sha256()
+    size_bytes = 0
+
+    def write_chunk(stream, chunk):
+        nonlocal size_bytes
+        stream.write(chunk)
+        digest.update(chunk)
+        size_bytes += len(chunk)
+
+    with Path(path).open("xb") as stream:
+        write_chunk(stream, canonical(header) + b"\n")
         for row in iter_records(frame):
             identity = {k: row.pop(k) for k in IDENTITY}
             population.add(tuple(identity[k] for k in ('event_group_id','label','split','dataset')))
-            stream.write(canonical(identity).decode() + "\t" + canonical(row).decode() + "\n")
-    return population_digest(population,p['dataset'])
+            write_chunk(stream, canonical(identity) + b"\t" + canonical(row) + b"\n")
+    return ResearchDataWriteReceipt(
+        population_id=population_digest(population,p['dataset']),
+        sha256=digest.hexdigest(),
+        size_bytes=size_bytes,
+    )
 
 
 def load_research_data(path, dataset, protocol, *, allow_assessment=False, assessment_freeze=None):
@@ -201,8 +243,11 @@ def load_research_data(path, dataset, protocol, *, allow_assessment=False, asses
             for line in stream:
                 first, payload = line.rstrip("\n").split("\t", 1)
                 identity = json.loads(first)
-                if set(identity) != set(IDENTITY) or identity["split"] != "development" or identity["dataset"] != dataset:
-                    raise ResearchError("non-development or malformed research identity")
+                if (set(identity) != set(IDENTITY) or identity["split"] != _research_split(p)
+                        or identity["dataset"] != dataset):
+                    message = ("wrong-population or malformed research identity" if _is_all_mc(p)
+                               else "non-development or malformed research identity")
+                    raise ResearchError(message)
                 group = identity['event_group_id']
                 if group not in roles:
                     roles[group] = role_for_group(group,p)
@@ -244,7 +289,7 @@ def load_research_data(path, dataset, protocol, *, allow_assessment=False, asses
 
 
 def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4096, metrics=None):
-    """Read controlled MC with development-only payload request ranges.
+    """Read the controlled-MC population declared by the research protocol.
 
     ROOT baskets may contain neighboring test bytes. Application request ranges
     alone do not establish the underlying interpretation/decompression boundary.
@@ -290,9 +335,12 @@ def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4
             identities = tree.arrays([branches["eventNumber"], branches["channelNumber"]], library="np")
             if not np.all(identities[branches["channelNumber"]] == member["dsid"]):
                 raise ResearchError("DSID differs before payload access")
-            mask = np.fromiter((event_split(int(number),int(dsid)) != 'test'
-                for number,dsid in zip(identities[branches['eventNumber']],identities[branches['channelNumber']])),
-                dtype=bool,count=tree.num_entries)
+            if _is_all_mc(p):
+                mask = np.ones(tree.num_entries, dtype=bool)
+            else:
+                mask = np.fromiter((event_split(int(number),int(dsid)) != 'test'
+                    for number,dsid in zip(identities[branches['eventNumber']],identities[branches['channelNumber']])),
+                    dtype=bool,count=tree.num_entries)
             if metrics is not None:
                 metrics['identity_seconds'] = metrics.get('identity_seconds',0.) + time.perf_counter()-began
             for entry, event in iter_development_events(tree, branches, identities, mask, max_entries, metrics=metrics):
@@ -318,7 +366,7 @@ def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4
                 weight = physical_event_weight(mc_weight=float(event["mcWeight"]), luminosity_pb=p["luminosity_pb"], **context.science["normalization"][p["dataset"]][process])
                 source_id = f"{member['file_id']}:{entry}"
                 features.update(event_id=source_id, source_row_id=source_id, event_group_id=f"{channel}:{event_number}",
-                    dataset=p["dataset"], split="development", label=member["label"], physical_weight=weight,
+                    dataset=p["dataset"], split=_research_split(p), label=member["label"], physical_weight=weight,
                     y4l=float(.5 * np.log((vector.energy + vector.pz) / (vector.energy - vector.pz))),
                     lep_pt=c.normalized.pt.tolist(), lep_eta=c.normalized.eta.tolist(), lep_phi=c.normalized.phi.tolist(),
                     lep_e=c.normalized.energy.tolist(), lep_charge=c.normalized.charge.tolist(), lep_type=c.normalized.flavour.tolist(),
@@ -327,8 +375,8 @@ def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4
                 if metrics is not None:
                     metrics['feature_seconds'] = metrics.get('feature_seconds',0.) + time.perf_counter()-began
     if not rows:
-        raise ResearchStateError("no selected 2e2mu development events", status="insufficient_statistics")
+        raise ResearchStateError("no selected 2e2mu research events", status="insufficient_statistics")
     frame = assign_roles(pd.DataFrame(rows), p)
     frame.attrs.update(source_kind="controlled_mc", source_evidence={"dataset_snapshot": context.snapshot(),
-                      "manifest": raw, "payload_access": "development_entries_only", "acquisition_hash_reverified": False})
+                      "manifest": raw, **source_access_record(p)})
     return frame

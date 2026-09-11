@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build reviewed H4l inputs, then prepare the controlled feature batch."""
+"""Audit reviewed H4l inputs and prepare the reusable controlled-MC artifact."""
 
 from __future__ import annotations
 
@@ -19,9 +19,9 @@ from tqdm.auto import tqdm
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = PROJECT_ROOT.parent
 RUNS_ROOT = (PROJECT_ROOT / "runs").resolve()
-PROTOCOL = (PROJECT_ROOT / "config" / "research_protocol_v1.json").resolve()
+DEFAULT_PROTOCOL = (PROJECT_ROOT / "config" / "research_protocol_v1.json").resolve()
 PROFILE = (PROJECT_ROOT / "config" / "profiles" / "open_data_2020.yaml").resolve()
-RUN_SCRIPT = (PROJECT_ROOT / "scripts" / "h4l_run.py").resolve()
+G1_SCRIPT = (PROJECT_ROOT / "scripts" / "h4l_g1.py").resolve()
 VALIDATION_ROOT = (PROJECT_ROOT / "config" / "validation").resolve()
 DEFAULT_RECEIPT = (
     REPOSITORY_ROOT / "data" / "raw" / "atlas2020_4lep" / "dataset_receipt.json"
@@ -36,6 +36,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.dataset_binding import dataset_context  # noqa: E402
 from src.research.artifacts import digest_json  # noqa: E402
+from src.research.data import source_access_record  # noqa: E402
 from src.research.protocol import load_protocol  # noqa: E402
 
 
@@ -47,10 +48,11 @@ class WorkflowError(Exception):
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Generate bound H4l inputs and run audit, prepare, and G1.",
+        description="Generate bound H4l inputs and run audit and prepare.",
     )
     parser.add_argument("--dataset-receipt", type=Path, default=DEFAULT_RECEIPT)
     parser.add_argument("--run-root", type=Path, required=True)
+    parser.add_argument("--protocol", type=Path, default=DEFAULT_PROTOCOL)
     parser.add_argument(
         "--plan-only",
         action="store_true",
@@ -162,22 +164,21 @@ def _manifest_from_receipt(receipt_path: Path) -> dict:
     return manifest
 
 
-def _binding_digests(manifest: dict) -> tuple[str, str]:
-    protocol = load_protocol(PROTOCOL, dataset=DATASET).to_dict()
+def _binding_digests(manifest: dict, protocol_path: Path = DEFAULT_PROTOCOL) -> tuple[str, str]:
+    protocol = load_protocol(protocol_path, dataset=DATASET).to_dict()
     protocol_sha256 = digest_json(protocol)
     source_evidence_sha256 = digest_json(
         {
             "dataset_snapshot": dataset_context(DATASET).snapshot(),
             "manifest": manifest,
-            "payload_access": "development_entries_only",
-            "acquisition_hash_reverified": False,
+            **source_access_record(protocol),
         }
     )
     return protocol_sha256, source_evidence_sha256
 
 
-def _automated_validations(manifest: dict) -> tuple[dict, dict]:
-    protocol_sha256, source_evidence_sha256 = _binding_digests(manifest)
+def _automated_validations(manifest: dict, protocol_path: Path = DEFAULT_PROTOCOL) -> tuple[dict, dict]:
+    protocol_sha256, source_evidence_sha256 = _binding_digests(manifest, protocol_path)
     contract_reference = f"automated-not-independent:{protocol_sha256}"
     p0 = {
         "schema_version": "h4l-p0-validation-v1",
@@ -221,10 +222,11 @@ def _automated_validations(manifest: dict) -> tuple[dict, dict]:
     return p0, t1
 
 
-def _validate_bound_evidence(p0: dict, t1: dict, manifest: dict) -> None:
+def _validate_bound_evidence(p0: dict, t1: dict, manifest: dict,
+                             protocol_path: Path = DEFAULT_PROTOCOL) -> None:
     _validate_schema(p0, "p0_validation_v1.schema.json", "P0 validation")
     _validate_schema(t1, "t1_validation_v1.schema.json", "T1 validation")
-    protocol_sha256, source_evidence_sha256 = _binding_digests(manifest)
+    protocol_sha256, source_evidence_sha256 = _binding_digests(manifest, protocol_path)
     if p0.get("status") != "validated" or t1.get("status") != "validated":
         pending = [name for name, value in (("P0", p0), ("T1", t1)) if value.get("status") == "pending"]
         detail = "/".join(pending) if pending else "P0/T1"
@@ -297,14 +299,15 @@ def _validate_run_root(run_root: Path) -> None:
 
 def _run_workflow(args: argparse.Namespace, receipt: Path) -> None:
     run_root = _resolve(args.run_root)
+    protocol_path = _resolve(args.protocol or DEFAULT_PROTOCOL)
     _validate_run_root(run_root)
-    for required in (PROTOCOL, PROFILE, RUN_SCRIPT):
+    for required in (protocol_path, PROFILE, G1_SCRIPT):
         if not required.is_file():
             raise WorkflowError(f"Required project file does not exist: {required}", 3)
 
     manifest = _manifest_from_receipt(receipt)
-    p0, t1 = _automated_validations(manifest)
-    _validate_bound_evidence(p0, t1, manifest)
+    p0, t1 = _automated_validations(manifest, protocol_path)
+    _validate_bound_evidence(p0, t1, manifest, protocol_path)
 
     inputs_root = run_root / "inputs"
     root_manifest = inputs_root / MANIFEST_NAME
@@ -319,19 +322,7 @@ def _run_workflow(args: argparse.Namespace, receipt: Path) -> None:
 
     audit_run = run_root / "audit"
     prepared_run = run_root / "prepare"
-    train_root = run_root / "g1" / "train"
-    calibration_root = run_root / "g1" / "calibrate"
-    model_runs = {name: train_root / name.lower() for name in ("M0c", "M2", "M3")}
-    calibration_runs = {
-        "m0c_raw": calibration_root / "m0c-raw",
-        "m2_raw": calibration_root / "m2-raw",
-        "m4": calibration_root / "m4-physical",
-        "m3_raw": calibration_root / "m3-raw",
-        "m5": calibration_root / "m5-physical",
-    }
-    gate_run = run_root / "g1" / "templates"
-    batch_root = run_root / "batch" / "seed42"
-    common = ["--dataset", DATASET, "--protocol", str(PROTOCOL)]
+    common = ["--dataset", DATASET, "--protocol", str(protocol_path)]
 
     steps = [
         (
@@ -349,52 +340,9 @@ def _run_workflow(args: argparse.Namespace, receipt: Path) -> None:
             ],
         ),
     ]
-    for candidate in ("M0c", "M2", "M3"):
-        steps.append(
-            (
-                f"train {candidate}",
-                [
-                    "train", *common,
-                    "--input-run", str(prepared_run),
-                    "--candidate", candidate,
-                    "--seed", "42",
-                    "--run-dir", str(model_runs[candidate]),
-                ],
-            )
-        )
-
-    calibration_specs = (
-        ("M0c", "raw", calibration_runs["m0c_raw"]),
-        ("M2", "raw", calibration_runs["m2_raw"]),
-        ("M2", "physical", calibration_runs["m4"]),
-        ("M3", "raw", calibration_runs["m3_raw"]),
-        ("M3", "physical", calibration_runs["m5"]),
-    )
-    for candidate, transform, output in calibration_specs:
-        steps.append(
-            (
-                f"calibrate {candidate} {transform}",
-                [
-                    "calibrate", *common,
-                    "--input-run", str(prepared_run),
-                    "--model-run", str(model_runs[candidate]),
-                    "--transform", transform,
-                    "--run-dir", str(output),
-                ],
-            )
-        )
-
-    template_arguments = ["templates", *common, "--input-run", str(prepared_run)]
-    for calibration_run in calibration_runs.values():
-        template_arguments.extend(["--calibration-run", str(calibration_run)])
-    template_arguments.extend(
-        ["--t1-validation", str(t1_validation), "--run-dir", str(gate_run)]
-    )
-    steps.append(("templates", template_arguments))
-
     with tqdm(
         steps,
-        desc="H4l prerequisites",
+        desc="H4l prepare",
         unit="stage",
         disable=args.plan_only or args.no_progress,
     ) as progress:
@@ -402,29 +350,19 @@ def _run_workflow(args: argparse.Namespace, receipt: Path) -> None:
             progress.set_postfix_str(label, refresh=True)
             _invoke(arguments, plan_only=args.plan_only)
 
-    if not args.plan_only:
-        g1_path = gate_run / "g1.json"
-        status = _load_json(g1_path).get("status")
-        print(f"G1 status: {status}")
-        if status != "passed":
-            raise WorkflowError(
-                "G1 did not pass; do not start the feature-combination batch.", 5
-            )
-
     next_command = [
-        sys.executable, str(RUN_SCRIPT),
-        "--seed", "42",
+        sys.executable, str(G1_SCRIPT),
+        "--protocol", str(protocol_path),
         "--prepared-run", str(prepared_run),
-        "--gate-run", str(gate_run),
         "--t1-validation", str(t1_validation),
-        "--output-root", str(batch_root),
+        "--output-root", str(run_root / "g1"),
     ]
-    print("Next batch command:")
+    print("Next G1 command:")
     print(_display(next_command))
     if args.plan_only:
         print("Plan complete; no run was created.")
     else:
-        print("Prerequisites complete; assessment remains unopened.")
+        print("Prepare complete; reuse this prepared artifact for G1 retries.")
 
 
 def _run(args: argparse.Namespace) -> None:

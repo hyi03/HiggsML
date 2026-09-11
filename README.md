@@ -98,9 +98,11 @@ python -m pip check
 以下命令均从仓库的 `neural/` 目录执行。`runs/<名称>` 只是命名示例；成功、科学终态或失败的
 run 均不可覆盖，重跑时必须更换目录名。
 
-两个跨平台 Python 脚本覆盖完整流程：`scripts/h4l_prepare.py` 自动生成绑定输入和 P0/T1 验证，
-执行 audit、prepare 和前置 G1，并准备下一阶段命令；`scripts/h4l_run.py` 执行单个 seed 的
-A、B、C、D 全组合研究。整个流程不打开 assessment 或历史 held-out test。
+三个跨平台 Python 脚本覆盖完整流程：`scripts/h4l_prepare.py` 自动生成绑定输入和 P0/T1 验证，
+只执行 audit 和 ROOT prepare；`scripts/h4l_g1.py` 从可复用的 prepared artifact 执行前置 G1；
+`scripts/h4l_run.py` 执行单个 seed 的 A、B、C、D 全组合研究。默认 v1 协议不打开 assessment 或
+历史 held-out test。若显式选择新的 exploratory all-MC 协议，则会使用全部 MC，不能再把结果解释为
+对历史 held-out test 的独立验证。
 
 ### 2.1 安装研究依赖
 
@@ -115,45 +117,87 @@ python -m pip check
 higgsml-research --help
 ```
 
-### 2.2 完成准备
+### 2.2 完成 ROOT 准备
 
-执行下面命令自动检查下载收据、生成并校验 ROOT manifest 和 P0/T1 绑定验证，随后执行
-audit、prepare、M0c/M2/M3、校准、共同 templates 和 G1 检查：
+执行下面命令自动检查下载收据、生成并校验 ROOT manifest 和 P0/T1 绑定验证，随后只执行
+audit 和 prepare：
 
 ```bash
 python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/dataset_receipt.json --run-root runs/h4l-feature-combinations-prerequisites-001
 ```
 
-脚本把三个绑定文件保存在 `<run-root>/inputs/`，成功后打印可直接执行的 `Next batch command`。
-正式执行时会在标准错误流显示 `H4l prerequisites` 总进度条，共 11 个阶段：audit、prepare、
-3 次训练、5 次校准和 templates。进度条后缀显示当前阶段；只有当前子命令成功结束后才推进，
-任一步失败仍保留原始错误信息和退出码。每个子命令运行期间还会每秒输出累计运行秒数，
-即使终端无法绘制动态进度条，也能确认进程仍在运行。
+脚本把三个绑定文件保存在 `<run-root>/inputs/`，prepared artifact 保存在 `<run-root>/prepare`，
+成功后打印可直接执行的 `Next G1 command`。正式执行时会在标准错误流显示 `H4l prepare`
+总进度条，共 2 个阶段。进度条后缀显示当前阶段；只有当前子命令成功结束后才推进，任一步失败
+仍保留原始错误信息和退出码。长时间运行的子命令会在同一行持续增加 `.`，用于确认进程仍存活。
+`events.jsonl` 在写入时同步计算 SHA256 和大小，prepare 发布时不再为登记和发布校验重复完整读盘；
+后续阶段读取 prepared artifact 时仍按 manifest 校验摘要。
 
 | 阶段 | 子命令 | 主要输入 | 输出目录 | 作用 |
 |---:|---|---|---|---|
 | 1 | `audit` | ROOT manifest、研究协议 | `<run-root>/audit` | 核对受控 MC 来源、协议绑定和角色隔离，并按角色与类别检查 signed yield、有效统计量及权重抵消率；只生成 G0/P0 审计证据，不读取 assessment。 |
 | 2 | `prepare` | ROOT manifest、profile、P0 验证 | `<run-root>/prepare` | 重建并筛选四轻子事件，计算冻结研究变量和物理权重，按物理事件组划分 train、validation、calibration、template、assessment 五种角色；保存后续阶段共用且身份绑定的 prepared run，但不打开 assessment 内容。 |
-| 3 | `train M0c` | prepared run、候选 `M0c`、seed 42 | `<run-root>/g1/train/m0c` | 训练 mass-only 空集基线：只输入 `m4l`（1 维）；`c` 表示它是产生分类分数的质量模型，用于区别无分类器、仅使用质量模板的 M0。 |
-| 4 | `train M2` | prepared run、候选 `M2`、seed 42 | `<run-root>/g1/train/m2` | 训练 decay7 + `m4l` 普通 MLP：输入 `mZ1`、`mZ2`、5 个衰变角和 `m4l`（共 8 维），其冻结分数经 physical CDF 校准后形成 M4。 |
-| 5 | `train M3` | prepared run、候选 `M3`、seed 42 | `<run-root>/g1/train/m3` | 训练 engineered19 + `m4l` 普通 MLP：输入 19 个工程化运动学变量和 `m4l`（共 20 维），其冻结分数经 physical CDF 校准后形成 M5。 |
-| 6 | `calibrate M0c raw` | prepared run、M0c 模型 | `<run-root>/g1/calibrate/m0c-raw` | 保留 M0c 的原始网络分数，不做 CDF 变换；仅使用独立 calibration 角色拟合冻结分类阈值，作为同流程的纯质量空集参照。 |
-| 7 | `calibrate M2 raw` | prepared run、M2 模型 | `<run-root>/g1/calibrate/m2-raw` | 保留 M2 的原始网络分数，并在 calibration 角色上拟合冻结阈值；用于观察未经质量条件校准的 decay7 基线。 |
-| 8 | `calibrate M2 physical` | prepared run、M2 模型 | `<run-root>/g1/calibrate/m4-physical` | 用 calibration 背景及 signed physical weight 拟合质量条件 CDF，将冻结的 M2 分数变换并重新拟合阈值，派生出 M4；不重新训练网络。 |
-| 9 | `calibrate M3 raw` | prepared run、M3 模型 | `<run-root>/g1/calibrate/m3-raw` | 保留 M3 的原始网络分数，并在 calibration 角色上拟合冻结阈值；用于观察未经质量条件校准的 engineered19 表示。 |
-| 10 | `calibrate M3 physical` | prepared run、M3 模型 | `<run-root>/g1/calibrate/m5-physical` | 用 calibration 背景及 signed physical weight 拟合质量条件 CDF，将冻结的 M3 分数变换并重新拟合阈值，派生出 M5；不重新训练网络。 |
-| 11 | `templates` | prepared run、5 个 calibration run、T1 验证 | `<run-root>/g1/templates` | 将 M0、M0c、M2、M3、M4、M5 放在同一质量网格上构建分类模板，必要时对所有候选共同合并统计不足的质量箱；G1 同时检查校准状态、非负产额、有效模板统计、协方差结构和 T1 `shapesys` 契约。只有 `g1.json` 为 `passed` 才给出下一批次命令。 |
 
-如只需预览前置命令，在上述命令末尾追加 `--plan-only`；计划模式不创建 run，也不显示动态进度条。
+如只需预览准备命令，在上述命令末尾追加 `--plan-only`；计划模式不创建 run，也不显示动态进度条。
 在 CI 或需要保存纯文本日志时，可关闭进度条，命令执行内容不变：
 
 ```bash
 python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/dataset_receipt.json --run-root runs/h4l-feature-combinations-prerequisites-001 --no-progress
 ```
 
-### 2.3 执行完整批次
+### 2.3 执行 G1
 
-确认预览中的 prepared run、G1 gate、T1 文件、seed 和新输出目录正确后，直接执行前置脚本打印的
+执行 prepare 打印的 `Next G1 command`。该命令只读取 prepared artifact，不会再次读取 ROOT：
+
+```bash
+python scripts/h4l_g1.py --prepared-run runs/h4l-feature-combinations-prerequisites-001/prepare --t1-validation runs/h4l-feature-combinations-prerequisites-001/inputs/t1-validation.json --output-root runs/h4l-feature-combinations-prerequisites-001/g1
+```
+
+G1 共 9 个阶段：3 次训练、5 次校准和 templates。运行时显示 `H4l G1` 进度条；长时间运行的
+子命令同样在一行内持续增加 `.`。成功且 `<output-root>/templates/g1.json` 状态为 `passed` 后，
+脚本打印 `Next batch command`。
+
+| 阶段 | 子命令 | 主要输入 | 输出目录 | 作用 |
+|---:|---|---|---|---|
+| 1 | `train M0c` | prepared run、候选 `M0c`、seed 42 | `<output-root>/train/m0c` | 训练只输入 `m4l` 的 mass-only 空集基线。 |
+| 2 | `train M2` | prepared run、候选 `M2`、seed 42 | `<output-root>/train/m2` | 训练 decay7 + `m4l` 普通 MLP，其 physical CDF 结果形成 M4。 |
+| 3 | `train M3` | prepared run、候选 `M3`、seed 42 | `<output-root>/train/m3` | 训练 engineered19 + `m4l` 普通 MLP，其 physical CDF 结果形成 M5。 |
+| 4 | `calibrate M0c raw` | prepared run、M0c 模型 | `<output-root>/calibrate/m0c-raw` | 保留原始分数并拟合冻结阈值。 |
+| 5 | `calibrate M2 raw` | prepared run、M2 模型 | `<output-root>/calibrate/m2-raw` | 生成未经质量条件校准的 decay7 基线。 |
+| 6 | `calibrate M2 physical` | prepared run、M2 模型 | `<output-root>/calibrate/m4-physical` | 使用 calibration 背景和 signed physical weight 生成 M4。 |
+| 7 | `calibrate M3 raw` | prepared run、M3 模型 | `<output-root>/calibrate/m3-raw` | 生成未经质量条件校准的 engineered19 基线。 |
+| 8 | `calibrate M3 physical` | prepared run、M3 模型 | `<output-root>/calibrate/m5-physical` | 使用 calibration 背景和 signed physical weight 生成 M5。 |
+| 9 | `templates` | prepared run、5 个 calibration run、T1 验证 | `<output-root>/templates` | 构建共同质量网格和模板，并执行 G1 检查。 |
+
+如果训练、校准或 templates 失败，失败的 G1 输出目录仍不可覆盖。修复问题后使用新的
+`--output-root` 重试，同时保持 `--prepared-run` 不变，例如：
+
+```bash
+python scripts/h4l_g1.py --prepared-run runs/h4l-feature-combinations-prerequisites-001/prepare --t1-validation runs/h4l-feature-combinations-prerequisites-001/inputs/t1-validation.json --output-root runs/h4l-feature-combinations-prerequisites-001/g1-retry-002
+```
+
+这样会重新执行 G1，但不会重新执行 audit、prepare 或 ROOT 读取。可用 `--plan-only` 预览命令，
+用 `--no-progress` 关闭动态进度条。
+
+### 2.3.1 使用全部 MC 的 exploratory 协议
+
+需要最大化探索阶段统计量时，三个脚本必须传入同一个
+`config/research_protocol_exploratory_all_mc_v1.json`：
+
+```bash
+python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/dataset_receipt.json --run-root runs/h4l-exploratory-all-mc-001 --protocol config/research_protocol_exploratory_all_mc_v1.json
+python scripts/h4l_g1.py --prepared-run runs/h4l-exploratory-all-mc-001/prepare --t1-validation runs/h4l-exploratory-all-mc-001/inputs/t1-validation.json --output-root runs/h4l-exploratory-all-mc-001/g1 --protocol config/research_protocol_exploratory_all_mc_v1.json
+python scripts/h4l_run.py --seed 42 --prepared-run runs/h4l-exploratory-all-mc-001/prepare --gate-run runs/h4l-exploratory-all-mc-001/g1/templates --t1-validation runs/h4l-exploratory-all-mc-001/inputs/t1-validation.json --output-root runs/h4l-exploratory-all-mc-001/batch/seed42 --protocol config/research_protocol_exploratory_all_mc_v1.json
+```
+
+该协议删除旧 development/test 输入边界，把全部 MC 重新按固定事件组哈希分配给内部
+train、validation、calibration、template、assessment 角色。内部 assessment 仍须冻结后才能访问，
+但它包含原历史 test 总体的信息，因此整个运行只用于 exploratory 比较，不构成独立 held-out 验证、
+论文级泛化证据或物理测量。v1/v2 协议继续保持 development-only 行为，既有产物仍使用原协议读取。
+
+### 2.4 执行完整批次
+
+确认预览中的 prepared run、G1 gate、T1 文件、seed 和新输出目录正确后，直接执行 G1 脚本打印的
 原始 `Next batch command`，不要附加计划参数。该命令调用跨平台的 `scripts/h4l_run.py`。
 
 ```bash
@@ -165,7 +209,7 @@ python scripts/h4l_run.py --seed 42 --prepared-run runs/h4l-feature-combinations
 
 正式执行时会在标准错误流显示 `H4l batch seed <seed>` 总进度条，共 35 个阶段：16 次训练、
 16 次校准、templates、infer 和 report。进度条后缀显示当前基线、特征组合或收尾阶段；只有子命令
-成功结束后才推进。每个子命令运行期间还会每秒输出累计运行秒数，即使终端无法绘制动态进度条，
+成功结束后才推进。长时间运行的子命令会在同一行持续增加 `.`，即使终端无法绘制动态进度条，
 也能确认进程仍在运行。`--plan-only` 不显示动态进度条；在 CI 或需要纯文本日志时，可在批次命令
 末尾追加 `--no-progress`，执行内容和科学门禁不变。
 
@@ -183,7 +227,7 @@ python scripts/h4l_run.py --seed 42 --prepared-run runs/h4l-feature-combinations
 `deltaR_Z2`（4 项），C 为 `pt4l`、`deltaPhi_ZZ`（2 项），D 为 5 个产生与衰变角变量；
 四组共 19 项，`m4l` 是所有组合共同的质量条件，不计入 A/B/C/D。
 
-### 2.4 查看和检查结果
+### 2.5 查看和检查结果
 
 批次共执行 16 次训练：15 个非空组合和 1 个 M0c 空集基线。批次输出固定在
 `<run-root>/batch/seed42/`。`h4l_run.py` 会在结束前读取 `report/report.json`，确认完整组合比较的

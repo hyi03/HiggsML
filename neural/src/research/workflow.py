@@ -342,9 +342,11 @@ def execute(args, *, allowed_root=None):
                 frame = export_research_data(args.input_manifest, _required(args, 'profile'), protocol,
                                              max_entries=resources['root_max_entries'],metrics=root_metrics)
                 write_started = time.perf_counter()
-                frame.attrs['population_id'] = write_research_data(frame, run.path / 'events.jsonl', protocol)
+                receipt = write_research_data(frame, run.path / 'events.jsonl', protocol)
+                frame.attrs['population_id'] = receipt.population_id
                 root_metrics['write_seconds'] = time.perf_counter()-write_started
-                run.register_file('events.jsonl')
+                run.register_streamed_file('events.jsonl', sha256=receipt.sha256,
+                                           size_bytes=receipt.size_bytes)
                 run.write_json('input-evidence.json', read_json(Path(args.input_manifest)))
             else:
                 frame = events()
