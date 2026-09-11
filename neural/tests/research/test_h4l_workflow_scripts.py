@@ -215,7 +215,8 @@ def test_shared_run_name_derives_prepare_g1_and_batch_paths(tmp_path: Path) -> N
     assert str(run_root / "prepare") in batch.stdout
     assert str(run_root / "g1" / "templates") in batch.stdout
     assert str(run_root / "inputs" / "t1-validation.json") in batch.stdout
-    assert str(run_root / "batch" / "seed42") in batch.stdout
+    assert str(run_root / "batch" / "all-seeds" / "seed42") in batch.stdout
+    assert str(run_root / "batch" / "all-seeds" / "seed46") in batch.stdout
     assert not run_root.exists()
 
 
@@ -297,11 +298,11 @@ def test_prepare_writes_automatic_inputs_before_running_prerequisites(
     monkeypatch.setattr(prepare, "RUNS_ROOT", tmp_path.resolve())
     run_root = tmp_path / "run"
 
-    invoked: list[str] = []
+    invoked: list[list[str]] = []
 
     def fake_invoke(arguments: list[str], *, plan_only: bool) -> None:
         assert plan_only is False
-        invoked.append(arguments[0])
+        invoked.append(arguments)
 
     monkeypatch.setattr(prepare, "_invoke", fake_invoke)
     prepare._run(
@@ -318,10 +319,10 @@ def test_prepare_writes_automatic_inputs_before_running_prerequisites(
     assert json.loads((inputs / "p0-validation.json").read_text(encoding="utf-8"))["status"] == "validated"
     assert json.loads((inputs / "t1-validation.json").read_text(encoding="utf-8"))["status"] == "validated"
     assert (inputs / "h4l-root-input-v1-manifest.json").is_file()
-    assert invoked == ["audit", "prepare"]
-    progress_output = capsys.readouterr().err
-    assert "H4l prepare" in progress_output
-    assert "2/2" in progress_output
+    assert [arguments[0] for arguments in invoked] == ["audit", "prepare"]
+    assert "--show-prepare-progress" not in invoked[0]
+    assert "--show-prepare-progress" in invoked[1]
+    assert "H4l prepare" not in capsys.readouterr().err
 
 
 def test_g1_plan_reuses_prepared_run_without_preparing_root_again() -> None:
@@ -369,7 +370,7 @@ def test_exploratory_protocol_propagates_prepare_to_g1_to_batch(tmp_path: Path) 
                  "--output-root", str(run_root / "batch" / "seed42"),
                  "--protocol", str(protocol), "--plan-only")
     assert batch.returncode == 0, batch.stderr
-    assert batch.stdout.count(f"--protocol {protocol}") == 35
+    assert batch.stdout.count(f"--protocol {protocol}") == 41
 
 
 def test_run_plan_covers_all_combinations_without_creating_run() -> None:
@@ -377,20 +378,82 @@ def test_run_plan_covers_all_combinations_without_creating_run() -> None:
 
     completed = _run(
         RUN_SCRIPT,
-        "--seed", "42",
         "--output-root", str(output_root),
         "--plan-only",
     )
 
     assert completed.returncode == 0, completed.stderr
     output = completed.stdout
-    assert output.count("src.cli.research train") == 16
-    assert output.count("src.cli.research calibrate") == 16
+    assert output.count("src.cli.research train") == 90
+    assert output.count("src.cli.research calibrate") == 100
     assert "--groups ABCD" in output
-    assert "src.cli.research templates" in output
-    assert "src.cli.research infer" in output
-    assert "src.cli.research report" in output
+    assert output.count("src.cli.research templates") == 1
+    assert output.count("src.cli.research infer") == 1
+    assert output.count("src.cli.research report") == 1
+    assert "seed42" in output and "seed46" in output
     assert not output_root.exists()
+
+
+def test_run_explicit_seed_keeps_single_seed_diagnostic_plan() -> None:
+    output_root = _new_run_root("pytest-run-single-plan")
+    completed = _run(RUN_SCRIPT, "--seed", "42", "--output-root", str(output_root),
+                     "--plan-only")
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.count("src.cli.research train") == 18
+    assert completed.stdout.count("src.cli.research calibrate") == 20
+    assert "seed43" not in completed.stdout
+    assert not output_root.exists()
+
+
+def test_run_refuses_existing_output_without_invoking_stages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _load_run_module()
+    prepared = tmp_path / "prepared"; prepared.mkdir()
+    gate = tmp_path / "gate"; gate.mkdir()
+    t1_validation = tmp_path / "t1-validation.json"; t1_validation.write_text("{}")
+    output_root = tmp_path / "existing"; output_root.mkdir()
+    monkeypatch.setattr(run, "RUNS_ROOT", tmp_path.resolve())
+    monkeypatch.setattr(run, "_validate_t1", lambda *_args: None)
+    monkeypatch.setattr(run, "_invoke", lambda *_args, **_kwargs: pytest.fail("stage invoked"))
+    with pytest.raises(run.WorkflowError, match="cannot be reused") as failure:
+        run._run(argparse.Namespace(seed=None,config=run.DEFAULT_CONFIG,protocol=None,
+            prepared_run=prepared,gate_run=gate,t1_validation=t1_validation,
+            output_root=output_root,plan_only=False,no_progress=True))
+    assert failure.value.exit_code == 4
+
+
+def test_conclusion_output_contains_combination_shapley_and_primary(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    run = _load_run_module()
+    per_seed = [{"seed":seed,"width68":1.0,"relative_improvement_vs_empty":.1}
+                for seed in range(42,47)]
+    contributions = [{"seed":seed,"contribution":.01} for seed in range(42,47)]
+    report = {
+        "feature_combination_comparisons": [],
+        "feature_combination_summary": {
+            "status":"valid","seeds":list(range(42,47)),
+            "combinations":[{"subset":"AB","per_seed":per_seed,"median_width68":1.0,
+                             "median_relative_improvement_vs_empty":.1}],
+            "best_combination":{"subset":"AB","median_width68":1.0,
+                                "median_relative_improvement_vs_empty":.1},
+            "shapley":{"groups":{group:{"per_seed":contributions,"median_contribution":.01,
+                "min_contribution":.0,"max_contribution":.02} for group in "ABCD"},
+                "interactions":[{"pair":"AB","conditioning_subset":"",
+                    "median_second_difference":.03}]},
+        },
+        "primary_comparison":{"status":"valid","paired_seeds":[{"seed":42,
+            "M4_width68":2.,"M5_width68":1.8,"relative_improvement":.1}],
+            "median_relative_improvement":.1},
+        "primary_comparison_cohort_id":"cohort",
+    }
+    run._print_conclusions(report,tmp_path/"report.md",complete=True)
+    output=capsys.readouterr().out
+    for expected in ("Best combination: AB","Group-level Shapley contributions",
+                     "Strongest positive interaction","Primary M5/M4 comparison: valid",
+                     "five-seed median improvement=10.0000%"):
+        assert expected in output
 
 
 def test_run_shows_progress_for_all_batch_stages(
@@ -424,6 +487,7 @@ def test_run_shows_progress_for_all_batch_stages(
             )
 
     monkeypatch.setattr(run, "_invoke", fake_invoke)
+    monkeypatch.setattr(run, "_print_conclusions", lambda *_args, **_kwargs: None)
     run._run(
         argparse.Namespace(
             seed=42,
@@ -439,8 +503,8 @@ def test_run_shows_progress_for_all_batch_stages(
     )
 
     progress_output = capsys.readouterr().err
-    assert "H4l batch seed 42" in progress_output
-    assert "35/35" in progress_output
+    assert "H4l diagnostic seed 42" in progress_output
+    assert "41/41" in progress_output
 
 
 def test_run_cli_supports_disabling_progress() -> None:
@@ -450,7 +514,120 @@ def test_run_cli_supports_disabling_progress() -> None:
     assert "--no-progress" in completed.stdout
 
 
-@pytest.mark.parametrize("load_module", [_load_prepare_module, _load_g1_module, _load_run_module])
+@pytest.mark.parametrize("script", [PREPARE_SCRIPT, G1_SCRIPT, RUN_SCRIPT])
+def test_h4l_scripts_expose_clean(script: Path) -> None:
+    completed = _run(script, "--help")
+    assert completed.returncode == 0
+    assert "--clean" in completed.stdout
+
+
+def test_prepare_clean_removes_only_prepare_owned_outputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_prepare_module()
+    run_root = tmp_path / "workflow"
+    for name in ("inputs", "audit", "prepare", "g1", "batch"):
+        (run_root / name).mkdir(parents=True)
+        (run_root / name / "owned.txt").write_text(name)
+    monkeypatch.setattr(module, "RUNS_ROOT", tmp_path.resolve())
+    module._run(argparse.Namespace(run_name=None,run_root=run_root,clean=True,
+        plan_only=False,diagnostic_entries_per_file=None))
+    assert all(not (run_root/name).exists() for name in ("inputs","audit","prepare"))
+    assert (run_root/"g1"/"owned.txt").is_file()
+    assert (run_root/"batch"/"owned.txt").is_file()
+
+
+def test_g1_and_run_clean_remove_only_selected_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    g1 = _load_g1_module(); run = _load_run_module()
+    workflow = tmp_path / "workflow"
+    g1_root = workflow / "g1"; g1_root.mkdir(parents=True)
+    batch_root = workflow / "batch" / "all-seeds"; batch_root.mkdir(parents=True)
+    preserved = workflow / "prepare"; preserved.mkdir(parents=True)
+    monkeypatch.setattr(g1, "RUNS_ROOT", tmp_path.resolve())
+    g1._run(argparse.Namespace(run_name=None,prepared_run=None,t1_validation=None,
+        output_root=g1_root,clean=True,plan_only=False))
+    assert not g1_root.exists() and preserved.exists() and batch_root.exists()
+    monkeypatch.setattr(run, "RUNS_ROOT", tmp_path.resolve())
+    run._run(argparse.Namespace(seed=None,config=run.DEFAULT_CONFIG,protocol=None,
+        run_name=None,prepared_run=None,gate_run=None,t1_validation=None,
+        output_root=batch_root,clean=True,plan_only=False,no_progress=True))
+    assert not batch_root.exists() and preserved.exists()
+
+
+def test_run_name_clean_removes_the_default_complete_batch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_run_module()
+    workflow = tmp_path / "h4l-feature-combinations-prerequisites-001"
+    complete_batch = workflow / "batch" / "all-seeds"
+    single_seed_batch = workflow / "batch" / "seed42"
+    complete_batch.mkdir(parents=True)
+    single_seed_batch.mkdir()
+    (complete_batch / "result.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(module, "RUNS_ROOT", tmp_path.resolve())
+
+    module._run(argparse.Namespace(
+        seed=None,
+        run_name="001",
+        output_root=None,
+        prepared_run=None,
+        gate_run=None,
+        t1_validation=None,
+        config=tmp_path / "does-not-exist.json",
+        clean=True,
+        plan_only=False,
+    ))
+
+    assert not complete_batch.exists()
+    assert single_seed_batch.exists()
+
+
+def test_clean_rejects_target_outside_runs_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_g1_module()
+    runs_root = tmp_path / "runs"; runs_root.mkdir()
+    outside = tmp_path / "outside"; outside.mkdir()
+    monkeypatch.setattr(module, "RUNS_ROOT", runs_root.resolve())
+    with pytest.raises(module.WorkflowError, match="must be below") as failure:
+        module._run(argparse.Namespace(run_name=None,prepared_run=None,t1_validation=None,
+            output_root=outside,clean=True,plan_only=False))
+    assert failure.value.exit_code == 4 and outside.exists()
+
+
+def test_clean_rejects_a_symbolic_link_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_g1_module()
+    runs_root = tmp_path / "runs"
+    outside = tmp_path / "outside"
+    runs_root.mkdir()
+    outside.mkdir()
+    link = runs_root / "linked-g1"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except (NotImplementedError, OSError) as error:
+        pytest.skip(f"Directory symlinks are unavailable: {error}")
+    monkeypatch.setattr(module, "RUNS_ROOT", runs_root.resolve())
+
+    with pytest.raises(module.WorkflowError, match="symbolic link") as failure:
+        module._run(argparse.Namespace(
+            run_name=None,
+            prepared_run=None,
+            t1_validation=None,
+            output_root=link,
+            clean=True,
+            plan_only=False,
+        ))
+
+    assert failure.value.exit_code == 4
+    assert link.is_symlink()
+    assert outside.exists()
+
+
+@pytest.mark.parametrize("load_module", [_load_g1_module, _load_run_module])
 def test_invoke_uses_single_line_dot_progress(
     load_module,
     monkeypatch: pytest.MonkeyPatch,
@@ -473,6 +650,29 @@ def test_invoke_uses_single_line_dot_progress(
     module._invoke(["prepare"], plan_only=False)
 
     assert capsys.readouterr().err == "[h4l] stage 'prepare' running ..\n"
+
+
+def test_prepare_invoke_has_no_dot_progress(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = _load_prepare_module()
+
+    class FakeProcess:
+        waits = 0
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            self.waits += 1
+            if self.waits <= 2:
+                raise subprocess.TimeoutExpired(cmd="research", timeout=timeout)
+            return 0
+
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *_args, **_kwargs: FakeProcess())
+
+    module._invoke(["prepare"], plan_only=False)
+
+    assert capsys.readouterr().err == ""
 
 
 def test_run_refuses_pending_t1_before_starting_batch(tmp_path: Path) -> None:

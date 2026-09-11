@@ -13,9 +13,6 @@ import sys
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
-from tqdm.auto import tqdm
-
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = PROJECT_ROOT.parent
 RUNS_ROOT = (PROJECT_ROOT / "runs").resolve()
@@ -36,6 +33,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.dataset_binding import dataset_context  # noqa: E402
 from src.research.artifacts import digest_json  # noqa: E402
+from src.research.cleanup import remove_run_directories  # noqa: E402
 from src.research.data import source_access_record  # noqa: E402
 from src.research.protocol import load_protocol  # noqa: E402
 from src.research.run_names import workflow_directory_name  # noqa: E402
@@ -77,9 +75,13 @@ def _parser() -> argparse.ArgumentParser:
         help="Validate inputs and print commands without creating runs.",
     )
     parser.add_argument(
+        "--clean", action="store_true",
+        help="Delete only the inputs, audit, and prepare outputs selected by this command.",
+    )
+    parser.add_argument(
         "--no-progress",
         action="store_true",
-        help="Disable the prerequisite-stage progress bar.",
+        help="Disable the ROOT event progress bar.",
     )
     return parser
 
@@ -298,20 +300,12 @@ def _invoke(arguments: list[str], *, plan_only: bool) -> None:
     if plan_only:
         return
     process = subprocess.Popen(command, cwd=PROJECT_ROOT)
-    progress_started = False
     while True:
         try:
             return_code = process.wait(timeout=1)
             break
         except subprocess.TimeoutExpired:
-            if not progress_started:
-                sys.stderr.write(f"[h4l] stage '{arguments[0]}' running ")
-                progress_started = True
-            sys.stderr.write(".")
-            sys.stderr.flush()
-    if progress_started:
-        sys.stderr.write("\n")
-        sys.stderr.flush()
+            continue
     if return_code != 0:
         raise WorkflowError(
             f"higgsml-research failed with exit code {return_code}",
@@ -384,15 +378,10 @@ def _run_workflow(args: argparse.Namespace, receipt: Path) -> None:
         ])
     if getattr(args, "show_prepare_metrics", False):
         steps[1][1].append("--show-prepare-metrics")
-    with tqdm(
-        steps,
-        desc="H4l prepare",
-        unit="stage",
-        disable=args.plan_only or args.no_progress,
-    ) as progress:
-        for label, arguments in progress:
-            progress.set_postfix_str(label, refresh=True)
-            _invoke(arguments, plan_only=args.plan_only)
+    if not args.no_progress:
+        steps[1][1].append("--show-prepare-progress")
+    for _label, arguments in steps:
+        _invoke(arguments, plan_only=args.plan_only)
 
     if diagnostic_limit is not None:
         print(
@@ -422,7 +411,39 @@ def _run_workflow(args: argparse.Namespace, receipt: Path) -> None:
         print("Prepare complete; reuse this prepared artifact for G1 retries.")
 
 
+def _clean(args: argparse.Namespace) -> None:
+    if getattr(args, "plan_only", False):
+        raise WorkflowError("--clean cannot be combined with --plan-only", 2)
+    run_name = getattr(args, "run_name", None)
+    if run_name is None:
+        run_root = Path(args.run_root).expanduser()
+        if not run_root.is_absolute():
+            run_root = PROJECT_ROOT / run_root
+        run_root = run_root.absolute()
+    else:
+        try:
+            run_root = (RUNS_ROOT / workflow_directory_name(run_name)).absolute()
+        except ValueError as error:
+            raise WorkflowError(str(error), 2) from error
+    try:
+        result = remove_run_directories(
+            [run_root / "inputs", run_root / "audit", run_root / "prepare"],
+            allowed_root=RUNS_ROOT,
+        )
+        if run_root.exists() and not any(run_root.iterdir()):
+            run_root.rmdir()
+    except (OSError, ValueError) as error:
+        raise WorkflowError(f"Cannot clean H4l prepare outputs: {error}", 4) from error
+    for path in result["removed"]:
+        print(f"Removed prepare output: {path}")
+    if not result["removed"]:
+        print(f"No prepare outputs found under: {run_root}")
+
+
 def _run(args: argparse.Namespace) -> None:
+    if getattr(args, "clean", False):
+        _clean(args)
+        return
     receipt = _resolve(args.dataset_receipt)
     _run_workflow(args, receipt)
 

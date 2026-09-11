@@ -189,8 +189,7 @@ python scripts/h4l_prepare.py \
 执行 prepare 打印的 `Next G1 command`。该命令只读取 prepared artifact，不会再次读取 ROOT：
 
 ```bash
-python scripts/h4l_g1.py \
-  --run-name 001
+python scripts/h4l_g1.py --run-name 001
 ```
 
 G1 共 9 个阶段：3 次训练、5 次校准和 templates。运行时显示 `H4l G1` 进度条；长时间运行的
@@ -260,8 +259,7 @@ train、validation、calibration、template、assessment 角色。内部 assessm
 原始 `Next batch command`，不要附加计划参数。该命令调用跨平台的 `scripts/h4l_run.py`。
 
 ```bash
-python scripts/h4l_run.py \
-  --run-name 001
+python scripts/h4l_run.py --run-name 001
 ```
 
 研究 CLI 会校验协议、数据总体和前置 gate 绑定。脚本接受 seed 42–46，每个 seed 和每次重跑均须

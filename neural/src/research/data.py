@@ -5,12 +5,13 @@ import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import nullcontext
+from contextlib import closing, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from tqdm.auto import tqdm
 
 from .errors import ResearchError, ResearchStateError
 from .protocol import canonical, protocol_dict
@@ -105,6 +106,37 @@ class PrepareProgressReporter:
         )
         while self.next_report <= now:
             self.next_report += self.interval_seconds
+
+
+class PrepareEventProgress:
+    """Render one ROOT event progress line backed by prepare metrics."""
+
+    def __init__(self, metrics, total, *, stream=None):
+        self.metrics = metrics
+        self._bar = tqdm(
+            total=total,
+            desc="ROOT prepare",
+            bar_format=self._bar_format(),
+            ascii=False,
+            file=stream or sys.stderr,
+            unit="events",
+        )
+
+    def _bar_format(self):
+        selected = self.metrics.get("selected_entries", 0)
+        return (
+            "{desc}: {percentage:.0f}%|{bar:10}| "
+            "{n:,.0f}/{total:,.0f} events | selected: "
+            f"{selected:,}"
+        )
+
+    def update(self, count=1):
+        self._bar.bar_format = self._bar_format()
+        self._bar.update(count)
+
+    def close(self):
+        self._bar.bar_format = self._bar_format()
+        self._bar.close()
 
 
 def limit_selected_entries(mask, limit):
@@ -275,9 +307,11 @@ def iter_development_events(tree, branches, identities, mask, max_entries=4096, 
             if metrics is not None:
                 metrics['conversion_seconds'] = metrics.get('conversion_seconds',0.) + time.perf_counter()-began
                 metrics['entries_processed'] = metrics.get('entries_processed',0)+1
-            if progress is not None:
-                progress.update()
             yield entry, event
+            if progress is not None:
+                reporters = progress if isinstance(progress, tuple) else (progress,)
+                for reporter in reporters:
+                    reporter.update()
 
 
 def role_for_group(group, protocol):
@@ -463,7 +497,8 @@ def load_research_data(path, dataset, protocol, *, allow_assessment=False, asses
 
 def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4096,
                          metrics=None, diagnostic_entries_per_file=None,
-                         root_threads=1, show_prepare_metrics=False):
+                         root_threads=1, show_prepare_metrics=False,
+                         show_prepare_progress=False):
     """Read the controlled-MC population declared by the research protocol.
 
     ROOT baskets may contain neighboring test bytes. Application request ranges
@@ -510,6 +545,14 @@ def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4
             root_threads=root_threads,
         )
         metrics.setdefault("files", {})
+    event_progress = (
+        PrepareEventProgress(metrics, metrics["source_entries_total"])
+        if show_prepare_progress else None
+    )
+    progress_reporters = tuple(
+        reporter for reporter in (live_progress, event_progress)
+        if reporter is not None
+    ) or None
     legacy = load_preprocess_protocol(Path(__file__).resolve().parents[2] / "config/preprocess_protocol_mass_window.yaml", dataset=p["dataset"])
     selection = SelectionConfig.from_mapping(dict(legacy.selection, m4l_window_gev=p["mass_window"]))
     profile = context.profile
@@ -519,7 +562,8 @@ def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4
         ThreadPoolExecutor(max_workers=root_threads, thread_name_prefix='h4l-root')
         if root_threads > 1 else nullcontext(None)
     )
-    with executor_context as root_executor:
+    progress_context = closing(event_progress) if event_progress is not None else nullcontext()
+    with executor_context as root_executor, progress_context:
       for process, member, source in sources:
         # Keep the file source's executors private to uproot. ReadOnlyFile.close
         # may shut down executors supplied to uproot.open, while this bounded
@@ -539,6 +583,8 @@ def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4
                     for number,dsid in zip(identities[branches['eventNumber']],identities[branches['channelNumber']])),
                     dtype=bool,count=tree.num_entries)
             mask = limit_selected_entries(mask, diagnostic_entries_per_file)
+            if event_progress is not None:
+                event_progress.update(int(tree.num_entries) - int(mask.sum()))
             if metrics is not None:
                 metrics['identity_seconds'] = metrics.get('identity_seconds',0.) + time.perf_counter()-began
                 metrics['eligible_entries_total'] += int(mask.sum())
@@ -550,7 +596,7 @@ def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4
                 file_payload_cpu_before = metrics.get('payload_cpu_seconds', 0.)
             for entry, event in iter_development_events(
                     tree, branches, identities, mask, max_entries,
-                    metrics=metrics, progress=live_progress,
+                    metrics=metrics, progress=progress_reporters,
                     root_executor=root_executor):
                 event_number, channel = int(event['eventNumber']), int(event['channelNumber'])
                 began = time.perf_counter() if metrics is not None else None

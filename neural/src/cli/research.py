@@ -25,6 +25,8 @@ def build_parser():
                          help='Prepare only: profile a fixed eligible-entry count per ROOT file; publishes a terminal diagnostic run')
         sub.add_argument('--show-prepare-metrics', action='store_true',
                          help='Prepare only: print periodic, per-file, and final ROOT performance metrics')
+        sub.add_argument('--show-prepare-progress', action='store_true',
+                         help='Prepare only: show processed/total ROOT events and selected count')
         for flag in ('input-run','events','input-manifest','profile','model-run','template-run','gate-run',
                      'freeze-run','backend-config','export-run','results','reference','t1-validation','p0-validation','candidate-ledger'):
             sub.add_argument('--'+flag)

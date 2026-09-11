@@ -1,12 +1,12 @@
 {
-  "schema_version": "h4l-feature-combination-batch-v1",
+  "schema_version": "h4l-feature-combination-batch-v2",
   "dataset": "atlas2020_4lep",
   "protocol": "config/research_protocol_v1.json",
-  "default_seed": 42,
+  "seeds": [42, 43, 44, 45, 46],
   "prepared_run": "runs/h4l-prepare-001",
   "g1_gate_run": "runs/h4l-g1-001",
   "t1_validation": "runs/h4l-t1-validation-001/t1-validation.json",
-  "output_root": "runs/h4l-feature-combinations-seed{seed}-001",
+  "output_root": "runs/h4l-feature-combinations-all-seeds-001",
   "family_id": "engineered19_raw_T1",
   "feature_combinations": [
     "A",
@@ -29,5 +29,7 @@
   "combination_candidate": "M3",
   "calibration_transform": "raw",
   "inference_layer": "T1",
-  "injection_mu": 1.0
+  "injection_mu": 1.0,
+  "primary_candidates": ["M4", "M5"],
+  "primary_transform": "physical"
 }
