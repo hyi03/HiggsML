@@ -171,7 +171,7 @@ def apply_calibration(mapping, masses, scores, *, model_id=None):
         result = low + (high-low)/(centers[right]-centers[left])*(masses-centers[left])
         result = np.where(masses <= centers[0], cdfs[0], result)
         output[start:stop] = np.where(masses >= centers[-1], cdfs[-1], result)
-    return output
+    return np.clip(output, 0., 1.)
 
 
 def fit_thresholds(frame, scores, protocol, *, model_id, mapping_id):
