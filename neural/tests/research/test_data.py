@@ -41,9 +41,12 @@ def test_representations_and_empty_shapley_baseline():
 def test_seed42_batch_config_registers_all_fifteen_combinations_once():
     config = json.loads((PROJECT_ROOT / "config/research_feature_combinations_seed42.json").read_text(encoding="utf-8"))
     expected = ["".join(groups) for groups in ordered_group_subsets()]
-    assert config["default_seed"] == 42
     assert config["feature_combinations"] == expected
     assert len(config["feature_combinations"]) == len(set(config["feature_combinations"])) == 15
+    assert config["schema_version"] == "h4l-feature-combination-batch-v2"
+    assert config["seeds"] == [42,43,44,45,46]
+    assert "{seed}" not in config["output_root"]
+    assert config["primary_candidates"] == ["M4","M5"]
     assert config["empty_baseline_candidate"] == "M0c"
     assert config["combination_candidate"] == "M3"
 

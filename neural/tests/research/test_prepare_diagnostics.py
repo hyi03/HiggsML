@@ -10,6 +10,7 @@ import pytest
 from src.cli.research import build_parser
 from src.research.artifacts import read_run
 from src.research.data import (
+    PrepareEventProgress,
     PrepareProgressReporter,
     assign_roles,
     current_rss_bytes,
@@ -121,6 +122,21 @@ def test_progress_reporter_emits_bounded_live_throughput_and_rss():
     assert metrics["peak_rss_bytes"] == 64 * 1024 * 1024
 
 
+def test_event_progress_shows_percentage_counts_and_selected_total():
+    stream = io.StringIO()
+    metrics = {"selected_entries": 0}
+    progress = PrepareEventProgress(metrics, 718_995, stream=stream)
+
+    metrics["selected_entries"] = 84_210
+    progress.update(251_904)
+    progress.close()
+
+    output = stream.getvalue()
+    assert "ROOT prepare: 35%" in output
+    assert "251,904/718,995 events" in output
+    assert "selected: 84,210" in output
+
+
 def test_finalize_prepare_metrics_identifies_fragmented_root_reads():
     metrics = {
         "source_files_total": 2,
@@ -167,6 +183,7 @@ def test_diagnostic_entry_limit_and_prepare_metrics_are_cli_visible():
     ])
     assert args.diagnostic_entries_per_file == 1000
     assert args.show_prepare_metrics is False
+    assert args.show_prepare_progress is False
 
     verbose = build_parser().parse_args([
         "prepare",
@@ -176,6 +193,15 @@ def test_diagnostic_entry_limit_and_prepare_metrics_are_cli_visible():
         "--show-prepare-metrics",
     ])
     assert verbose.show_prepare_metrics is True
+
+    progress = build_parser().parse_args([
+        "prepare",
+        "--dataset", "atlas2020_4lep",
+        "--protocol", "protocol.json",
+        "--run-dir", "runs/diagnostic",
+        "--show-prepare-progress",
+    ])
+    assert progress.show_prepare_progress is True
 
 
 def test_fixed_workload_diagnostic_publishes_terminal_metrics(

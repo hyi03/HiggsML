@@ -27,6 +27,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.research.artifacts import digest_json  # noqa: E402
+from src.research.cleanup import remove_run_directories  # noqa: E402
 from src.research.errors import ResearchError  # noqa: E402
 from src.research.protocol import load_protocol  # noqa: E402
 from src.research.run_names import workflow_directory_name  # noqa: E402
@@ -52,6 +53,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", type=Path)
     parser.add_argument("--protocol", type=Path, default=DEFAULT_PROTOCOL)
     parser.add_argument("--plan-only", action="store_true")
+    parser.add_argument(
+        "--clean", action="store_true",
+        help="Delete the G1 output directory selected by --run-name or --output-root.",
+    )
     parser.add_argument(
         "--no-progress",
         action="store_true",
@@ -175,7 +180,48 @@ def _validate_paths(prepared: Path, t1_validation: Path, output_root: Path,
     _validate_t1(t1_validation, protocol_path)
 
 
+def _clean_output_root(args: argparse.Namespace) -> Path:
+    run_name = getattr(args, "run_name", None)
+    if run_name is not None:
+        if any(value is not None for value in
+               (getattr(args, "prepared_run", None), getattr(args, "t1_validation", None),
+                getattr(args, "output_root", None))):
+            raise WorkflowError(
+                "--run-name cannot be combined with --prepared-run, "
+                "--t1-validation, or --output-root", 2
+            )
+        try:
+            root = RUNS_ROOT / workflow_directory_name(run_name)
+        except ValueError as error:
+            raise WorkflowError(str(error), 2) from error
+        return root / "g1"
+    output_root = getattr(args, "output_root", None)
+    if output_root is None:
+        raise WorkflowError("--clean requires --run-name or --output-root", 2)
+    candidate = Path(output_root).expanduser()
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+    return candidate.absolute()
+
+
+def _clean(args: argparse.Namespace) -> None:
+    if getattr(args, "plan_only", False):
+        raise WorkflowError("--clean cannot be combined with --plan-only", 2)
+    output_root = _clean_output_root(args)
+    try:
+        result = remove_run_directories([output_root], allowed_root=RUNS_ROOT)
+    except (OSError, ValueError) as error:
+        raise WorkflowError(f"Cannot clean H4l G1 output: {error}", 4) from error
+    if result["removed"]:
+        print(f"Removed G1 output: {output_root}")
+    else:
+        print(f"No G1 output found: {output_root}")
+
+
 def _run(args: argparse.Namespace) -> None:
+    if getattr(args, "clean", False):
+        _clean(args)
+        return
     prepared, t1_validation, output_root = _workflow_paths(args)
     protocol_path = _resolve(args.protocol or DEFAULT_PROTOCOL)
     _validate_paths(prepared, t1_validation, output_root, protocol_path,
@@ -248,7 +294,7 @@ def _run(args: argparse.Namespace) -> None:
             )
 
     next_command = [
-        sys.executable, str(RUN_SCRIPT), "--seed", "42",
+        sys.executable, str(RUN_SCRIPT),
         "--protocol", str(protocol_path),
     ]
     run_name = getattr(args, "run_name", None)
@@ -258,7 +304,7 @@ def _run(args: argparse.Namespace) -> None:
         next_command.extend([
             "--prepared-run", str(prepared), "--gate-run", str(gate_run),
             "--t1-validation", str(t1_validation),
-            "--output-root", str(output_root.parent / "batch" / "seed42"),
+            "--output-root", str(output_root.parent / "batch" / "all-seeds"),
         ])
     print("Next batch command:")
     print(_display(next_command))

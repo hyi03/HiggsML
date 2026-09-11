@@ -246,6 +246,7 @@ def execute(args, *, allowed_root=None):
     stage = args.command
     diagnostic_limit = getattr(args, 'diagnostic_entries_per_file', None)
     show_prepare_metrics = getattr(args, 'show_prepare_metrics', False)
+    show_prepare_progress = getattr(args, 'show_prepare_progress', False)
     if diagnostic_limit is not None:
         if stage != 'prepare' or not args.input_manifest:
             raise ResearchError('--diagnostic-entries-per-file requires prepare --input-manifest')
@@ -253,6 +254,8 @@ def execute(args, *, allowed_root=None):
             raise ResearchError('--diagnostic-entries-per-file must be positive')
     if show_prepare_metrics and (stage != 'prepare' or not args.input_manifest):
         raise ResearchError('--show-prepare-metrics requires prepare --input-manifest')
+    if show_prepare_progress and (stage != 'prepare' or not args.input_manifest):
+        raise ResearchError('--show-prepare-progress requires prepare --input-manifest')
     upstreams = []
     root_metrics = None
 
@@ -355,7 +358,8 @@ def execute(args, *, allowed_root=None):
                                              max_entries=resources['root_max_entries'], metrics=root_metrics,
                                              diagnostic_entries_per_file=diagnostic_limit,
                                              root_threads=resources['root_threads'],
-                                             show_prepare_metrics=show_prepare_metrics)
+                                             show_prepare_metrics=show_prepare_metrics,
+                                             show_prepare_progress=show_prepare_progress)
                 write_started = time.perf_counter()
                 receipt = write_research_data(frame, run.path / 'events.jsonl', protocol)
                 frame.attrs['population_id'] = receipt.population_id
@@ -651,8 +655,10 @@ def execute(args, *, allowed_root=None):
                         if procedure_key in procedures:
                             raise ResearchError('Duplicate procedure scope; no run selection allowed')
                         procedures[procedure_key]=item.read_json('procedure.json')
-                    if any(':groups=' in key for key in inference_results):
-                        comparison=feature_combination_comparison(inference_results,seed=scope.get('seed'),
+                    combination_seeds=sorted({result.get('seed') for key,result in inference_results.items()
+                                              if ':groups=' in key and isinstance(result.get('seed'),int)})
+                    for feature_seed in combination_seeds:
+                        comparison=feature_combination_comparison(inference_results,seed=feature_seed,
                             family_id='engineered19_raw_T1')
                         comparison.update(source_artifact_id=manifest['artifact_id'],
                                           comparison_cohort_id=scope.get('comparison_cohort_id'))
@@ -702,9 +708,55 @@ def execute(args, *, allowed_root=None):
             run.write_json('report.json', report)
             lines = ['# H4l research software report','','MC-only educational/technical demo.',
                      '',f"Primary M5/M4 comparison: {report['primary_comparison']['status']}",
-                     '',f"Feature combination comparison: {feature_comparisons[0]['status'] if feature_comparisons else 'not_present'}",
+                     '',f"Feature combination summary: {report['feature_combination_summary']['status']}",
                      '', '| Candidate | Status |','|---|---|']
             lines += [f'| {k} | {v} |' for k,v in statuses.items()]
+            combination_summary=report['feature_combination_summary']
+            if combination_summary['status']=='valid':
+                seeds=combination_summary['seeds']
+                lines += ['', '## Feature-combination results', '',
+                          '| Subset | ' + ' | '.join(f's{seed} W68 / improvement' for seed in seeds) +
+                          ' | Median W68 | Median improvement vs M0c |',
+                          '|---|' + '|'.join('---:' for _ in seeds) + '|---:|---:|']
+                for row in combination_summary['combinations']:
+                    values=' | '.join(f"{item['width68']:.6g} / "
+                                      f"{item['relative_improvement_vs_empty']:.4%}"
+                                      for item in row['per_seed'])
+                    lines.append(f"| {row['subset']} | {values} | {row['median_width68']:.6g} | "
+                                 f"{row['median_relative_improvement_vs_empty']:.4%} |")
+                best=combination_summary['best_combination']
+                lines += ['',f"Best combination by paired-seed median improvement: **{best['subset']}** "
+                          f"({best['median_relative_improvement_vs_empty']:.4%}; median W68 "
+                          f"{best['median_width68']:.6g}).",
+                          '', '## Group-level Shapley contributions', '',
+                          '| Group | ' + ' | '.join(f's{seed}' for seed in seeds) + ' | Median | Range |',
+                          '|---|' + '|'.join('---:' for _ in seeds) + '|---:|---:|']
+                for group,row in combination_summary['shapley']['groups'].items():
+                    values=' | '.join(f"{item['contribution']:.6g}" for item in row['per_seed'])
+                    lines.append(f"| {group} | {values} | {row['median_contribution']:.6g} | "
+                                 f"[{row['min_contribution']:.6g}, {row['max_contribution']:.6g}] |")
+                interactions=combination_summary['shapley']['interactions']
+                strongest_positive=max(interactions,key=lambda row:row['median_second_difference'])
+                strongest_negative=min(interactions,key=lambda row:row['median_second_difference'])
+                lines += ['', 'Strongest median positive interaction: '
+                          f"{strongest_positive['pair']} conditioned on "
+                          f"{strongest_positive['conditioning_subset'] or 'empty'} = "
+                          f"{strongest_positive['median_second_difference']:.6g}.",
+                          'Strongest median negative interaction: '
+                          f"{strongest_negative['pair']} conditioned on "
+                          f"{strongest_negative['conditioning_subset'] or 'empty'} = "
+                          f"{strongest_negative['median_second_difference']:.6g}."]
+            primary_comparison=report['primary_comparison']
+            if primary_comparison['paired_seeds']:
+                lines += ['', '## Primary M5/M4 comparison', '',
+                          '| Seed | M4 W68 | M5 W68 | Relative improvement |',
+                          '|---:|---:|---:|---:|']
+                lines += [f"| {row['seed']} | {row['M4_width68']:.6g} | {row['M5_width68']:.6g} | "
+                          f"{row['relative_improvement']:.4%} |"
+                          for row in primary_comparison['paired_seeds']]
+                if primary_comparison['median_relative_improvement'] is not None:
+                    lines += ['',f"Five-seed median relative improvement: "
+                              f"{primary_comparison['median_relative_improvement']:.4%}."]
             for curve in curves:
                 if curve['status']=='complete':
                     lines += ['', f'![Paired training diagnostics]({curve["file"]})']

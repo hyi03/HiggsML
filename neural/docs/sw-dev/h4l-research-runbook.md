@@ -92,6 +92,11 @@ prepare不会继续训练、校准或构建模板，完成时会打印下一条G
 python scripts/h4l_prepare.py --run-name pilot-001
 ```
 
+prepare 默认显示单条 ROOT 事件进度，格式为
+`ROOT prepare: 35%|███▌      | 251,904/718,995 events | selected: 84,210`。
+`events` 计数包含已按协议跳过且未读取 payload 的条目；`selected` 是通过事件选择并写入准备产物的数量。
+使用 `--no-progress` 可关闭该进度条。脚本不再输出点号等待提示或 `H4l prepare 2/2` 阶段进度条。
+
 prepare默认不打印性能统计，但仍在`manifest.json.root_prepare_metrics`记录分文件条目与span、平均span长度、
 DataFrame、角色分配、G0/P0、写入并同步摘要、artifact登记时间，并给出基于这些观测量的主导阶段判断。
 显式增加`--show-prepare-metrics`后，终端每10秒输出累计处理/入选条目、ROOT span数、吞吐、RSS，以及
@@ -128,6 +133,38 @@ python scripts/h4l_run.py --run-name all-mc-001 --protocol config/research_proto
 
 该链路的协议范围固定为`exploratory_all_mc_not_independent_validation`。报告只能用于探索性方法比较；
 不得写成独立held-out评估、论文就绪证据或物理测量。
+
+`h4l_run.py`默认执行完整的seed 42–46批次。每个seed训练M0c、M2、普通M3和15个
+A/B/C/D组合，生成raw校准以及M2→M4、M3→M5的physical CDF；五个seed共享一次templates、
+T1 μ=1 inference和report。完整计划共90个train、100个calibrate和3个汇总阶段。可先审计命令：
+
+```powershell
+python scripts/h4l_run.py --run-name all-mc-002 --plan-only
+```
+
+显式传入`--seed 42`时只运行该seed的41个阶段，用于诊断；这种结果不能完成五种子M4/M5主比较。
+完整报告同时保存逐seed组合W68、相对各自M0c的改善、配对中位数、最佳组合、组级Shapley、
+二阶交互和M4/M5主比较。已有batch目录不可覆盖，因此从旧单seed流程升级时必须使用新run name
+或新的`--output-root`。
+
+### 清理脚本生成的目录
+
+三个工作流脚本都支持`--clean`。清理模式只根据同一组目录参数计算目标并删除，不验证数据集、
+协议或上游产物，也不执行任何研究阶段。`--clean`不能与`--plan-only`同时使用。
+
+```powershell
+python scripts/h4l_prepare.py --run-name 001 --clean
+python scripts/h4l_g1.py --run-name 001 --clean
+python scripts/h4l_run.py --run-name 001 --clean
+python scripts/h4l_run.py --run-name 001 --seed 42 --clean
+```
+
+共享run name下，各命令只删除自己拥有的输出：prepare删除`inputs`、`audit`和`prepare`，
+保留`g1`及`batch`；G1只删除`g1`；run默认删除`batch/all-seeds`，显式`--seed N`时只删除
+`batch/seedN`。使用显式路径时，prepare接受`--run-root`，G1和run接受`--output-root`并删除
+该命令指定的精确目录。G1和run清理时必须显式提供run name或output root，不会采用配置文件中的
+默认输出路径。所有清理目标必须是`neural/runs`下的真实目录；runs根目录、文件、符号链接和越界
+路径都会被拒绝。
 
 ## 最小链路
 

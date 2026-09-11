@@ -125,10 +125,125 @@ def feature_combination_comparison(results, *, seed, family_id="engineered19_raw
             "shapley":exact_shapley(values,family_id=family_id,seed=seed)}
 
 
+def feature_combination_summary(comparisons, *, expected_seeds=range(42, 47)):
+    """Aggregate complete per-seed comparisons without dropping failed seeds."""
+    expected_seeds = list(expected_seeds)
+    by_seed = {}
+    failures = []
+    for comparison in comparisons:
+        seed = comparison.get("seed")
+        if seed in by_seed:
+            failures.append({"seed":seed,"reason":"duplicate_comparison"})
+        else:
+            by_seed[seed] = comparison
+    for seed in expected_seeds:
+        comparison = by_seed.get(seed)
+        if comparison is None:
+            failures.append({"seed":seed,"reason":"missing_comparison"})
+        elif comparison.get("status") != "valid":
+            failures.append({"seed":seed,"reason":"invalid_comparison",
+                             "status":comparison.get("status")})
+    unexpected = sorted(seed for seed in by_seed if seed not in expected_seeds)
+    failures.extend({"seed":seed,"reason":"unexpected_comparison"} for seed in unexpected)
+    if failures:
+        return {
+            "status":"feature_combination_summary_incomplete",
+            "summary_rule":"all_five_paired_seeds_42_through_46_no_failed_seed_deletion",
+            "expected_seeds":expected_seeds,
+            "available_seeds":sorted(seed for seed in by_seed if isinstance(seed, int)),
+            "failures":failures,
+            "best_combination":None,
+        }
+
+    subsets = ["".join(value) for size in range(1, 5)
+               for value in itertools.combinations(("A","B","C","D"), size)]
+    rows_by_seed = {
+        seed:{row["subset"]:row for row in by_seed[seed]["nonempty_combinations"]}
+        for seed in expected_seeds
+    }
+    combinations = []
+    for subset in subsets:
+        per_seed = [{"seed":seed,
+                     "width68":float(rows_by_seed[seed][subset]["width68"]),
+                     "relative_improvement_vs_empty":float(
+                         rows_by_seed[seed][subset]["relative_improvement_vs_empty"])}
+                    for seed in expected_seeds]
+        widths = [row["width68"] for row in per_seed]
+        improvements = [row["relative_improvement_vs_empty"] for row in per_seed]
+        combinations.append({
+            "subset":subset,
+            "per_seed":per_seed,
+            "median_width68":float(np.median(widths)),
+            "min_width68":float(min(widths)),
+            "max_width68":float(max(widths)),
+            "median_relative_improvement_vs_empty":float(np.median(improvements)),
+            "min_relative_improvement_vs_empty":float(min(improvements)),
+            "max_relative_improvement_vs_empty":float(max(improvements)),
+        })
+    ranked = sorted(
+        combinations,
+        key=lambda row:(-row["median_relative_improvement_vs_empty"],
+                        row["median_width68"],len(row["subset"]),row["subset"]),
+    )
+
+    shapley_groups = {}
+    for group in ("A","B","C","D"):
+        per_seed = [{"seed":seed,
+                     "contribution":float(by_seed[seed]["shapley"]["contributions"][group])}
+                    for seed in expected_seeds]
+        values = [row["contribution"] for row in per_seed]
+        shapley_groups[group] = {
+            "per_seed":per_seed,
+            "median_contribution":float(np.median(values)),
+            "min_contribution":float(min(values)),
+            "max_contribution":float(max(values)),
+        }
+
+    interaction_keys = [
+        (row["pair"], row["conditioning_subset"])
+        for row in by_seed[expected_seeds[0]]["shapley"]["interactions"]
+    ]
+    interactions = []
+    for pair, conditioning_subset in interaction_keys:
+        per_seed = []
+        for seed in expected_seeds:
+            matches = [row for row in by_seed[seed]["shapley"]["interactions"]
+                       if row["pair"] == pair and row["conditioning_subset"] == conditioning_subset]
+            if len(matches) != 1:
+                raise ResearchError("Shapley interaction keys differ across seeds")
+            per_seed.append({"seed":seed,"second_difference":float(matches[0]["second_difference"])})
+        values = [row["second_difference"] for row in per_seed]
+        interactions.append({
+            "pair":pair,
+            "conditioning_subset":conditioning_subset,
+            "per_seed":per_seed,
+            "median_second_difference":float(np.median(values)),
+            "min_second_difference":float(min(values)),
+            "max_second_difference":float(max(values)),
+        })
+
+    best = ranked[0]
+    return {
+        "status":"valid",
+        "summary_rule":"paired_seed_median_42_through_46_no_failed_seed_deletion",
+        "seeds":expected_seeds,
+        "value_function":"negative_mu_interval_width",
+        "unit":"mu_interval_width",
+        "combinations":combinations,
+        "best_combination":{
+            "subset":best["subset"],
+            "median_width68":best["median_width68"],
+            "median_relative_improvement_vs_empty":best["median_relative_improvement_vs_empty"],
+        },
+        "shapley":{"groups":shapley_groups,"interactions":interactions},
+    }
+
+
 def build_report(candidate_statuses, *, primary_records=(), environment=None, results=None, feature_comparisons=()):
     if not candidate_statuses:
         raise ResearchError("Report must enumerate planned candidate states")
-    return {"status":"software_report","scope":"MC-only educational/technical research","candidate_statuses":dict(candidate_statuses),"primary_comparison":main_comparison(primary_records),"feature_combination_comparisons":list(feature_comparisons),"environment":environment or {"repository_authority_validation":"not_run","scientific_numerical_validation":"not_run"},"results":results or {},"scientific_results_obtained":False,"future_R_experiments":"require_separate_registration"}
+    feature_comparisons = list(feature_comparisons)
+    return {"status":"software_report","scope":"MC-only educational/technical research","candidate_statuses":dict(candidate_statuses),"primary_comparison":main_comparison(primary_records),"feature_combination_comparisons":feature_comparisons,"feature_combination_summary":feature_combination_summary(feature_comparisons),"environment":environment or {"repository_authority_validation":"not_run","scientific_numerical_validation":"not_run"},"results":results or {},"scientific_results_obtained":False,"future_R_experiments":"require_separate_registration"}
 
 
 def write_learning_curves(models, path):

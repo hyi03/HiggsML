@@ -1,7 +1,8 @@
 import itertools
 import pytest
 from src.research.reporting import (main_comparison,coverage_summary,paired_coverage_error,
-                                    exact_shapley,feature_combination_comparison)
+                                    exact_shapley,feature_combination_comparison,
+                                    feature_combination_summary)
 from src.research.errors import ResearchStateError
 
 
@@ -46,3 +47,31 @@ def test_complete_feature_combination_comparison_requires_all_fifteen_and_baseli
     incomplete=feature_combination_comparison(results,seed=42,family_id="engineered19_raw_T1")
     assert incomplete["status"]=="feature_combination_incomplete"
     assert incomplete["failures"]==[{"subset":"AB","candidate_key":"M3:42:groups=AB","reason":"missing_result"}]
+
+
+def test_five_seed_feature_summary_uses_paired_medians_and_retains_shapley():
+    comparisons=[]
+    for seed in range(42,47):
+        baseline=10.+(seed-42)
+        rows=[]
+        for size in range(1,5):
+            for groups in itertools.combinations("ABCD",size):
+                subset="".join(groups)
+                improvement=.02 if subset=="AB" else .01/(1+len(subset))
+                width=baseline*(1-improvement)
+                rows.append({"subset":subset,"candidate_key":f"M3:{seed}:groups={subset}",
+                             "width68":width,"relative_improvement_vs_empty":improvement})
+        values={"":-baseline,**{row["subset"]:-row["width68"] for row in rows}}
+        comparisons.append({"status":"valid","seed":seed,
+                            "nonempty_combinations":rows,
+                            "shapley":exact_shapley(values,family_id="engineered19_raw_T1",seed=seed)})
+    summary=feature_combination_summary(comparisons)
+    assert summary["status"]=="valid"
+    assert summary["best_combination"]["subset"]=="AB"
+    assert summary["best_combination"]["median_relative_improvement_vs_empty"]==pytest.approx(.02)
+    assert set(summary["shapley"]["groups"])==set("ABCD")
+    assert len(summary["shapley"]["interactions"])==24
+    incomplete=feature_combination_summary(comparisons[:-1])
+    assert incomplete["status"]=="feature_combination_summary_incomplete"
+    assert incomplete["best_combination"] is None
+    assert {failure["seed"] for failure in incomplete["failures"]}=={46}
