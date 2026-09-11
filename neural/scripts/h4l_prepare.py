@@ -38,6 +38,7 @@ from src.dataset_binding import dataset_context  # noqa: E402
 from src.research.artifacts import digest_json  # noqa: E402
 from src.research.data import source_access_record  # noqa: E402
 from src.research.protocol import load_protocol  # noqa: E402
+from src.research.run_names import workflow_directory_name  # noqa: E402
 
 
 class WorkflowError(Exception):
@@ -51,8 +52,25 @@ def _parser() -> argparse.ArgumentParser:
         description="Generate bound H4l inputs and run audit and prepare.",
     )
     parser.add_argument("--dataset-receipt", type=Path, default=DEFAULT_RECEIPT)
-    parser.add_argument("--run-root", type=Path, required=True)
+    destination = parser.add_mutually_exclusive_group(required=True)
+    destination.add_argument(
+        "--run-name",
+        help=("Short shared workflow name; for example 001 resolves to "
+              "runs/h4l-feature-combinations-prerequisites-001."),
+    )
+    destination.add_argument("--run-root", type=Path)
     parser.add_argument("--protocol", type=Path, default=DEFAULT_PROTOCOL)
+    parser.add_argument(
+        "--diagnostic-entries-per-file",
+        type=int,
+        help=("Run a fixed-workload timing diagnosis using at most this many "
+              "eligible entries from each ROOT file; the result cannot feed G1."),
+    )
+    parser.add_argument(
+        "--show-prepare-metrics",
+        action="store_true",
+        help="Print periodic, per-file, and final ROOT prepare performance metrics.",
+    )
     parser.add_argument(
         "--plan-only",
         action="store_true",
@@ -71,6 +89,23 @@ def _resolve(value: Path) -> Path:
     if not candidate.is_absolute():
         candidate = PROJECT_ROOT / candidate
     return candidate.resolve()
+
+
+def _run_root(args: argparse.Namespace) -> Path:
+    run_name = getattr(args, "run_name", None)
+    if run_name is None:
+        return _resolve(args.run_root)
+    if getattr(args, "diagnostic_entries_per_file", None) is not None:
+        raise WorkflowError(
+            "--run-name is reserved for reusable prepare runs and cannot be "
+            "combined with --diagnostic-entries-per-file; use --run-root for diagnostics",
+            2,
+        )
+    try:
+        directory = workflow_directory_name(run_name)
+    except ValueError as error:
+        raise WorkflowError(str(error), 2) from error
+    return (RUNS_ROOT / directory).resolve()
 
 
 def _load_json(path: Path) -> dict:
@@ -298,7 +333,7 @@ def _validate_run_root(run_root: Path) -> None:
 
 
 def _run_workflow(args: argparse.Namespace, receipt: Path) -> None:
-    run_root = _resolve(args.run_root)
+    run_root = _run_root(args)
     protocol_path = _resolve(args.protocol or DEFAULT_PROTOCOL)
     _validate_run_root(run_root)
     for required in (protocol_path, PROFILE, G1_SCRIPT):
@@ -340,6 +375,15 @@ def _run_workflow(args: argparse.Namespace, receipt: Path) -> None:
             ],
         ),
     ]
+    diagnostic_limit = getattr(args, "diagnostic_entries_per_file", None)
+    if diagnostic_limit is not None:
+        if diagnostic_limit < 1:
+            raise WorkflowError("Diagnostic entries per file must be positive.", 2)
+        steps[1][1].extend([
+            "--diagnostic-entries-per-file", str(diagnostic_limit),
+        ])
+    if getattr(args, "show_prepare_metrics", False):
+        steps[1][1].append("--show-prepare-metrics")
     with tqdm(
         steps,
         desc="H4l prepare",
@@ -350,13 +394,26 @@ def _run_workflow(args: argparse.Namespace, receipt: Path) -> None:
             progress.set_postfix_str(label, refresh=True)
             _invoke(arguments, plan_only=args.plan_only)
 
+    if diagnostic_limit is not None:
+        print(
+            "Fixed-workload diagnosis complete; inspect prepare_diagnostics in "
+            "the command output and root_prepare_metrics in the terminal run."
+        )
+        return
+
     next_command = [
         sys.executable, str(G1_SCRIPT),
         "--protocol", str(protocol_path),
-        "--prepared-run", str(prepared_run),
-        "--t1-validation", str(t1_validation),
-        "--output-root", str(run_root / "g1"),
     ]
+    run_name = getattr(args, "run_name", None)
+    if run_name is not None:
+        next_command.extend(["--run-name", run_name])
+    else:
+        next_command.extend([
+            "--prepared-run", str(prepared_run),
+            "--t1-validation", str(t1_validation),
+            "--output-root", str(run_root / "g1"),
+        ])
     print("Next G1 command:")
     print(_display(next_command))
     if args.plan_only:

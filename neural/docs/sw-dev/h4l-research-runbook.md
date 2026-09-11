@@ -84,16 +84,33 @@ assessment 必须绑定冻结分析。历史反馈是否影响当前设计仍需
 ## 自动分段脚本
 
 `scripts/h4l_prepare.py`只运行`audit`和`prepare`，完成ROOT读取后产生可复用的
-`<run-root>/prepare`。它不会继续训练、校准或构建模板。脚本完成时会打印下一条G1命令：
+`<run-root>/prepare`。三个工作流脚本共享`--run-name`；例如`--run-name pilot-001`统一映射到
+`runs/h4l-feature-combinations-prerequisites-pilot-001`，各脚本自动推导自己的输入和输出路径。
+prepare不会继续训练、校准或构建模板，完成时会打印下一条G1命令：
 
 ```powershell
-python scripts/h4l_prepare.py --run-root runs/h4l-pilot-001
+python scripts/h4l_prepare.py --run-name pilot-001
 ```
+
+prepare默认不打印性能统计，但仍在`manifest.json.root_prepare_metrics`记录分文件条目与span、平均span长度、
+DataFrame、角色分配、G0/P0、写入并同步摘要、artifact登记时间，并给出基于这些观测量的主导阶段判断。
+显式增加`--show-prepare-metrics`后，终端每10秒输出累计处理/入选条目、ROOT span数、吞吐、RSS，以及
+payload、Awkward到Python转换、选择和特征构建耗时，结束时还输出每文件汇总和最终diagnosis。
+CLI最终JSON另含manifest发布耗时；这些判断只定位软件热点，不构成科学验证。
+
+需要先用有限工作量定位时，为每个ROOT文件指定相同的eligible-entry上限：
+
+```powershell
+python scripts/h4l_prepare.py --run-root runs/h4l-prepare-diagnostic-001 --diagnostic-entries-per-file 10000 --show-prepare-metrics
+```
+
+该命令发布`diagnostic_complete`终态，不能作为train/G1的`--input-run`。诊断run目录同样不可复用；正式
+prepare必须使用新的run root。development-only协议仍不会为诊断跨越test间隙读取payload。
 
 `scripts/h4l_g1.py`从已有prepared artifact运行seed 42的M0c、M2、M3、五个校准和共同模板：
 
 ```powershell
-python scripts/h4l_g1.py --prepared-run runs/h4l-pilot-001/prepare --t1-validation runs/h4l-pilot-001/inputs/t1-validation.json --output-root runs/h4l-pilot-001/g1
+python scripts/h4l_g1.py --run-name pilot-001
 ```
 
 训练、校准或模板失败时，失败的G1输出目录保持不可变。修复问题后应指定新的
@@ -104,9 +121,9 @@ python scripts/h4l_g1.py --prepared-run runs/h4l-pilot-001/prepare --t1-validati
 使用全部MC的探索链路必须在每一步显式传入同一协议：
 
 ```powershell
-python scripts/h4l_prepare.py --run-root runs/h4l-all-mc-001 --protocol config/research_protocol_exploratory_all_mc_v1.json
-python scripts/h4l_g1.py --prepared-run runs/h4l-all-mc-001/prepare --t1-validation runs/h4l-all-mc-001/inputs/t1-validation.json --output-root runs/h4l-all-mc-001/g1 --protocol config/research_protocol_exploratory_all_mc_v1.json
-python scripts/h4l_run.py --seed 42 --prepared-run runs/h4l-all-mc-001/prepare --gate-run runs/h4l-all-mc-001/g1/templates --t1-validation runs/h4l-all-mc-001/inputs/t1-validation.json --output-root runs/h4l-all-mc-001/batch/seed42 --protocol config/research_protocol_exploratory_all_mc_v1.json
+python scripts/h4l_prepare.py --run-name all-mc-001 --protocol config/research_protocol_exploratory_all_mc_v1.json
+python scripts/h4l_g1.py --run-name all-mc-001 --protocol config/research_protocol_exploratory_all_mc_v1.json
+python scripts/h4l_run.py --run-name all-mc-001 --protocol config/research_protocol_exploratory_all_mc_v1.json
 ```
 
 该链路的协议范围固定为`exploratory_all_mc_not_independent_validation`。报告只能用于探索性方法比较；

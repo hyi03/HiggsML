@@ -220,6 +220,7 @@ def test_cached_auxiliary_layout_preserves_all_draws():
 
 
 def test_resource_and_row_scalar_contract(tmp_path):
+    assert load_resources()["root_threads"] == 4
     path=tmp_path/'resources.json'
     path.write_text('{"workers":true}')
     with pytest.raises(ResearchError):

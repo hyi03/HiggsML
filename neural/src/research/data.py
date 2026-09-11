@@ -1,7 +1,11 @@
 """MC research export with identity-first reads and role-aware payload access."""
 import hashlib
 import json
+import os
+import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,6 +18,158 @@ from .representations import ENGINEERED19
 
 ROLES = ("train", "validation", "calibration", "template", "assessment")
 IDENTITY = ("event_id", "source_row_id", "event_group_id", "split", "dataset", "label", "role")
+
+
+def current_rss_bytes():
+    """Return current resident bytes using only the standard library."""
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class Counters(ctypes.Structure):
+                _fields_ = [("cb", wintypes.DWORD), ("faults", wintypes.DWORD)] + [
+                    (name, ctypes.c_size_t) for name in (
+                        "peak", "working", "qpp", "qp", "qpnp", "qnp",
+                        "page", "peakpage", "private",
+                    )
+                ]
+
+            counters = Counters()
+            counters.cb = ctypes.sizeof(counters)
+            get_memory_info = ctypes.windll.psapi.GetProcessMemoryInfo
+            # ctypes function signatures are process-global and another caller
+            # may have registered its private structure pointer type.
+            get_memory_info.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD]
+            get_memory_info.restype = wintypes.BOOL
+            if get_memory_info(
+                wintypes.HANDLE(-1), ctypes.byref(counters), counters.cb
+            ):
+                return int(counters.working)
+        except (AttributeError, OSError, ctypes.ArgumentError):
+            return None
+    try:
+        resident_pages = int(Path("/proc/self/statm").read_text().split()[1])
+        return resident_pages * os.sysconf("SC_PAGE_SIZE")
+    except (AttributeError, IndexError, OSError, ValueError):
+        return None
+
+
+class PrepareProgressReporter:
+    """Emit low-frequency prepare throughput without changing event processing."""
+
+    def __init__(self, metrics, *, interval_seconds=10.0, clock=None,
+                 rss_reader=None, stream=None):
+        self.metrics = metrics
+        self.interval_seconds = interval_seconds
+        self.clock = clock or time.perf_counter
+        self.rss_reader = rss_reader or current_rss_bytes
+        self.stream = stream or sys.stderr
+        self.started = self.clock()
+        self.next_report = self.started + interval_seconds
+
+    def sample_rss(self):
+        rss = self.rss_reader()
+        if rss is not None:
+            self.metrics["peak_rss_bytes"] = max(
+                int(rss), self.metrics.get("peak_rss_bytes", 0)
+            )
+
+    def update(self):
+        now = self.clock()
+        if now < self.next_report:
+            return
+        self.sample_rss()
+        elapsed = max(now - self.started, 1e-12)
+        entries = self.metrics.get("entries_processed", 0)
+        rss_text = (
+            f"{self.metrics['peak_rss_bytes'] / 1024**2:.1f} MiB"
+            if self.metrics.get("peak_rss_bytes") is not None else "unavailable"
+        )
+        requests = self.metrics.get('payload_requests', 0)
+        average_span = (self.metrics.get('span_entries_total', 0) / requests
+                        if requests else 0.0)
+        print(
+            "[h4l prepare] "
+            f"entries={entries} selected={self.metrics.get('selected_entries', 0)} "
+            f"spans={self.metrics.get('payload_requests', 0)} "
+            f"avg_span={average_span:.1f} "
+            f"rate={entries / elapsed:.1f} entries/s rss={rss_text} "
+            f"payload={self.metrics.get('payload_seconds', 0.):.1f}s "
+            f"payload_cpu={self.metrics.get('payload_cpu_seconds', 0.):.1f}s "
+            f"convert={self.metrics.get('conversion_seconds', 0.):.1f}s "
+            f"select={self.metrics.get('selection_seconds', 0.):.1f}s "
+            f"features={self.metrics.get('feature_seconds', 0.):.1f}s",
+            file=self.stream,
+            flush=True,
+        )
+        while self.next_report <= now:
+            self.next_report += self.interval_seconds
+
+
+def limit_selected_entries(mask, limit):
+    """Keep at most the first limit eligible entries in one source file."""
+    result = np.asarray(mask, dtype=bool).copy()
+    if limit is None:
+        return result
+    if type(limit) is not int or limit < 1:
+        raise ResearchError("diagnostic entry limit must be a positive integer")
+    selected = np.flatnonzero(result)
+    result[selected[limit:]] = False
+    return result
+
+
+def finalize_prepare_metrics(metrics):
+    """Add derived throughput and an evidence-bounded bottleneck diagnosis."""
+    requests = metrics.get("payload_requests", 0)
+    entries = metrics.get("span_entries_total", metrics.get("payload_entries", 0))
+    metrics["average_span_length"] = entries / requests if requests else None
+    wall = metrics.get("wall_seconds", 0.)
+    processed = metrics.get("entries_processed", 0)
+    metrics["throughput_entries_per_second"] = processed / wall if wall > 0 else None
+    phases = {
+        "identity": metrics.get("identity_seconds", 0.),
+        "payload": metrics.get("payload_seconds", 0.),
+        "conversion": metrics.get("conversion_seconds", 0.),
+        "selection": metrics.get("selection_seconds", 0.),
+        "features": metrics.get("feature_seconds", 0.),
+        "dataframe": metrics.get("dataframe_seconds", 0.),
+        "role_assignment": metrics.get("role_assignment_seconds", 0.),
+        "g0": metrics.get("g0_seconds", 0.),
+        "p0": metrics.get("p0_seconds", 0.),
+        "write_and_digest": metrics.get("write_and_digest_seconds", 0.),
+        "artifact_registration": metrics.get("artifact_registration_seconds", 0.),
+        "artifact_metadata": metrics.get("artifact_metadata_seconds", 0.),
+        "publication": metrics.get("publication_seconds", 0.),
+    }
+    accounted = sum(phases.values())
+    dominant = max(phases, key=phases.get)
+    average = metrics["average_span_length"]
+    if dominant == "payload" and requests >= 100 and average is not None and average <= 8:
+        classification = "fragmented_root_io"
+    else:
+        classification = {
+            "payload": "root_payload_io",
+            "conversion": "awkward_python_conversion",
+            "selection": "event_selection",
+            "features": "feature_construction",
+            "write_and_digest": "artifact_serialization",
+            "publication": "artifact_publication",
+        }.get(dominant, f"{dominant}_overhead")
+    metrics["diagnosis"] = {
+        "classification": classification,
+        "dominant_phase": dominant,
+        "dominant_seconds": phases[dominant],
+        "accounted_seconds": accounted,
+        "accounted_fraction": accounted / wall if wall > 0 else None,
+        "unaccounted_seconds": max(0., wall - accounted) if wall > 0 else None,
+        "phase_seconds": phases,
+        "phase_fractions": {
+            name: seconds / wall if wall > 0 else None
+            for name, seconds in phases.items()
+        },
+    }
+    return metrics
 
 
 @dataclass(frozen=True)
@@ -87,23 +243,40 @@ def development_spans(mask, max_entries=4096):
             yield left, min(left + max_entries, int(stop))
 
 
-def iter_development_events(tree, branches, identities, mask, max_entries=4096, *, metrics=None):
+def iter_development_events(tree, branches, identities, mask, max_entries=4096, *,
+                            metrics=None, progress=None, root_executor=None):
     identity_branches = {branches['eventNumber'], branches['channelNumber']}
     payload = [b for b in branches.values() if b not in identity_branches]
     for start, stop in development_spans(mask, max_entries):
         began = time.perf_counter() if metrics is not None else None
-        values = tree.arrays(payload, entry_start=start, entry_stop=stop, library='ak')
+        cpu_began = time.process_time() if metrics is not None else None
+        executor_options = ({
+            'decompression_executor': root_executor,
+            'interpretation_executor': root_executor,
+        } if root_executor is not None else {})
+        values = tree.arrays(
+            payload, entry_start=start, entry_stop=stop, library='ak',
+            **executor_options,
+        )
         if metrics is not None:
             metrics['payload_seconds'] = metrics.get('payload_seconds',0.) + time.perf_counter()-began
+            metrics['payload_cpu_seconds'] = metrics.get('payload_cpu_seconds', 0.) + time.process_time()-cpu_began
             metrics['payload_requests'] = metrics.get('payload_requests',0)+1
             metrics['payload_entries'] = metrics.get('payload_entries',0)+stop-start
+            metrics['span_entries_total'] = metrics.get('span_entries_total',0)+stop-start
             histogram = metrics.setdefault('span_length_counts',{})
             histogram[str(stop-start)] = histogram.get(str(stop-start),0)+1
         for entry in range(start, stop):
+            began = time.perf_counter() if metrics is not None else None
             event = {}
             for name, branch in branches.items():
                 value = identities[branch][entry] if branch in identity_branches else values[branch][entry-start]
                 event[name] = value.to_list() if hasattr(value, 'to_list') else value
+            if metrics is not None:
+                metrics['conversion_seconds'] = metrics.get('conversion_seconds',0.) + time.perf_counter()-began
+                metrics['entries_processed'] = metrics.get('entries_processed',0)+1
+            if progress is not None:
+                progress.update()
             yield entry, event
 
 
@@ -288,7 +461,9 @@ def load_research_data(path, dataset, protocol, *, allow_assessment=False, asses
         raise ResearchError("invalid research data") from exc
 
 
-def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4096, metrics=None):
+def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4096,
+                         metrics=None, diagnostic_entries_per_file=None,
+                         root_threads=1, show_prepare_metrics=False):
     """Read the controlled-MC population declared by the research protocol.
 
     ROOT baskets may contain neighboring test bytes. Application request ranges
@@ -304,6 +479,8 @@ def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4
     from src.domain.weights import physical_event_weight
     import uproot
 
+    if type(root_threads) is not int or root_threads < 1:
+        raise ResearchError('ROOT threads must be a positive integer')
     p = protocol_dict(protocol)
     context = dataset_context(p["dataset"])
     raw = json.loads(Path(manifest_path).read_text(encoding="utf-8-sig"))
@@ -321,12 +498,32 @@ def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4
                 or item.get("verified_size_bytes") != stat.st_size or item.get("verified_mtime_ns") != stat.st_mtime_ns):
             raise ResearchError("MC acquisition receipt or file metadata mismatch")
         sources.append((role, member, source))
+    progress = PrepareProgressReporter(metrics) if metrics is not None else None
+    live_progress = progress if show_prepare_metrics else None
+    if metrics is not None:
+        metrics.update(
+            source_files_total=len(sources),
+            source_files_processed=0,
+            source_entries_total=sum(member["entry_count"] for _, member, _ in sources),
+            eligible_entries_total=0,
+            selected_entries=0,
+            root_threads=root_threads,
+        )
+        metrics.setdefault("files", {})
     legacy = load_preprocess_protocol(Path(__file__).resolve().parents[2] / "config/preprocess_protocol_mass_window.yaml", dataset=p["dataset"])
     selection = SelectionConfig.from_mapping(dict(legacy.selection, m4l_window_gev=p["mass_window"]))
     profile = context.profile
     branches = profile["branches"]
     rows = []
-    for process, member, source in sources:
+    executor_context = (
+        ThreadPoolExecutor(max_workers=root_threads, thread_name_prefix='h4l-root')
+        if root_threads > 1 else nullcontext(None)
+    )
+    with executor_context as root_executor:
+      for process, member, source in sources:
+        # Keep the file source's executors private to uproot. ReadOnlyFile.close
+        # may shut down executors supplied to uproot.open, while this bounded
+        # executor intentionally spans all source files in one prepare call.
         with uproot.open(source) as root:
             tree = root[profile["tree_name"]]
             if tree.num_entries != member["entry_count"] or not set(branches.values()).issubset(tree.keys()):
@@ -341,9 +538,20 @@ def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4
                 mask = np.fromiter((event_split(int(number),int(dsid)) != 'test'
                     for number,dsid in zip(identities[branches['eventNumber']],identities[branches['channelNumber']])),
                     dtype=bool,count=tree.num_entries)
+            mask = limit_selected_entries(mask, diagnostic_entries_per_file)
             if metrics is not None:
                 metrics['identity_seconds'] = metrics.get('identity_seconds',0.) + time.perf_counter()-began
-            for entry, event in iter_development_events(tree, branches, identities, mask, max_entries, metrics=metrics):
+                metrics['eligible_entries_total'] += int(mask.sum())
+                before_entries = metrics.get('entries_processed', 0)
+                before_selected = metrics.get('selected_entries', 0)
+                before_spans = metrics.get('payload_requests', 0)
+                before_span_entries = metrics.get('span_entries_total', 0)
+                file_payload_before = metrics.get('payload_seconds', 0.)
+                file_payload_cpu_before = metrics.get('payload_cpu_seconds', 0.)
+            for entry, event in iter_development_events(
+                    tree, branches, identities, mask, max_entries,
+                    metrics=metrics, progress=live_progress,
+                    root_executor=root_executor):
                 event_number, channel = int(event['eventNumber']), int(event['channelNumber'])
                 began = time.perf_counter() if metrics is not None else None
                 result = select_event(event, selection, profile["momentum_unit"])
@@ -374,9 +582,58 @@ def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4
                 rows.append(features)
                 if metrics is not None:
                     metrics['feature_seconds'] = metrics.get('feature_seconds',0.) + time.perf_counter()-began
+                    metrics['selected_entries'] += 1
+            if metrics is not None:
+                metrics['source_files_processed'] += 1
+                file_metrics = {
+                    'filename': source.name,
+                    'size_bytes': int(source.stat().st_size),
+                    'source_entries': int(tree.num_entries),
+                    'eligible_entries': int(mask.sum()),
+                    'processed_entries': metrics.get('entries_processed', 0) - before_entries,
+                    'selected_entries': metrics.get('selected_entries', 0) - before_selected,
+                    'span_count': metrics.get('payload_requests', 0) - before_spans,
+                    'span_entries': metrics.get('span_entries_total', 0) - before_span_entries,
+                    'payload_seconds': metrics.get('payload_seconds', 0.) - file_payload_before,
+                    'payload_cpu_seconds': metrics.get('payload_cpu_seconds', 0.) - file_payload_cpu_before,
+                }
+                file_metrics['average_span_length'] = (
+                    file_metrics['span_entries'] / file_metrics['span_count']
+                    if file_metrics['span_count'] else None
+                )
+                file_metrics['payload_ms_per_span'] = (
+                    1000. * file_metrics['payload_seconds'] / file_metrics['span_count']
+                    if file_metrics['span_count'] else None
+                )
+                file_metrics['payload_cpu_fraction'] = (
+                    file_metrics['payload_cpu_seconds'] / file_metrics['payload_seconds']
+                    if file_metrics['payload_seconds'] else None
+                )
+                metrics['files'][process] = file_metrics
+                if show_prepare_metrics:
+                    print(
+                        '[h4l prepare] file='
+                        f"{source.name} entries={file_metrics['source_entries']} "
+                        f"eligible={file_metrics['eligible_entries']} "
+                        f"processed={file_metrics['processed_entries']} "
+                        f"spans={file_metrics['span_count']} "
+                        f"avg_span={file_metrics['average_span_length']:.1f} "
+                        f"payload={file_metrics['payload_seconds']:.2f}s "
+                        f"ms_per_span={file_metrics['payload_ms_per_span']:.2f} "
+                        f"cpu_fraction={file_metrics['payload_cpu_fraction']:.2f}",
+                        file=sys.stderr, flush=True,
+                    )
     if not rows:
         raise ResearchStateError("no selected 2e2mu research events", status="insufficient_statistics")
-    frame = assign_roles(pd.DataFrame(rows), p)
+    began = time.perf_counter() if metrics is not None else None
+    frame = pd.DataFrame(rows)
+    if metrics is not None:
+        metrics['dataframe_seconds'] = time.perf_counter()-began
+    began = time.perf_counter() if metrics is not None else None
+    frame = assign_roles(frame, p)
+    if metrics is not None:
+        metrics['role_assignment_seconds'] = time.perf_counter()-began
+        progress.sample_rss()
     frame.attrs.update(source_kind="controlled_mc", source_evidence={"dataset_snapshot": context.snapshot(),
                       "manifest": raw, **source_access_record(p)})
     return frame

@@ -6,6 +6,7 @@ from hashlib import sha256
 import importlib.metadata
 import json
 from pathlib import Path
+import time
 from typing import Any
 
 from src.artifacts.manifest import canonical_json_bytes, sha256_file, software_record
@@ -90,6 +91,7 @@ class ResearchRun:
         self.path = self.transaction.path
         self.protocol = protocol
         self.status = "complete"
+        self.publication_seconds = None
         self._stream_verified_files: set[str] = set()
         self.manifest = {
             "schema_version": "research-run-v1", "stage": stage, "dataset": dataset,
@@ -156,6 +158,7 @@ class ResearchRun:
         self._stream_verified_files.add(name)
 
     def __exit__(self, kind, error, traceback):
+        publication_started = time.perf_counter()
         terminal = isinstance(error, ResearchStateError)
         recorded_failure = error is not None
         if recorded_failure:
@@ -180,5 +183,8 @@ class ResearchRun:
             # Ordinary errors keep the standard failure receipt as well as the
             # research manifest; scientific terminal states remain normal exits.
             self.transaction.__exit__(kind, error, traceback) if recorded_failure and not terminal else self.transaction.__exit__(None, None, None)
+            self.publication_seconds = time.perf_counter() - publication_started
             return terminal
-        return self.transaction.__exit__(kind, error, traceback)
+        result = self.transaction.__exit__(kind, error, traceback)
+        self.publication_seconds = time.perf_counter() - publication_started
+        return result

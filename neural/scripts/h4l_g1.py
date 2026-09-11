@@ -29,6 +29,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.research.artifacts import digest_json  # noqa: E402
 from src.research.errors import ResearchError  # noqa: E402
 from src.research.protocol import load_protocol  # noqa: E402
+from src.research.run_names import workflow_directory_name  # noqa: E402
 
 
 class WorkflowError(Exception):
@@ -41,9 +42,14 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run G1 from an existing reusable H4l prepared artifact.",
     )
-    parser.add_argument("--prepared-run", type=Path, required=True)
-    parser.add_argument("--t1-validation", type=Path, required=True)
-    parser.add_argument("--output-root", type=Path, required=True)
+    parser.add_argument(
+        "--run-name",
+        help=("Short shared workflow name; for example 001 resolves all inputs "
+              "and outputs below runs/h4l-feature-combinations-prerequisites-001."),
+    )
+    parser.add_argument("--prepared-run", type=Path)
+    parser.add_argument("--t1-validation", type=Path)
+    parser.add_argument("--output-root", type=Path)
     parser.add_argument("--protocol", type=Path, default=DEFAULT_PROTOCOL)
     parser.add_argument("--plan-only", action="store_true")
     parser.add_argument(
@@ -59,6 +65,28 @@ def _resolve(value: Path) -> Path:
     if not candidate.is_absolute():
         candidate = PROJECT_ROOT / candidate
     return candidate.resolve()
+
+
+def _workflow_paths(args: argparse.Namespace) -> tuple[Path, Path, Path]:
+    run_name = getattr(args, "run_name", None)
+    explicit = (args.prepared_run, args.t1_validation, args.output_root)
+    if run_name is not None:
+        if any(value is not None for value in explicit):
+            raise WorkflowError(
+                "--run-name cannot be combined with --prepared-run, "
+                "--t1-validation, or --output-root", 2
+            )
+        try:
+            root = RUNS_ROOT / workflow_directory_name(run_name)
+        except ValueError as error:
+            raise WorkflowError(str(error), 2) from error
+        return root / "prepare", root / "inputs" / "t1-validation.json", root / "g1"
+    if any(value is None for value in explicit):
+        raise WorkflowError(
+            "provide --run-name or all of --prepared-run, --t1-validation, and --output-root",
+            2,
+        )
+    return tuple(_resolve(value) for value in explicit)
 
 
 def _display(command: list[str]) -> str:
@@ -148,9 +176,7 @@ def _validate_paths(prepared: Path, t1_validation: Path, output_root: Path,
 
 
 def _run(args: argparse.Namespace) -> None:
-    prepared = _resolve(args.prepared_run)
-    t1_validation = _resolve(args.t1_validation)
-    output_root = _resolve(args.output_root)
+    prepared, t1_validation, output_root = _workflow_paths(args)
     protocol_path = _resolve(args.protocol or DEFAULT_PROTOCOL)
     _validate_paths(prepared, t1_validation, output_root, protocol_path,
                     plan_only=args.plan_only)
@@ -224,10 +250,16 @@ def _run(args: argparse.Namespace) -> None:
     next_command = [
         sys.executable, str(RUN_SCRIPT), "--seed", "42",
         "--protocol", str(protocol_path),
-        "--prepared-run", str(prepared), "--gate-run", str(gate_run),
-        "--t1-validation", str(t1_validation),
-        "--output-root", str(output_root.parent / "batch" / "seed42"),
     ]
+    run_name = getattr(args, "run_name", None)
+    if run_name is not None:
+        next_command.extend(["--run-name", run_name])
+    else:
+        next_command.extend([
+            "--prepared-run", str(prepared), "--gate-run", str(gate_run),
+            "--t1-validation", str(t1_validation),
+            "--output-root", str(output_root.parent / "batch" / "seed42"),
+        ])
     print("Next batch command:")
     print(_display(next_command))
     if args.plan_only:

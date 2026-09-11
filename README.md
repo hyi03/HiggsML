@@ -104,6 +104,12 @@ run 均不可覆盖，重跑时必须更换目录名。
 历史 held-out test。若显式选择新的 exploratory all-MC 协议，则会使用全部 MC，不能再把结果解释为
 对历史 held-out test 的独立验证。
 
+正常流程的三个脚本共享 `--run-name`。例如 `--run-name 001` 统一映射到
+`runs/h4l-feature-combinations-prerequisites-001/`；prepare、G1 和 batch 会分别推导其输入输出路径，
+无需重复填写 prepared、T1、gate 和 output 路径。运行名只能包含 1–64 个字母、数字、下划线或
+连字符，并且必须以字母或数字开头。原有显式路径参数继续保留，用于兼容和失败后的局部重试，
+但不能与 `--run-name` 混用。
+
 ### 2.1 安装研究依赖
 
 从仓库根目录开始，进入 `neural/` 并确认研究 CLI 可用：
@@ -123,7 +129,7 @@ higgsml-research --help
 audit 和 prepare：
 
 ```bash
-python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/dataset_receipt.json --run-root runs/h4l-feature-combinations-prerequisites-001
+python scripts/h4l_prepare.py --run-name 001
 ```
 
 脚本把三个绑定文件保存在 `<run-root>/inputs/`，prepared artifact 保存在 `<run-root>/prepare`，
@@ -133,16 +139,49 @@ python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/datas
 `events.jsonl` 在写入时同步计算 SHA256 和大小，prepare 发布时不再为登记和发布校验重复完整读盘；
 后续阶段读取 prepared artifact 时仍按 manifest 校验摘要。
 
+当前 prepare 默认使用 4 个线程并行执行每个 development span 内的 ROOT branch 解压和
+Awkward interpretation，不合并 span，也不跨越被排除的 held-out test entry。性能指标默认只写入
+prepare manifest，不打印周期吞吐、每文件汇总和最终 diagnosis。需要在终端观察 `avg_span`、
+`ms_per_span`、`payload_cpu` 等指标时，显式增加 `--show-prepare-metrics`；多线程下 `payload_cpu`
+大于墙钟 `payload` 是各线程 CPU 时间累加，不表示计时错误：
+
+```bash
+python scripts/h4l_prepare.py \
+  --run-name 001 \
+  --show-prepare-metrics
+```
+
 | 阶段 | 子命令 | 主要输入 | 输出目录 | 作用 |
 |---:|---|---|---|---|
 | 1 | `audit` | ROOT manifest、研究协议 | `<run-root>/audit` | 核对受控 MC 来源、协议绑定和角色隔离，并按角色与类别检查 signed yield、有效统计量及权重抵消率；只生成 G0/P0 审计证据，不读取 assessment。 |
 | 2 | `prepare` | ROOT manifest、profile、P0 验证 | `<run-root>/prepare` | 重建并筛选四轻子事件，计算冻结研究变量和物理权重，按物理事件组划分 train、validation、calibration、template、assessment 五种角色；保存后续阶段共用且身份绑定的 prepared run，但不打开 assessment 内容。 |
 
+prepare 成功后先确认它是可复用的正式产物，而不是诊断终态：
+
+```bash
+python -c "import json,sys; from pathlib import Path; m=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8')); assert m.get('stage')=='prepare' and m.get('status')=='complete', (m.get('stage'),m.get('status')); assert m.get('resources',{}).get('root_threads')==4, m.get('resources'); print('prepare ready:',m.get('artifact_id'))" \
+  runs/h4l-feature-combinations-prerequisites-001/prepare/manifest.json
+```
+
 如只需预览准备命令，在上述命令末尾追加 `--plan-only`；计划模式不创建 run，也不显示动态进度条。
 在 CI 或需要保存纯文本日志时，可关闭进度条，命令执行内容不变：
 
 ```bash
-python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/dataset_receipt.json --run-root runs/h4l-feature-combinations-prerequisites-001 --no-progress
+python scripts/h4l_prepare.py \
+  --run-name 001 \
+  --no-progress
+```
+
+`--diagnostic-entries-per-file N` 只用于固定工作量性能诊断。使用该参数的 prepare 最终状态是
+`diagnostic_complete`，不能传给 G1，也不能与共享的 `--run-name` 一起使用。诊断必须使用与正式
+流程不同的新 `--run-root`，例如：
+
+```bash
+python scripts/h4l_prepare.py \
+  --dataset-receipt ../data/raw/atlas2020_4lep/dataset_receipt.json \
+  --run-root runs/h4l-prepare-diagnostic-001 \
+  --diagnostic-entries-per-file 10000 \
+  --show-prepare-metrics
 ```
 
 ### 2.3 执行 G1
@@ -150,12 +189,20 @@ python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/datas
 执行 prepare 打印的 `Next G1 command`。该命令只读取 prepared artifact，不会再次读取 ROOT：
 
 ```bash
-python scripts/h4l_g1.py --prepared-run runs/h4l-feature-combinations-prerequisites-001/prepare --t1-validation runs/h4l-feature-combinations-prerequisites-001/inputs/t1-validation.json --output-root runs/h4l-feature-combinations-prerequisites-001/g1
+python scripts/h4l_g1.py \
+  --run-name 001
 ```
 
 G1 共 9 个阶段：3 次训练、5 次校准和 templates。运行时显示 `H4l G1` 进度条；长时间运行的
 子命令同样在一行内持续增加 `.`。成功且 `<output-root>/templates/g1.json` 状态为 `passed` 后，
 脚本打印 `Next batch command`。
+
+开始完整批次前可再次检查 gate：
+
+```bash
+python -c "import json,sys; from pathlib import Path; g=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8')); assert g.get('status')=='passed', g; print('G1 passed')" \
+  runs/h4l-feature-combinations-prerequisites-001/g1/templates/g1.json
+```
 
 | 阶段 | 子命令 | 主要输入 | 输出目录 | 作用 |
 |---:|---|---|---|---|
@@ -173,7 +220,10 @@ G1 共 9 个阶段：3 次训练、5 次校准和 templates。运行时显示 `H
 `--output-root` 重试，同时保持 `--prepared-run` 不变，例如：
 
 ```bash
-python scripts/h4l_g1.py --prepared-run runs/h4l-feature-combinations-prerequisites-001/prepare --t1-validation runs/h4l-feature-combinations-prerequisites-001/inputs/t1-validation.json --output-root runs/h4l-feature-combinations-prerequisites-001/g1-retry-002
+python scripts/h4l_g1.py \
+  --prepared-run runs/h4l-feature-combinations-prerequisites-001/prepare \
+  --t1-validation runs/h4l-feature-combinations-prerequisites-001/inputs/t1-validation.json \
+  --output-root runs/h4l-feature-combinations-prerequisites-001/g1-retry-002
 ```
 
 这样会重新执行 G1，但不会重新执行 audit、prepare 或 ROOT 读取。可用 `--plan-only` 预览命令，
@@ -185,9 +235,18 @@ python scripts/h4l_g1.py --prepared-run runs/h4l-feature-combinations-prerequisi
 `config/research_protocol_exploratory_all_mc_v1.json`：
 
 ```bash
-python scripts/h4l_prepare.py --dataset-receipt ../data/raw/atlas2020_4lep/dataset_receipt.json --run-root runs/h4l-exploratory-all-mc-001 --protocol config/research_protocol_exploratory_all_mc_v1.json
-python scripts/h4l_g1.py --prepared-run runs/h4l-exploratory-all-mc-001/prepare --t1-validation runs/h4l-exploratory-all-mc-001/inputs/t1-validation.json --output-root runs/h4l-exploratory-all-mc-001/g1 --protocol config/research_protocol_exploratory_all_mc_v1.json
-python scripts/h4l_run.py --seed 42 --prepared-run runs/h4l-exploratory-all-mc-001/prepare --gate-run runs/h4l-exploratory-all-mc-001/g1/templates --t1-validation runs/h4l-exploratory-all-mc-001/inputs/t1-validation.json --output-root runs/h4l-exploratory-all-mc-001/batch/seed42 --protocol config/research_protocol_exploratory_all_mc_v1.json
+python scripts/h4l_prepare.py \
+  --dataset-receipt ../data/raw/atlas2020_4lep/dataset_receipt.json \
+  --run-name exploratory-all-mc-001 \
+  --protocol config/research_protocol_exploratory_all_mc_v1.json
+
+python scripts/h4l_g1.py \
+  --run-name exploratory-all-mc-001 \
+  --protocol config/research_protocol_exploratory_all_mc_v1.json
+
+python scripts/h4l_run.py \
+  --run-name exploratory-all-mc-001 \
+  --protocol config/research_protocol_exploratory_all_mc_v1.json
 ```
 
 该协议删除旧 development/test 输入边界，把全部 MC 重新按固定事件组哈希分配给内部
@@ -201,7 +260,8 @@ train、validation、calibration、template、assessment 角色。内部 assessm
 原始 `Next batch command`，不要附加计划参数。该命令调用跨平台的 `scripts/h4l_run.py`。
 
 ```bash
-python scripts/h4l_run.py --seed 42 --prepared-run runs/h4l-feature-combinations-prerequisites-001/prepare --gate-run runs/h4l-feature-combinations-prerequisites-001/g1/templates --t1-validation runs/h4l-feature-combinations-prerequisites-001/inputs/t1-validation.json --output-root runs/h4l-feature-combinations-prerequisites-001/batch/seed42
+python scripts/h4l_run.py \
+  --run-name 001
 ```
 
 研究 CLI 会校验协议、数据总体和前置 gate 绑定。脚本接受 seed 42–46，每个 seed 和每次重跑均须
@@ -236,17 +296,36 @@ python scripts/h4l_run.py --seed 42 --prepared-run runs/h4l-feature-combinations
 查看 Markdown 报告：
 
 ```bash
-python -c "from pathlib import Path; print(Path('runs/h4l-feature-combinations-prerequisites-001/batch/seed42/report/report.md').read_text(encoding='utf-8'))"
+python -c "import sys; from pathlib import Path; print(Path(sys.argv[1]).read_text(encoding='utf-8'))" \
+  runs/h4l-feature-combinations-prerequisites-001/batch/seed42/report/report.md
 ```
 
 检查 JSON 中的完整组合比较状态，并输出该项结果：
 
 ```bash
-python -c "import json; from pathlib import Path; r=json.loads(Path('runs/h4l-feature-combinations-prerequisites-001/batch/seed42/report/report.json').read_text(encoding='utf-8')); c=r.get('feature_combination_comparisons', []); assert len(c)==1 and c[0].get('status')=='valid' and c[0].get('seed')==42, c; print(json.dumps(c[0], indent=2, ensure_ascii=False))"
+python -c "import json,sys; from pathlib import Path; r=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8')); expected=int(sys.argv[2]); c=r.get('feature_combination_comparisons', []); assert len(c)==1 and c[0].get('status')=='valid' and c[0].get('seed')==expected, c; print(json.dumps(c[0], indent=2, ensure_ascii=False))" \
+  runs/h4l-feature-combinations-prerequisites-001/batch/seed42/report/report.json 42
 ```
 
 只有 16 个同总体、同网格、T1、μ=1 的结果全部有效时，报告才生成有效 Shapley；缺失或失败组合
 不会用零值替代。软件命令成功也不等于完成了原生 ARM64 权威验收或独立科学数值验证。
+
+### 2.6 完整执行顺序核对
+
+一次正式运行应严格按以下依赖顺序完成：
+
+1. 在 `neural/` 中激活 `pytorch`，安装并检查研究依赖。
+2. 为本次运行选择一个尚未使用的 `--run-name`；本章使用 `001`，默认 seed 为 42。
+3. 使用该 `--run-name` 执行不带 `--diagnostic-entries-per-file` 的 `h4l_prepare.py`。
+4. 确认 `<run-root>/prepare/manifest.json` 的 stage/status 为 `prepare/complete`。
+5. 使用相同的 `--run-name` 执行 `h4l_g1.py`，输入只能是第 4 步确认过的 prepared run。
+6. 确认 `<run-root>/g1/templates/g1.json` 的 status 为 `passed`。
+7. 使用相同的 `--run-name` 执行 `h4l_run.py`；脚本自动保持 prepared、gate、T1 和输出路径一致。
+8. 检查 `report.json` 的组合比较为 `valid`，且 seed 与本次运行一致。
+
+任一步失败后，不得覆盖失败目录；保留原始证据，改用一个尚不存在的新固定目录名，或按
+对应小节仅更换允许重试的下游输出目录。性能诊断 run、synthetic 测试 run、Windows 软件检查和
+文档命令检查均不能替代受绑定 ROOT 输入上的正式运行、ARM64 权威验收或独立科学数值验证。
 
 ## 3. DEBUG 诊断模式
 

@@ -247,7 +247,11 @@ def test_root_export_selects_protocol_population_before_payload(
         def __getitem__(self,key): return Tree(self.role)
     monkeypatch.setattr(uproot,"open",Root)
     protocol = load_protocol(PROJECT_ROOT / "config" / protocol_name)
-    frame = export_research_data(manifest, profile, protocol, max_entries=1)
+    metrics = {}
+    frame = export_research_data(
+        manifest, profile, protocol, max_entries=1, metrics=metrics,
+        root_threads=2,
+    )
     assert len(frame) == expected_rows
     assert [(start, stop) for _, start, stop in payload_calls] == expected_ranges
     assert set(frame.split) == {expected_split}
@@ -255,3 +259,13 @@ def test_root_export_selects_protocol_population_before_payload(
     if expected_split == "exploratory":
         assert frame.attrs["source_evidence"]["historical_held_out_test_preserved"] is False
     assert all(len(v)==4 for v in frame.lep_pt)
+    assert metrics["source_files_total"] == metrics["source_files_processed"] == 2
+    assert metrics["source_entries_total"] == 4
+    assert metrics["eligible_entries_total"] == metrics["entries_processed"] == expected_rows
+    assert metrics["selected_entries"] == expected_rows
+    assert metrics["payload_requests"] == expected_rows
+    assert metrics["span_entries_total"] == expected_rows
+    assert metrics["conversion_seconds"] >= 0
+    assert metrics["dataframe_seconds"] >= 0
+    assert metrics["role_assignment_seconds"] >= 0
+    assert set(metrics["files"]) == {"higgs", "zz"}

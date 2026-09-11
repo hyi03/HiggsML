@@ -95,6 +95,7 @@ def test_prepare_cli_has_no_manual_review_arguments() -> None:
     completed = _run(PREPARE_SCRIPT, "--help")
 
     assert completed.returncode == 0
+    assert "--run-name" in completed.stdout
     assert "--run-root" in completed.stdout
     assert "--no-progress" in completed.stdout
     assert "--protocol" in completed.stdout
@@ -158,6 +159,132 @@ def test_prepare_plan_stops_after_audit_and_prepare(
     assert "src.cli.research templates" not in output
     assert "h4l_run.py" not in output
     assert not run_root.exists()
+
+
+def test_prepare_metrics_output_is_opt_in(tmp_path: Path) -> None:
+    receipt, _ = _dataset_receipt(tmp_path)
+    default_root = _new_run_root("pytest-prepare-metrics-default")
+    verbose_root = _new_run_root("pytest-prepare-metrics-enabled")
+
+    default = _run(
+        PREPARE_SCRIPT,
+        "--dataset-receipt", str(receipt),
+        "--run-root", str(default_root),
+        "--plan-only",
+    )
+    enabled = _run(
+        PREPARE_SCRIPT,
+        "--dataset-receipt", str(receipt),
+        "--run-root", str(verbose_root),
+        "--show-prepare-metrics",
+        "--plan-only",
+    )
+
+    assert default.returncode == 0, default.stderr
+    assert "--show-prepare-metrics" not in default.stdout
+    assert enabled.returncode == 0, enabled.stderr
+    assert enabled.stdout.count("--show-prepare-metrics") == 1
+    assert not default_root.exists()
+    assert not verbose_root.exists()
+
+
+def test_shared_run_name_derives_prepare_g1_and_batch_paths(tmp_path: Path) -> None:
+    receipt, _ = _dataset_receipt(tmp_path)
+    run_name = f"pytest-shared-{uuid.uuid4().hex}"
+    run_root = PROJECT_ROOT / "runs" / f"h4l-feature-combinations-prerequisites-{run_name}"
+
+    prepare = _run(
+        PREPARE_SCRIPT,
+        "--dataset-receipt", str(receipt),
+        "--run-name", run_name,
+        "--plan-only",
+    )
+    assert prepare.returncode == 0, prepare.stderr
+    assert str(run_root / "prepare") in prepare.stdout
+    assert f"--run-name {run_name}" in prepare.stdout
+
+    g1 = _run(G1_SCRIPT, "--run-name", run_name, "--plan-only")
+    assert g1.returncode == 0, g1.stderr
+    assert g1.stdout.count(f"--input-run {run_root / 'prepare'}") == 9
+    assert str(run_root / "inputs" / "t1-validation.json") in g1.stdout
+    assert str(run_root / "g1" / "templates") in g1.stdout
+    assert f"--run-name {run_name}" in g1.stdout
+
+    batch = _run(RUN_SCRIPT, "--run-name", run_name, "--plan-only")
+    assert batch.returncode == 0, batch.stderr
+    assert str(run_root / "prepare") in batch.stdout
+    assert str(run_root / "g1" / "templates") in batch.stdout
+    assert str(run_root / "inputs" / "t1-validation.json") in batch.stdout
+    assert str(run_root / "batch" / "seed42") in batch.stdout
+    assert not run_root.exists()
+
+
+@pytest.mark.parametrize("script", [PREPARE_SCRIPT, G1_SCRIPT, RUN_SCRIPT])
+def test_shared_run_name_rejects_path_traversal(
+    script: Path, tmp_path: Path,
+) -> None:
+    arguments = ["--run-name", "../escape", "--plan-only"]
+    if script == PREPARE_SCRIPT:
+        receipt, _ = _dataset_receipt(tmp_path)
+        arguments[:0] = ["--dataset-receipt", str(receipt)]
+
+    completed = _run(script, *arguments)
+
+    assert completed.returncode == 2
+    assert "run name must contain" in completed.stderr
+
+
+@pytest.mark.parametrize(
+    ("script", "explicit_option", "error_text"),
+    [
+        (PREPARE_SCRIPT, "--run-root", "not allowed with argument"),
+        (G1_SCRIPT, "--output-root", "cannot be combined"),
+        (RUN_SCRIPT, "--output-root", "cannot be combined"),
+    ],
+)
+def test_run_name_refuses_ambiguous_explicit_paths(
+    script: Path, explicit_option: str, error_text: str,
+) -> None:
+    completed = _run(
+        script,
+        "--run-name", "001",
+        explicit_option, "runs/other",
+        "--plan-only",
+    )
+
+    assert completed.returncode == 2
+    assert error_text in completed.stderr
+
+
+def test_prepare_fixed_workload_diagnosis_does_not_offer_g1(tmp_path: Path) -> None:
+    receipt, _ = _dataset_receipt(tmp_path)
+    run_root = _new_run_root("pytest-prepare-diagnostic-plan")
+
+    completed = _run(
+        PREPARE_SCRIPT,
+        "--dataset-receipt", str(receipt),
+        "--run-root", str(run_root),
+        "--diagnostic-entries-per-file", "1000",
+        "--plan-only",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "--diagnostic-entries-per-file 1000" in completed.stdout
+    assert "Next G1 command:" not in completed.stdout
+    assert "Fixed-workload diagnosis" in completed.stdout
+    assert not run_root.exists()
+
+
+def test_prepare_run_name_rejects_diagnostic_mode() -> None:
+    completed = _run(
+        PREPARE_SCRIPT,
+        "--run-name", "001",
+        "--diagnostic-entries-per-file", "1000",
+        "--plan-only",
+    )
+
+    assert completed.returncode == 2
+    assert "use --run-root for diagnostics" in completed.stderr
 
 
 def test_prepare_writes_automatic_inputs_before_running_prerequisites(
