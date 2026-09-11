@@ -25,5 +25,7 @@
 - [`training-and-evaluation-design.md`](training-and-evaluation-design.md)：development OOF、候选资格、final fit 与 test-opening 设计。
 - [`artifact-schema.md`](artifact-schema.md)：运行目录、manifest、表格及状态契约。
 - [`research-software-design.md`](research-software-design.md)：从当前 legacy15 流程扩展到 H4l 研究软件的规划方案。
+- [`research-performance-refactor-design.md`](research-performance-refactor-design.md)：研究模块循环热点、性能重构设计、科学一致性验收与分阶段交付方案。
+- [`research-performance-refactor-implementation.md`](research-performance-refactor-implementation.md)：重构实现、资源接口、合成验证记录与尚未完成的 ROOT/权威平台验收。
 
 本项目严格 MC-only，仅为 educational/technical demo，不构成 ATLAS 结果、Higgs discovery 或物理测量。

@@ -6,6 +6,7 @@ from copy import deepcopy
 import json
 import os
 import shutil
+import time
 import numpy as np
 import pandas as pd
 
@@ -17,7 +18,8 @@ from .discriminants import train_discriminant, predict_discriminant
 from .calibration import fit_calibration, apply_calibration, fit_thresholds, assign_categories
 from .matrix_element import export_me_inputs, import_me_results
 from .templates import common_mass_grid, gate_g1
-from .inference import run_asimov, run_toys
+from .inference import run_asimov, run_toys, build_model
+from .resources import load_resources
 from .reporting import (build_report, coverage_summary,
                         feature_combination_comparison, write_learning_curves)
 
@@ -95,14 +97,14 @@ def _supplement_me_bundles(bundles, supplemental_runs, prepared, mother_ids):
     merged=deepcopy(bundles)
     me_keys=[key for key,bundle in merged.items() if bundle.get('model') is None]
     used=set()
-    supplements=[]
+    supplements={}
     for item in supplemental_runs:
         _same_data(item,prepared)
         evidence=item.read_json('me-evidence.json')
         binding=_me_binding(evidence)
         if evidence.get('me_binding')!=binding:
             raise ResearchError('Supplemental ME semantic binding is missing or inconsistent')
-        supplements.append((item,binding,item.read_json('me-scores.json'),
+        supplements.setdefault(digest_json(binding),[]).append((item,binding,item.read_json('me-scores.json'),
                             {row['event_id']:row['input_digest'] for row in evidence['inputs']['events']}))
     for key in me_keys:
         bundle=merged[key]
@@ -110,7 +112,7 @@ def _supplement_me_bundles(bundles, supplemental_runs, prepared, mother_ids):
             raise ResearchError('Frozen ME bundle lacks semantic discriminant binding')
         original={row['event_id']:row for row in bundle['me_scores']}
         input_digests=dict(bundle.get('me_event_input_digests',{}))
-        for item,binding,rows,digests in supplements:
+        for item,binding,rows,digests in supplements.get(digest_json(bundle['me_binding']),[]):
             if binding!=bundle['me_binding']:
                 continue
             used.add(item.manifest['artifact_id'])
@@ -231,6 +233,8 @@ def expected_candidates():
 
 
 def execute(args, *, allowed_root=None):
+    resources = load_resources(getattr(args,'resources',None))
+    parallel = {k:resources[k] for k in ('workers','worker_threads')}
     protocol = load_protocol(args.protocol, dataset=args.dataset).to_dict()
     cfg=protocol['inference']
     if cfg['pyhf_version']!='0.7.6' or cfg['confidence_levels']!=[.68,.95] or cfg['mu_bounds'][0]!=0 or cfg['template_modifier']!='shapesys' or cfg['template_correlation']!='independent_process_bins' or protocol['templates']['score_categories']!=2:
@@ -290,6 +294,9 @@ def execute(args, *, allowed_root=None):
         context['candidate_key']=key.replace(original,derived,1)
     with ResearchRun(args.run_dir, allowed_root=root, stage=stage, dataset=args.dataset,
                      protocol=protocol, upstreams=upstreams, seed=args.seed, context=context) as run:
+        stage_started, stage_cpu = time.perf_counter(), time.process_time()
+        run.manifest['resources'] = resources
+        run.manifest['performance_implementation'] = 'research-refactor-v1'
         if assessment_me_runs and (stage!='infer' or args.expectation_kind!='assessment'):
             raise ResearchError('Supplemental ME runs are only used for frozen assessment inference')
         if prepared is not None and stage in ('train','calibrate','templates','freeze'):
@@ -330,8 +337,13 @@ def execute(args, *, allowed_root=None):
                         'missing_evidence': ['independent_physics_sources', 'development_support_audit'],
                         'test_features_read': False})
                     return {'status':'complete','run_dir':str(args.run_dir)}
-                frame = export_research_data(args.input_manifest, _required(args, 'profile'), protocol)
-                write_research_data(frame, run.path / 'events.jsonl', protocol)
+                root_metrics = {}
+                run.manifest['root_prepare_metrics'] = root_metrics
+                frame = export_research_data(args.input_manifest, _required(args, 'profile'), protocol,
+                                             max_entries=resources['root_max_entries'],metrics=root_metrics)
+                write_started = time.perf_counter()
+                frame.attrs['population_id'] = write_research_data(frame, run.path / 'events.jsonl', protocol)
+                root_metrics['write_seconds'] = time.perf_counter()-write_started
                 run.register_file('events.jsonl')
                 run.write_json('input-evidence.json', read_json(Path(args.input_manifest)))
             else:
@@ -343,7 +355,10 @@ def execute(args, *, allowed_root=None):
                 run.write_json('p0-validation.json',p0)
             run.manifest['source_kind'] = frame.attrs.get('source_kind')
             if stage=='prepare':
-                run.manifest['population_id']=_population_id(run.path/'events.jsonl',args.dataset)
+                # A caller-owned source may change between parsing and copying.
+                # Keep the original identity verification on the published copy.
+                run.manifest['population_id']=(_population_id(run.path/'events.jsonl',args.dataset)
+                    if args.events else frame.attrs['population_id'])
                 run.manifest['source_evidence_sha256']=digest_json(frame.attrs.get('source_evidence',{}))
             if stage == 'prepare' and args.events is None and args.input_manifest is None:
                 raise ResearchError('prepare requires --events or --input-manifest')
@@ -478,7 +493,7 @@ def execute(args, *, allowed_root=None):
                     raise ResearchError('ledger can only declare explicit terminal candidate states')
                 statuses.update(declared)
                 run.write_json('candidate-ledger.json', supplied)
-            templates = template_run.read_json('templates.json')['templates']
+            templates = deepcopy(bound_grid)['templates']
             for key, value in templates.items():
                 if key in statuses:
                     statuses[key] = 'complete' if value['status']=='valid' else value['status']
@@ -492,7 +507,7 @@ def execute(args, *, allowed_root=None):
             frozen = {'status':'frozen','protocol_sha256':digest_json(protocol),
                       'evidence_id':digest_json(statuses),'candidate_states':statuses,
                       'template_artifact_ids':[template_run.manifest['artifact_id']],
-                      'mass_edges':template_run.read_json('templates.json')['mass_edges'],
+                      'mass_edges':deepcopy(bound_grid)['mass_edges'],
                       'stress_reference':{'candidate_key':reference_key,'model_id':reference_bundle['model_id'],
                                           'mapping_id':reference_bundle['mapping_id']}}
             run.write_json('freeze.json', frozen)
@@ -503,8 +518,8 @@ def execute(args, *, allowed_root=None):
             cfg=protocol['inference']
             if not 0 <= args.toys <= cfg['toy_count'] or args.mu not in cfg['injections']:
                 raise ResearchError('Inference injection or count outside frozen pilot budget')
-            grid=template_run.read_json('templates.json')
-            evidence=template_run.read_json('t1-validation.json')
+            grid=deepcopy(bound_grid)
+            evidence=deepcopy(bound_evidence)
             procedure=getattr(args,'procedure','fixed')
             if procedure!='fixed' and args.expectation_kind!='assessment':
                 raise ResearchError('T2/stress require frozen assessment generation')
@@ -528,7 +543,7 @@ def execute(args, *, allowed_root=None):
                                          for key,bundle in bundles.items() if bundle.get('model') is None}})
                 from .assessment import infer_assessment, run_assessment_t2
                 shared=dict(layer=args.layer,t1_validation=evidence,mu=args.mu,seed=args.seed,
-                            prepared_id=prepared.manifest['artifact_id'],freeze_id=freeze_run.manifest['artifact_id'])
+                            prepared_id=prepared.manifest['artifact_id'],freeze_id=freeze_run.manifest['artifact_id'],**parallel)
                 if procedure=='t2':
                     procedure_result=run_assessment_t2(grid,bundles,frame.loc[frame.role=='calibration'].copy(),
                         frame.loc[frame.role=='template'].copy(),mother,protocol,**shared)
@@ -545,12 +560,13 @@ def execute(args, *, allowed_root=None):
                 results={}
                 for key,template in grid['templates'].items():
                     try:
-                        asimov=run_asimov(template,protocol=protocol,layer=args.layer,t1_validation=evidence,injections=[args.mu])
+                        built_model=build_model(template,layer=args.layer,t1_validation=evidence,mu_max=cfg['mu_bounds'][1])
+                        asimov=run_asimov(template,protocol=protocol,layer=args.layer,t1_validation=evidence,injections=[args.mu],_built_model=built_model)
                         result={'status':asimov['status'],'asimov':asimov,'seed':template.get('seed')}
                         if args.toys:
                             toys=run_toys(template,mu=args.mu,count=args.toys,seed=args.seed,layer=args.layer,
                                 t1_validation=evidence,auxiliary_generation=cfg['auxiliary_generation'],mu_max=cfg['mu_bounds'][1],
-                                signed_diagnostic=protocol.get('diagnostics',{}).get('signed_mu'))
+                                signed_diagnostic=protocol.get('diagnostics',{}).get('signed_mu'),_built_model=built_model,**parallel)
                             result['toys']=toys
                             result['coverage']={str(cl):coverage_summary([r['intervals'][i] for r in toys['results']],mu=args.mu)
                                                 for i,cl in enumerate((.68,.95))}
@@ -668,4 +684,9 @@ def execute(args, *, allowed_root=None):
             run.register_file('report.md')
         else:
             raise ResearchError('unknown research stage')
+        if template_run is not None:
+            template_run.file('templates.json')
+            template_run.file('t1-validation.json')
+        run.manifest['performance'] = {'wall_seconds':time.perf_counter()-stage_started,
+                                       'cpu_seconds':time.process_time()-stage_cpu}
     return {'status':run.status,'run_dir':str(args.run_dir)}

@@ -5,11 +5,12 @@ import numpy as np
 import pandas as pd
 
 from .errors import ResearchError, ResearchStateError
+from .statistics import GroupBinStatistics, mass_merge_projection
 
 
 def build_templates(frame, *, mass_edges, mapping_id, candidate_id,
                     category_column="category", categories=(0, 1), thresholds=None,
-                    structural_zero_evidence=None):
+                    structural_zero_evidence=None, _statistics=None):
     thresholds = thresholds or {}
     minimum = float(thresholds.get("min_neff_signed", thresholds.get("min_effective_count", 20)))
     rho_min = float(thresholds.get("min_rho", thresholds.get("min_cancellation_ratio", .2)))
@@ -52,21 +53,19 @@ def build_templates(frame, *, mass_edges, mapping_id, candidate_id,
     n_mass = len(edges) - 1
     category_index = {v: i for i, v in enumerate(categories)}
     mass_bin = np.minimum(np.searchsorted(edges, frame.m4l, side="right") - 1, n_mass - 1)
-    bins = np.asarray([category_index[v] for v in frame[category_column]]) * n_mass + mass_bin
-    work = frame.copy()
-    work["_bin"] = bins
+    bins = np.asarray(np.asarray([category_index[v] for v in frame[category_column]]) * n_mass + mass_bin)
+    statistics = {} if _statistics is None else _statistics
+    if not statistics:
+        for process, indices in frame.groupby(process_column, sort=True).indices.items():
+            rows = frame.iloc[indices]
+            if rows.label.nunique() != 1:
+                raise ResearchError("A process cannot mix signal and background")
+            statistics[process] = (bool(rows.label.iloc[0]), GroupBinStatistics(
+                rows.event_group_id.to_numpy(), bins[indices], rows.yield_weight.to_numpy(float), n_mass*len(categories)))
     samples, issues = [], []
-    for process, rows in work.groupby(process_column, sort=True):
-        if rows.label.nunique() != 1:
-            raise ResearchError("A process cannot mix signal and background")
-        matrix = rows.pivot_table(index="event_group_id", columns="_bin", values="yield_weight", aggfunc="sum", fill_value=0).reindex(columns=range(n_mass * len(categories)), fill_value=0).to_numpy(float)
-        yields = matrix.sum(axis=0)
-        covariance = matrix.T @ matrix
+    for process, (is_signal, stats) in statistics.items():
+        yields, covariance, absolute, positive, negative, counts = stats.moments()
         variance = np.diag(covariance)
-        absolute = rows.assign(_abs=rows.yield_weight.abs()).groupby("_bin")._abs.sum().reindex(range(len(yields)), fill_value=0).to_numpy()
-        counts = rows.groupby("_bin").event_group_id.nunique().reindex(range(len(yields)), fill_value=0).to_numpy()
-        positive = rows.assign(_pos=rows.yield_weight.clip(lower=0)).groupby("_bin")._pos.sum().reindex(range(len(yields)), fill_value=0).to_numpy()
-        negative = rows.assign(_neg=rows.yield_weight.clip(upper=0)).groupby("_bin")._neg.sum().reindex(range(len(yields)), fill_value=0).to_numpy()
         states, neff, rho = [], [], []
         for i, (y, v, a, count) in enumerate(zip(yields, variance, absolute, counts)):
             n = float(y*y/v) if v > 0 else None
@@ -78,7 +77,7 @@ def build_templates(frame, *, mass_edges, mapping_id, candidate_id,
             states.append(state); neff.append(n); rho.append(r)
             if state not in {"valid", "structural_zero"}:
                 issues.append({"process": str(process), "bin": i, "status": state})
-        samples.append({"name": str(process), "is_signal": bool(rows.label.iloc[0]), "yield": yields.tolist(), "variance": variance.tolist(), "covariance": covariance.tolist(), "sum_abs_weight": absolute.tolist(), "sum_positive_weight": positive.tolist(), "sum_negative_weight": negative.tolist(), "group_count": counts.tolist(), "neff_signed": neff, "neff_abs": [float(a*a/v) if v > 0 else None for a,v in zip(absolute,variance)], "rho": rho, "bin_status": states})
+        samples.append({"name": str(process), "is_signal": is_signal, "yield": yields.tolist(), "variance": variance.tolist(), "covariance": covariance.tolist(), "sum_abs_weight": absolute.tolist(), "sum_positive_weight": positive.tolist(), "sum_negative_weight": negative.tolist(), "group_count": counts.tolist(), "neff_signed": neff, "neff_abs": [float(a*a/v) if v > 0 else None for a,v in zip(absolute,variance)], "rho": rho, "bin_status": states})
     if not any(s["is_signal"] for s in samples) or not any(not s["is_signal"] for s in samples):
         raise ResearchStateError("Missing effective signal or background", status="insufficient_statistics")
     active = [i for i in range(n_mass * len(categories)) if any(s["bin_status"][i] != "structural_zero" for s in samples)]
@@ -92,13 +91,18 @@ def common_mass_grid(candidate_frames, *, mass_edges, thresholds, assessment_sta
     if not candidate_frames:
         raise ResearchError("At least one candidate required")
     edges, history = list(mass_edges), []
+    statistics = {name: {} for name in candidate_frames}
     while True:
-        artifacts = {name: build_templates(frame, mass_edges=edges, mapping_id=name, candidate_id=name, thresholds=thresholds, categories=(0,) if name == "M0" else (0,1)) for name, frame in sorted(candidate_frames.items())}
+        artifacts = {name: build_templates(frame, mass_edges=edges, mapping_id=name, candidate_id=name, thresholds=thresholds, categories=(0,) if name == "M0" else (0,1), _statistics=statistics[name]) for name, frame in sorted(candidate_frames.items())}
         bad = [issue["bin"] % (len(edges)-1) for t in artifacts.values() for issue in t["issues"]]
         if not bad or len(edges) == 2:
             return {"status": "valid" if not bad else "insufficient_statistics", "mass_edges": edges, "merge_history": history, "templates": artifacts}
         index = min(min(bad)+1, len(edges)-2)
         history.append({"removed_edge": edges[index], "reason": "leftmost_failing_mass_bin_shared_across_candidates"})
+        for name, samples in statistics.items():
+            projection = mass_merge_projection(len(edges)-1, 1 if name == "M0" else 2, index-1)
+            for _, stats in samples.values():
+                stats.merge(projection)
         del edges[index]
 
 

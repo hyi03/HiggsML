@@ -9,12 +9,13 @@ from .artifacts import digest_json
 from .calibration import apply_calibration, assign_categories, fit_calibration, fit_thresholds
 from .discriminants import predict_discriminant
 from .errors import ResearchError, ResearchStateError
-from .inference import build_model, paired_event_toys, profile_interval, run_asimov, run_t2_procedure, stress_weights
+from .inference import build_model, paired_event_toys, profile_interval, profile_intervals, run_asimov, run_t2_procedure, stress_weights
 from .protocol import protocol_dict
+from .resources import ordered_map
 from .diagnostics import signed_mu_fit, signed_mu_summary
 from .reporting import coverage_summary, fit_diagnostics, paired_coverage_error
 from .templates import build_templates
-from .stress import build_stress_templates,build_stress_model,sample_auxiliary,validate_stress_contract
+from .stress import build_stress_templates,build_stress_model,sample_auxiliary,auxiliary_sampler,validate_stress_contract
 
 
 def _scores(bundle, frame):
@@ -90,11 +91,11 @@ def _joint_mother(grid, bundles, mother, protocol, categorize):
         unsupported = ~np.isin(cells[:, j], active)
         if any(np.any(v[unsupported] > 0) for v in rates.values()):
             raise ResearchStateError("positive assessment support lies in a template structural-zero bin", status="unsupported_assessment_support")
-    return work, columns
+    return work, columns, (cells,inverse)
 
 
 def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, mu, count,
-                     seed, prepared_id, freeze_id, categorize=None, stress_responses=None,stress_direction=0):
+                     seed, prepared_id, freeze_id, categorize=None, stress_responses=None,stress_direction=0, workers=1, worker_threads=1):
     """Return per-candidate results using one shared joint-cell Poisson draw.
 
     Root verifies the immutable freeze artifact before granting mother access.
@@ -112,11 +113,11 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
     levels = cfg["confidence_levels"]
     if levels != [.68, .95]:
         raise ResearchError("unsupported frozen confidence levels")
-    work, columns = _joint_mother(grid, bundles, mother, p, categorize or categorize_bundle)
+    work, columns, joint_cells = _joint_mother(grid, bundles, mother, p, categorize or categorize_bundle)
     mother_id = digest_json({"prepared_id": prepared_id, "freeze_id": freeze_id,
                             "rows": mother[["event_group_id", "label", "m4l", "yield_weight"]].to_dict("records")})
     paired = paired_event_toys(work, category_columns=columns, mass_edges=grid["mass_edges"],
-                              mu=mu, count=count, seed=seed, mother_id=mother_id)
+                              mu=mu, count=count, seed=seed, mother_id=mother_id, _joint_cells=joint_cells)
     pairing_id = digest_json({"mother": mother_id, "grid": grid["mass_edges"], "seed": seed,
                              "mu": mu, "count": count, "observations": paired["observations"]})
     results = {}
@@ -139,33 +140,39 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
             inactive = sorted(set(range(observations.shape[1])) - set(active))
             if inactive and observations[:, inactive].any():
                 raise ResearchStateError("positive observations outside active template support", status="unsupported_assessment_support")
-            toys = []
-            for i, observation in enumerate(observations):
-                shared={}
-                for name in model.config.auxdata_order:
-                    parameter=model.config.param_set(name)
-                    if parameter.pdf_type=='normal':
+            draw_auxiliary = auxiliary_sampler(model,pars)
+            normal_layout = [(name,model.config.param_set(name).n_parameters) for name in model.config.auxdata_order
+                             if model.config.param_set(name).pdf_type=='normal']
+            def tasks():
+                for i, observation in enumerate(observations):
+                    shared={}
+                    for name,n_parameters in normal_layout:
                         common_seed=int.from_bytes(hashlib.sha256(f'shared-normal:{seed}:{name}:{i}'.encode()).digest()[:8],'big')
-                        shared[name]=np.random.default_rng(common_seed).normal(size=parameter.n_parameters)
-                aux = sample_auxiliary(model,pars,rng,policy=policy,shared_normals=shared)
-                data = np.r_[observation[active], aux]
-                toys.append({"toy": i, "observations": observation.tolist(), "auxiliary": aux.tolist(),
-                             "intervals": [profile_interval(model, data, level) for level in levels]})
+                        shared[name]=np.random.default_rng(common_seed).normal(size=n_parameters)
+                    aux = draw_auxiliary(rng,policy=policy,shared_normals=shared)
+                    data = np.r_[observation[active], aux]
+                    yield i, observation, aux, data
+            def fit(task):
+                i, observation, aux, data = task
+                row = {"toy": i, "observations": observation.tolist(), "auxiliary": aux.tolist(),
+                       "intervals": profile_intervals(model, data, levels)}
                 if mu == 0 and 'diagnostics' in p:
-                    toys[-1]['signed_mu_diagnostic'] = (
+                    row['signed_mu_diagnostic'] = (
                         signed_mu_fit(template, observation[active], p['diagnostics']['signed_mu'])
                         if stress_responses is None else
                         {'status':'not_supported_modeled_stress', 'muhat':None,
                          'reason':'Signed diagnostic fixes nominal templates; no stress/T1 nuisance profiling'})
+                return row
+            toys = list(ordered_map(fit, tasks(), workers=workers, worker_threads=worker_threads))
             if stress_responses is None:
-                asimov = run_asimov(template, protocol=p, layer=layer, t1_validation=t1_validation, injections=[mu])
+                asimov = run_asimov(template, protocol=p, layer=layer, t1_validation=t1_validation, injections=[mu], _built_model=(model,metadata))
             else:
                 expected=np.asarray(model.expected_data(pars),float)
-                intervals=[profile_interval(model,expected,level) for level in levels]
+                intervals=profile_intervals(model,expected,levels)
                 nominal_pars=list(pars)
                 nominal_pars[model.config.par_map[metadata['stress_nuisance']]['slice']]=[0.]
                 nominal_expected=np.asarray(model.expected_data(nominal_pars),float)
-                nominal_intervals=[profile_interval(model,nominal_expected,level) for level in levels]
+                nominal_intervals=profile_intervals(model,nominal_expected,levels)
                 asimov={**metadata,'status':'valid' if all(v['status']=='valid' for v in intervals+nominal_intervals) else 'inference_incomplete',
                     'expectation_kind':'modeled_artificial_stress_self_asimov',
                     'nuisance_truth':float(stress_direction),'results':[{'mu':float(mu),'intervals':intervals}],
@@ -201,18 +208,45 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
 
 
 def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *, layer,
-                      t1_validation, mu, seed, prepared_id, freeze_id):
+                      t1_validation, mu, seed, prepared_id, freeze_id, workers=1, worker_threads=1):
     """Refit mappings/thresholds jointly; transform both populations on frozen bins."""
     p = protocol_dict(protocol)
     cfg = p["inference"]
     if grid.get("status") != "valid" or not prepared_id or not freeze_id:
         raise ResearchError("T2 requires a frozen valid G1 grid and artifact identities")
 
+    # Only raw model/ME scores are invariant to bootstrap weights. Cache these
+    # for the exact three populations in this call, never mappings/thresholds.
+    score_cache = {}
+    cache_bytes = 0
+    for key, bundle in sorted(bundles.items()):
+        size = sum(8*len(f)+f.event_id.memory_usage(index=False,deep=True) for f in (calibration,template,mother))
+        if cache_bytes + size > 64*1024*1024:
+            break
+        tables = []
+        try:
+            for population in (calibration,template,mother):
+                if population.event_id.duplicated().any():
+                    raise ResearchError('T2 score cache requires unique event identities')
+                tables.append(pd.Series(_scores(bundle,population), index=population.event_id))
+        except ResearchError:
+            # Preserve the original per-replica error timing and seed consumption.
+            continue
+        score_cache[key] = pd.concat(tables)
+        if score_cache[key].index.duplicated().any():
+            raise ResearchError('T2 event identities cross populations')
+        cache_bytes += score_cache[key].memory_usage(index=True,deep=True)
+
+    def raw_scores(key, bundle, frame):
+        if key not in score_cache:
+            return _scores(bundle,frame)
+        return score_cache[key].loc[frame.event_id].to_numpy()
+
     def fit_mapping(bootstrap):
         fitted = {}
         for key, original in sorted(bundles.items()):
             bundle = deepcopy(original)
-            scores = _scores(bundle, bootstrap)
+            scores = raw_scores(key, bundle, bootstrap)
             mapping = None
             if bundle.get("mapping") is not None:
                 mapping = fit_calibration(bootstrap, scores, p, target=bundle["mapping"]["target"], model_id=bundle["model_id"])
@@ -226,7 +260,11 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
     def apply_mapping(mapping, frame):
         result = frame.copy()
         for i, (key, bundle) in enumerate(sorted(mapping["bundles"].items())):
-            result[f"_t2_category_{i}"] = categorize_bundle(bundle, frame).category.to_numpy()
+            scores = raw_scores(key,bundle,frame)
+            if bundle.get('mapping') is not None:
+                scores = apply_calibration(bundle['mapping'],frame.m4l.to_numpy(),scores,model_id=bundle['model_id'])
+            result[f"_t2_category_{i}"] = assign_categories(bundle['thresholds'],scores,
+                model_id=bundle['model_id'],mapping_id=bundle['mapping_id'])
         return result
 
     def evaluate(mapped_template, mapped_mother, mapping, inner_toys, inner_seed):
@@ -240,8 +278,9 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
             if built["status"] != "valid":
                 raise ResearchStateError("T2 template support fails on frozen grid", status="insufficient_statistics")
             templates[key] = built
+        bundle_keys = {id(bundle): key for key,bundle in fitted.items()}
         def categorize(bundle, frame):
-            key = next(k for k, b in fitted.items() if b is bundle)
+            key = bundle_keys[id(bundle)]
             return frame.assign(category=frame[category_lookup[key]])
         result = infer_assessment({"status": "valid", "mass_edges": grid["mass_edges"], "templates": templates}, fitted,
             mapped_mother, p, layer=layer, t1_validation=t1_validation, mu=mu, count=inner_toys, seed=inner_seed,
@@ -250,12 +289,13 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
 
     return run_t2_procedure(calibration, template, mother, fit_mapping=fit_mapping, apply_mapping=apply_mapping,
         evaluate=evaluate, outer_replicas=cfg["outer_replicas"], inner_toys=cfg["inner_toys"], seed=seed,
+        workers=workers, worker_threads=worker_threads,
         model_id=digest_json({k: b["model_id"] for k,b in bundles.items()}), mother_id=digest_json({"prepared_id":prepared_id,"freeze_id":freeze_id}))
 
 
 def run_assessment_stress(grid, bundles, mother, protocol, *, layer, t1_validation, mu,
                           count, seed, prepared_id, freeze_id, kind, direction,
-                          mode="omitted", reference_candidate=None,template_frame=None):
+                          mode="omitted", reference_candidate=None,template_frame=None,workers=1,worker_threads=1):
     """Frozen artificial mother variation shared by every candidate likelihood.
 
     Modeled fits derive response templates on the fixed template population;
@@ -301,7 +341,7 @@ def run_assessment_stress(grid, bundles, mother, protocol, *, layer, t1_validati
                                                  protocol=protocol,thresholds=protocol_dict(protocol)['templates'])
     results = infer_assessment(grid,bundles,varied,protocol,layer=layer,t1_validation=t1_validation,
         mu=mu,count=count,seed=seed,prepared_id=prepared_id,freeze_id=freeze_id,
-        stress_responses=responses,stress_direction=direction)
+        stress_responses=responses,stress_direction=direction,workers=workers,worker_threads=worker_threads)
     scenario = {"kind":kind,"direction":direction,"mode":mode,"reference_candidate":reference_candidate,
                 "reference_mapping_id":reference_id,"source":"artificial_pressure_not_physics_systematic",
                 'modeled_response_ids':{key:value['stress_id'] for key,value in responses.items()} if responses is not None else None}

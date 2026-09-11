@@ -61,11 +61,10 @@ def _moments(frame, scores, edges, target):
     if target == 'absolute':
         weights = np.abs(weights)
     bins = np.minimum(np.searchsorted(edges, scores, side='right')-1,len(edges)-2)
-    identities = pd.DataFrame(dict(group=frame.event_group_id.to_numpy(),bin=bins))
-    if not identities.empty and identities.groupby('group').bin.nunique().max() > 1:
+    grouped = pd.DataFrame(dict(group=frame.event_group_id.to_numpy(),bin=bins,w=weights)).groupby(['group','bin']).w.sum()
+    if grouped.index.get_level_values('group').duplicated().any():
         _state('same physical event group occupies multiple CDF score bins; covariance fit unvalidated',
                'template_stat_model_unvalidated')
-    grouped = pd.DataFrame(dict(group=frame.event_group_id.to_numpy(),bin=bins,w=weights)).groupby(['group','bin']).w.sum()
     y = np.zeros(len(edges)-1)
     v = np.zeros_like(y)
     multiplicity = (frame.groupby('event_group_id').bootstrap_multiplicity.first().to_dict()
@@ -73,8 +72,7 @@ def _moments(frame, scores, edges, target):
     for (group, b), w in grouped.items():
         y[b] += w
         v[b] += w*w / multiplicity.get(group,1)
-    group_weights = pd.Series(weights).groupby(frame.event_group_id).sum()
-    variance = float(sum(w*w / multiplicity.get(group,1) for group,w in group_weights.items()))
+    variance = float(sum(w*w / multiplicity.get(group,1) for (group,b),w in grouped.items()))
     total = float(weights.sum())
     neff = total*total/variance if variance > 0 else 0.
     cancellation = total / np.abs(weights).sum() if np.abs(weights).sum() else 0.
@@ -106,13 +104,19 @@ def fit_calibration(frame, scores, protocol, target='physical', model_id=None):
     if minimum <= 0 or not 0 < ratio <= 1:
         raise ResearchError('invalid calibration support thresholds')
     intervals = [[float(a),float(b)] for a,b in zip(mass_edges[:-1],mass_edges[1:])]
+    mass_bins = np.minimum(np.searchsorted(mass_edges, bg.m4l.to_numpy(), side='right')-1, len(mass_edges)-2)
+    members = [np.flatnonzero(mass_bins == i) for i in range(len(intervals))]
+    moments = {}
     merges = []
     while True:
         fitted, failing = [], None
         for i,(lo,hi) in enumerate(intervals):
-            mask = (bg.m4l.to_numpy() >= lo) & ((bg.m4l.to_numpy() < hi) | ((hi == mass_edges[-1]) & (bg.m4l.to_numpy() == hi)))
-            part = bg.loc[mask].reset_index(drop=True)
-            y,v,neff,cancel = _moments(part,score[mask],score_edges,target)
+            key = (lo, hi)
+            if key not in moments:
+                indices = members[i]
+                part = bg.iloc[indices].reset_index(drop=True)
+                moments[key] = _moments(part,score[indices],score_edges,target)
+            y,v,neff,cancel = moments[key]
             if y.sum() <= 0 or neff < minimum or cancel < ratio:
                 failing = i
                 break
@@ -125,6 +129,7 @@ def fit_calibration(frame, scores, protocol, target='physical', model_id=None):
         left = failing if failing < len(intervals)-1 else failing-1
         merges.append([*intervals[left],*intervals[left+1]])
         intervals[left:left+2] = [[intervals[left][0],intervals[left+1][1]]]
+        members[left:left+2] = [np.sort(np.concatenate(members[left:left+2]))]
     final_mass_bin=np.searchsorted([bounds[1] for bounds in intervals[:-1]],bg.m4l.to_numpy(),side='right')
     if pd.DataFrame(dict(group=bg.event_group_id,bin=final_mass_bin)).groupby('group').bin.nunique().max()>1:
         _state('physical event group crosses fitted mass slices; covariance unvalidated', 'template_stat_model_unvalidated')
@@ -148,9 +153,25 @@ def apply_calibration(mapping, masses, scores, *, model_id=None):
     if ((m < mapping['mass_support'][0]) | (m > mapping['mass_support'][1])).any():
         _state('mass outside frozen CDF support','outside_calibration_support')
     centers = np.array([s['center'] for s in mapping['slices']])
-    cdfs = np.array([np.interp(t,mapping['score_edges'],np.r_[0,np.cumsum(s['probabilities'])],left=0,right=1) for s in mapping['slices']])
-    # Same-score ties always receive the same value at a given mass, including endpoints.
-    return np.array([np.interp(m[i],centers,cdfs[:,i]) for i in range(len(m))])
+    output = np.empty_like(m)
+    # Bound scratch storage independently of the total event count.
+    chunk_size = max(1, (8 * 1024 * 1024) // (8 * len(centers)))
+    curves = [np.r_[0,np.cumsum(s['probabilities'])] for s in mapping['slices']]
+    for start in range(0, len(m), chunk_size):
+        stop = min(start + chunk_size, len(m))
+        cdfs = np.array([np.interp(t[start:stop],mapping['score_edges'],curve,left=0,right=1) for curve in curves])
+        masses = m[start:stop]
+        right = np.clip(np.searchsorted(centers, masses, side='right'), 1, max(1,len(centers)-1))
+        if len(centers) == 1:
+            output[start:stop] = cdfs[0]
+            continue
+        left = right-1
+        rows = np.arange(stop-start)
+        low, high = cdfs[left,rows], cdfs[right,rows]
+        result = low + (high-low)/(centers[right]-centers[left])*(masses-centers[left])
+        result = np.where(masses <= centers[0], cdfs[0], result)
+        output[start:stop] = np.where(masses >= centers[-1], cdfs[-1], result)
+    return output
 
 
 def fit_thresholds(frame, scores, protocol, *, model_id, mapping_id):
