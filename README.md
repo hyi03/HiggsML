@@ -96,11 +96,13 @@ python -m pip check
 不得把这一例外用于历史模型或真实数据。
 
 以下命令均从仓库的 `neural/` 目录执行。`runs/<名称>` 只是命名示例；成功、科学终态或失败的
-run 均不可覆盖，重跑时必须更换目录名。
+run 均不可覆盖，重跑时必须更换目录名。只有明确使用 `--clean` 删除对应产物后，才能重新使用
+同一目录名。
 
 三个跨平台 Python 脚本覆盖完整流程：`scripts/h4l_prepare.py` 自动生成绑定输入和 P0/T1 验证，
 只执行 audit 和 ROOT prepare；`scripts/h4l_g1.py` 从可复用的 prepared artifact 执行前置 G1；
-`scripts/h4l_run.py` 执行单个 seed 的 A、B、C、D 全组合研究。默认 v1 协议不打开 assessment 或
+`scripts/h4l_run.py` 默认执行 seed 42–46 的完整 A、B、C、D 全组合研究；显式传入 `--seed N`
+时保留单 seed 诊断模式。默认 v1 协议不打开 assessment 或
 历史 held-out test。若显式选择新的 exploratory all-MC 协议，则会使用全部 MC，不能再把结果解释为
 对历史 held-out test 的独立验证。
 
@@ -109,6 +111,21 @@ run 均不可覆盖，重跑时必须更换目录名。
 无需重复填写 prepared、T1、gate 和 output 路径。运行名只能包含 1–64 个字母、数字、下划线或
 连字符，并且必须以字母或数字开头。原有显式路径参数继续保留，用于兼容和失败后的局部重试，
 但不能与 `--run-name` 混用。
+
+三个脚本都支持 `--clean` 清理其对应的生成目录。清理模式不读取数据、不校验协议或上游产物，
+也不会执行研究阶段；不能与 `--plan-only` 同时使用：
+
+```bash
+python scripts/h4l_prepare.py --run-name 001 --clean
+python scripts/h4l_g1.py --run-name 001 --clean
+python scripts/h4l_run.py --run-name 001 --clean
+python scripts/h4l_run.py --run-name 001 --seed 42 --clean
+```
+
+共享 run name 时，prepare 只删除 `inputs`、`audit`、`prepare`，G1 只删除 `g1`；run 默认删除
+`batch/all-seeds`，指定 `--seed N` 时只删除 `batch/seedN`。显式路径模式下，prepare 使用
+`--run-root`，G1 和 run 使用 `--output-root`。清理目标必须是 `neural/runs/` 下的真实目录，
+根目录、文件、符号链接和目录外路径都会被拒绝。
 
 ### 2.1 安装研究依赖
 
@@ -133,9 +150,9 @@ python scripts/h4l_prepare.py --run-name 001
 ```
 
 脚本把三个绑定文件保存在 `<run-root>/inputs/`，prepared artifact 保存在 `<run-root>/prepare`，
-成功后打印可直接执行的 `Next G1 command`。正式执行时会在标准错误流显示 `H4l prepare`
-总进度条，共 2 个阶段。进度条后缀显示当前阶段；只有当前子命令成功结束后才推进，任一步失败
-仍保留原始错误信息和退出码。长时间运行的子命令会在同一行持续增加 `.`，用于确认进程仍存活。
+成功后打印可直接执行的 `Next G1 command`。ROOT prepare 阶段在标准错误流显示事件进度，包含
+已处理事件数和入选事件数；`--no-progress` 可关闭该进度显示。只有当前子命令成功结束后才推进，
+任一步失败仍保留原始错误信息和退出码。
 `events.jsonl` 在写入时同步计算 SHA256 和大小，prepare 发布时不再为登记和发布校验重复完整读盘；
 后续阶段读取 prepared artifact 时仍按 manifest 校验摘要。
 
@@ -262,24 +279,21 @@ train、validation、calibration、template、assessment 角色。内部 assessm
 python scripts/h4l_run.py --run-name 001
 ```
 
-研究 CLI 会校验协议、数据总体和前置 gate 绑定。脚本接受 seed 42–46，每个 seed 和每次重跑均须
-使用新的 `OUTPUT_ROOT`，且该目录必须位于 `neural/runs/` 下。
+研究 CLI 会校验协议、数据总体和前置 gate 绑定。未指定 `--seed` 时执行完整的 42–46 五种子流程；
+每个 seed 和每次重跑均须使用新的输出目录，且该目录必须位于 `neural/runs/` 下。显式传入
+`--seed N` 时只执行单 seed 诊断流程，不足以完成五种子 M4/M5 主比较。
 
-正式执行时会在标准错误流显示 `H4l batch seed <seed>` 总进度条，共 35 个阶段：16 次训练、
-16 次校准、templates、infer 和 report。进度条后缀显示当前基线、特征组合或收尾阶段；只有子命令
-成功结束后才推进。长时间运行的子命令会在同一行持续增加 `.`，即使终端无法绘制动态进度条，
-也能确认进程仍在运行。`--plan-only` 不显示动态进度条；在 CI 或需要纯文本日志时，可在批次命令
-末尾追加 `--no-progress`，执行内容和科学门禁不变。
+完整模式的进度条覆盖整个工作流，共 193 个阶段：90 次训练、100 次校准，以及一次共同
+templates、一次共同 T1 inference 和一次 report。五个 seed 的校准产物进入同一个 templates，
+共享质量网格和 T1 cohort；`--plan-only` 只打印计划、不创建 run，`--no-progress` 可关闭动态进度。
 
-| 阶段 | 数量 | 子命令与对象 | 输出目录 | 作用 |
+| 阶段 | 完整模式数量 | 子命令与对象 | 输出目录 | 作用 |
 |---:|---:|---|---|---|
-| 1 | 1 | `train M0c baseline` | `<output-root>/train/empty` | 使用当前 seed 重新训练只输入 `m4l` 的 M0c（1 维），作为本批次同流程、同总体的空集基线；执行前校验 prepared run 与前置 G1 gate 的绑定。 |
-| 2 | 1 | `calibrate M0c baseline` | `<output-root>/calibrate/empty` | 保留 M0c 原始分数，并只在 calibration 角色上拟合冻结阈值；该结果代表不含 A/B/C/D 工程特征的空集价值。 |
-| 3、5、…、31 | 15 | `train groups <组合>` | `<output-root>/train/groups-<组合>` | 分别训练 `A`、`B`、`C`、`D`、`AB`、`AC`、`AD`、`BC`、`BD`、`CD`、`ABC`、`ABD`、`ACD`、`BCD`、`ABCD`；每个 M3 子模型只使用指定的 engineered19 特征组，并共同额外输入 `m4l`。 |
-| 4、6、…、32 | 15 | `calibrate groups <组合>` | `<output-root>/calibrate/groups-<组合>` | 对紧邻的组合模型保留 raw 分数，并在相同 calibration 角色上独立拟合冻结阈值，使 15 个组合与 M0c 基线采用一致的后处理流程。 |
-| 33 | 1 | `templates` | `<output-root>/templates` | 汇总 M0c 和 15 个组合的 calibration run，在所有候选共享的质量网格上构建模板并绑定已验证的 T1 有限模板 MC 统计模型；统计不足时采用共同合箱，不能为单个组合单独优化网格。 |
-| 34 | 1 | `infer T1` | `<output-root>/inference` | 在共同 T1 模板模型下对 16 个候选执行 `mu=1` 的 model-self Asimov 推断，得到可比较的预期信号强度区间。 |
-| 35 | 1 | `report` | `<output-root>/report` | 汇总同一 seed 的 16 个推断结果，核对组合是否完整，并以 M0c 为空集计算 A/B/C/D 的精确 Shapley 贡献；任一组合缺失或无效时不得用零填补。 |
+| 1–90 | 90 | 每个 seed 执行 `train M0c`、`train M2`、普通 `train M3` 和 15 个 `train groups <组合>` | `<output-root>/seed<seed>/train/...` | 对 seed 42–46 分别训练 M0c、M2、普通 M3 和 `A`、`B`、`C`、`D`、`AB`、`AC`、`AD`、`BC`、`BD`、`CD`、`ABC`、`ABD`、`ACD`、`BCD`、`ABCD`；组合模型只使用指定的 engineered19 特征组，并共同输入 `m4l`。 |
+| 91–190 | 100 | 每个 seed 执行 M0c raw、M2 raw、M2 physical、M3 raw、M3 physical，以及 15 个 `calibrate groups <组合>` | `<output-root>/seed<seed>/calibrate/...` | 生成 raw 分数和 M4/M5 physical CDF；所有候选在各自 seed 的相同 calibration 角色上独立拟合冻结阈值。 |
+| 191 | 1 | `templates` | `<output-root>/templates` | 汇总五个 seed 的全部校准产物，在所有候选共享的质量网格上构建模板，并绑定同一 T1 有限模板 MC 统计模型；统计不足时采用共同合箱。 |
+| 192 | 1 | `infer T1` | `<output-root>/inference` | 在共同 T1 模板模型下，对五个 seed 的候选执行 `mu=1` 的 model-self Asimov 推断，保持同一 population、质量网格和 T1 cohort。 |
+| 193 | 1 | `report` | `<output-root>/report` | 汇总逐 seed 的 16 值组合比较、跨 seed 配对中位数、最佳组合、组级 Shapley、二阶交互和 M4/M5 主比较；缺失或无效 seed 不得用零填补。 |
 
 其中，A 为 4 个轻子的 `pt`/`eta`（8 项），B 为 `mZ1`、`mZ2`、`deltaR_Z1`、
 `deltaR_Z2`（4 项），C 为 `pt4l`、`deltaPhi_ZZ`（2 项），D 为 5 个产生与衰变角变量；
@@ -287,39 +301,43 @@ python scripts/h4l_run.py --run-name 001
 
 ### 2.5 查看和检查结果
 
-批次共执行 16 次训练：15 个非空组合和 1 个 M0c 空集基线。批次输出固定在
-`<run-root>/batch/seed42/`。`h4l_run.py` 会在结束前读取 `report/report.json`，确认完整组合比较的
-状态、数量和 seed；检查通过后打印 `report/report.md` 的实际路径，无需再执行额外检查命令。
+完整批次输出固定在 `<run-root>/batch/all-seeds/`，各 seed 位于其下的 `seed42/` 至 `seed46/`；
+`templates`、`inference` 和 `report` 位于共同根目录。`h4l_run.py` 会在结束前读取
+`report/report.json`，确认五个 seed 的组合汇总和 M4/M5 主比较均有效；检查通过后打印
+`report/report.md` 的实际路径，无需再执行额外检查命令。显式 `--seed 42` 的诊断输出则位于
+`<run-root>/batch/seed42/`，并明确标记为尚未完成五种子主比较。
 
 查看 Markdown 报告：
 
 ```bash
 python -c "import sys; from pathlib import Path; print(Path(sys.argv[1]).read_text(encoding='utf-8'))" \
-  runs/h4l-feature-combinations-prerequisites-001/batch/seed42/report/report.md
+  runs/h4l-feature-combinations-prerequisites-001/batch/all-seeds/report/report.md
 ```
 
 检查 JSON 中的完整组合比较状态，并输出该项结果：
 
 ```bash
-python -c "import json,sys; from pathlib import Path; r=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8')); expected=int(sys.argv[2]); c=r.get('feature_combination_comparisons', []); assert len(c)==1 and c[0].get('status')=='valid' and c[0].get('seed')==expected, c; print(json.dumps(c[0], indent=2, ensure_ascii=False))" \
-  runs/h4l-feature-combinations-prerequisites-001/batch/seed42/report/report.json 42
+python -c "import json,sys; from pathlib import Path; r=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8')); assert r.get('feature_combination_summary',{}).get('status')=='valid', r.get('feature_combination_summary'); assert r.get('primary_comparison',{}).get('status')=='valid', r.get('primary_comparison'); print(json.dumps({'summary':r['feature_combination_summary'],'primary_comparison':r['primary_comparison']}, indent=2, ensure_ascii=False))" \
+  runs/h4l-feature-combinations-prerequisites-001/batch/all-seeds/report/report.json
 ```
 
-只有 16 个同总体、同网格、T1、μ=1 的结果全部有效时，报告才生成有效 Shapley；缺失或失败组合
-不会用零值替代。软件命令成功也不等于完成了原生 ARM64 权威验收或独立科学数值验证。
+只有五个 seed 的 16 值组合比较均使用同总体、同网格、T1、μ=1 且全部有效时，报告才计算跨 seed
+中位数、最佳组合、有效 Shapley、二阶交互和 M4/M5 主比较；缺失或失败 seed/组合不会用零值替代。
+软件命令成功也不等于完成了原生 ARM64 权威验收或独立科学数值验证。
 
 ### 2.6 完整执行顺序核对
 
 一次正式运行应严格按以下依赖顺序完成：
 
 1. 在 `neural/` 中激活 `pytorch`，安装并检查研究依赖。
-2. 为本次运行选择一个尚未使用的 `--run-name`；本章使用 `001`，默认 seed 为 42。
+2. 为本次运行选择一个尚未使用的 `--run-name`；本章使用 `001`，默认执行 seed 42–46。
 3. 使用该 `--run-name` 执行不带 `--diagnostic-entries-per-file` 的 `h4l_prepare.py`。
 4. 确认 `<run-root>/prepare/manifest.json` 的 stage/status 为 `prepare/complete`。
 5. 使用相同的 `--run-name` 执行 `h4l_g1.py`，输入只能是第 4 步确认过的 prepared run。
 6. 确认 `<run-root>/g1/templates/g1.json` 的 status 为 `passed`。
 7. 使用相同的 `--run-name` 执行 `h4l_run.py`；脚本自动保持 prepared、gate、T1 和输出路径一致。
-8. 检查 `report.json` 的组合比较为 `valid`，且 seed 与本次运行一致。
+8. 检查 `report.json` 的 `feature_combination_summary.status` 和 `primary_comparison.status` 均为
+   `valid`，并确认报告包含五个 seed 的逐 seed 结果、跨 seed 中位数、最佳组合、Shapley 和交互项。
 
 任一步失败后，不得覆盖失败目录；保留原始证据，改用一个尚不存在的新固定目录名，或按
 对应小节仅更换允许重试的下游输出目录。性能诊断 run、synthetic 测试 run、Windows 软件检查和
