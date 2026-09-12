@@ -27,5 +27,6 @@
 - [`research-software-design.md`](research-software-design.md)：从当前 legacy15 流程扩展到 H4l 研究软件的规划方案。
 - [`research-performance-refactor-design.md`](research-performance-refactor-design.md)：研究模块循环热点、性能重构设计、科学一致性验收与分阶段交付方案。
 - [`research-performance-refactor-implementation.md`](research-performance-refactor-implementation.md)：重构实现、资源接口、合成验证记录与尚未完成的 ROOT/权威平台验收。
+- [`h4l-compact-kinematics-sample-efficiency-development-plan.md`](h4l-compact-kinematics-sample-efficiency-development-plan.md)：紧凑运动学表示、训练事件组学习曲线、配对不确定性与独立非劣性确认的代码开发方案。
 
 本项目严格 MC-only，仅为 educational/technical demo，不构成 ATLAS 结果、Higgs discovery 或物理测量。
