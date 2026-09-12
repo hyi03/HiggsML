@@ -201,7 +201,12 @@ def freeze_compact_candidate(metadata, *, groups, base_protocol):
 
 
 def _fractions(value, name, *, minimum_length=1):
-    _ordered_list(value, name, lambda x, n: _number(x, n, maximum=1), minimum_length=minimum_length)
+    def check_fraction(item, item_name):
+        if type(item) is not float:
+            raise ResearchError(f"{item_name} entries must be JSON floats")
+        _number(item, item_name, maximum=1)
+
+    _ordered_list(value, name, check_fraction, minimum_length=minimum_length)
 
 
 def _control_points(control, grid, name):

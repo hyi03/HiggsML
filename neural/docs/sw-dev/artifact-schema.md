@@ -125,3 +125,15 @@ M1 额外拒绝把 freeze payload SHA 同时用作 freeze artifact ID，即使�
 无 freeze 时抛 `ResearchError(status="compact_candidate_not_frozen")`，exit_code=3；其他 schema/binding 失败也是输入错误。M1 不发布科学终态；未知异常仍由未来 CLI 映射。旧 `research-run-v1`、ResearchProtocol v1/v2/v3、`research-discriminant-v1` 不变，未来 subset/model v2/report/confirmation payload 尚未实现。
 
 证据范围仅为 Windows synthetic 软件验证。Repository ARM64 authority、完整 ROOT 与 scientific numerical validation 均需后续独立证据。
+
+## 8. 训练子集计划
+
+**已实现并通过synthetic验证。** `training-subsets` research run绑定base ResearchProtocol、SampleEfficiencyProtocol snapshot、prepared和compact-freeze两个上游。读取器先验证manifest及每个文件receipt，再重算identity、population、成员资格、摘要、subset/alias ID和ledger。
+
+| 文件 | Schema | 内容 |
+|---|---|---|
+| `training-subsets.json` | `h4l-training-subset-plan-v1` | 双协议/freeze/prepared/population绑定、identity digest、去重subset及逐类和总计的组级权重摘要 |
+| `training-subset-membership.jsonl` | header `h4l-training-subset-membership-v1` | canonical排序的draw/full、fraction、label、event_group_id；full成员只发布一次 |
+| `training-subset-ledger.json` | `h4l-training-subset-ledger-v1` | 每个原始draw/fraction alias、共享full subset、planned或低统计终态 |
+
+prepared events采用两阶段读取：所有 public API 从路径重新执行 `read_run` 并验证整文件receipt，再按 base protocol 精确验证split、全部identity、`event_id`/`source_row_id`唯一性，随后只解码train payload的weight/m4l用于摘要。其他角色、尤其assessment payload永不解码。membership reader要求拒绝重复键并逐行验证canonical JSON bytes；fraction端点固定为JSON float `1.0`。`training_subset_insufficient_statistics`保留为complete计划内cell状态；输入非有限、身份、receipt或重算不一致为`training_subset_binding_mismatch`。本阶段不训练模型。
