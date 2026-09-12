@@ -1,0 +1,14 @@
+{
+  "schema_version": "h4l-sample-efficiency-report-config-v1",
+  "dataset": "atlas2020_4lep",
+  "protocol": "config/research_protocol_v2.json",
+  "sample_efficiency_protocol": "runs/example/sample-efficiency-protocol.json",
+  "prepared_run": "runs/example/prepare",
+  "compact_freeze_run": "runs/example/compact-freeze",
+  "training_subsets_run": "runs/example/training-subsets",
+  "gate_run": "runs/example/templates",
+  "t1_validation": "REPLACE_WITH_RECEIPT_BOUND_VALIDATED_T1_EVIDENCE.json",
+  "batch_run": "runs/sample-efficiency-example",
+  "output_root": "runs",
+  "output_name": "sample-efficiency-report-example"
+}
