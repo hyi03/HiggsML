@@ -25,8 +25,16 @@ def _filename(name: str) -> str:
 
 
 def read_json(path: Path) -> Any:
+    def strict_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON key: {key}")
+            result[key] = value
+        return result
     try:
         return json.loads(path.read_text(encoding="utf-8"),
+                          object_pairs_hook=strict_object,
                           parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
     except (OSError, ValueError) as error:
         raise ResearchError(f"invalid JSON artifact: {path.name}") from error
