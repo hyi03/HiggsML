@@ -8,6 +8,7 @@
 
 - [科研文档索引](research/README.md)
 - [H→ZZ*→4ℓ 最新研究方案](research/H4l-Research-Project.md)
+- [H→ZZ*→4ℓ 紧凑运动学表示与样本效率课题](research/H4l-Compact-Kinematics-Sample-Efficiency.md)
 - [数据预处理科研协议](research/preprocess-protocol.md)
 - [Adversarial MLP 科研协议](research/adversarial-mlp-protocol.md)
 - [Development 科研协议](research/development-protocol.md)
@@ -28,3 +29,4 @@
 - [训练与评价设计](sw-dev/training-and-evaluation-design.md)
 - [Artifact 契约](sw-dev/artifact-schema.md)
 - [H4l 研究软件方案](sw-dev/research-software-design.md)
+- [H4l 紧凑运动学表示与样本效率开发方案](sw-dev/h4l-compact-kinematics-sample-efficiency-development-plan.md)
