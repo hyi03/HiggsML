@@ -151,3 +151,20 @@ prepared events采用两阶段读取：所有 public API 从路径重新执行 `
 `experiment_cell_id`的canonical SHA-256 preimage为 `[overlay_digest,training_subset_artifact_id,subset_id,representation_id,fraction,draw_or_full,network_seed,"raw",architecture_variant]`；`pairing_id`去掉representation字段。因此同一数据/网络/架构的三表示共享pairing ID，experiment cell互不冲突。M3仅开放基线架构、raw calibration、普通template和model-self Asimov；CDF/absolute、capacity、assessment/mismatch及sample-efficiency confirmation在M6前保持关闭。旧`train_discriminant()`与`research-discriminant-v1`读取路径不变。
 
 可信 v2 计算接口不接受裸 `model.json` 或调用方构造的 lineage。`read_subset_discriminant_run()` 返回不可由普通构造函数伪造的 `LoadedSubsetDiscriminant`；v2 预测、校准和模板构建均消费该 handle并重新检查model receipt。raw calibration由绑定prepared run的calibration role内部生成，作为不可变 `RawCalibrationBundle` 返回；其`calibration_id`覆盖完整model、threshold、lineage和校准元数据。template同样从绑定prepared run的template role内部生成，`template_id`覆盖lineage；model-self result的`result_id`覆盖lineage。带sample-efficiency lineage的template若省略可信lineage，或进入toy/assessment/mismatch入口，会在模型构建、RNG和assessment payload访问前以`training_subset_binding_mismatch`拒绝。
+
+## 10. 学习曲线批处理
+
+M4以已发布且完整重验的`training-subsets`为前置，`sample-efficiency-plan` run先封存科学/执行计划。scientific batch ID不含路径或资源；execution plan ID另绑定resolved output与resources。full draw aliases只保留一个canonical cell，原alias数量仍记录在summary。
+
+| Stage | 文件 | Schema | 关键绑定 |
+|---|---|---|---|
+| `sample-efficiency-plan` | `batch-plan.json` | `h4l-sample-efficiency-batch-plan-v1` | prepared、compact-freeze、training-subsets、旧G1 gate及T1 snapshot digest |
+| `sample-efficiency-calibration` | `calibration.json` | `h4l-sample-efficiency-calibration-v1` | sealed plan、prepared、v2 model及M3 raw calibration lineage/digest |
+| `sample-efficiency-common-grid` | `common-grid.json` | `h4l-sample-efficiency-common-grid-v1` | sealed plan、subsets和全部且仅calibration-success runs；participant集合、merge history、edges和grid ID可重算 |
+| `sample-efficiency-template` | `template.json` | `h4l-sample-efficiency-template-v1` | 自己的raw calibration、共同grid、prepared和lineage |
+| `sample-efficiency-inference` | `inference.json` | `h4l-sample-efficiency-inference-v1` | 共同grid、template、T1 evidence SHA、μ=1 model-self result及固定W68/AUC pointer |
+| `sample-efficiency-batch` | `batch-ledger.json`,`batch-summary.json` | `h4l-sample-efficiency-batch-ledger-v1`,`h4l-sample-efficiency-batch-summary-v1` | 全部planned canonical cell、已发布stage facts、terminal/blocked stage、四项计数和所有直接run upstream |
+
+校准行的 schema 为 `h4l-sample-efficiency-calibration-v1`；其envelope digest覆盖M3 `RawCalibrationBundle`。所有stage reader先重验manifest/file receipts和严格upstream path/multiplicity，再重放M3 calibration、共同grid、template及固定T1 Asimov计算。科学terminal保留已发布stage ID并将后续stage列入blocked；全部cell被complete或允许terminal解释时，外层manifest仍为complete，payload `batch_status`区分`complete`与`scientific_terminal`。binding、重复、缺失或未知错误不产生M5可消费ledger。
+
+`--plan-only`不写目录、不训练且不构建pyhf/RNG；它会调用M2 reader，并可能只为重验M2摘要而重新解码verified MC train payload，绝不访问assessment/test。M4固定`workers=1`。`--clean`只可在任何research run或failure evidence产生前删除exclusive ownership marker与空staging；partial、failed、complete、link/reparse或含未知内容的目标保持不可变并拒绝清理。

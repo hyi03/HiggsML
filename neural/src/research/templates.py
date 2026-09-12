@@ -155,18 +155,28 @@ def build_sample_efficiency_template(prepared, loaded, calibration_bundle, proto
     from .sample_efficiency_lineage import bind_experiment_lineage
     from .sample_efficiency_training import load_bound_prepared_role, predict_subset_discriminant
 
-    calibration_bundle = require_raw_calibration_bundle(calibration_bundle, loaded)
+    frame = prepare_sample_efficiency_template_frame(prepared, loaded, calibration_bundle, protocol)
     calibration = calibration_bundle.to_dict()
-    frame = load_bound_prepared_role(prepared, loaded, protocol, "template")
-    scores = predict_subset_discriminant(loaded, frame)
-    frame["category"] = assign_categories(calibration["thresholds"], scores,
-        model_id=calibration["model_id"], mapping_id=calibration["mapping_id"])
     template = build_templates(frame, mass_edges=mass_edges, mapping_id=calibration["mapping_id"],
         candidate_id=calibration["candidate_id"], categories=categories,
         thresholds=protocol["templates"])
     result = bind_experiment_lineage(template, loaded.lineage)
     result["template_id"] = digest_json(result)
     return result
+
+
+def prepare_sample_efficiency_template_frame(prepared, loaded, calibration_bundle, protocol):
+    """Return the receipt-bound template role categorized by one trusted raw model."""
+    from .calibration import assign_categories, require_raw_calibration_bundle
+    from .sample_efficiency_training import load_bound_prepared_role, predict_subset_discriminant
+
+    calibration_bundle = require_raw_calibration_bundle(calibration_bundle, loaded)
+    calibration = calibration_bundle.to_dict()
+    frame = load_bound_prepared_role(prepared, loaded, protocol, "template")
+    scores = predict_subset_discriminant(loaded, frame)
+    frame["category"] = assign_categories(calibration["thresholds"], scores,
+        model_id=calibration["model_id"], mapping_id=calibration["mapping_id"])
+    return frame
 
 
 def require_template_lineage(template, experiment_lineage):
