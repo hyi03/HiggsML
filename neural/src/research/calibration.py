@@ -1,12 +1,17 @@
 """Frozen conditional CDFs with variance-weighted nonnegative signed fits."""
 from __future__ import annotations
 
+from dataclasses import dataclass
+import json
 import numpy as np
 import pandas as pd
 
 from .errors import ResearchError, ResearchStateError
 from .discriminants import digest, _validate_frame
-from .protocol import protocol_dict
+from .protocol import canonical, protocol_dict
+
+
+_RAW_CALIBRATION_TOKEN = object()
 
 
 def _state(message, status='insufficient_statistics'):
@@ -220,3 +225,79 @@ def bootstrap_calibration(frame, seed):
         if column in out:
             out[column]=out[column]*out.bootstrap_multiplicity
     return out.reset_index(drop=True)
+
+
+@dataclass(frozen=True, init=False)
+class RawCalibrationBundle:
+    payload: bytes
+    _capability: object
+
+    def __init__(self, raw, *, _token=None):
+        if _token is not _RAW_CALIBRATION_TOKEN:
+            raise ResearchError("raw calibration must come from its verified builder",
+                                status="training_subset_binding_mismatch")
+        object.__setattr__(self, "payload", canonical(raw))
+        object.__setattr__(self, "_capability", _RAW_CALIBRATION_TOKEN)
+
+    def to_dict(self):
+        return json.loads(self.payload)
+
+    def __getitem__(self, key):
+        return self.to_dict()[key]
+
+    def get(self, key, default=None):
+        return self.to_dict().get(key, default)
+
+
+def require_raw_calibration_bundle(bundle, loaded):
+    from .sample_efficiency_lineage import require_experiment_lineage
+    from .sample_efficiency_training import require_loaded_subset_discriminant
+
+    loaded = require_loaded_subset_discriminant(loaded)
+    if (not isinstance(bundle, RawCalibrationBundle)
+            or getattr(bundle, "_capability", None) is not _RAW_CALIBRATION_TOKEN):
+        raise ResearchError("verified raw calibration bundle is required",
+                            status="training_subset_binding_mismatch")
+    raw = bundle.to_dict()
+    expected = {"model", "model_id", "candidate_id", "seed", "key", "mapping", "mapping_id",
+                "thresholds", "transform", "status", "experiment_lineage", "calibration_id"}
+    if set(raw) != expected:
+        raise ResearchError("invalid raw calibration schema", status="training_subset_binding_mismatch")
+    require_experiment_lineage(raw, loaded.lineage)
+    content = {key: value for key, value in raw.items() if key != "calibration_id"}
+    thresholds = raw.get("thresholds")
+    threshold_content = ({key: value for key, value in thresholds.items() if key != "threshold_id"}
+                         if type(thresholds) is dict else None)
+    if (raw["calibration_id"] != digest(content) or raw["model"] != loaded.model
+            or raw["model_id"] != loaded.model["model_id"]
+            or raw["candidate_id"] != loaded.model["candidate"]
+            or raw["seed"] != loaded.model["seed"] or raw["key"] != loaded.model["experiment_cell_id"]
+            or raw["mapping"] is not None or raw["mapping_id"] != "raw:" + loaded.model["model_id"]
+            or raw["transform"] != "raw" or raw["status"] != "calibrated"
+            or threshold_content is None or thresholds.get("threshold_id") != digest(threshold_content)
+            or thresholds.get("model_id") != raw["model_id"]
+            or thresholds.get("mapping_id") != raw["mapping_id"]):
+        raise ResearchError("raw calibration binding mismatch", status="training_subset_binding_mismatch")
+    return bundle
+
+
+def build_raw_calibration_bundle(prepared, loaded, protocol, *, transform="raw"):
+    """Build the M3 raw bundle; sample-efficiency CDF paths remain closed."""
+    from .sample_efficiency_training import load_bound_prepared_role, predict_subset_discriminant
+    from .sample_efficiency_lineage import bind_experiment_lineage
+
+    if transform != "raw":
+        raise ResearchError("sample-efficiency calibration supports bound raw models only",
+                            status="training_subset_binding_mismatch")
+    frame = load_bound_prepared_role(prepared, loaded, protocol, "calibration")
+    scores = predict_subset_discriminant(loaded, frame)
+    model = loaded.model
+    mapping_id = "raw:" + model["model_id"]
+    thresholds = fit_thresholds(frame, scores, protocol, model_id=model["model_id"], mapping_id=mapping_id)
+    payload = {"model": model, "model_id": model["model_id"], "candidate_id": model["candidate"],
+               "seed": model["seed"], "key": model["experiment_cell_id"], "mapping": None,
+               "mapping_id": mapping_id, "thresholds": thresholds, "transform": "raw", "status": "calibrated"}
+    payload = bind_experiment_lineage(payload, loaded.lineage)
+    payload["calibration_id"] = digest(payload)
+    bundle = RawCalibrationBundle(payload, _token=_RAW_CALIBRATION_TOKEN)
+    return require_raw_calibration_bundle(bundle, loaded)

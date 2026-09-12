@@ -9,7 +9,8 @@ from .artifacts import digest_json
 from .calibration import apply_calibration, assign_categories, fit_calibration, fit_thresholds
 from .discriminants import predict_discriminant
 from .errors import ResearchError, ResearchStateError
-from .inference import build_model, paired_event_toys, profile_interval, profile_intervals, run_asimov, run_t2_procedure, stress_weights
+from .inference import (build_model, paired_event_toys, profile_interval, profile_intervals,
+                        reject_sample_efficiency_assessment, run_asimov, run_t2_procedure, stress_weights)
 from .protocol import protocol_dict
 from .resources import ordered_map
 from .diagnostics import signed_mu_fit, signed_mu_summary
@@ -19,6 +20,7 @@ from .stress import build_stress_templates,build_stress_model,sample_auxiliary,a
 
 
 def _scores(bundle, frame):
+    reject_sample_efficiency_assessment(bundle)
     if bundle.get("model") is not None:
         return predict_discriminant(bundle["model"], frame)
     lookup = {r["event_id"]: r["me_score"] for r in bundle["me_scores"]}
@@ -28,6 +30,7 @@ def _scores(bundle, frame):
 
 
 def categorize_bundle(bundle, frame):
+    reject_sample_efficiency_assessment(bundle)
     scores = _scores(bundle, frame)
     if bundle.get("mapping") is not None:
         scores = apply_calibration(bundle["mapping"], frame.m4l.to_numpy(), scores, model_id=bundle["model_id"])
@@ -38,6 +41,7 @@ def categorize_bundle(bundle, frame):
 
 
 def _joint_mother(grid, bundles, mother, protocol, categorize):
+    reject_sample_efficiency_assessment(grid, bundles)
     if mother.empty or set(mother.role) != {"assessment"} or set(mother.dataset) != {protocol["dataset"]}:
         raise ResearchError("identified nonempty assessment mother required")
     if not mother.label.isin([0, 1]).all() or not np.isfinite(mother[["m4l", "yield_weight"]].to_numpy(float)).all():
@@ -101,6 +105,7 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
     Root verifies the immutable freeze artifact before granting mother access.
     This service binds those artifact identities and never adapts the mass grid.
     """
+    reject_sample_efficiency_assessment(grid, bundles)
     p = protocol_dict(protocol)
     cfg = p["inference"]
     if not prepared_id or not freeze_id or grid.get("status") != "valid":
@@ -210,6 +215,7 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
 def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *, layer,
                       t1_validation, mu, seed, prepared_id, freeze_id, workers=1, worker_threads=1):
     """Refit mappings/thresholds jointly; transform both populations on frozen bins."""
+    reject_sample_efficiency_assessment(grid, bundles)
     p = protocol_dict(protocol)
     cfg = p["inference"]
     if grid.get("status") != "valid" or not prepared_id or not freeze_id:
@@ -301,6 +307,7 @@ def run_assessment_stress(grid, bundles, mother, protocol, *, layer, t1_validati
     Modeled fits derive response templates on the fixed template population;
     both modes use the same frozen reference coordinate for mother variation.
     """
+    reject_sample_efficiency_assessment(grid, bundles)
     if mode not in {'modeled','omitted'}:
         raise ResearchError("unknown stress fit mode")
     stress_contract=validate_stress_contract(protocol)

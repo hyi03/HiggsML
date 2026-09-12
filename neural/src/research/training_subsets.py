@@ -4,11 +4,13 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from dataclasses import dataclass
 from pathlib import Path
 
 from .artifacts import LoadedRun, ResearchRun, digest_json, read_run
 from .data import IDENTITY, population_digest, role_for_group
 from .errors import ResearchError
+from .errors import ResearchStateError
 from .protocol import ResearchProtocol, canonical
 from .sample_efficiency_protocol import (
     SampleEfficiencyProtocol,
@@ -19,6 +21,7 @@ from .sample_efficiency_protocol import (
 PLAN_SCHEMA = "h4l-training-subset-plan-v1"
 MEMBERSHIP_SCHEMA = "h4l-training-subset-membership-v1"
 LEDGER_SCHEMA = "h4l-training-subset-ledger-v1"
+SELECTION_SCHEMA = "h4l-training-subset-selection-v1"
 
 
 def _fail(message):
@@ -157,6 +160,117 @@ def _summary(groups, group_stats):
     return ([_summary_record([item for item in chosen if item["label"] == label], label=label)
              for label in (0, 1)],
             _summary_record(chosen))
+
+
+def summarize_training_rows(frame):
+    """Recompute the M2 group-level summary from verified train rows."""
+    required = {*IDENTITY, "physical_weight", "m4l"}
+    if frame.empty or not required <= set(frame) or set(frame["role"]) != {"train"}:
+        _fail("training summary requires nonempty train rows")
+    records = frame.to_dict(orient="records")
+    records.sort(key=lambda item: canonical([item[key] for key in IDENTITY]))
+    stats = {}
+    identities = set()
+    for record in records:
+        identity = tuple(record[key] for key in IDENTITY)
+        if identity in identities:
+            _fail("duplicate training row identity")
+        identities.add(identity)
+        weight, mass = record["physical_weight"], record["m4l"]
+        if (type(weight) not in (int, float) or type(mass) not in (int, float)
+                or not math.isfinite(weight) or not math.isfinite(mass)):
+            _fail("training summary value is nonfinite")
+        group = record["event_group_id"]
+        item = stats.setdefault(group, {"label": record["label"], "rows": 0, "weight": 0.0,
+                                        "mass_min": float(mass), "mass_max": float(mass)})
+        if item["label"] != record["label"]:
+            _fail("training group has mixed labels")
+        item["rows"] += 1
+        item["weight"] += float(weight)
+        item["mass_min"] = min(item["mass_min"], float(mass))
+        item["mass_max"] = max(item["mass_max"], float(mass))
+    groups = sorted(stats)
+    by_label, total = _summary(groups, stats)
+    return {"summary_by_label": by_label, "summary_total": total}
+
+
+@dataclass(frozen=True, init=False)
+class TrainingSubset:
+    payload: bytes
+    prepared_path: Path
+    freeze_path: Path
+    subset_path: Path
+
+    def __init__(self, raw, *, prepared_path, freeze_path, subset_path):
+        expected = {"schema_version", "training_subset_artifact_id", "prepared_artifact_id",
+                    "population_id", "sample_efficiency_protocol_sha256", "training_subset_id",
+                    "membership_digest", "sample_fraction_target", "sample_draw_seed",
+                    "sample_draw_seed_or_full", "event_group_ids", "summary_by_label",
+                    "summary_total", "compact_candidate_freeze_artifact_id",
+                    "compact_candidate_freeze_sha256", "compact_candidate"}
+        if type(raw) is not dict or set(raw) != expected or raw.get("schema_version") != SELECTION_SCHEMA:
+            _fail("invalid training subset selection schema")
+        object.__setattr__(self, "payload", canonical(raw))
+        object.__setattr__(self, "prepared_path", Path(prepared_path).resolve())
+        object.__setattr__(self, "freeze_path", Path(freeze_path).resolve())
+        object.__setattr__(self, "subset_path", Path(subset_path).resolve())
+
+    def to_dict(self):
+        return json.loads(self.payload)
+
+    def __getitem__(self, key):
+        return self.to_dict()[key]
+
+
+def load_training_subset(subset_run, *, prepared, freeze_run, base, overlay, fraction, draw):
+    if type(fraction) is not float or fraction not in overlay["sample_fractions"]:
+        _fail("training subset fraction is outside the protocol")
+    if type(draw) is not int or draw not in overlay["sample_draw_seeds"]:
+        _fail("training subset draw is outside the protocol")
+    prepared = _reload_input(prepared, base, "prepare", "prepared")
+    freeze_run = _reload_input(freeze_run, base, "compact-freeze", "compact-freeze")
+    subset_path = subset_run.path if isinstance(subset_run, LoadedRun) else subset_run
+    try:
+        subset_run = read_run(subset_path, dataset=base["dataset"], protocol=base.to_dict(),
+                              stages=("training-subsets",))
+    except ResearchError as exc:
+        raise ResearchError("invalid training-subsets run", status="training_subset_binding_mismatch") from exc
+    plan, members, ledger = read_training_subsets(subset_run, prepared=prepared, freeze_run=freeze_run,
+                                                   base=base, overlay=overlay)
+    aliases = [item for item in ledger["cells"]
+               if item["fraction"] == fraction and item["sample_draw_seed"] == draw]
+    if len(aliases) != 1:
+        _fail("training subset alias is missing or duplicated")
+    alias = aliases[0]
+    entries = [item for item in plan["subsets"] if item["subset_id"] == alias["subset_id"]]
+    if len(entries) != 1:
+        _fail("training subset plan entry is missing or duplicated")
+    entry = entries[0]
+    if entry["status"] != "planned" or alias["status"] != "planned":
+        raise ResearchStateError("training subset is not statistically usable",
+                                 status="training_subset_insufficient_statistics")
+    draw_or_full = "full" if fraction == 1.0 else draw
+    selected = [item for item in members
+                if item["draw_or_full"] == draw_or_full and item["fraction"] == fraction]
+    groups = sorted(item["event_group_id"] for item in selected)
+    if (len(groups) != len(set(groups)) or {item["label"] for item in selected} != {0, 1}
+            or alias["membership_digest"] != entry["membership_digest"]):
+        _fail("training subset membership selection mismatch")
+    freeze = load_compact_candidate_freeze(freeze_run.file("freeze.json"), base_protocol=base)
+    raw = {"schema_version": SELECTION_SCHEMA,
+           "training_subset_artifact_id": subset_run.manifest["artifact_id"],
+           "prepared_artifact_id": prepared.manifest["artifact_id"],
+           "population_id": plan["population_id"],
+           "sample_efficiency_protocol_sha256": overlay.digest,
+           "training_subset_id": entry["subset_id"], "membership_digest": entry["membership_digest"],
+           "sample_fraction_target": fraction, "sample_draw_seed": None if fraction == 1.0 else draw,
+           "sample_draw_seed_or_full": draw_or_full, "event_group_ids": groups,
+           "summary_by_label": entry["summary_by_label"], "summary_total": entry["summary_total"],
+           "compact_candidate_freeze_artifact_id": freeze_run.manifest["artifact_id"],
+           "compact_candidate_freeze_sha256": freeze.digest,
+           "compact_candidate": freeze["candidate"]}
+    return TrainingSubset(raw, prepared_path=prepared.path, freeze_path=freeze_run.path,
+                          subset_path=subset_run.path)
 
 
 def build_training_subset_payloads(prepared, base, overlay):
