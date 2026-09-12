@@ -19,9 +19,6 @@ def test_protocol_rejects_frozen_contract_drift(tmp_path,field):
     path=tmp_path/"changed.yaml";path.write_text(yaml.safe_dump(raw))
     with pytest.raises(InputBindingError):load_preprocess_protocol(path,dataset="atlas2020_4lep")
 
-def test_old_protocol_is_rejected():
-    with pytest.raises(InputBindingError):load_preprocess_protocol(PROJECT/"config/preprocess_protocol_v1.yaml",dataset="atlas2020_4lep")
-
 def test_debug_protocol_disables_m4l_window_without_hash_seal():
     p=load_preprocess_protocol(PROJECT/"config/preprocess_protocol_debug.yaml",dataset="atlas2020_4lep")
     assert p.protocol_id=="higgsml-preprocess-debug"

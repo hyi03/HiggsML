@@ -1,6 +1,6 @@
 # HiggsML
 
-本文介绍 Neural 项目的 MC 数据预处理、训练和测试操作。网络原理见 [Neural 文档](neural/README.md)，XGBoost 的使用方法见 [XGBoost 文档](xgboost/README.md)。
+本文介绍 Neural 项目的 MC 数据预处理、训练、测试和研究操作。网络原理与运行方法见 [Neural 文档](neural/README.md)。旧版树模型实现已移除，不再提供对应运行入口。
 
 ## 1. 准备代码、数据和环境
 

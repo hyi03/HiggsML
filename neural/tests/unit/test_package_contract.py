@@ -21,7 +21,7 @@ def test_exact_console_entry_points() -> None:
     }
 
 
-def test_runtime_source_does_not_import_xgboost() -> None:
+def test_runtime_source_does_not_import_removed_tree_model() -> None:
     violations: list[str] = []
     for path in (PROJECT_ROOT / "src").rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
