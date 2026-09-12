@@ -168,3 +168,12 @@ M4以已发布且完整重验的`training-subsets`为前置，`sample-efficiency
 校准行的 schema 为 `h4l-sample-efficiency-calibration-v1`；其envelope digest覆盖M3 `RawCalibrationBundle`。所有stage reader先重验manifest/file receipts和严格upstream path/multiplicity，再重放M3 calibration、共同grid、template及固定T1 Asimov计算。科学terminal保留已发布stage ID并将后续stage列入blocked；全部cell被complete或允许terminal解释时，外层manifest仍为complete，payload `batch_status`区分`complete`与`scientific_terminal`。binding、重复、缺失或未知错误不产生M5可消费ledger。
 
 `--plan-only`不写目录、不训练且不构建pyhf/RNG；它会调用M2 reader，并可能只为重验M2摘要而重新解码verified MC train payload，绝不访问assessment/test。M4固定`workers=1`。`--clean`只可在任何research run或failure evidence产生前删除exclusive ownership marker与空staging；partial、failed、complete、link/reparse或含未知内容的目标保持不可变并拒绝清理。
+## 11. 配对聚合报告
+
+M5 `sample-efficiency-report` run只接受经M4 public reader重验的完整batch，manifest直接upstream恰为该batch run。固定文件为`report-contract.json`、`sample-efficiency-records.jsonl`、`sample-efficiency-summary.json`、`sample-efficiency-curves.csv`、`sample-efficiency-curves.png`和`sample-efficiency-report.md`。
+
+contract使用`h4l-sample-efficiency-report-contract-v1`，绑定batch artifact/scientific/execution ID、base/overlay digest、primary metric、pairing、评价/校准误差、Q*、统计算法和输出schema；`report_contract_id`覆盖其余字段。JSONL无header，按M4 canonical plan每个cell恰有一条`h4l-sample-efficiency-record-v1`，保留terminal；record ID覆盖身份、实际M2训练组数、状态、stage IDs、W68/AUC/bootstrap与engineered19严格配对结果。
+
+summary使用`h4l-sample-efficiency-summary-v1`，curve row按表示/fraction/实际组数聚合显式planned/complete/terminal/pair分母、均值及network/subset/evaluation/calibration/template有限MC分层状态。评价bootstrap由batch级canonical group/PCG64 multiplicity plan ID绑定；聚合AUC逐replicate先汇总cell。Q*只允许完整、唯一actual-count观测点上的精确命中或相邻严格下降线性包围，不外推。
+
+CSV是summary curve rows的UTF-8/LF/RFC4180规范视图；summary内plot spec绑定PNG语义，PNG仅为非权威缓存；Markdown由固定模板生成。reader重新执行M4及cell public readers、bootstrap、配对、聚合、Q*，并逐字节重放JSON/JSONL/CSV/Markdown，验证PNG receipt与plot-spec ID。任何自洽重签语义漂移均拒绝。
