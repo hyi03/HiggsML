@@ -1,6 +1,6 @@
 ---
 document_id: h4l-compact-kinematics-sample-efficiency-development-plan
-status: proposed-not-implemented
+status: development-started-m1-software
 date: 2026-09-12
 research_basis: ../research/H4l-Compact-Kinematics-Sample-Efficiency.md
 scope: MC-only educational/technical research software
@@ -11,6 +11,8 @@ scope: MC-only educational/technical research software
 ## 1. 文档目的与状态
 
 本文把 [`H4l-Compact-Kinematics-Sample-Efficiency.md`](../research/H4l-Compact-Kinematics-Sample-Efficiency.md) 的研究目标转换为可实施、可测试、可审计的软件开发方案。本文描述的是**拟开发能力**，不是当前代码已经具备的能力。
+
+开发已从 [Sprint M1-01](../3-Plan/Done/sprint-m1-01.md) 启动并完成首个软件交付：严格 overlay、compact freeze payload 与旧行为 characterization。正式科学预注册仍 pending；M2—M7 尚未启动。本计划以下完整链路仍是目标，具体已实现契约见 [artifact schema §7](artifact-schema.md#7-样本效率元数据契约)，评审/测试/提交状态以 Sprint 记录为准。
 
 目标是在不改变现有发现批次、历史分类器和 assessment 访问约束的前提下，新增以下完整链路：
 
