@@ -139,3 +139,43 @@ def gate_g1(calibration_statuses, templates, t1_validation):
     if not t1_validation or not t1_validation.get("evidence_id") or any(t1_validation.get(k) != v for k,v in contract.items()):
         reasons.append("template_stat_model_unvalidated")
     return {"status": "passed" if not reasons else "blocked", "reasons": reasons, "allowed_roles": ["calibration", "template"], "assessment_used": False}
+
+
+def bind_template_lineage(template, calibration_bundle, *, experiment_lineage):
+    """Reject promotion of caller-built dictionaries to trusted M3 templates."""
+    raise ResearchError("sample-efficiency templates must come from the verified builder",
+                        status="training_subset_binding_mismatch")
+
+
+def build_sample_efficiency_template(prepared, loaded, calibration_bundle, protocol, *,
+                                     mass_edges, categories=(0, 1)):
+    """Build one raw v2 template from receipt-verified direct upstreams."""
+    from .artifacts import digest_json
+    from .calibration import assign_categories, require_raw_calibration_bundle
+    from .sample_efficiency_lineage import bind_experiment_lineage
+    from .sample_efficiency_training import load_bound_prepared_role, predict_subset_discriminant
+
+    calibration_bundle = require_raw_calibration_bundle(calibration_bundle, loaded)
+    calibration = calibration_bundle.to_dict()
+    frame = load_bound_prepared_role(prepared, loaded, protocol, "template")
+    scores = predict_subset_discriminant(loaded, frame)
+    frame["category"] = assign_categories(calibration["thresholds"], scores,
+        model_id=calibration["model_id"], mapping_id=calibration["mapping_id"])
+    template = build_templates(frame, mass_edges=mass_edges, mapping_id=calibration["mapping_id"],
+        candidate_id=calibration["candidate_id"], categories=categories,
+        thresholds=protocol["templates"])
+    result = bind_experiment_lineage(template, loaded.lineage)
+    result["template_id"] = digest_json(result)
+    return result
+
+
+def require_template_lineage(template, experiment_lineage):
+    from .artifacts import digest_json
+    from .sample_efficiency_lineage import require_experiment_lineage
+
+    require_experiment_lineage(template, experiment_lineage)
+    content = {key: value for key, value in template.items() if key != "template_id"}
+    if template.get("template_id") != digest_json(content):
+        raise ResearchError("sample-efficiency template digest mismatch",
+                            status="training_subset_binding_mismatch")
+    return template

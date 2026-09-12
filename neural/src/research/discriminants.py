@@ -212,6 +212,16 @@ def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0
 
 
 def predict_discriminant(artifact, frame):
+    schema = artifact.get('schema_version') if isinstance(artifact, dict) else None
+    if schema == 'research-discriminant-v2':
+        raise ResearchError('v2 prediction requires a verified sample-efficiency model handle',
+                            status='training_subset_binding_mismatch')
+    if schema != 'research-discriminant-v1':
+        raise ResearchError('unsupported model artifact schema')
+    return _predict_discriminant_payload(artifact, frame)
+
+
+def _predict_discriminant_payload(artifact, frame):
     content = {k:v for k,v in artifact.items() if k != 'model_id'}
     if digest(content) != artifact.get('model_id'):
         raise ResearchError('model artifact digest mismatch')

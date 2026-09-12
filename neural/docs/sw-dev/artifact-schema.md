@@ -137,3 +137,17 @@ M1 额外拒绝把 freeze payload SHA 同时用作 freeze artifact ID，即使�
 | `training-subset-ledger.json` | `h4l-training-subset-ledger-v1` | 每个原始draw/fraction alias、共享full subset、planned或低统计终态 |
 
 prepared events采用两阶段读取：所有 public API 从路径重新执行 `read_run` 并验证整文件receipt，再按 base protocol 精确验证split、全部identity、`event_id`/`source_row_id`唯一性，随后只解码train payload的weight/m4l用于摘要。其他角色、尤其assessment payload永不解码。membership reader要求拒绝重复键并逐行验证canonical JSON bytes；fraction端点固定为JSON float `1.0`。`training_subset_insufficient_statistics`保留为complete计划内cell状态；输入非有限、身份、receipt或重算不一致为`training_subset_binding_mismatch`。本阶段不训练模型。
+
+## 9. 子集绑定判别器与实验血缘
+
+`sample-efficiency-train` research run 由非 CLI application service 发布。它从 receipt 验证后的 prepared `events.jsonl` 内部加载数据，只筛选 train membership并保留完整validation；manifest upstream精确绑定 `prepare`、`compact-freeze`、`training-subsets`。run保存 `sample-efficiency-protocol.json` snapshot和 `model.json`，reader从路径重验所有run/receipt、M2 selection、snapshot及模型语义。
+
+| Schema | 位置 | 关键约束 |
+|---|---|---|
+| `h4l-training-subset-selection-v1` | 内存不可变 `TrainingSubset` | 由M2 plan/membership/ledger重算后选择；绑定prepared/population/overlay/subset/membership、规范fraction/draw、逐类/总计摘要和M1 freeze candidate descriptor。消费者根据保存的三个run路径再次验证，类型本身不是信任证明。 |
+| `research-discriminant-v2` | `sample-efficiency-train/model.json` | 保留v1科学字段并增加base/overlay/subset/prepared身份、representation、network/architecture、实际摘要、train-fitted来源及experiment/pairing ID。严格拒绝未知/缺失/非有限字段；即使重签model ID也重算seed、full/partial、表示、参数量、摘要和ID不变量。 |
+| `h4l-experiment-lineage-v1` | raw calibration、template entry、model-self result的`experiment_lineage` | 只能由verified model-run reader构造；绑定source model artifact/model ID、双协议、prepared/population、subset/membership、fraction/draw/network、representation/architecture、raw transform及experiment/pairing ID。每层从直接可信上游精确比较。 |
+
+`experiment_cell_id`的canonical SHA-256 preimage为 `[overlay_digest,training_subset_artifact_id,subset_id,representation_id,fraction,draw_or_full,network_seed,"raw",architecture_variant]`；`pairing_id`去掉representation字段。因此同一数据/网络/架构的三表示共享pairing ID，experiment cell互不冲突。M3仅开放基线架构、raw calibration、普通template和model-self Asimov；CDF/absolute、capacity、assessment/mismatch及sample-efficiency confirmation在M6前保持关闭。旧`train_discriminant()`与`research-discriminant-v1`读取路径不变。
+
+可信 v2 计算接口不接受裸 `model.json` 或调用方构造的 lineage。`read_subset_discriminant_run()` 返回不可由普通构造函数伪造的 `LoadedSubsetDiscriminant`；v2 预测、校准和模板构建均消费该 handle并重新检查model receipt。raw calibration由绑定prepared run的calibration role内部生成，作为不可变 `RawCalibrationBundle` 返回；其`calibration_id`覆盖完整model、threshold、lineage和校准元数据。template同样从绑定prepared run的template role内部生成，`template_id`覆盖lineage；model-self result的`result_id`覆盖lineage。带sample-efficiency lineage的template若省略可信lineage，或进入toy/assessment/mismatch入口，会在模型构建、RNG和assessment payload访问前以`training_subset_binding_mismatch`拒绝。

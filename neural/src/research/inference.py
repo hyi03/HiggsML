@@ -11,6 +11,23 @@ from .diagnostics import signed_mu_fit, signed_mu_summary
 from .resources import ordered_map
 
 
+def _is_sample_efficiency_payload(value):
+    if isinstance(value, dict):
+        if (value.get("schema_version") in {"research-discriminant-v2", "h4l-experiment-lineage-v1"}
+                or "experiment_lineage" in value):
+            return True
+        return any(_is_sample_efficiency_payload(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_is_sample_efficiency_payload(item) for item in value)
+    return False
+
+
+def reject_sample_efficiency_assessment(*values):
+    if any(_is_sample_efficiency_payload(value) for value in values):
+        raise ResearchError("sample-efficiency assessment and mismatch paths are not enabled in M3",
+                            status="training_subset_binding_mismatch")
+
+
 def require_pyhf():
     try:
         pyhf = importlib.import_module("pyhf")
@@ -101,7 +118,14 @@ def _profile_from_fit(pyhf, model, data, confidence, muhat, minimum, lo, hi):
         return {"status": "fit_failed", "confidence": confidence, "error": str(exc)}
 
 
-def run_asimov(template, *, protocol=None, layer="T0", t1_validation=None, injections=(0.,1.,2.), mu_max=20., _built_model=None):
+def run_asimov(template, *, protocol=None, layer="T0", t1_validation=None, injections=(0.,1.,2.), mu_max=20.,
+               experiment_lineage=None, _built_model=None):
+    if _is_sample_efficiency_payload(template) and experiment_lineage is None:
+        raise ResearchError("sample-efficiency Asimov inference requires trusted lineage",
+                            status="training_subset_binding_mismatch")
+    if experiment_lineage is not None:
+        from .templates import require_template_lineage
+        require_template_lineage(template, experiment_lineage)
     if protocol is not None:
         config = (protocol if isinstance(protocol, dict) else protocol.to_dict()).get("inference", {})
         mu_max = config.get("mu_bounds", [0.,20.])[1]
@@ -113,12 +137,19 @@ def run_asimov(template, *, protocol=None, layer="T0", t1_validation=None, injec
         pars = model.config.suggested_init(); pars[model.config.poi_index] = float(mu)
         data = np.asarray(model.expected_data(pars), float)
         results.append({"mu": float(mu), "intervals": profile_intervals(model, data)})
-    return {**metadata, "status": "valid" if all(i["status"] == "valid" for r in results for i in r["intervals"]) else "inference_incomplete", "expectation_kind": "model_self_asimov", "results": results}
+    output = {**metadata, "status": "valid" if all(i["status"] == "valid" for r in results for i in r["intervals"]) else "inference_incomplete", "expectation_kind": "model_self_asimov", "results": results}
+    if experiment_lineage is not None:
+        from .artifacts import digest_json
+        from .sample_efficiency_lineage import bind_experiment_lineage
+        output = bind_experiment_lineage(output, experiment_lineage)
+        output["result_id"] = digest_json(output)
+    return output
 
 
 def run_toys(template, *, mu=1., count=500, seed=42, layer="T0", t1_validation=None,
              auxiliary_generation="regenerated", expectation_kind="model_self", mother_rates=None,
              mother_id=None, mu_max=20., signed_diagnostic=None, workers=1, worker_threads=1, _built_model=None):
+    reject_sample_efficiency_assessment(template)
     if expectation_kind not in {"model_self", "assessment", "mismatch"} or auxiliary_generation not in {"fixed", "regenerated"}:
         raise ResearchError("Explicit supported toy source and auxiliary policy required")
     if int(count) != count or count < 1 or not 0 <= mu <= mu_max:
