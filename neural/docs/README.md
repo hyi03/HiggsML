@@ -2,6 +2,12 @@
 
 本目录按文档的主要用途分为两类。科研文档描述当前科学语义和下一阶段方案；软件文档保存长期有效的架构、需求、接口与方案设计。
 
+开发过程记录单独放在 `1-Requirement/`、`3-Plan/` 和 `4-Reviews/`，不混入长期设计：
+
+- [样本效率 FR-SE-01（软件交付完成）](1-Requirement/Done/FR-SE-01-sample-efficiency-contracts.md)
+- [启动 Sprint M1-01（软件交付完成）](3-Plan/Done/sprint-m1-01.md)
+- [文档评审确认](4-Reviews/sprint-m1-01-review-confirm.md)
+
 ## `research/`：当前科研方案与物理技术资料
 
 面向论文方法、物理对象、分析选择、当前能力和科学结论边界：

@@ -64,3 +64,7 @@
 **当前研究代码已实现。** `src.research`、新CLI、五角色、MELA适配、CDF、模板与μ inference见[运行手册](h4l-research-runbook.md)。完整R阶段实验、带nuisance的T1剖面伪信号诊断和Toy区间校准仍需独立设计及预注册。
 
 **需要外部或权威验证。** 锁定 ARM64、独立 MELA、完整 MC、外部样本、似然 closure、伪实验覆盖和系统稳健性在获得证据前不得写成结果。最终表述仍限于 educational/technical demo。
+
+## 7. 样本效率扩展
+
+样本效率 [开发方案](h4l-compact-kinematics-sample-efficiency-development-plan.md) 的首个软件增量提供独立 overlay 与 compact freeze 的纯元数据校验，契约见 [artifact schema §7](artifact-schema.md#7-样本效率元数据契约)。它不改变旧训练/批处理/assessment 接口，不验证 manifest receipt，不发布新 run。正式候选、容差、预算尚待预注册；子集生成、模型 v2 lineage、学习曲线、统计确认与平台验收仍未实现。

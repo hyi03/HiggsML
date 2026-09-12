@@ -104,3 +104,24 @@ Authority evidence 与普通 run 分离。当前 comparator 只在 native osx-ar
 μ=0的v2 Toy另存`signed_mu_diagnostic`及汇总，标为固定名义模板T0点估计、非T1剖面；搜索边界/不可用状态保留，不替代原物理区间或覆盖状态。历史模型缺少分项history时不补造曲线。阶段文件及失败契约见[运行手册](h4l-research-runbook.md)。
 
 **需要外部或权威验证。** 任何未来 schema 只有通过合成数值测试、独立参考和锁定平台重放后，才可支持方案中的科学结论。
+
+## 7. 样本效率元数据契约
+
+**已实现纯 payload 校验；实验执行及正式预注册未完成。** `src/research/sample_efficiency_protocol.py` 独立于旧 ResearchProtocol，提供下表两个契约。它不发布 run，不验证 manifest receipt，不读取事件，不创建 claim，也不实现 CI/子集/容量/CDF 的统计执行器。
+
+| Schema | API | 身份与摘要 |
+|---|---|---|
+| `h4l-compact-candidate-freeze-v1` | `freeze_compact_candidate(metadata, groups=..., base_protocol=...)`；`CompactCandidateFreeze(raw, base_protocol=...)`；`load_compact_candidate_freeze(path, base_protocol=...)` | builder 从显式组构造 canonical candidate descriptor；保存探索历史、总体排除集、delta/source。`payload_sha256` 与对象 `.digest` 均为排除 payload_sha256 键后的 canonical SHA-256。 |
+| `h4l-sample-efficiency-protocol-v1` | `SampleEfficiencyProtocol(raw, base_protocol=..., prepared_artifact_id=..., population_id=..., compact_freeze=..., compact_freeze_artifact_id=...)`；同参数的 `load_sample_efficiency_protocol(path, ...)` | `.digest` 为完整 canonical payload SHA-256；分别绑定 base digest、prepared ID、population ID、freeze manifest artifact ID 与 freeze payload digest。 |
+
+构造函数和 loader 都执行校验；没有接受未经绑定 bytes 的快捷构造。`.payload` 为不可变 bytes，`.to_dict()` 和索引返回防御性副本。Canonical JSON 复用旧协议的排序键、紧凑 separators、非有限拒绝策略，不改变旧版本摘要；JSON 重复键、未知/缺少字段、错误类型、NaN/Infinity 均拒绝。未知 schema/算法 ID 不迁移、不猜测。
+
+字段全集、算法 ID 和绑定不变量记录在 [FR-SE-01](../1-Requirement/Done/FR-SE-01-sample-efficiency-contracts.md) 的“v1 软件字段规范”。overlay 精确包含 decay7、唯一 compact、engineered19；fraction 必须有完整端点；seed 分层；capacity/CDF 只允许冻结的精简点位；calibration uncertainty 明确为 not_estimated；评价重采样只声明 validation absolute-weight AUC，不能冒充 W68 误差。统计执行器实现前，这些可解析规则不授权任何实验或确认访问。
+
+`config/research_sample_efficiency_protocol_v1.json` 是**不可运行模板**，null 表示未注册值，普通 loader 必须拒绝。测试中的完整值只用于 synthetic 软件验证。调用者需要显式提交注册值、合法 freeze 和期望上游身份；payload 自摘要不能证明来源、历史完整性或总体独立性。未来 workflow 必须另外验证上游 receipts、把学习总体加入确认排除集、完成 claim-before-decode。
+
+M1 额外拒绝把 freeze payload SHA 同时用作 freeze artifact ID，即使调用方传入了同样的期望值；该检查不证明其他任意 ID 的来源合法性。
+
+无 freeze 时抛 `ResearchError(status="compact_candidate_not_frozen")`，exit_code=3；其他 schema/binding 失败也是输入错误。M1 不发布科学终态；未知异常仍由未来 CLI 映射。旧 `research-run-v1`、ResearchProtocol v1/v2/v3、`research-discriminant-v1` 不变，未来 subset/model v2/report/confirmation payload 尚未实现。
+
+证据范围仅为 Windows synthetic 软件验证。Repository ARM64 authority、完整 ROOT 与 scientific numerical validation 均需后续独立证据。
