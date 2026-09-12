@@ -2,7 +2,7 @@
 
 ## 1. 系统边界
 
-**当前代码已实现。** `neural/` 是独立 Python package，不以 `xgboost/src` 为运行时依赖。包提供三个历史入口：`higgsml-preprocess`、`higgsml-train`、`higgsml-test`，以及独立研究入口`higgsml-research`。CLI 层只负责参数、日志与稳定退出码适配，科学计算和发布事务位于 application/domain 层。
+**当前代码已实现。** `neural/` 是独立 Python package，不依赖已移除的旧版树模型实现。包提供三个历史入口：`higgsml-preprocess`、`higgsml-train`、`higgsml-test`，以及独立研究入口`higgsml-research`。CLI 层只负责参数、日志与稳定退出码适配，科学计算和发布事务位于 application/domain 层。
 
 所有产品路径只接受受控 MC 数据集。真实数据、跨数据集联合训练、test 反馈调参以及对冻结 run 的覆盖均在系统边界之外。
 
