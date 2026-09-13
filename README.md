@@ -1,10 +1,10 @@
-# HiggsML H4l
+# HiggsML：H → ZZ* → 4l 的 MC-only 研究流程
 
 本仓库只维护 `H -> ZZ* -> 4l` 的 **MC-only 教育与技术研究流程**。当前研究比较不同运动学表示、质量条件化与样本效率对信号强度 `mu` 推断精度的影响，并以绑定协议、不可覆盖产物和冻结后的 assessment 隔离保证流程可审计。
 
 仓库输出不构成 ATLAS/CMS 官方结果、Higgs discovery 或物理测量。软件实现、合成测试、完整 MC 验证、独立矩阵元参考和原生 ARM64 authority 验证是不同证据层级，不能互相替代。
 
-## 当前范围与状态
+## 1. 了解项目范围与证据状态
 
 - 活跃代码只有 `src/higgsml` 下的 H4l 包；旧 legacy15 预处理、旧训练/测试流程和 XGBoost 实现已移除。
 - 默认研究对象是受控 `atlas2020_4lep` MC 对，协议终态为 `2e2mu`，质量范围为 105–140 GeV。
@@ -14,7 +14,7 @@
 
 精确证据状态见[当前科研与软件状态](docs/validation/current-status.md)，研究设计见[研究方案](docs/methods/research-project.md)。
 
-## 仓库结构
+## 2. 了解代码库目录结构
 
 ```text
 src/higgsml/       H4l 包：物理重建、建模、推断与样本效率
@@ -27,14 +27,9 @@ data/raw/          本地受控 MC 输入（忽略，不提交）
 runs/              本地不可变运行产物（忽略，不提交）
 ```
 
-## 环境与安装
+## 3. 配置运行环境并安装项目
 
-项目要求 Python `>=3.12,<3.13`，仓库约定使用 Conda `pytorch` 环境。Windows 开发环境可直接复用现有环境：
-
-```powershell
-& 'D:\apps\anaconda3\Scripts\conda.exe' run -n pytorch python -m pip install --no-deps -e .
-& 'D:\apps\anaconda3\Scripts\conda.exe' run -n pytorch python -m pip check
-```
+项目要求 Python `>=3.12,<3.13`，仓库约定使用 Conda `pytorch` 环境。
 
 从环境定义创建时：
 
@@ -59,7 +54,7 @@ python -m pip install -r requirements.txt
 higgsml --help
 ```
 
-## 获取受控 MC
+## 4. 下载并校验受控 MC 数据集
 
 下载器只执行数据集契约中固定的 HTTPS 请求，并在文件大小与 SHA-256 全部匹配后发布 receipt：
 
@@ -74,11 +69,11 @@ python scripts/init_data.py --dataset atlas2020_4lep
 - [`config/datasets/atlas2020_4lep.json`](config/datasets/atlas2020_4lep.json)
 - [`config/datasets/atlas2025_exactly4lep.json`](config/datasets/atlas2025_exactly4lep.json)
 
-## 推荐主工作流
+## 5. 运行标准 H4l 工作流
 
 所有命令从仓库根目录运行。完整规则、门槛与恢复方式以[复现实验手册](docs/reproducibility/runbook.md)为准。
 
-### 1. 准备一次、复用输入
+### 5.1 准备并固化可复用输入
 
 ```bash
 python scripts/h4l_prepare.py
@@ -104,7 +99,7 @@ runs/h4l-prepare/
 
 `h4l_prepare.py` 不接受 `--run-name`。只有在诊断或需要独立新目录时才传入 `--run-root`；正式全局目录已存在时，脚本会拒绝覆盖。
 
-### 2. 执行 Gate Check
+### 5.2 运行门控检查
 
 ```bash
 python scripts/h4l_check.py --run-name T1
@@ -113,7 +108,7 @@ python scripts/h4l_check.py --run-name T1
 Gate 从全局 prepared artifact 运行 M0c、M2、M3、五个校准和共同模板。只有 Gate 通过后，才允许展开受门控的候选。失败目录仍是不可变证据；修复后必须使用新的 `--run-name` 或 `--output-root`。
 `--run-name T1` 的实验输出根目录为 `runs/h4l-train-T1/`。
 
-### 3. 执行完整五种子批次
+### 5.3 运行五随机种子正式批次
 
 先审计计划，再正式运行：
 
@@ -126,7 +121,9 @@ python scripts/h4l_run.py --run-name T1
 
 三个脚本均支持 `--help`、`--plan-only` 和 `--no-progress`。它们也提供严格限于所选 `runs/` 子目录的 `--clean`；`--clean` 不能与 `--plan-only` 同时使用，执行前应先用 `--help` 或单独的计划命令核对路径。清理会删除不可恢复的本地运行产物；完成、失败、诊断或已发布的 run 均不得原地覆盖。
 
-## 核心 CLI 阶段
+## 6. 使用项目工具开展研究
+
+### 6.1 组合使用核心 CLI 阶段
 
 `higgsml` 暴露十二个可组合阶段：
 
@@ -167,7 +164,7 @@ python scripts/h4l_evaluate.py --plan config/examples/h4l_evaluation_plan.json \
 计划模式只审计矩阵，不打开 assessment。外部 signed-MC/T1、物理系统变化、MELA 和原生 ARM64
 材料通过 `evidence-import` 只读接入；缺失材料必须保持 `external_pending`。
 
-## 样本效率研究
+### 6.2 运行样本效率研究
 
 样本效率不是 `higgsml` 的子命令，而由三个独立脚本承载：
 
@@ -179,7 +176,7 @@ python scripts/h4l_sample_efficiency_controls.py --help
 
 正式批次绑定 `config/protocols/sample_efficiency_v1.json`、compact candidate freeze、训练子集、G1 和 T1 证据。协议中的 `null` 是待注册占位，不能直接当作正式研究值。方法与确认边界见[样本效率方法](docs/methods/sample-efficiency.md)。
 
-## 科学与运行约束
+## 7. 遵守科学与运行约束
 
 - 只处理受控 MC 或显式标记的合成事件，绝不读取、散列、预处理、评分或绘制真实数据。
 - `m4l` 只能按版本化 H4l 协议使用；signed `physical_weight` 用于物理产额，优化器权重按协议定义。
@@ -188,7 +185,7 @@ python scripts/h4l_sample_efficiency_controls.py --help
 - 数据身份、SHA-256、协议 seal、checkpoint、上游绑定与 lineage 必须保留。
 - 软件测试通过只证明对应软件行为；不能据此声称获得 `mu` 精度改善、覆盖可靠性或完整 MC 科学结论。
 
-## 验证
+## 8. 验证代码、依赖与运行环境
 
 在仓库根目录运行：
 
@@ -200,7 +197,7 @@ python scripts/h4l_sample_efficiency_controls.py --help
 
 当前测试数量、警告和未完成的科学验证以[状态页](docs/validation/current-status.md)的日期化记录为准，不在 README 中复制易过期的数字。
 
-## 文档入口
+## 9. 查阅项目文档
 
 - [文档索引](docs/README.md)
 - [研究方案](docs/methods/research-project.md)
@@ -211,6 +208,6 @@ python scripts/h4l_sample_efficiency_controls.py --help
 - [当前科研与软件状态](docs/validation/current-status.md)
 - [论文稿件](paper/manuscript.md)
 
-## License
+## 10. 许可证与第三方条款
 
 见 [`LICENSE`](LICENSE)。第三方数据、软件与实验资料仍受其各自许可和使用条款约束。
