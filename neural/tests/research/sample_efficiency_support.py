@@ -27,7 +27,9 @@ def _groups(protocol, role, count):
 
 
 def build_sample_efficiency_fixture(tmp_path, *, fractions=(0.5, 1.0), draws=(100, 101),
-                                    minimum_groups=2, minimum_effective=2.0, template_groups=80):
+                                    minimum_groups=2, minimum_effective=2.0, template_groups=80,
+                                    capacity_enabled=False, capacity_fractions=None,
+                                    cdf_enabled=False):
     base = load_protocol()
     rng = np.random.default_rng(20260912)
     rows = []
@@ -87,8 +89,13 @@ def build_sample_efficiency_fixture(tmp_path, *, fractions=(0.5, 1.0), draws=(10
     raw["noninferiority"].update(delta_w68=0.1, delta_source="synthetic-test-only",
                                   confidence_level=0.95, bootstrap_replicates=20, bootstrap_seed=300)
     raw["evaluation_uncertainty"].update(replicates=20, seed=200)
-    raw["capacity_control"].update(enabled=False, sample_fractions=[], network_seeds=[])
-    raw["cdf_check"].update(enabled=False, representations=raw["representations"], sample_fractions=[])
+    raw["capacity_control"].update(enabled=capacity_enabled,
+        sample_fractions=(list(capacity_fractions) if capacity_enabled
+                          and capacity_fractions is not None
+                          else [fractions[-1]] if capacity_enabled else []),
+        network_seeds=[42] if capacity_enabled else [])
+    raw["cdf_check"].update(enabled=cdf_enabled, representations=raw["representations"],
+        sample_fractions=[fractions[-1]] if cdf_enabled else [])
     raw["quality_target"].update(enabled=False)
     overlay = SampleEfficiencyProtocol(raw, base_protocol=base,
         prepared_artifact_id=prepared.manifest["artifact_id"], population_id=receipt.population_id,

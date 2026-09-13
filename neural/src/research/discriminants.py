@@ -26,11 +26,13 @@ def digest(value):
 
 
 class ResearchClassifier(nn.Module):
-    def __init__(self, input_count):
+    def __init__(self, input_count, first_width=64):
         super().__init__()
+        if type(first_width) is not int or first_width < 1:
+            raise ResearchError('invalid registered classifier width')
         self.layers = nn.Sequential(
-            nn.Linear(input_count, 64), nn.LayerNorm(64, eps=1e-5), nn.SiLU(), nn.Dropout(.1),
-            nn.Linear(64, 64), nn.LayerNorm(64, eps=1e-5), nn.SiLU(), nn.Dropout(.1),
+            nn.Linear(input_count, first_width), nn.LayerNorm(first_width, eps=1e-5), nn.SiLU(), nn.Dropout(.1),
+            nn.Linear(first_width, 64), nn.LayerNorm(64, eps=1e-5), nn.SiLU(), nn.Dropout(.1),
             nn.Linear(64, 32), nn.LayerNorm(32, eps=1e-5), nn.SiLU(), nn.Linear(32, 1))
 
     def forward(self, x):
@@ -79,7 +81,8 @@ def _diagnostics(mass, score, weight, edges, threshold, *, layout=None):
                 threshold_source='train_background_absolute_weight_median', bin_source='train_background_absolute_weight_quantiles', evaluation_source='validation_background')
 
 
-def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0., groups=None):
+def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0., groups=None,
+                       *, _registered_first_width=64):
     """Fit only train/validation roles. Serialize tensor lists, never pickle."""
     protocol = protocol_dict(protocol)
     if candidate not in CANDIDATES:
@@ -93,6 +96,8 @@ def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0
         raise ResearchError('invalid candidate lambda')
     if candidate == 'M6' and target_lambda not in (.05, .1, .2, .5):
         raise ResearchError('M6 strength outside registered matrix; zero uses M3-fixed200')
+    if type(_registered_first_width) is not int or _registered_first_width < 1:
+        raise ResearchError('invalid registered classifier width')
     names = list(representation_features(CANDIDATES[candidate], groups=groups))
     _validate_frame(frame, ['train', 'validation'], names)
     if protocol.get('dataset', frame.dataset.iloc[0]) != frame.dataset.iloc[0]:
@@ -127,7 +132,7 @@ def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0
     # Both fixed candidates construct the adversary, sharing initialization and RNG consumption.
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(seed)
-        model = ResearchClassifier(len(names))
+        model = ResearchClassifier(len(names), _registered_first_width)
         adversary = Adversary() if fixed else None
         parameters = list(model.parameters()) + ([] if adversary is None else list(adversary.parameters()))
         optimizer = torch.optim.AdamW(parameters, lr=1e-3, weight_decay=1e-4)
@@ -191,7 +196,7 @@ def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0
         vb = valid.label.to_numpy() == 0
         result = dict(schema_version='research-discriminant-v1', candidate=candidate, representation=CANDIDATES[candidate],
             groups=groups, ordered_inputs=names, dataset=str(frame.dataset.iloc[0]), protocol_id=digest(protocol), seed=seed,
-            architecture=[len(names),64,64,32,1], scaler=dict(mean=mean.tolist(), scale=scale.tolist(), source_role='train', fitting_rows=len(train)),
+            architecture=[len(names),_registered_first_width,64,32,1], scaler=dict(mean=mean.tolist(), scale=scale.tolist(), source_role='train', fitting_rows=len(train)),
             optimizer_class_absolute_weight_means=class_means, mass_bin_boundaries=edges.tolist(),
             state_dict={k:v.tolist() for k,v in model.state_dict().items()}, history=history,
             selected_epoch=selected, target_lambda=target_lambda, effective_lambda=effective_lambda(selected,target_lambda),
@@ -213,7 +218,7 @@ def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0
 
 def predict_discriminant(artifact, frame):
     schema = artifact.get('schema_version') if isinstance(artifact, dict) else None
-    if schema == 'research-discriminant-v2':
+    if schema in {'research-discriminant-v2', 'h4l-capacity-discriminant-v1'}:
         raise ResearchError('v2 prediction requires a verified sample-efficiency model handle',
                             status='training_subset_binding_mismatch')
     if schema != 'research-discriminant-v1':
@@ -226,7 +231,10 @@ def _predict_discriminant_payload(artifact, frame):
     if digest(content) != artifact.get('model_id'):
         raise ResearchError('model artifact digest mismatch')
     expected = list(representation_features(artifact['representation'], groups=artifact['groups']))
-    if artifact['ordered_inputs'] != expected or artifact['architecture'] != [len(expected),64,64,32,1]:
+    width = 64
+    if artifact.get('schema_version') in {'research-discriminant-v2', 'h4l-capacity-discriminant-v1'}:
+        width = artifact['architecture'][1]
+    if artifact['ordered_inputs'] != expected or artifact['architecture'] != [len(expected),width,64,32,1]:
         raise ResearchError('ordered feature or architecture binding mismatch')
     _validate_frame(frame, ['train','validation','calibration','template','assessment'], expected)
     if set(frame.dataset) != {artifact['dataset']}:
@@ -234,7 +242,7 @@ def _predict_discriminant_payload(artifact, frame):
     mean, scale = np.asarray(artifact['scaler']['mean']), np.asarray(artifact['scaler']['scale'])
     if mean.shape != (len(expected),) or scale.shape != mean.shape or not np.isfinite(mean).all() or not np.isfinite(scale).all() or (scale <= 0).any():
         raise ResearchError('invalid scaler')
-    model = ResearchClassifier(len(expected))
+    model = ResearchClassifier(len(expected), width)
     try:
         state = {k:torch.tensor(v,dtype=torch.float32) for k,v in artifact['state_dict'].items()}
         if any(not torch.isfinite(v).all() for v in state.values()):

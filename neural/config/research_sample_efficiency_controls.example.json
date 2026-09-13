@@ -1,0 +1,19 @@
+{
+  "schema_version": "h4l-sample-efficiency-controls-config-v1",
+  "mode": "controls-only",
+  "dataset": "atlas2020_4lep",
+  "protocol": "config/research_protocol_v2.json",
+  "sample_efficiency_protocol": "config/research_sample_efficiency_protocol_v1.json",
+  "prepared_run": "runs/example/prepare",
+  "compact_freeze_run": "runs/example/freeze",
+  "training_subsets_run": "runs/example/subsets",
+  "gate_run": "runs/example/g1/templates",
+  "t1_validation": "runs/example/inputs/t1-validation.json",
+  "batch_run": "runs/example/batch",
+  "report_run": "runs/example/report",
+  "exclusion_identity_sets": [],
+  "confirmation_input": null,
+  "output_root": "runs",
+  "output_name": "sample-efficiency-controls-001",
+  "repeat": false
+}
