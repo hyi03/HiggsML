@@ -21,6 +21,7 @@
 
 ## 文档索引
 
+- [`h4l-data-preprocessing.md`](h4l-data-preprocessing.md)：当前 `src.research` H4l 流程从受控 ROOT 到训练输入的筛选、重建、特征、权重、角色隔离与标准化。
 - [`H4l-Compact-Kinematics-Sample-Efficiency.md`](H4l-Compact-Kinematics-Sample-Efficiency.md)：有限 MC 下的紧凑运动学表示、样本效率及独立确认方案。
 - [`preprocess-protocol.md`](preprocess-protocol.md)：数据集、选择、特征、权重与隔离。
 - [`adversarial-mlp-protocol.md`](adversarial-mlp-protocol.md)：当前固定 15 特征 adversarial MLP。
