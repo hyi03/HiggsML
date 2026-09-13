@@ -29,9 +29,46 @@ Reader 不信任调用者构造的内存对象，必须从路径重新验证 man
 | `templates` | template、共同网格与 G1 | calibration 集合、共同分箱、signed yield、sumw2 |
 | `freeze` | 冻结状态与 assessment 预算 | 协议、候选、模板、likelihood 与所有前置门 |
 | `infer` | workspace、点估计、区间或 Toy | 模板、layer、注入点、seed、预算和失败状态 |
-| `report` | 绑定结果与图表 | 所有输入 result、结论门和解释范围 |
+| `mc-bootstrap` | `bootstrap.json`、封存评价计划 | 固定网络、配对 calibration/template 事件组重采样、共同质量网格 |
+| `evidence-import` | `evidence.json` | 外部文件 receipt、独立性说明、协议与总体适用范围 |
+| `report` | 绑定结果、图表与分析表 | result/training/evaluation/evidence 分类输入、结论门和解释范围 |
 
 `prepare` 将物理事件组分为 train、validation、calibration、template、assessment。身份与角色不允许交叉；assessment 在 freeze 前不得解码。`mu=0` 的 signed diagnostic 是固定名义模板 T0 点估计，不替代 T1 剖面或物理区间覆盖结论。
+
+## 增强报告导出契约
+
+`report` 保留原有字段并发布 `h4l-analysis-export-v1`。报告输入不扫描目录猜测关系，只消费通过
+manifest/receipt 校验且显式传入的 `--training-run`、`--evaluation-run`、`--evidence-run` 和
+`--result-run`。主要表如下：
+
+| 文件 | 行粒度 |
+|---|---|
+| `models.csv` / `training_history.csv` / `model_mass_diagnostics.csv` | 模型×seed、模型×epoch、模型×质量箱 |
+| `feature_metrics.csv` / `feature_summary.csv` | 特性组合×seed、特性组合五种子汇总 |
+| `calibration_summary.csv` / `calibration_slices.csv` / `calibration_bins.csv` | mapping、质量切片、分数箱 |
+| `template_bins.csv` / `template_covariance.csv` | 候选×过程×模板箱、非零组协方差元素 |
+| `inference_intervals.csv` / `toy_fits.csv` | Asimov 区间、逐 Toy×置信水平拟合 |
+| `coverage_summary.csv` / `fit_diagnostics.csv` / `paired_comparisons.csv` | coverage、bias/pull、共享观测配对差 |
+| `bootstrap_replicas.csv` / `procedure_replicas.csv` / `stress_results.csv` | 主 bootstrap、T2 外层副本、人工压力场景 |
+| `feature_attribution.csv` / `feature_interactions.csv` | Shapley 与全部二阶差分 |
+| `run_statuses.csv` / `evidence_status.csv` | 分阶段状态、独立证据状态 |
+
+`provenance.json` 绑定协议、总体、上游、评价计划、共同网格、软件环境及导出文件 receipt；
+`data_dictionary.json` 给出列类型、单位、公式、评价角色与缺失语义。历史字段不存在时保持空值并以
+`not_recorded`/状态列解释，不从总 loss 推测分类 loss，不把缺失值填零。AUC 仅指所选 checkpoint 的
+`validation_absolute_weight_auc`；M4/M5 的 CDF 后处理不继承 raw AUC 并改称 CDF AUC。
+`analysis_records.jsonl` 以 `{table,row}` 逐行镜像所有 CSV 逻辑行，保留 JSON 数值精度，便于无需
+CSV 类型推断的重放。
+
+完整逐 Toy/逐副本数据保存在 CSV 和原始 inference/procedure/bootstrap artifact 中；`report.json`
+保留兼容的结果摘要、索引和表行数，但以 `result_count`/`results_export` 代替逐 Toy 数组，避免重复嵌入大型结果。
+
+## 独立证据包
+
+`h4l-independent-evidence-v1` 可表达 `signed_mc_t1`、`physical_systematics`、`mela`、
+`arm64_authority` 与 `frozen_assessment`。`validated` 状态必须提供外部生产者、reference ID、
+独立性依据和至少一个位于包目录内的 SHA-256/大小 receipt；每种证据还需其类型专用元数据。
+格式通过本身不构成独立科学验证。材料未到位时可导入 `external_pending`，但不能提升任何对应结论。
 
 ## 样本效率流程
 

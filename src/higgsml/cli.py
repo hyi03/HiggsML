@@ -13,7 +13,8 @@ from higgsml.errors import ResearchError
 def build_parser():
     parser = argparse.ArgumentParser(prog='higgsml', description='Bound MC-only H4l analysis stages.')
     stages = parser.add_subparsers(dest='command', required=True)
-    for name in ('audit','prepare','me-export','me-import','train','calibrate','templates','freeze','infer','report'):
+    for name in ('audit','prepare','me-export','me-import','train','calibrate','templates','freeze',
+                 'infer','mc-bootstrap','evidence-import','report'):
         sub = stages.add_parser(name)
         sub.add_argument('--dataset', choices=['atlas2020_4lep'], required=True)
         sub.add_argument('--protocol', required=True)
@@ -34,6 +35,13 @@ def build_parser():
         sub.add_argument('--calibration-run', action='append', default=[])
         sub.add_argument('--assessment-me-run',action='append',default=[],help='Verified supplemental ME scores for the identical frozen discriminant')
         sub.add_argument('--result-run', action='append', default=[])
+        sub.add_argument('--training-run', action='append', default=[])
+        sub.add_argument('--evaluation-run', action='append', default=[])
+        sub.add_argument('--evidence-run', action='append', default=[])
+        sub.add_argument('--evidence-file')
+        sub.add_argument('--evaluation-plan')
+        sub.add_argument('--replicas', type=int)
+        sub.add_argument('--bootstrap-seed', type=int)
         sub.add_argument('--candidate', choices=['M0c','M2','M3','M3-fixed200','M6','L1'], default='M3')
         sub.add_argument('--seed', type=int, default=42)
         sub.add_argument('--strength', type=float, default=0.)

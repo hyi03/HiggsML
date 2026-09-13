@@ -327,6 +327,7 @@ def _run(args: argparse.Namespace) -> None:
 
     common = ["--dataset", config["dataset"], "--protocol", str(protocol)]
     calibration_runs: list[Path] = []
+    training_runs: list[Path] = []
     steps: list[tuple[str, list[str]]] = []
     for seed in seeds:
         seed_root = batch_root / f"seed{seed}"
@@ -339,6 +340,7 @@ def _run(args: argparse.Namespace) -> None:
                 "--candidate", candidate, "--seed", str(seed),
                 "--run-dir", str(model_runs[candidate]),
             ]))
+            training_runs.append(model_runs[candidate])
         for candidate, transform, name in (
             ("M0c", "raw", "m0c-raw"),
             ("M2", "raw", "m2-raw"),
@@ -362,6 +364,7 @@ def _run(args: argparse.Namespace) -> None:
                 "--candidate", "M3", "--groups", groups, "--seed", str(seed),
                 "--run-dir", str(train_run),
             ]))
+            training_runs.append(train_run)
             steps.append((f"calibrate groups {groups} seed {seed}", [
                 "calibrate", *common, "--input-run", str(prepared),
                 "--model-run", str(train_run), "--transform", "raw", "--seed", str(seed),
@@ -385,10 +388,14 @@ def _run(args: argparse.Namespace) -> None:
         "--mu", "1", "--seed", str(seeds[0]), "--run-dir", str(inference_run),
     ]))
     report_run = batch_root / "report"
-    steps.append(("report conclusions", [
+    report_arguments = [
         "report", *common, "--result-run", str(inference_run),
+        "--evaluation-run", str(template_run),
         "--seed", str(seeds[0]), "--run-dir", str(report_run),
-    ]))
+    ]
+    for training_run in training_runs:
+        report_arguments.extend(["--training-run", str(training_run)])
+    steps.append(("report conclusions", report_arguments))
 
     description = "H4l complete seeds 42-46" if complete else f"H4l diagnostic seed {seeds[0]}"
     with tqdm(steps, desc=description, unit="stage",

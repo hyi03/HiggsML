@@ -40,7 +40,9 @@ Windows 开发验证不能代替锁定原生 ARM64 权威验收。MELA 另在 Li
 | `templates` | `--input-run`，重复 `--calibration-run`，可附 `--t1-validation` | 所有指定候选共同质量网格、模板、G1 状态 |
 | `freeze` | `--input-run --template-run`，可附完整终态清单 | assessment 前冻结的候选、网格与模板身份 |
 | `infer` | `--template-run --layer T0/T1 --mu` | Asimov、可选 toys、覆盖与失败状态 |
-| `report` | 重复 `--result-run` | JSON 结果索引与 Markdown 候选状态表 |
+| `mc-bootstrap` | prepared、templates、封存 evaluation plan | 固定网络条件下的配对 MC 重采样 |
+| `evidence-import` | 本地只读 evidence package | 经 receipt 验证的外部证据或 pending 状态 |
+| `report` | 重复 result/training/evaluation/evidence run | JSON/Markdown 结论与分析就绪 CSV |
 
 `manifest.json` 绑定数据集、协议快照、上游产物 ID、文件 SHA256/大小、代码版本及 dirty 状态、
 环境和种子。JSON 模型只包含数值张量，不使用可执行 pickle 加载。
@@ -245,6 +247,57 @@ score/correlation 压力使用协议预声明的 `M3:42` 共同参考，freeze �
 
 assessment 首次使用前产生持久 claim；同事件组总体重新 prepare 也不能绕过它。
 后续 `--repeat-assessment` 只允许同一冻结分析与协议预算，不能用来重训、重校准或重选网格。
+
+### 注册评价编排与增强报告
+
+先复制 `config/examples/h4l_evaluation_plan.json` 到新的计划文件，替换其中三个全零 artifact ID，
+核对预算与实验矩阵，并在查看 assessment 前封存该文件。已经查看过的运行只能标为
+`exploratory_posthoc`；不得把事后补写的计划改称 preregistered。先审计命令：
+
+```powershell
+python scripts/h4l_evaluate.py --plan config/evaluations/my-plan.json `
+  --prepared-run runs/h4l-prepare/prepare `
+  --template-run runs/h4l-train-001/batch/all-seeds/templates `
+  --freeze-run runs/h4l-freeze-001 `
+  --output-root runs/h4l-evaluation-001 --plan-only
+```
+
+`--plan-only` 验证 schema、协议预算并列出25个阶段，但不要求本地 run 已存在，也不读取 assessment。
+正式执行还会逐项核对 prepared/template/freeze manifest 的 artifact ID。执行内容是：一个固定网络的
+calibration/template 事件组配对 bootstrap；μ=0/1/2 的 model-self 和冻结 assessment Toy；一个 T2；
+16个人工压力场景；以及一个新增强报告。首次 assessment 建立 claim，后续阶段只能以
+`--repeat-assessment` 重放同一冻结设计。失败副本保留在原定分母中，不自动加抽样补齐。
+
+历史运行可不重训而生成新报告：
+
+```powershell
+higgsml report --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json `
+  --result-run runs/.../inference `
+  --training-run runs/.../train/model-a --training-run runs/.../train/model-b `
+  --evaluation-run runs/.../templates --evaluation-run runs/.../assessment `
+  --evidence-run runs/.../evidence-arm64 `
+  --run-dir runs/h4l-report-enhanced-001
+```
+
+每个路径均由 manifest 显式绑定；不要用目录扫描或文件名猜测模型、mapping 或总体关系。
+主 bootstrap 的区间只解释为“固定已训练网络条件下的 calibration/template MC 事件组重采样不确定度”，
+不包含重新训练和 assessment 母样本波动。T2 只重拟合 calibration mapping；压力场景均标记为人工扰动。
+
+### 独立证据导入
+
+待交付材料可先用 `config/examples/h4l_independent_evidence.pending.json` 生成
+`external_pending` 证据 run。只有实际外部文件及其 receipt 到位后才能使用 `validated`：
+
+```powershell
+higgsml evidence-import --dataset atlas2020_4lep `
+  --protocol config/protocols/h4l_protocol.json `
+  --evidence-file config/evidence/arm64/package.json `
+  --run-dir runs/h4l-evidence-arm64-001
+```
+
+导入器拒绝越界/符号链接文件、SHA-256或大小错误、缺少独立性依据的引用、非原生 ARM64 receipt、
+缺来源的物理变化以及缺少类型专用比较摘要的包。它只验证声明和文件，不执行外部实验，也不把内部
+schema 检查升级为独立科学验证。
 
 ## 外部矩阵元
 

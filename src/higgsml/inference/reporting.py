@@ -34,7 +34,7 @@ def coverage_summary(intervals, *, mu, confidence=.95):
         raise ResearchError("Coverage needs a positive declared toy budget")
     p=covered/n; z=float(norm.ppf((1+confidence)/2)); denom=1+z*z/n
     center=(p+z*z/(2*n))/denom; half=z*math.sqrt(p*(1-p)/n+z*z/(4*n*n))/denom
-    return {"status":"valid" if len(valid)==n else "coverage_incomplete","budget":n,"valid_fits":len(valid),"failed_fits":n-len(valid),"covered":covered,"coverage":p if len(valid)==n else None,"success_and_coverage_fraction":p,"wilson_interval_success_and_coverage":[center-half,center+half],"binomial_standard_error":math.sqrt(p*(1-p)/n),"interpretation":"failed fits are reported; success-and-coverage is not conditional coverage"}
+    return {"status":"valid" if len(valid)==n else "coverage_incomplete","budget":n,"valid_fits":len(valid),"failed_fits":n-len(valid),"failure_rate":(n-len(valid))/n,"covered":covered,"coverage":p if len(valid)==n else None,"success_and_coverage_fraction":p,"wilson_interval_success_and_coverage":[center-half,center+half],"binomial_standard_error":math.sqrt(p*(1-p)/n),"interpretation":"failed fits are reported; success-and-coverage is not conditional coverage"}
 
 
 def paired_coverage_error(left, right, *, mu, pairing_id):
@@ -53,7 +53,8 @@ def fit_diagnostics(intervals, *, mu):
     valid=[r for r in intervals if r.get("status")=="valid" and r.get("width",0)>0 and np.isfinite(r.get("muhat",np.nan))]
     offsets=np.asarray([r["muhat"]-mu for r in valid],float)
     pulls=np.asarray([(r["muhat"]-mu)/(r["width"]/2) for r in valid],float)
-    return {"status":"valid" if len(valid)==len(intervals) else "diagnostics_incomplete","budget":len(intervals),"valid_fits":len(valid),"failed_fits":len(intervals)-len(valid),"bias_valid_fits":float(offsets.mean()) if len(valid) else None,"bias_standard_error":float(offsets.std(ddof=1)/np.sqrt(len(valid))) if len(valid)>1 else None,"pull_mean":float(pulls.mean()) if len(valid) else None,"pull_std":float(pulls.std(ddof=1)) if len(valid)>1 else None,"pull_definition":"(muhat-mu)/(interval_width/2); descriptive, not Gaussian at boundaries","lower_boundary_count":sum(bool(r.get("lower_at_boundary")) for r in valid)}
+    widths=np.asarray([r["width"] for r in valid],float)
+    return {"status":"valid" if len(valid)==len(intervals) else "diagnostics_incomplete","budget":len(intervals),"valid_fits":len(valid),"failed_fits":len(intervals)-len(valid),"failure_rate":(len(intervals)-len(valid))/len(intervals),"bias_valid_fits":float(offsets.mean()) if len(valid) else None,"bias_standard_error":float(offsets.std(ddof=1)/np.sqrt(len(valid))) if len(valid)>1 else None,"pull_mean":float(pulls.mean()) if len(valid) else None,"pull_std":float(pulls.std(ddof=1)) if len(valid)>1 else None,"pull_definition":"(muhat-mu)/(interval_width/2); descriptive, not Gaussian at boundaries","mean_width":float(widths.mean()) if len(widths) else None,"median_width":float(np.median(widths)) if len(widths) else None,"width_q16":float(np.quantile(widths,.16)) if len(widths) else None,"width_q84":float(np.quantile(widths,.84)) if len(widths) else None,"lower_boundary_count":sum(bool(r.get("lower_at_boundary")) for r in valid)}
 
 
 def exact_shapley(values, *, family_id, seed, groups=("A","B","C","D")):

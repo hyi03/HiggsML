@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "dataset", "protocol_sha256", "registration_status", "inputs", "mc_bootstrap", "model_self", "assessment", "t2", "stress"],
+  "properties": {
+    "schema_version": {"const": "h4l-evaluation-plan-v1"},
+    "dataset": {"const": "atlas2020_4lep"},
+    "protocol_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "registration_status": {"enum": ["preregistered", "exploratory_posthoc"]},
+    "inputs": {
+      "type": "object", "additionalProperties": false,
+      "required": ["prepared_artifact_id", "template_artifact_id", "freeze_artifact_id"],
+      "properties": {
+        "prepared_artifact_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "template_artifact_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "freeze_artifact_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "mc_bootstrap": {
+      "type": "object", "additionalProperties": false, "required": ["replicas", "seed"],
+      "properties": {"replicas": {"type": "integer", "minimum": 1}, "seed": {"type": "integer", "minimum": 0}}
+    },
+    "model_self": {"$ref": "#/$defs/toys"},
+    "assessment": {"$ref": "#/$defs/toys"},
+    "t2": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mu", "seed", "outer_replicas", "inner_toys"],
+      "properties": {
+        "mu": {"enum": [0, 1, 2]}, "seed": {"type": "integer", "minimum": 0},
+        "outer_replicas": {"type": "integer", "minimum": 1},
+        "inner_toys": {"type": "integer", "minimum": 1}
+      }
+    },
+    "stress": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mu", "toys", "seed", "kinds", "directions", "modes"],
+      "properties": {
+        "mu": {"enum": [0, 1, 2]}, "toys": {"type": "integer", "minimum": 1},
+        "seed": {"type": "integer", "minimum": 0},
+        "kinds": {"const": ["normalization", "mass", "score", "correlation"]},
+        "directions": {"const": [-1, 1]}, "modes": {"const": ["omitted", "modeled"]}
+      }
+    }
+  },
+  "$defs": {
+    "toys": {
+      "type": "object", "additionalProperties": false, "required": ["injections", "toys_per_injection", "seed"],
+      "properties": {
+        "injections": {"const": [0, 1, 2]},
+        "toys_per_injection": {"type": "integer", "minimum": 1},
+        "seed": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}
