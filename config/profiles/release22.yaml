@@ -1,0 +1,27 @@
+input_profile: release22
+tree_name: analysis
+momentum_unit: GeV
+branches:
+  runNumber: runNumber
+  eventNumber: eventNumber
+  channelNumber: channelNumber
+  lep_n: lep_n
+  lep_pt: lep_pt
+  lep_eta: lep_eta
+  lep_phi: lep_phi
+  lep_e: lep_e
+  lep_charge: lep_charge
+  lep_type: lep_type
+  trigE: trigE
+  trigM: trigM
+  lep_isTrigMatched: lep_isTrigMatched
+  lep_isTightID: lep_isTightID
+  lep_track_iso: lep_ptvarcone30
+  lep_calo_iso: lep_topoetcone20
+  lep_d0sig: lep_d0sig
+  lep_z0: lep_z0
+  mcWeight: mcWeight
+  xsec: xsec
+  kfac: kfac
+  filteff: filteff
+  sum_of_weights: sum_of_weights

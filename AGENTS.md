@@ -1,234 +1,76 @@
 # Repository Agent Guide
 
-## Scope and instruction precedence
+## Project scope
 
-These instructions apply to the whole repository. The maintained implementation
-is `neural/`. Before changing anything under it, read and follow
-`neural/AGENTS.md`; its more specific rules take precedence over this file.
-
-The former tree-model implementation has been removed. Do not recreate it,
-restore its package entry points, or add new dependencies for it. Historical
-references under archived documents are evidence only, not current interfaces.
-
-The root notebooks, historical Markdown files, and frozen run descriptions are
-reference material. Do not treat them as the current Neural implementation or
-as authority for a new scientific result.
-
-## Current project
-
-HiggsML Neural is an MC-only educational/technical workflow for
-`H -> ZZ* -> 4l`. It contains:
-
-- the historical fixed 15-feature adversarial MLP workflow;
-- preprocessing, development-only training, qualification, and controlled test
-  opening for the supported dataset contracts;
-- an isolated `src.research` H4l workflow for protocol-bound studies, including
-  the approved common `m4l` conditioning exception;
-- immutable, hash-bound artifacts and run directories.
+This repository maintains one MC-only educational and technical workflow for
+`H -> ZZ* -> 4l`. The active package is `src/higgsml`; legacy15 preprocessing,
+training, qualification, final-fit, test-opening, and XGBoost implementations
+have been removed. Do not reintroduce them unless the user explicitly changes
+the project scope.
 
 Never describe repository output as an ATLAS result, a Higgs discovery, or a
 physics measurement.
 
 ## Start here
 
-For maintained work, read the following files in order:
+Read `README.md`, `docs/README.md`, and the task-specific method, protocol, or
+runbook before changing scientific behavior. The main entry points are:
 
-1. `AGENTS.md`
-2. `neural/AGENTS.md`
-3. `README.md`
-4. `neural/README.md`
-5. `neural/docs/sw-dev/README.md`
-6. The task-specific protocol, design, runbook, or requirement document.
-
-Useful task-specific entry points include:
-
-- `neural/docs/sw-dev/architecture.md`
-- `neural/docs/sw-dev/artifact-schema.md`
-- `neural/docs/sw-dev/h4l-research-runbook.md`
-- `neural/docs/research/current-research-status.md`
-- `neural/docs/research/H4l-Research-Project.md`
-- `neural/docs/research/inclusive-protocol.md`
-- `neural/docs/research/test-opening-protocol.md`
-
-Files under `neural/docs/1-Requirement/`, `neural/docs/3-Plan/`, and
-`neural/docs/4-Reviews/` may be active planning or review artifacts. Read their
-status and dependencies before treating a proposal as approved or implemented.
+- `docs/methods/research-project.md`
+- `docs/reproducibility/runbook.md`
+- `docs/reproducibility/artifact-schema.md`
+- `docs/validation/current-status.md`
+- `config/protocols/h4l_v2.json`
 
 ## Repository layout
 
-- `scripts/init_data.py`: repository-level controlled MC downloader.
-- `data/raw/`: downloaded source data; ignored and never committed.
-- `neural/src/`: maintained runtime package.
-- `neural/src/cli/`: CLI argument parsing and application entry points.
-- `neural/src/domain/`: frozen scientific selections, kinematics, weights, and
-  split rules.
-- `neural/src/preprocessing/`: ROOT ingestion and partition publication.
-- `neural/src/training/`: development, fitting, qualification, and test-opening
-  logic.
-- `neural/src/research/`: isolated protocol-bound H4l research implementation.
-- `neural/src/artifacts/`: canonical serialization and immutable publication.
-- `neural/config/`: dataset contracts, profiles, protocols, validation schemas,
-  and resource configurations.
-- `neural/scripts/`: cross-platform research workflow helpers.
-- `neural/tests/`: maintained automated test suite.
-- `neural/docs/`: requirements, research protocols, software design, runbooks,
-  reviews, and thesis material.
-- `neural/runs/`: generated runs; ignored, immutable after creation, and never
-  committed.
-- Former tree-model implementation: removed; do not restore it.
+- `src/higgsml/physics/`: selections, reconstruction, kinematics, weights, and splits.
+- `src/higgsml/modeling/`: representations, discriminants, calibration, and matrix elements.
+- `src/higgsml/inference/`: templates, likelihood inference, diagnostics, stress tests, and reporting.
+- `src/higgsml/sample_efficiency/`: registered sample-efficiency study.
+- `config/`: datasets, profiles, protocols, schemas, and examples.
+- `scripts/`: controlled download and H4l workflow helpers.
+- `tests/`: unit, workflow, and synthetic scientific-contract tests.
+- `docs/`: paper-relevant methods, reproducibility, and validation documentation.
+- `paper/`: manuscript source.
+- `data/raw/` and `runs/`: ignored local inputs and immutable generated evidence.
 
-## Local environment
+## Environment and commands
 
-The confirmed Windows Conda installation is:
-
-```text
-Conda root:       D:\apps\anaconda3
-Conda executable: D:\apps\anaconda3\Scripts\conda.exe
-Neural env:       D:\apps\anaconda3\envs\pytorch
-Environment name: pytorch
-```
-
-The project requires Python 3.12; `neural/environment.yml` currently pins
-Python 3.12.13. Use the `pytorch` environment for all maintained project
-commands. On PowerShell, prefer explicit commands that do not depend on shell
-activation state:
+Use Python 3.12 and the `pytorch` Conda environment. Run commands from the
+repository root:
 
 ```powershell
-& 'D:\apps\anaconda3\Scripts\conda.exe' run -n pytorch python --version
-& 'D:\apps\anaconda3\Scripts\conda.exe' run -n pytorch python -m pip check
-```
-
-For a missing environment, create it from the repository root, then install the
-package in editable mode:
-
-```powershell
-& 'D:\apps\anaconda3\Scripts\conda.exe' env create -f neural/environment.yml
-& 'D:\apps\anaconda3\Scripts\conda.exe' run -n pytorch python -m pip install --no-deps -e neural
-```
-
-Install `neural/requirements-research.txt` only when the requested research
-workflow needs those additional dependencies. `neural/osx.yml` is the
-authoritative native ARM64 lock; `neural/win.yml` supports Windows development
-verification and does not substitute for ARM64 authority validation.
-
-## Command and network conventions
-
-- Run Neural package, CLI, test, and workflow commands from `neural/` unless a
-  documented command explicitly starts at the repository root.
-- Download controlled MC data from the repository root with
-  `python scripts/init_data.py` and an explicit dataset when appropriate.
-- Do not use a `webservice` abstraction. For authorized network access, make
-  direct HTTP or HTTPS requests.
-- All business CLIs require an explicit dataset contract:
-  `atlas2020_4lep` or `atlas2025_exactly4lep`.
-- The installed console entry points are `higgsml-preprocess`, `higgsml-train`,
-  `higgsml-test`, and `higgsml-research`.
-- The maintained H4l orchestration helpers are `scripts/h4l_prepare.py`,
-  `scripts/h4l_g1.py`, and `scripts/h4l_run.py`. Follow the runbook rather than
-  inventing a new execution order.
-
-## Code discovery
-
-Use the codebase knowledge graph before filesystem text search for code
-discovery:
-
-1. `search_graph` for functions, classes, routes, and variables.
-2. `trace_path` for callers, callees, dependencies, and data flow.
-3. `get_code_snippet` for a specific qualified symbol.
-4. `query_graph` for complex structural questions.
-5. `get_architecture` for a high-level overview.
-6. `search_code` for graph-augmented code text search.
-
-If the repository is not indexed, run `index_repository` first. Fall back to
-`rg` or file reads for string literals, error messages, configuration,
-documentation, shell scripts, and cases where graph results are insufficient.
-
-## Scientific safety
-
-- Neural work is strictly MC-only. Do not read, hash, preprocess, score, plot,
-  or otherwise inspect real data.
-- Never use real data for supervised training or use its contents to make model,
-  threshold, protocol, or analysis decisions.
-- For the historical classifier, never add `m4l`, identifiers, provenance,
-  split fields, or weight columns to the fixed 15 model features.
-- The only `m4l` feature exception is the separately approved, versioned
-  `src.research` H4l protocol, where it may be an explicit common mass
-  condition. This exception does not alter historical classifier rules or
-  test-opening gates.
-- Signed `physical_weight` is for physical-yield reporting. Optimizer weights
-  use the protocol-defined normalized absolute weight.
-- Keep physical event groups together across split and fold assignments.
-- Development code must not read held-out test feature values. Do not use test
-  results to tune candidates, hyperparameters, thresholds, bins, mappings, or
-  selection rules.
-- Do not relax predeclared AUC, KS, efficiency, candidate, epoch, architecture,
-  or threshold criteria after observing results.
-- Research assessment access requires the protocol-defined frozen state and
-  cannot be used for model or analysis selection.
-- Preserve dataset identity, resource seals, protocol hashes, checkpoint
-  binding, and artifact lineage.
-- Frozen, failed, diagnostic, and completed runs are immutable. Every new
-  execution uses a new run path unless a documented, explicitly requested clean
-  operation safely removes the exact generated target.
-- Synthetic tests, Windows verification, full-data scientific validation, and
-  native ARM64 authority validation are distinct evidence states. Report only
-  the states actually verified.
-
-## Development workflow
-
-Before editing:
-
-1. Confirm the task targets the maintained Neural implementation.
-2. Read `neural/AGENTS.md` and the relevant protocol/design documents.
-3. Run `git status --short` and preserve unrelated or untracked user work.
-4. Establish a focused test baseline for the affected behavior.
-5. Check whether existing run or data artifacts are available; never infer or
-   fabricate missing scientific outputs.
-
-While editing:
-
-- Make the smallest coherent change that satisfies the task.
-- Keep scientific calculations in domain, training, preprocessing, or research
-  services rather than CLI or artifact-publication code.
-- Protocol files own scientific rules. Run configuration owns paths and
-  resource settings.
-- Add or update tests for behavior changes.
-- Update documentation, schemas, and configuration examples when contracts or
-  workflows change.
-- Preserve stable process exit codes documented in `neural/AGENTS.md`.
-- Never overwrite user changes, generated evidence, or frozen artifacts.
-
-## Verification
-
-Run a focused test module first, then the full maintained suite from `neural/`:
-
-```powershell
-& 'D:\apps\anaconda3\Scripts\conda.exe' run -n pytorch python -m pytest -q tests/<focused_test>.py
+& 'D:\apps\anaconda3\Scripts\conda.exe' run -n pytorch python -m pip install --no-deps -e .
 & 'D:\apps\anaconda3\Scripts\conda.exe' run -n pytorch python -m pip check
 & 'D:\apps\anaconda3\Scripts\conda.exe' run -n pytorch python -m pytest -q
 ```
 
-For documentation-only changes, verify links, paths, examples, and the final
-diff; a full scientific run is not required. Before reporting success, state
-exactly which checks ran and distinguish software tests from scientific or
-authority-environment validation.
+The installed console entry point is `higgsml`. The orchestration helpers are
+`scripts/h4l_prepare.py`, `scripts/h4l_g1.py`, `scripts/h4l_run.py`, and the
+sample-efficiency scripts. Do not use a webservice abstraction; authorized
+network access must use direct HTTP or HTTPS requests.
 
-## Data, artifacts, and Git discipline
+## Scientific safety
 
-- Do not commit raw data, processed data, models, plots, run outputs, caches,
-  build products, virtual environments, Conda environments, or package metadata.
-- Do not copy an environment between machines; recreate it from the appropriate
-  environment definition or lock.
-- Verify controlled data with the repository's dataset contracts and receipts;
-  do not identify samples from filenames alone.
-- Keep generated outputs under their documented run roots and preserve audit
-  evidence for both successful and unsuccessful terminal states.
-- Root notebooks and historical files may inform context but must not bypass the
-  maintained protocols, gates, or package boundaries.
+- Process controlled MC only; never inspect, hash, preprocess, score, or plot real data.
+- `m4l` may be used only as explicitly defined by the versioned H4l protocol.
+- Signed `physical_weight` is for physical yields; optimizer weights follow the protocol.
+- Keep physical event groups together across split and fold assignments.
+- Do not inspect assessment values before the protocol-defined frozen state.
+- Do not tune candidates, thresholds, bins, mappings, or protocols after assessment.
+- Preserve dataset identity, hashes, protocol seals, checkpoint bindings, and lineage.
+- Never overwrite a completed, failed, diagnostic, or otherwise published run.
+- Distinguish software tests, synthetic validation, full-MC validation, and native ARM64 authority validation.
 
-## Removed legacy implementation
+## Change discipline
 
-The former tree-model implementation and its package directory are no longer
-part of the repository. Do not add compatibility shims or restore old training,
-evaluation, or data-processing entry points. Archived review records may retain
-historical source paths, but those paths must never be used by runtime code.
+Before editing, inspect `git status --short` and preserve unrelated or untracked
+user work. Keep scientific rules in protocols and domain services, not CLI code.
+Update tests, schemas, examples, and documentation when a contract changes.
+Generated data, models, plots, runs, caches, build outputs, environments, and
+package metadata must not be committed.
+
+Use the codebase knowledge graph for code discovery when its tools are
+available; otherwise use `rg`. Run focused tests before the full suite and
+report exactly which evidence levels were and were not verified.

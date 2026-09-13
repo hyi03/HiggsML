@@ -221,8 +221,7 @@ __marimo__/
 # Local data and run directories
 data/
 var/
-neural/runs/
-neural/data/
+runs/
 .worktrees/
 
 .DS_Store
