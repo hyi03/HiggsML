@@ -106,10 +106,10 @@ python scripts/h4l_prepare.py --run-root runs/h4l-prepare-diagnostic-001 --diagn
 该命令发布`diagnostic_complete`终态，不能作为train/G1的`--input-run`。诊断run目录同样不可复用；正式
 prepare必须使用新的run root。development-only协议仍不会为诊断跨越test间隙读取payload。
 
-`scripts/h4l_g1.py`从已有prepared artifact运行seed 42的M0c、M2、M3、五个校准和共同模板：
+`scripts/h4l_check.py`从已有prepared artifact运行seed 42的M0c、M2、M3、五个校准和共同模板：
 
 ```powershell
-python scripts/h4l_g1.py --run-name pilot-001
+python scripts/h4l_check.py --run-name pilot-001
 ```
 
 训练、校准或模板失败时，失败的G1输出目录保持不可变。修复问题后应指定新的
@@ -137,7 +137,7 @@ python scripts/h4l_run.py --run-name pilot-002 --plan-only
 
 ```powershell
 python scripts/h4l_prepare.py --clean
-python scripts/h4l_g1.py --run-name 001 --clean
+python scripts/h4l_check.py --run-name 001 --clean
 python scripts/h4l_run.py --run-name 001 --clean
 python scripts/h4l_run.py --run-name 001 --seed 42 --clean
 ```

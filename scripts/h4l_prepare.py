@@ -19,7 +19,7 @@ RUNS_ROOT = (PROJECT_ROOT / "runs").resolve()
 DEFAULT_RUN_ROOT = (RUNS_ROOT / "h4l-prepare").resolve()
 DEFAULT_PROTOCOL = (PROJECT_ROOT / "config" / "protocols" / "h4l_protocol.json").resolve()
 PROFILE = (PROJECT_ROOT / "config" / "profiles" / "open_data_2020.yaml").resolve()
-G1_SCRIPT = (PROJECT_ROOT / "scripts" / "h4l_g1.py").resolve()
+G1_SCRIPT = (PROJECT_ROOT / "scripts" / "h4l_check.py").resolve()
 VALIDATION_ROOT = (PROJECT_ROOT / "config" / "schemas").resolve()
 DEFAULT_RECEIPT = (
     REPOSITORY_ROOT / "data" / "raw" / "atlas2020_4lep" / "dataset_receipt.json"
