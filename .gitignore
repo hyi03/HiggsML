@@ -23,9 +23,6 @@ wheels/
 share/python-wheels/
 *.egg-info/
 # setuptools metadata is generated at the repository root, never under src/.
-.egg-info/*
-!.egg-info/
-!.egg-info/.gitkeep
 .installed.cfg
 *.egg
 MANIFEST
