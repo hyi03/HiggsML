@@ -223,8 +223,6 @@ data/
 var/
 neural/runs/
 neural/data/
-xgboost/data/
-xgboost/runs/
 .worktrees/
 
 .DS_Store
