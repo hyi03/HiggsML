@@ -1,14 +1,12 @@
 # H4l 质量条件研究运行手册
 
 本入口实现 [H4l 项目方案](../methods/research-project.md)的软件链路，运行命令均从仓库根目录执行。
-仅处理受控 MC 或显式标记的合成事件。默认协议为 `config/protocols/h4l_v2.json`；
+仅处理受控 MC 或显式标记的合成事件。默认协议为 `config/protocols/h4l_protocol.json`；
 其 `protocol_scope=synthetic_software_defaults_not_physics_validation` 明确表示可测试的软件默认规则，
 不表示真实 MC、signed 模板近似、矩阵元参考或独立验证已经通过。
 
-v2新增逐epoch诊断和独立带符号μ诊断。`research_protocol_v1.json`保持字节不变，旧产物仍须用原协议读取；
-不能将旧run改绑v2。新协议摘要要求新run及同协议的P0/G1/T1证据，不继承旧assessment独立性。
-`research_protocol_exploratory_all_mc_v1.json`是明确标记的v3探索协议，使用全部MC并声明
-`historical_held_out_test_preserved=false`；它不能提供独立held-out验证或论文级泛化证据。
+仓库只维护这一份默认 H4l 协议。旧产物仍须用产物中保存的协议快照与摘要读取；
+不能因默认协议文件重命名而改写或重新绑定既有run。
 
 ## 环境与入口
 
@@ -67,11 +65,6 @@ profile 必须与该数据集的封存 profile 字节一致。导出前校验来
 事件组使用固定哈希划分 train/validation/calibration/template/assessment，比例为 40/10/20/20/10%。
 产额使用 `physical_weight/(0.8 * role_probability)`，分组方差按同组行之和的平方计算。
 
-exploratory all-MC v3不执行上述历史development/test筛选。它对ROOT中的全部MC条目按
-`root_max_entries`读取有界连续区间，把导出身份标为`exploratory`，并使用
-`sampling_probability=role_probability`。五种内部角色和assessment冻结门禁仍保留，但这些角色来自
-已经合并的全MC总体，不能视为旧test边界的替代品或新的独立验证集。v1/v2的development-only行为不变。
-
 受控 MC 的训练还要求 prepare 阶段提供 `--p0-validation`。证据 JSON 必须带
 `status=validated`、dataset、protocol_sha256、source_evidence_sha256、evidence_id、independent_reference，
 并完整记录 physical_definitions 下的 processes、units、four_vectors、pairing、weights、selection。
@@ -121,18 +114,7 @@ python scripts/h4l_g1.py --run-name pilot-001
 训练、校准或模板失败时，失败的G1输出目录保持不可变。修复问题后应指定新的
 `--output-root`，继续传入同一个`--prepared-run`；这不会重新执行ROOT prepare。G1通过后，
 脚本打印绑定同一prepared artifact和新gate run的`h4l_run.py`命令。三个脚本都接受`--protocol`，
-并把选择传播到所有子命令；省略时保持原有`research_protocol_v1.json`默认值。
-
-使用全部MC的探索链路必须在每一步显式传入同一协议：
-
-```powershell
-python scripts/h4l_prepare.py --run-name all-mc-001 --protocol config/protocols/exploratory_all_mc_v1.json
-python scripts/h4l_g1.py --run-name all-mc-001 --protocol config/protocols/exploratory_all_mc_v1.json
-python scripts/h4l_run.py --run-name all-mc-001 --protocol config/protocols/exploratory_all_mc_v1.json
-```
-
-该链路的协议范围固定为`exploratory_all_mc_not_independent_validation`。报告只能用于探索性方法比较；
-不得写成独立held-out评估、论文就绪证据或物理测量。
+并把选择传播到所有子命令；省略时统一使用`config/protocols/h4l_protocol.json`。
 
 `h4l_run.py`默认执行完整的seed 42–46批次。每个seed训练M0c、M2、普通M3和15个
 A/B/C/D组合，生成raw校准以及M2→M4、M3→M5的physical CDF；五个seed共享一次templates、
@@ -171,9 +153,9 @@ python scripts/h4l_run.py --run-name 001 --seed 42 --clean
 以下以已完成受控来源审计的 `runs/h4l-prepare-001` 为输入。目录名仅为示例，已有目录不可覆盖。
 
 ```powershell
-higgsml train --dataset atlas2020_4lep --protocol config/protocols/h4l_v2.json --input-run runs/h4l-prepare-001 --candidate M2 --seed 42 --run-dir runs/h4l-m2-42
-higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_v2.json --input-run runs/h4l-prepare-001 --model-run runs/h4l-m2-42 --transform physical --run-dir runs/h4l-m4-42
-higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_v2.json --input-run runs/h4l-prepare-001 --model-run runs/h4l-m2-42 --transform raw --run-dir runs/h4l-m2-raw-42
+higgsml train --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare-001 --candidate M2 --seed 42 --run-dir runs/h4l-m2-42
+higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare-001 --model-run runs/h4l-m2-42 --transform physical --run-dir runs/h4l-m4-42
+higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare-001 --model-run runs/h4l-m2-42 --transform raw --run-dir runs/h4l-m2-raw-42
 ```
 
 同样建立 M0c、M3 及 M3 的物理 CDF（M5）；`templates` 一次传入所有共同候选的 calibration run。
@@ -182,8 +164,8 @@ G1 未通过时其余种子、M6、固定200轮 λ=0、绝对权重桥接和 L1 
 全体候选和终态记录完成后才冻结 assessment。新增协议版本不能把既有反馈重新标成独立验证。
 
 ```powershell
-higgsml infer --dataset atlas2020_4lep --protocol config/protocols/h4l_v2.json --template-run runs/h4l-templates-001 --layer T0 --mu 1 --run-dir runs/h4l-t0-001
-higgsml report --dataset atlas2020_4lep --protocol config/protocols/h4l_v2.json --result-run runs/h4l-t0-001 --run-dir runs/h4l-report-001
+higgsml infer --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --template-run runs/h4l-templates-001 --layer T0 --mu 1 --run-dir runs/h4l-t0-001
+higgsml report --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --result-run runs/h4l-t0-001 --run-dir runs/h4l-report-001
 ```
 
 M2→M4、M3→M5/M5-abs 的校准不重新训练网络。M6 和 M3-fixed200 都固定选择第200轮；
@@ -193,12 +175,12 @@ M5-abs校准也属于G1后的候选扩展，必须传入同prepared、同协议�
 否则在读取校准payload前拒绝。例如（各路径须替换为实际已验证的上游）：
 
 ```powershell
-higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_v2.json --input-run runs/h4l-prepare-001 --model-run runs/h4l-m3-42 --gate-run runs/h4l-g1-passed --transform absolute --run-dir runs/h4l-m5-abs-42
+higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare-001 --model-run runs/h4l-m3-42 --gate-run runs/h4l-g1-passed --transform absolute --run-dir runs/h4l-m5-abs-42
 ```
 
 ## 训练曲线与附录
 
-v2 `model.json`的`history_contract`绑定逐轮损失口径：分类BCE按train类别归一化绝对权重加权，
+扩展诊断模型的`history_contract`绑定逐轮损失口径：分类BCE按train类别归一化绝对权重加权，
 除以train行数；adversary CE除以背景归一化绝对权重和，均由该轮更新前各batch累计。
 `loss`保留batch合并loss的算术均值，不是梯度反转下的纯分类目标。无adversary时其损失为null。
 每轮另存λ、validation绝对权重AUC及质量KS/分箱接受率。train质量箱固定；每轮eval模式下重算
@@ -227,18 +209,18 @@ T1 证据须绑定协议，明确 `modifier=shapesys`、`correlation=independent
 区间为 μ≥0 的 profile-likelihood χ² 构造；未找到上界或优化失败保留失败，不伪造有限区间。
 低计数及 μ=0 边界的覆盖适用性仍需先导验证。
 
-v2在μ=0的model-self或冻结assessment Toy中，使用同一组观测计数额外执行`signed_mu_diagnostic`。
+扩展诊断实现可在μ=0的model-self或冻结assessment Toy中，使用同一组观测计数额外执行`signed_mu_diagnostic`。
 这条独立Poisson点估计固定名义模板和全部nuisance，允许负μ；即使主区间选择T1，也标明为
 `T0_fixed_template_diagnostic`，不宣称包含T1剖面误差。`signed_mu`契约独立于原物理区间的μ≥0限制。
 搜索范围为[-20,20]与逐箱`b+μs>0`支持域的交集，负物理边界取0.99999999内侧比例；不把负/零yield
 替换成epsilon。没有信号灵敏度或背景不正时记录`signed_domain_unavailable`，端点最优记录
 `search_bound_reached`，其计数保留但不进入有效估计均值。modeled stress不执行这条名义模板诊断。
-旧v1协议不自动启用新增诊断；T1剖面带符号μ需单独设计正率约束和预注册。
+当前默认协议不自动启用该诊断；T1剖面带符号μ需单独设计正率约束和预注册。
 
 示例（先满足该路径的全部门槛，`--toys 500`为协议内的先导预算）：
 
 ```powershell
-higgsml infer --dataset atlas2020_4lep --protocol config/protocols/h4l_v2.json --template-run runs/h4l-templates-001 --layer T0 --mu 0 --toys 500 --run-dir runs/h4l-background-model-self
+higgsml infer --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --template-run runs/h4l-templates-001 --layer T0 --mu 0 --toys 500 --run-dir runs/h4l-background-model-self
 ```
 
 model-self覆盖不能代替assessment验证。当前区间仍使用χ²(1)临界值；Toy只检查覆盖，

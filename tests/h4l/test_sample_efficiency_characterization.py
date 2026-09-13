@@ -15,9 +15,7 @@ from higgsml.workflow import _candidate_key
 
 
 @pytest.mark.parametrize("filename,expected", [
-    ("h4l_v1.json", "bddc5ba0efbdc0262dc71a5c4ecb6d3592323b5226453af3208189177c8b1f39"),
-    ("h4l_v2.json", "54e98f7b8fbaeecbfd3b65f14d3145ee87e2a2fe031fcfb834536093ab574414"),
-    ("exploratory_all_mc_v1.json", "1f6fddedd796d6a547672fb4651307bf92b4af52b90145e6ae08aaa42a224636"),
+    ("h4l_protocol.json", "bddc5ba0efbdc0262dc71a5c4ecb6d3592323b5226453af3208189177c8b1f39"),
 ])
 def test_existing_protocol_digests_and_unknown_fields(filename, expected):
     protocol = load_protocol(Path(__file__).resolve().parents[2] / "config" / "protocols" / filename)
