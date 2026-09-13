@@ -209,6 +209,13 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
                     [r["intervals"][i] for r in result["toys"]["results"]],
                     [r["intervals"][i] for r in results["M0"]["toys"]["results"]], mu=mu, pairing_id=pairing_id)
                     for i, level in enumerate(levels)}
+        for network_seed in range(42, 47):
+            left_key, right_key = f"M5:{network_seed}", f"M4:{network_seed}"
+            if all(key in results and "toys" in results[key] for key in (left_key, right_key)):
+                results[left_key]["paired_coverage_vs_M4"] = {str(level): paired_coverage_error(
+                    [row["intervals"][index] for row in results[left_key]["toys"]["results"]],
+                    [row["intervals"][index] for row in results[right_key]["toys"]["results"]],
+                    mu=mu, pairing_id=pairing_id) for index, level in enumerate(levels)}
     return results
 
 

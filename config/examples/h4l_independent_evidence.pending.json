@@ -1,0 +1,13 @@
+{
+  "schema_version": "h4l-independent-evidence-v1",
+  "evidence_type": "signed_mc_t1",
+  "status": "external_pending",
+  "dataset": "atlas2020_4lep",
+  "protocol_sha256": "4954e2ec4c4ef8d4b35e24e456940a5485996d607f0a0083f607cf0e2fee5955",
+  "prepared_artifact_id": null,
+  "scope": "independent signed-MC T1 closure, covariance, low-count, and coverage validation",
+  "independent": false,
+  "reference": {},
+  "findings": [],
+  "limitations": ["Independent reference has not been supplied"]
+}

@@ -5,7 +5,7 @@ import pytest
 
 from higgsml.inference.assessment import infer_assessment, run_assessment_t2, run_assessment_stress
 from higgsml.errors import ResearchStateError
-from higgsml.protocol import load_protocol
+from higgsml.protocol import DIAGNOSTICS, load_protocol
 from higgsml.inference.templates import build_templates
 from higgsml.modeling.calibration import fit_thresholds
 
@@ -18,6 +18,7 @@ def population(role):
 
 def fixture():
     p=load_protocol().to_dict()
+    p["diagnostics"]=copy.deepcopy(DIAGNOSTICS)
     p["templates"].update(min_neff_signed=2.)
     p["calibration"]["min_effective_count"]=2.
     p["inference"].update(toy_count=2,outer_replicas=1,inner_toys=1)
@@ -43,6 +44,23 @@ def test_actual_pyhf_assessment_toys_share_observations_and_mass_projection():
         assert sum(x["observations"])==z["observations"][0]
     assert result["A"]["coverage"]["0.68"]["budget"]==2
     assert result["A"]["diagnostics"]["0.68"]["budget"]==2
+
+
+def test_m5_m4_coverage_difference_uses_shared_assessment_toys():
+    pytest.importorskip('pyhf')
+    p,grid,bundles=fixture()
+    template=grid["templates"].pop("A")
+    grid["templates"].pop("B")
+    bundle=bundles.pop("A")
+    bundles.pop("B")
+    for candidate in ("M4:42", "M5:42"):
+        grid["templates"][candidate]=copy.deepcopy(template)
+        bundles[candidate]=copy.deepcopy(bundle)
+    result=infer_assessment(grid,bundles,population("assessment"),p,layer="T0",t1_validation=None,
+        mu=1.,count=2,seed=42,prepared_id="prepared",freeze_id="frozen",categorize=categorize)
+    paired=result["M5:42"]["paired_coverage_vs_M4"]["0.68"]
+    assert paired["status"]=="valid" and paired["difference"]==0
+    assert paired["pairing_id"]==result["M4:42"]["toys"]["pairing_id"]
 
 
 def test_background_assessment_adds_separate_signed_diagnostics_on_same_observations():

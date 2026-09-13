@@ -389,6 +389,8 @@ def test_run_plan_covers_all_combinations_without_creating_run() -> None:
     assert output.count("higgsml.cli templates") == 1
     assert output.count("higgsml.cli infer") == 1
     assert output.count("higgsml.cli report") == 1
+    assert output.count("--training-run") == 90
+    assert output.count("--evaluation-run") == 1
     assert "seed42" in output and "seed46" in output
     assert not output_root.exists()
 

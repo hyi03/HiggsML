@@ -14,8 +14,11 @@
 | MELA 导出/导入适配 | 已实现接口 | 实际后端和独立物理参考仍需验证 |
 | 条件 CDF、共同二维模板与 pyhf 推断 | 已实现 | signed-MC T1 适用性需独立数值证据 |
 | G0/G1、freeze、assessment 与报告 | 已实现 | 当前没有可直接作为论文结果的冻结完整 MC run |
+| 增强分析导出 | 已实现并有合成/现有 MC 产物重放检查 | AUC、训练、校准、模板、推断、归因和状态可导出；AUC仍是同 validation checkpoint 指标 |
+| 注册评价编排 | 已实现并有合成软件测试 | bootstrap/Toy/T2/stress 的正式 MC 预算尚未执行完成 |
+| 独立证据包导入 | 已实现 receipt 与类型守卫 | signed-MC/T1、物理变化、MELA、ARM64 的外部材料仍为 `external_pending` |
 | 样本效率子集、训练、聚合与确认 | 已实现并有合成测试 | 正式注册值和完整 MC 实验尚待执行 |
-| 软件测试 | 2026-09-13 Windows 全套 443 passed | 不等同于科学或 authority 验证；337 条为依赖弃用警告 |
+| 软件测试 | 本次增强聚焦 39 passed；Windows 全套 416 passed / 34 failed | 失败来自本次改动之外的既有 scientific resource seal 与训练历史契约不一致；未擅自重签资源。软件测试不等同于科学或 authority 验证 |
 | 原生 macOS ARM64 authority | 未在本次重构中运行 | Windows 结果不能替代 |
 | 完整 MC 科学验证 | 未在本次重构中运行 | 不得声称已获得 `mu` 精度改善或覆盖结论 |
 
@@ -31,6 +34,7 @@
 - 冻结适用于完整 MC 的协议、G0/G1、分箱、似然和计算预算；
 - 完成实际 MELA 后端与独立参考验证；
 - 验证 signed 模板近似、似然闭合、区间覆盖和有来源的建模变化；
+- 执行封存评价计划中的固定网络 MC bootstrap、μ=0/1/2 Toy、配对 coverage、T2 与人工压力矩阵；
 - 在冻结后执行 assessment，并保证结果不回流改变研究设计；
 - 在锁定原生 ARM64 环境中完成单独的 authority 重放。
 

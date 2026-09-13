@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "evidence_type", "status", "dataset", "protocol_sha256", "prepared_artifact_id", "scope", "independent", "reference", "findings", "limitations"],
+  "properties": {
+    "schema_version": {"const": "h4l-independent-evidence-v1"},
+    "evidence_type": {"enum": ["signed_mc_t1", "physical_systematics", "mela", "arm64_authority", "frozen_assessment"]},
+    "status": {"enum": ["validated", "external_pending", "failed"]},
+    "dataset": {"const": "atlas2020_4lep"},
+    "protocol_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "prepared_artifact_id": {"type": ["string", "null"]},
+    "scope": {"type": "string", "minLength": 1},
+    "independent": {"type": "boolean"},
+    "reference": {"type": "object"},
+    "findings": {"type": "array"},
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  }
+}

@@ -128,11 +128,12 @@ python scripts/h4l_run.py --run-name T1
 
 ## 核心 CLI 阶段
 
-`higgsml` 暴露十个可组合阶段：
+`higgsml` 暴露十二个可组合阶段：
 
 ```text
 audit -> prepare -> [me-export -> me-import] -> train -> calibrate
-      -> templates -> freeze -> infer -> report
+      -> templates -> freeze -> infer -> [mc-bootstrap] -> report
+                                      [evidence-import] ---^
 ```
 
 ```bash
@@ -140,9 +141,31 @@ higgsml train --help
 higgsml calibrate --help
 higgsml templates --help
 higgsml infer --help
+higgsml mc-bootstrap --help
+higgsml evidence-import --help
 ```
 
 直接调用阶段时，必须显式绑定 dataset、`config/protocols/h4l_protocol.json`、上游 run 与 `runs/` 下的全新输出目录。编排脚本会自动传入该唯一默认协议；`higgsml` 子命令仍要求显式提供 `--protocol`。`manifest.json` 记录数据集、协议快照、上游 artifact、文件摘要、代码/环境、随机种子和科学终态；模型 JSON 只保存数值张量，不加载可执行 pickle。详细字段见[产物与谱系契约](docs/reproducibility/artifact-schema.md)。
+
+最终 `report` 支持重复传入 `--training-run`、`--evaluation-run`、`--evidence-run`，并继续以
+`--result-run` 承载主推断结果。增强报告除 `report.json`/`report.md` 外，会发布完整精度 UTF-8 CSV、
+逐表逻辑行的 `analysis_records.jsonl`、`provenance.json` 与 `data_dictionary.json`。其中 `models.csv` 和 `feature_metrics.csv` 明确记录所选
+checkpoint 的 validation absolute-weight AUC 及同 seed 相对 M0c 的 AUC 绝对差；训练状态与推断状态
+分别保存。旧 run 不修改，可作为显式上游生成新的报告目录。
+
+注册统计评价由独立脚本执行：
+
+```bash
+python scripts/h4l_evaluate.py --help
+python scripts/h4l_evaluate.py --plan config/examples/h4l_evaluation_plan.json \
+  --prepared-run runs/... --template-run runs/... --freeze-run runs/... \
+  --output-root runs/h4l-evaluation-001 --plan-only
+```
+
+示例计划是 `exploratory_posthoc` 模板，三个输入 artifact ID 均为待替换的零值，不能直接作为正式
+注册计划执行。实际执行会核对 prepared/template/freeze artifact ID、协议摘要和 Toy/T2 预算；
+计划模式只审计矩阵，不打开 assessment。外部 signed-MC/T1、物理系统变化、MELA 和原生 ARM64
+材料通过 `evidence-import` 只读接入；缺失材料必须保持 `external_pending`。
 
 ## 样本效率研究
 

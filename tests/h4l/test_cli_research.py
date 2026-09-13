@@ -5,7 +5,8 @@ from higgsml.cli import build_parser, main
 
 def test_all_stages_have_required_bindings():
     parser = build_parser()
-    for stage in ('audit','prepare','me-export','me-import','train','calibrate','templates','freeze','infer','report'):
+    for stage in ('audit','prepare','me-export','me-import','train','calibrate','templates','freeze','infer',
+                  'mc-bootstrap','evidence-import','report'):
         args = parser.parse_args([stage,'--dataset','atlas2020_4lep','--protocol','protocol.json','--run-dir','runs/new'])
         assert args.command == stage
         with pytest.raises(SystemExit):

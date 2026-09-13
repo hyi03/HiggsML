@@ -1,7 +1,7 @@
 import itertools
 import pytest
 from higgsml.inference.reporting import (main_comparison,coverage_summary,paired_coverage_error,
-                                    exact_shapley,feature_combination_comparison,
+                                    fit_diagnostics,exact_shapley,feature_combination_comparison,
                                     feature_combination_summary)
 from higgsml.errors import ResearchStateError
 
@@ -16,9 +16,13 @@ def test_coverage_and_paired_error_retain_failures():
     rows=[{"status":"valid","lower":0,"upper":2}]*3+[{"status":"fit_failed"}]
     report=coverage_summary(rows,mu=1)
     assert report["coverage"] is None and report["failed_fits"]==1
+    assert report["failure_rate"]==.25
     assert report["success_and_coverage_fraction"]==.75
     assert paired_coverage_error(rows,rows,mu=1,pairing_id="physical")["status"]=="coverage_incomplete"
     assert paired_coverage_error(rows[:3],rows[:3],mu=1,pairing_id="physical")["standard_error"]==0
+    diagnostics=fit_diagnostics([{"status":"valid","muhat":1.1,"width":2.,"lower_at_boundary":False}],mu=1)
+    assert diagnostics["mean_width"]==diagnostics["median_width"]==2.
+    assert diagnostics["failure_rate"]==0
 
 
 def test_exact_shapley_efficiency_and_interaction_no_empty_fallback():

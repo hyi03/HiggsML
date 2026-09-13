@@ -22,8 +22,11 @@ from higgsml.modeling.matrix_element import export_me_inputs, import_me_results
 from higgsml.inference.templates import common_mass_grid, gate_g1
 from higgsml.inference.likelihood import run_asimov, run_toys, build_model
 from higgsml.resources import load_resources
-from higgsml.inference.reporting import (build_report, coverage_summary,
+from higgsml.inference.reporting import (build_report, coverage_summary, fit_diagnostics,
                         feature_combination_comparison, write_learning_curves)
+from higgsml.inference.bootstrap import primary_mc_bootstrap
+from higgsml.inference.evidence import validate_evidence_package
+from higgsml.inference.report_exports import publish_analysis_exports
 
 
 def _required(args, name):
@@ -274,6 +277,11 @@ def execute(args, *, allowed_root=None):
     freeze_run = upstream(args.freeze_run, ('freeze',)) if args.freeze_run else None
     assessment_me_runs=[upstream(path,('me-import',)) for path in getattr(args,'assessment_me_run',[])]
     result_runs = [upstream(p, terminal=True) for p in args.result_run]
+    training_runs = [upstream(p, ('train',), terminal=True) for p in getattr(args,'training_run',[])]
+    evaluation_runs = [upstream(p, ('calibrate','templates','infer','mc-bootstrap','freeze'), terminal=True)
+                       for p in getattr(args,'evaluation_run',[])]
+    evidence_runs = [upstream(p, ('evidence-import',), terminal=True)
+                     for p in getattr(args,'evidence_run',[])]
     root = Path(allowed_root) if allowed_root else Path.cwd() / 'runs'
     population = prepared.manifest['artifact_id'] if prepared else None
     if population is None and template_run:
@@ -546,6 +554,42 @@ def execute(args, *, allowed_root=None):
                                           'mapping_id':reference_bundle['mapping_id']}}
             run.write_json('freeze.json', frozen)
 
+        elif stage == 'mc-bootstrap':
+            if prepared is None or template_run is None:
+                raise ResearchError('mc-bootstrap requires --input-run and --template-run')
+            _same_data(template_run, prepared)
+            if args.replicas is None or args.bootstrap_seed is None:
+                raise ResearchError('mc-bootstrap requires explicit --replicas and --bootstrap-seed')
+            if args.evaluation_plan is None:
+                raise ResearchError('mc-bootstrap requires a sealed --evaluation-plan')
+            plan = read_json(Path(args.evaluation_plan))
+            registered = plan.get('mc_bootstrap', {}) if isinstance(plan, dict) else {}
+            if (plan.get('schema_version') != 'h4l-evaluation-plan-v1'
+                    or plan.get('dataset') != args.dataset
+                    or plan.get('protocol_sha256') != digest_json(protocol)
+                    or plan.get('inputs', {}).get('prepared_artifact_id') != prepared.manifest['artifact_id']
+                    or plan.get('inputs', {}).get('template_artifact_id') != template_run.manifest['artifact_id']
+                    or registered != {'replicas':args.replicas,'seed':args.bootstrap_seed}):
+                raise ResearchError('MC bootstrap invocation differs from the sealed evaluation plan')
+            frame = events()
+            result = primary_mc_bootstrap(deepcopy(bound_grid), template_run.read_json('calibrations.json'),
+                frame.loc[frame.role=='calibration'].copy(), frame.loc[frame.role=='template'].copy(), protocol,
+                replicas=args.replicas, seed=args.bootstrap_seed, t1_validation=deepcopy(bound_evidence))
+            run.manifest['context']['evaluation_plan_id'] = digest_json(plan)
+            run.write_json('evaluation-plan.json', plan)
+            run.write_json('bootstrap.json', result)
+
+        elif stage == 'evidence-import':
+            if not args.evidence_file:
+                raise ResearchError('evidence-import requires --evidence-file')
+            evidence_path=Path(args.evidence_file).resolve()
+            evidence = validate_evidence_package(read_json(evidence_path), dataset=args.dataset,
+                                                 protocol_sha256=digest_json(protocol),
+                                                 package_root=evidence_path.parent)
+            run.manifest['context'].update(prepared_artifact_id=evidence.get('prepared_artifact_id'),
+                                           evidence_type=evidence['evidence_type'])
+            run.write_json('evidence.json', evidence)
+
         elif stage == 'infer':
             if template_run is None:
                 raise ResearchError('infer requires --template-run')
@@ -604,6 +648,8 @@ def execute(args, *, allowed_root=None):
                             result['toys']=toys
                             result['coverage']={str(cl):coverage_summary([r['intervals'][i] for r in toys['results']],mu=args.mu)
                                                 for i,cl in enumerate((.68,.95))}
+                            result['diagnostics']={str(cl):fit_diagnostics([r['intervals'][i] for r in toys['results']],mu=args.mu)
+                                                  for i,cl in enumerate((.68,.95))}
                             if toys['status']!='valid': result['status']=toys['status']
                         results[key]=result
                     except ResearchStateError as error:
@@ -611,42 +657,54 @@ def execute(args, *, allowed_root=None):
             run.write_json('inference.json',results)
 
         elif stage == 'report':
-            if not result_runs:
-                raise ResearchError('report requires one or more --result-run')
+            if not result_runs and not evaluation_runs:
+                raise ResearchError('report requires one or more --result-run or --evaluation-run')
             statuses, primary, records = expected_candidates(), [], {}
             training_models = {}
-            state_history={}; source_ids=set(); unknown_population=False; terminal_runs=[]; procedures={}; primary_cohorts=set()
+            state_history={}; training_state_history={}; source_ids=set(); terminal_runs=[]; procedures={}; primary_cohorts=set()
             feature_comparisons=[]
-            def record_state(key,status,artifact_id):
-                state_history.setdefault(key,[]).append({'status':status,'artifact_id':artifact_id})
+            analysis_inputs=[*training_runs,*evaluation_runs,*result_runs]
+            source_values=[item.manifest.get('context',{}).get('prepared_artifact_id') for item in analysis_inputs]
+            source_ids={value for value in source_values if value}
+            if len(source_ids)>1 or (source_ids and any(value is None for value in source_values)):
+                raise ResearchError('Reports cannot mix prepared event populations or unbound source identity')
+            for item in training_runs:
+                if item.manifest.get('status')=='complete':
+                    model=item.read_json('model.json')
+                    if model['model_id'] in training_models:
+                        raise ResearchError('Duplicate training model input')
+                    training_models[model['model_id']]=model
+                    training_state_history.setdefault(_candidate_key(model),[]).append({
+                        'stage':'train','status':model['status'],'reason':model.get('reason'),
+                        'artifact_id':item.manifest['artifact_id']})
+            def record_state(key,status,artifact_id,stage=None,reason=None):
+                state_history.setdefault(key,[]).append({'stage':stage,'status':status,'reason':reason,
+                                                         'artifact_id':artifact_id})
                 unique={entry['status'] for entry in state_history[key]}
                 statuses[key]=next(iter(unique)) if len(unique)==1 else 'multiple_recorded_states'
             for item in result_runs:
                 manifest=item.manifest; item_context=manifest.get('context',{})
                 source=item_context.get('prepared_artifact_id')
-                if source: source_ids.add(source)
-                else: unknown_population=True
-                if len(source_ids)>1 or (source_ids and unknown_population):
-                    raise ResearchError('Reports cannot mix prepared event populations or unbound source identity')
                 candidate=item_context.get('candidate_key')
                 if manifest['status']!='complete':
                     terminal_runs.append({'artifact_id':manifest['artifact_id'],'stage':manifest['stage'],
                         'candidate_key':candidate,'status':manifest['status'],'reason':manifest.get('reason')})
-                    if candidate: record_state(candidate,manifest['status'],manifest['artifact_id'])
+                    if candidate: record_state(candidate,manifest['status'],manifest['artifact_id'],
+                                               manifest['stage'],manifest.get('reason'))
                     continue
                 if manifest['stage']=='freeze':
                     for key,status in item.read_json('freeze.json')['candidate_states'].items():
-                        record_state(key,status,manifest['artifact_id'])
+                        record_state(key,status,manifest['artifact_id'],'freeze')
                 elif manifest['stage']=='train':
                     model=item.read_json('model.json')
                     training_models[model['model_id']] = model
-                    record_state(_candidate_key(model),model['status'],manifest['artifact_id'])
+                    record_state(_candidate_key(model),model['status'],manifest['artifact_id'],'train',model.get('reason'))
                 elif manifest['stage']=='calibrate':
                     bundle=item.read_json('calibration.json')
-                    record_state(bundle['key'],bundle['status'],manifest['artifact_id'])
+                    record_state(bundle['key'],bundle['status'],manifest['artifact_id'],'calibrate',bundle.get('reason'))
                 elif manifest['stage']=='templates':
                     for key,value in item.read_json('templates.json')['templates'].items():
-                        record_state(key,value['status'],manifest['artifact_id'])
+                        record_state(key,value['status'],manifest['artifact_id'],'templates',value.get('reason'))
                 elif manifest['stage']=='infer':
                     scope=item_context.get('inference_scope',{})
                     inference_results=item.read_json('inference.json')
@@ -668,7 +726,7 @@ def execute(args, *, allowed_root=None):
                         if scoped_key in records:
                             raise ResearchError('Duplicate candidate inference scope; reports never choose the best run')
                         records[scoped_key]={'candidate_key':key,'scope':scope,'result':result,'artifact_id':manifest['artifact_id']}
-                        record_state(key,result['status'],manifest['artifact_id'])
+                        record_state(key,result['status'],manifest['artifact_id'],'infer',result.get('reason'))
                         if scope.get('expectation_kind')!='model_self' or scope.get('procedure','fixed')!='fixed':
                             continue
                         for injection in result.get('asimov',{}).get('results',[]):
@@ -684,8 +742,15 @@ def execute(args, *, allowed_root=None):
                                 'layer':result['asimov']['layer'],'mu':injection['mu'],
                                 'expectation_kind':result['asimov']['expectation_kind'],
                                 'status':interval['status'],'width68':interval.get('width')})
-            report=build_report(statuses,primary_records=primary,results=records,
-                                feature_comparisons=feature_comparisons)
+            compact_records=deepcopy(records)
+            for entry in compact_records.values():
+                toy_payload=entry.get('result',{}).get('toys')
+                if isinstance(toy_payload,dict) and isinstance(toy_payload.get('results'),list):
+                    toy_payload['result_count']=len(toy_payload['results'])
+                    toy_payload['results_export']='toy_fits.csv'
+                    toy_payload.pop('results')
+            report=build_report(statuses,primary_records=primary,results=compact_records,
+                                 feature_comparisons=feature_comparisons)
             curves = []
             for model in training_models.values():
                 if model['candidate'] != 'M6' or 'history_contract' not in model:
@@ -702,9 +767,73 @@ def execute(args, *, allowed_root=None):
                 curves.append({'model_id':model['model_id'],'control_model_id':controls[0]['model_id'],
                                'status':'complete','file':filename})
             report['learning_curves'] = curves
-            report.update(candidate_state_history=state_history,terminal_runs=terminal_runs,procedures=procedures,
+            report.update(candidate_state_history=state_history,training_state_history=training_state_history,
+                          terminal_runs=terminal_runs,procedures=procedures,
                           prepared_artifact_id=next(iter(source_ids)) if source_ids else None,
                           primary_comparison_cohort_id=next(iter(primary_cohorts)) if primary_cohorts else None)
+            if args.evaluation_plan:
+                evaluation_plan=read_json(Path(args.evaluation_plan))
+                bound_artifacts={item.manifest['artifact_id'] for item in analysis_inputs}
+                bound_artifacts.update(upstream['artifact_id'] for item in analysis_inputs
+                                       for upstream in item.manifest.get('upstreams',[]))
+                plan_inputs=evaluation_plan.get('inputs',{})
+                if (evaluation_plan.get('schema_version')!='h4l-evaluation-plan-v1'
+                        or evaluation_plan.get('dataset')!=args.dataset
+                        or evaluation_plan.get('protocol_sha256')!=digest_json(protocol)
+                        or plan_inputs.get('prepared_artifact_id') not in source_ids
+                        or plan_inputs.get('template_artifact_id') not in bound_artifacts
+                        or plan_inputs.get('freeze_artifact_id') not in bound_artifacts):
+                    raise ResearchError('Report evaluation plan binding mismatch')
+                report['evaluation_plan']={'evaluation_plan_id':digest_json(evaluation_plan),
+                                           'registration_status':evaluation_plan.get('registration_status')}
+                run.manifest['context']['evaluation_plan_id']=digest_json(evaluation_plan)
+                run.write_json('evaluation-plan.json',evaluation_plan)
+            export = publish_analysis_exports(run, report, training_runs=training_runs,
+                evaluation_runs=evaluation_runs, evidence_runs=evidence_runs, result_runs=result_runs)
+            report['analysis_export'] = {key:value for key,value in export.items()
+                                         if key not in {'result_records','feature_auc_summary'}}
+            report['feature_auc_summary'] = export['feature_auc_summary']
+            report['evaluation_index']={'record_count':len(export['result_records']),
+                                        'tables':export['tables']}
+            evidence_by_type = {}
+            for item in evidence_runs:
+                if item.manifest.get('status')!='complete':
+                    continue
+                value=item.read_json('evidence.json')
+                if value['evidence_type'] in evidence_by_type:
+                    raise ResearchError('Duplicate evidence type in one report')
+                evidence_by_type[value['evidence_type']]=value
+            bootstrap_valid = any(item.manifest.get('status')=='complete' and item.manifest['stage']=='mc-bootstrap'
+                and item.read_json('bootstrap.json').get('status')=='valid' for item in evaluation_runs)
+            coverage_cells=set(); paired_coverage_cells=set()
+            for entry in export['result_records'].values():
+                scope=entry.get('scope',{}); result=entry.get('result',{})
+                if (scope.get('expectation_kind')=='assessment' and scope.get('procedure','fixed')=='fixed'
+                        and result.get('coverage') and all(value.get('status')=='valid'
+                                                       for value in result['coverage'].values())):
+                    for confidence in result['coverage']:
+                        coverage_cells.add((entry['candidate_key'],scope.get('mu'),str(confidence)))
+                    for confidence,value in result.get('paired_coverage_vs_M4',{}).items():
+                        if value.get('status')=='valid':
+                            paired_coverage_cells.add((entry['candidate_key'],scope.get('mu'),str(confidence)))
+            plan_injections=(evaluation_plan.get('assessment',{}).get('injections',[])
+                             if args.evaluation_plan else [])
+            expected_coverage={(f'M{candidate}:{seed}',mu,str(confidence))
+                               for candidate in (4,5) for seed in range(42,47)
+                               for mu in plan_injections for confidence in (.68,.95)}
+            expected_paired_coverage={(f'M5:{seed}',mu,str(confidence)) for seed in range(42,47)
+                                      for mu in plan_injections for confidence in (.68,.95)}
+            coverage_valid=(bool(expected_coverage) and expected_coverage <= coverage_cells
+                            and expected_paired_coverage <= paired_coverage_cells)
+            report['claim_readiness'] = {
+                'primary_asimov': report['primary_comparison']['status']=='valid',
+                'coverage': coverage_valid,
+                'mc_uncertainty': bootstrap_valid,
+                'physical_robustness': evidence_by_type.get('physical_systematics',{}).get('status')=='validated',
+                'mela': evidence_by_type.get('mela',{}).get('status')=='validated',
+                'signed_mc_t1': evidence_by_type.get('signed_mc_t1',{}).get('status')=='validated',
+                'platform_reproduction': evidence_by_type.get('arm64_authority',{}).get('status')=='validated',
+            }
             run.write_json('report.json', report)
             lines = ['# H4l research software report','','MC-only educational/technical demo.',
                      '',f"Primary M5/M4 comparison: {report['primary_comparison']['status']}",
@@ -757,6 +886,15 @@ def execute(args, *, allowed_root=None):
                 if primary_comparison['median_relative_improvement'] is not None:
                     lines += ['',f"Five-seed median relative improvement: "
                               f"{primary_comparison['median_relative_improvement']:.4%}."]
+            auc_rows=[row for row in report.get('feature_auc_summary',[]) if row.get('status')=='valid']
+            if auc_rows:
+                lines += ['', '## Feature-combination validation AUC', '',
+                          'Absolute physical-weight AUC on the validation role; the same metric selected the checkpoint.', '',
+                          '| Subset | Median AUC | Range | Median delta vs M0c |',
+                          '|---|---:|---:|---:|']
+                lines += [f"| {row['subset']} | {row['median_auc']:.6g} | "
+                          f"[{row['min_auc']:.6g}, {row['max_auc']:.6g}] | "
+                          f"{row['median_delta_auc_vs_m0c']:.6g} |" for row in auc_rows]
             for curve in curves:
                 if curve['status']=='complete':
                     lines += ['', f'![Paired training diagnostics]({curve["file"]})']
