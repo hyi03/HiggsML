@@ -56,7 +56,8 @@ it cannot select models, mappings, grids, or statistics thresholds.
 Repository ARM64 authority validation and scientific numerical validation
 are separate recorded states; neither is inferred from synthetic tests.
 
-- Runtime code lives in `src/` and must not import or call `xgboost/src`.
+- Runtime code lives in `src/` and must not import or call the removed legacy
+  tree-model implementation.
 - CLI modules parse arguments and call application services; scientific
   calculations do not live in CLI or artifact-publication code.
 - Protocol files own scientific rules. Run configuration owns only paths and

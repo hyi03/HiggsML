@@ -6,15 +6,13 @@ These instructions apply to the whole repository. The maintained implementation
 is `neural/`. Before changing anything under it, read and follow
 `neural/AGENTS.md`; its more specific rules take precedence over this file.
 
-`xgboost/` is deprecated, read-only historical material and is expected to be
-removed later. Do not develop, refactor, run new experiments in, or add new
-dependencies to it unless the user explicitly reauthorizes that work. Its local
-`xgboost/AGENTS.md` remains relevant only when an explicitly requested task must
-inspect or preserve the legacy implementation.
+The former tree-model implementation has been removed. Do not recreate it,
+restore its package entry points, or add new dependencies for it. Historical
+references under archived documents are evidence only, not current interfaces.
 
-The root notebooks, historical Markdown files, frozen run descriptions, and
-legacy XGBoost results are reference material. Do not treat them as the current
-Neural implementation or as authority for a new scientific result.
+The root notebooks, historical Markdown files, and frozen run descriptions are
+reference material. Do not treat them as the current Neural implementation or
+as authority for a new scientific result.
 
 ## Current project
 
@@ -77,9 +75,7 @@ status and dependencies before treating a proposal as approved or implemented.
   reviews, and thesis material.
 - `neural/runs/`: generated runs; ignored, immutable after creation, and never
   committed.
-- `xgboost/`: deprecated legacy implementation; do not extend it.
-
-Runtime code in `neural/` must not import or call `xgboost/src`.
+- Former tree-model implementation: removed; do not restore it.
 
 ## Local environment
 
@@ -230,14 +226,9 @@ authority-environment validation.
 - Root notebooks and historical files may inform context but must not bypass the
   maintained protocols, gates, or package boundaries.
 
-## Deprecated XGBoost policy
+## Removed legacy implementation
 
-XGBoost is no longer an active implementation in this repository. Until its
-separate removal is explicitly requested:
-
-- preserve `xgboost/` and its historical artifacts as-is;
-- do not run legacy training, evaluation, or real-data commands;
-- do not migrate new Neural behavior into XGBoost;
-- do not use XGBoost baselines as current acceptance criteria;
-- keep any unavoidable compatibility change minimal and clearly labeled as
-  legacy maintenance.
+The former tree-model implementation and its package directory are no longer
+part of the repository. Do not add compatibility shims or restore old training,
+evaluation, or data-processing entry points. Archived review records may retain
+historical source paths, but those paths must never be used by runtime code.
