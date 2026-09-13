@@ -48,7 +48,7 @@ python -m pip check
 核心推断需要 `pyhf` 等研究扩展依赖：
 
 ```bash
-python -m pip install -r requirements-research.txt
+python -m pip install -r requirements.txt
 ```
 
 `win.yml` 与 `osx.yml` 分别记录 Windows 和 macOS ARM64 锁定环境。Windows 测试不能替代原生 ARM64 authority 验证；MELA 后端需在独立 Linux/WSL 环境中配置。
