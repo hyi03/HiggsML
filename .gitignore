@@ -223,6 +223,7 @@ __marimo__/
 data/
 var/
 runs/
+artifacts/
 .worktrees/
 
 .DS_Store
