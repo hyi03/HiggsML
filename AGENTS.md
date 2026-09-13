@@ -16,10 +16,10 @@ physics measurement.
 Read `README.md`, `docs/README.md`, and the task-specific method, protocol, or
 runbook before changing scientific behavior. The main entry points are:
 
-- `docs/methods/research-project.md`
-- `docs/reproducibility/runbook.md`
-- `docs/reproducibility/artifact-schema.md`
-- `docs/validation/current-status.md`
+- `docs/research-design.md`
+- `docs/implementation-and-reproduction.md`
+- `docs/methods-and-evaluation.md`
+- `docs/results-and-limitations.md`
 - `config/protocols/h4l_protocol.json`
 
 ## Repository layout

@@ -1,28 +1,39 @@
-# H4l 文档索引
+# H4l research documentation
 
-本目录只保留与 H4l 研究、论文方法和结果可复现性直接相关的材料。
+HiggsML studies whether kinematic representations and mass-conditioned discrimination improve the expected precision of signal-strength inference in controlled `H -> ZZ* -> 4l` Monte Carlo (MC) samples. A related study asks whether a compact representation can retain that precision with fewer training events.
 
-## 方法
+This is an MC-only educational and technical workflow. Its outputs are not an ATLAS/CMS result, a Higgs discovery, or a physics measurement. The default protocol defines synthetic software rules, not full-MC qualification. Available evidence and remaining validation are recorded in [Results and limitations](results-and-limitations.md).
 
-- [研究问题与实验设计](methods/research-project.md)
-- [软件与科学模块结构](methods/architecture.md)
-- [数据准备与物理对象重建](methods/data-preparation.md)
-- [表示、推断与软件设计](methods/software-design.md)
-- [质量去相关](methods/mass-decorrelation.md)
-- [mu 推断目标](methods/mu-inference-objective.md)
-- [MELA 适配契约](methods/mela-adapter.md)
-- [紧凑运动学的样本效率研究](methods/sample-efficiency.md)
+## Research reading path
 
-## 复现
+| Document | Questions answered |
+|---|---|
+| [Research design](research-design.md) | What is the physical motivation? Which hypotheses, comparisons, and controls answer the question? |
+| [Data and processing](data-and-processing.md) | Why these MC samples and selections? How are events reconstructed, weighted, and separated? |
+| [Methods and evaluation](methods-and-evaluation.md) | Why these representations, models, calibrations, and metrics? How are uncertainty and coverage evaluated? |
+| [Sample efficiency](sample-efficiency.md) | How is a compact candidate discovered, frozen, evaluated across sizes, and independently confirmed? |
+| [Implementation and reproduction](implementation-and-reproduction.md) | Which tools implement the methods? How are commands, contracts, artifacts, and resources used? |
+| [Results and limitations](results-and-limitations.md) | What evidence exists, what does it support, and what remains unverified? |
 
-- [运行手册](reproducibility/runbook.md)
-- [产物与谱系契约](reproducibility/artifact-schema.md)
+The analysis follows this sequence. Arrows describe dependencies, not evidence that every stage is complete.
 
-## 验证
+```text
+Question and registered design
+  -> controlled MC audit and event reconstruction
+  -> independent training / validation / calibration / template roles
+  -> models, mappings, common templates, and statistical gates
+  -> frozen analysis and budgeted assessment
+  -> paired inference, diagnostics, and qualified conclusions
+```
 
-- [当前科研与证据状态](validation/current-status.md)
-- [证据与完成边界](validation/evidence-and-completion.md)
-- [性能设计](validation/performance-design.md)
-- [性能实现与合成验证](validation/performance-implementation.md)
+For execution, start with [environment and installation](implementation-and-reproduction.md#environment-and-installation), then the [main workflow](implementation-and-reproduction.md#main-workflow). For the subordinate study, read [sample-efficiency execution](sample-efficiency.md#execution-and-artifact-contracts). Detailed fields are consolidated in the [artifact contract](implementation-and-reproduction.md#artifact-and-lineage-contract).
 
-论文正文位于 [paper/manuscript.md](../paper/manuscript.md)。软件测试通过不等同于完整 MC 科学验证或原生 ARM64 权威验证。
+## Sources of truth
+
+- [H4l protocol](../config/protocols/h4l_protocol.json): versioned scientific parameters, roles, thresholds, and budgets.
+- [Sample-efficiency overlay](../config/protocols/sample_efficiency_v1.json): registration template; null values require explicit registration.
+- [Dataset contracts](../config/datasets/): controlled member identities, locations, sizes, and hashes.
+- [Manuscript](../paper/manuscript.md): separate paper text supported by these method and reproduction documents.
+- [Historical synthetic performance record](performance-synthetic-results.json): immutable numerical evidence interpreted in the results document.
+
+Scientific explanations, execution contracts, and evidence status have one maintained location each. Quoted protocol values explain the bound version; they do not permit tuning a frozen analysis. Old artifacts retain their original protocol snapshots and lineage. All seven maintained Markdown documents live directly in this directory.
