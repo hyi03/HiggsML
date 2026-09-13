@@ -138,6 +138,8 @@ Report all five paired `R_s` and their median. Failed seeds and undefined denomi
 
 AUC means absolute-weight AUC at the selected validation checkpoint. It is neither an assessment measurement nor a newly measured CDF AUC inherited from the raw network. Include fixed-mass-slice AUC and local support; the empty-set global AUC is not automatically 0.5 when mass is available. Report the pull denominator convention when using asymmetric intervals.
 
+For every nonempty A/B/C/D subset, the raw feature-combination family trains a paired model with explicit `m4l` and a model with `m4l` removed. The pair shares the event population, seed, learner, common template grid, and T1 contract, but each model is trained and checkpointed independently. Fixed-mass diagnostics use the registered 5 GeV calibration edges on validation events with absolute physical weights. Slices missing either class remain `insufficient_class_support`. The on/off effect is reported as `AUC_on-AUC_off` and `1-W68_on/W68_off`; only the mass-on family retains the registered M0c empty baseline and Shapley attribution.
+
 ## Pseudo-experiments, boundaries, and assessment
 
 Separate model-self closure, frozen assessment-parent mismatch, and externally sourced variation tests. Generate counts from a valid nonnegative model, not by using signed events as Poisson probabilities. Methods share physical pseudo-events or equivalent joint-cell sampling, not merely equal random seeds.

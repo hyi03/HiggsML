@@ -23,7 +23,7 @@ from higgsml.inference.templates import common_mass_grid, gate_g1
 from higgsml.inference.likelihood import run_asimov, run_toys, build_model
 from higgsml.resources import load_resources
 from higgsml.inference.reporting import (build_report, coverage_summary, fit_diagnostics,
-                        feature_combination_comparison, write_learning_curves)
+                        feature_combination_comparison, mass_input_comparison, write_learning_curves)
 from higgsml.inference.bootstrap import primary_mc_bootstrap
 from higgsml.inference.evidence import validate_evidence_package
 from higgsml.inference.report_exports import publish_analysis_exports
@@ -57,6 +57,8 @@ def _candidate_key(model):
         key += f":lambda={model['target_lambda']:g}"
     if model.get('groups') is not None:
         key += ':groups=' + ''.join(model['groups'])
+    if model.get('mass_input', 'on') == 'off':
+        key += ':m4l=off'
     return key
 
 
@@ -247,6 +249,8 @@ def execute(args, *, allowed_root=None):
     if cfg['template_min_effective_count']!=protocol['templates']['min_neff_signed'] or cfg['template_min_cancellation_ratio']!=protocol['templates']['min_rho']:
         raise ResearchError('Template and inference statistical thresholds disagree')
     stage = args.command
+    if args.mass_input != 'on' and stage != 'train':
+        raise ResearchError('--mass-input off is valid only for grouped M3 training')
     diagnostic_limit = getattr(args, 'diagnostic_entries_per_file', None)
     show_prepare_metrics = getattr(args, 'show_prepare_metrics', False)
     show_prepare_progress = getattr(args, 'show_prepare_progress', False)
@@ -305,7 +309,8 @@ def execute(args, *, allowed_root=None):
                                           comparison_cohort_id=digest_json(cohort),comparison_cohort=cohort)
     if stage == 'train':
         context['candidate_key'] = _candidate_key({'candidate':args.candidate,'seed':args.seed,
-            'target_lambda':args.strength,'groups':list(args.groups) if args.groups is not None else None})
+            'target_lambda':args.strength,'groups':list(args.groups) if args.groups is not None else None,
+            'mass_input':args.mass_input})
     elif stage == 'calibrate' and model_run:
         if model_run.manifest['stage']=='train':
             source_model=model_run.read_json('model.json')
@@ -413,7 +418,8 @@ def execute(args, *, allowed_root=None):
                 _require_expansion_gate(gate_run, prepared)
             model = train_discriminant(frame.loc[frame.role.isin(['train','validation'])].copy(), protocol,
                                        candidate=args.candidate, seed=args.seed, target_lambda=args.strength,
-                                       groups=list(args.groups) if args.groups is not None else None)
+                                       groups=list(args.groups) if args.groups is not None else None,
+                                       mass_input=args.mass_input)
             run.write_json('model.json', model)
             if 'history_contract' in model:
                 write_learning_curves([model], run.path/'learning-curves.png')
@@ -660,6 +666,7 @@ def execute(args, *, allowed_root=None):
             if not result_runs and not evaluation_runs:
                 raise ResearchError('report requires one or more --result-run or --evaluation-run')
             statuses, primary, records = expected_candidates(), [], {}
+            mass_comparisons = []
             training_models = {}
             state_history={}; training_state_history={}; source_ids=set(); terminal_runs=[]; procedures={}; primary_cohorts=set()
             feature_comparisons=[]
@@ -721,6 +728,12 @@ def execute(args, *, allowed_root=None):
                         comparison.update(source_artifact_id=manifest['artifact_id'],
                                           comparison_cohort_id=scope.get('comparison_cohort_id'))
                         feature_comparisons.append(comparison)
+                        models_by_key = {_candidate_key(model): model for model in training_models.values()}
+                        mass_comparison = mass_input_comparison(inference_results, models_by_key,
+                                                                seed=feature_seed)
+                        mass_comparison.update(source_artifact_id=manifest['artifact_id'],
+                                               comparison_cohort_id=scope.get('comparison_cohort_id'))
+                        mass_comparisons.append(mass_comparison)
                     for key,result in inference_results.items():
                         scoped_key=key+'|'+digest_json({'population':source,'scope':scope})
                         if scoped_key in records:
@@ -750,7 +763,8 @@ def execute(args, *, allowed_root=None):
                     toy_payload['results_export']='toy_fits.csv'
                     toy_payload.pop('results')
             report=build_report(statuses,primary_records=primary,results=compact_records,
-                                 feature_comparisons=feature_comparisons)
+                                 feature_comparisons=feature_comparisons,
+                                 mass_input_comparisons=mass_comparisons)
             curves = []
             for model in training_models.values():
                 if model['candidate'] != 'M6' or 'history_contract' not in model:
@@ -838,6 +852,7 @@ def execute(args, *, allowed_root=None):
             lines = ['# H4l research software report','','MC-only educational/technical demo.',
                      '',f"Primary M5/M4 comparison: {report['primary_comparison']['status']}",
                      '',f"Feature combination summary: {report['feature_combination_summary']['status']}",
+                     '',f"m4l on/off summary: {report['mass_input_summary']['status']}",
                      '', '| Candidate | Status |','|---|---|']
             lines += [f'| {k} | {v} |' for k,v in statuses.items()]
             combination_summary=report['feature_combination_summary']
@@ -886,6 +901,17 @@ def execute(args, *, allowed_root=None):
                 if primary_comparison['median_relative_improvement'] is not None:
                     lines += ['',f"Five-seed median relative improvement: "
                               f"{primary_comparison['median_relative_improvement']:.4%}."]
+            mass_summary=report['mass_input_summary']
+            if mass_summary['status']=='valid':
+                lines += ['', '## Explicit m4l input on/off controls', '',
+                          'Each row compares independently retrained models on the same feature subset and five paired seeds.', '',
+                          '| Subset | Median delta AUC (on-off) | Median delta W68 (on-off) | Median W68 improvement from m4l |',
+                          '|---|---:|---:|---:|']
+                lines += [f"| {row['subset']} | {row['median_delta_auc_on_minus_off']:.6g} | "
+                          f"{row['median_delta_width68_on_minus_off']:.6g} | "
+                          f"{row['median_relative_w68_improvement_from_m4l']:.4%} |"
+                          for row in mass_summary['combinations']]
+                lines += ['', 'Fixed 5 GeV validation mass-slice AUC values and local class support are exported in `mass_slice_auc.csv`.']
             auc_rows=[row for row in report.get('feature_auc_summary',[]) if row.get('status')=='valid']
             if auc_rows:
                 lines += ['', '## Feature-combination validation AUC', '',

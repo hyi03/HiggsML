@@ -43,7 +43,9 @@ def test_seed42_batch_config_registers_all_fifteen_combinations_once():
     expected = ["".join(groups) for groups in ordered_group_subsets()]
     assert config["feature_combinations"] == expected
     assert len(config["feature_combinations"]) == len(set(config["feature_combinations"])) == 15
-    assert config["schema_version"] == "h4l-feature-combination-batch-v2"
+    assert config["schema_version"] == "h4l-feature-combination-batch-v3"
+    assert config["mass_input_variants"] == ["on", "off"]
+    assert config["mass_input_comparison_family_id"] == "engineered19_raw_T1_m4l_on_off"
     assert config["seeds"] == [42,43,44,45,46]
     assert "{seed}" not in config["output_root"]
     assert config["primary_candidates"] == ["M4","M5"]

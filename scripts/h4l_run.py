@@ -96,10 +96,12 @@ def _load_config(path: Path) -> dict:
     except (OSError, json.JSONDecodeError) as error:
         raise WorkflowError(f"Invalid batch configuration: {path}: {error}", 3) from error
     expected = {
-        "schema_version": "h4l-feature-combination-batch-v2",
+        "schema_version": "h4l-feature-combination-batch-v3",
         "dataset": "atlas2020_4lep",
         "seeds": list(EXPECTED_SEEDS),
         "family_id": "engineered19_raw_T1",
+        "mass_input_comparison_family_id": "engineered19_raw_T1_m4l_on_off",
+        "mass_input_variants": ["on", "off"],
         "empty_baseline_candidate": "M0c",
         "combination_candidate": "M3",
         "calibration_transform": "raw",
@@ -225,6 +227,11 @@ def _print_conclusions(report: dict, report_path: Path, *, complete: bool) -> No
     elif not complete:
         print("  A single-seed diagnostic cannot complete the registered five-seed primary comparison.")
     print(f"Primary comparison cohort: {report.get('primary_comparison_cohort_id')}")
+    mass_summary = report.get("mass_input_summary", {})
+    print(f"m4l on/off comparison: {mass_summary.get('status', 'missing')}")
+    for row in mass_summary.get("combinations", []):
+        print(f"  {row['subset']}: median delta AUC={row['median_delta_auc_on_minus_off']:.6g}, "
+              f"median W68 improvement={row['median_relative_w68_improvement_from_m4l']:.4%}")
     print("Repository ARM64 authority and independent scientific numerical validation remain separate.")
     print(f"Report: {report_path}")
 
@@ -371,6 +378,20 @@ def _run(args: argparse.Namespace) -> None:
                 "--run-dir", str(calibration_run),
             ]))
             calibration_runs.append(calibration_run)
+            off_train_run = train_root / f"groups-{groups}-m4l-off"
+            off_calibration_run = calibration_root / f"groups-{groups}-m4l-off"
+            steps.append((f"train groups {groups} m4l off seed {seed}", [
+                "train", *common, "--input-run", str(prepared), "--gate-run", str(gate),
+                "--candidate", "M3", "--groups", groups, "--mass-input", "off",
+                "--seed", str(seed), "--run-dir", str(off_train_run),
+            ]))
+            training_runs.append(off_train_run)
+            steps.append((f"calibrate groups {groups} m4l off seed {seed}", [
+                "calibrate", *common, "--input-run", str(prepared),
+                "--model-run", str(off_train_run), "--transform", "raw", "--seed", str(seed),
+                "--run-dir", str(off_calibration_run),
+            ]))
+            calibration_runs.append(off_calibration_run)
 
     template_run = batch_root / "templates"
     template_arguments = [
@@ -405,8 +426,8 @@ def _run(args: argparse.Namespace) -> None:
             _invoke(arguments, plan_only=args.plan_only)
 
     if args.plan_only:
-        print(f"Plan complete: {len(seeds)} seed(s), {18 * len(seeds)} model trainings, "
-              f"{20 * len(seeds)} calibrations, one common template, inference, and report; "
+        print(f"Plan complete: {len(seeds)} seed(s), {33 * len(seeds)} model trainings, "
+              f"{35 * len(seeds)} calibrations, one common template, inference, and report; "
               "no run was created.")
         return
 
@@ -422,11 +443,19 @@ def _run(args: argparse.Namespace) -> None:
         raise WorkflowError(
             "The batch completed, but one or more complete 15-combination comparisons are unavailable.", 5
         )
+    mass_valid_seeds = sorted(item.get("seed") for item in report.get("mass_input_comparisons", [])
+                              if item.get("status") == "valid")
+    if mass_valid_seeds != seeds:
+        raise WorkflowError(
+            "The batch completed, but one or more complete m4l on/off comparisons are unavailable.", 5
+        )
     if complete:
         if report.get("feature_combination_summary", {}).get("status") != "valid":
             raise WorkflowError("The five-seed feature-combination summary is unavailable.", 5)
         if report.get("primary_comparison", {}).get("status") != "valid":
             raise WorkflowError("The five-seed M4/M5 primary comparison is unavailable.", 5)
+        if report.get("mass_input_summary", {}).get("status") != "valid":
+            raise WorkflowError("The five-seed m4l on/off comparison is unavailable.", 5)
     _print_conclusions(report, report_run / "report.md", complete=complete)
 
 

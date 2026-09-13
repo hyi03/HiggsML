@@ -6,7 +6,7 @@ import pytest
 import torch
 
 from higgsml.modeling.discriminants import (ResearchClassifier, train_discriminant,
-    predict_discriminant, effective_lambda, TRAINING, digest)
+    predict_discriminant, effective_lambda, TRAINING, digest, mass_slice_auc)
 from higgsml.errors import ResearchError, ResearchStateError
 from higgsml.protocol import load_protocol
 from higgsml.modeling.representations import representation_features, ordered_group_subsets
@@ -42,6 +42,36 @@ def test_dimensions_and_all_subsets():
     assert len(ordered_group_subsets())==15
     for groups in ordered_group_subsets(include_empty=True):
         assert representation_features('engineered19',groups=groups)[-1]=='m4l'
+    assert representation_features('engineered19', groups=['B','C'], mass_input='off') == (
+        'mZ1','mZ2','deltaR_Z1','deltaR_Z2','pt4l','deltaPhi_ZZ')
+    with pytest.raises(ResearchError, match='nonempty'):
+        representation_features('engineered19', groups=[], mass_input='off')
+    with pytest.raises(ResearchError, match='grouped'):
+        representation_features('decay7', mass_input='off')
+
+
+def test_mass_slice_auc_records_support_and_invalid_slices():
+    data = pd.DataFrame({
+        'm4l': [105., 106., 107., 108., 111.],
+        'label': [0, 0, 1, 1, 0],
+        'physical_weight': [1., -2., 1., 3., 1.],
+    })
+    rows = mass_slice_auc(data, [.1, .2, .8, .9, .4], [105., 110., 115.])
+    assert rows[0]['status'] == 'valid' and rows[0]['auc'] == pytest.approx(1.)
+    assert rows[0]['class_support']['0']['sum_absolute_weight'] == 3.
+    assert rows[0]['class_support']['1']['effective_count'] == pytest.approx(1.6)
+    assert rows[1]['status'] == 'insufficient_class_support' and rows[1]['auc'] is None
+
+
+def test_grouped_m4l_off_training_and_prediction_contract():
+    data = frame()
+    model = train_discriminant(data, load_protocol(), 'M3', groups=['B','C'], mass_input='off')
+    assert model['mass_input'] == 'off'
+    assert 'm4l' not in model['ordered_inputs']
+    assert len(model['validation_mass_slice_auc']) == 7
+    assert len(predict_discriminant(model, data)) == len(data)
+    with pytest.raises(ResearchError, match='grouped M3'):
+        train_discriminant(data, load_protocol(), 'M0c', mass_input='off')
 
 
 def test_ordinary_train_only_scaler_determinism_and_safe_roundtrip():
@@ -55,6 +85,10 @@ def test_ordinary_train_only_scaler_determinism_and_safe_roundtrip():
     assert 1<=a['selected_epoch']<=200
     assert a['checkpoint_rule'].startswith('validation-absolute')
     assert np.array_equal(predict_discriminant(a,data),predict_discriminant(json.loads(json.dumps(a)),data))
+    legacy = copy.deepcopy(a)
+    legacy.pop('mass_input')
+    legacy['model_id'] = digest({key:value for key,value in legacy.items() if key != 'model_id'})
+    assert np.array_equal(predict_discriminant(legacy, data), predict_discriminant(a, data))
     broken=copy.deepcopy(a)
     broken['scaler']['mean'][0]+=1
     with pytest.raises(ResearchError,match='digest'):

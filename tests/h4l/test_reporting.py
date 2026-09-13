@@ -2,7 +2,8 @@ import itertools
 import pytest
 from higgsml.inference.reporting import (main_comparison,coverage_summary,paired_coverage_error,
                                     fit_diagnostics,exact_shapley,feature_combination_comparison,
-                                    feature_combination_summary)
+                                    feature_combination_summary, mass_input_comparison,
+                                    mass_input_summary)
 from higgsml.errors import ResearchStateError
 
 
@@ -79,3 +80,35 @@ def test_five_seed_feature_summary_uses_paired_medians_and_retains_shapley():
     assert incomplete["status"]=="feature_combination_summary_incomplete"
     assert incomplete["best_combination"] is None
     assert {failure["seed"] for failure in incomplete["failures"]}=={46}
+
+
+def _inference(seed, candidate, width):
+    return {"status":"valid", "seed":seed, "asimov":{"candidate_id":candidate, "layer":"T1",
+        "expectation_kind":"model_self_asimov", "results":[{"mu":1, "intervals":[{"status":"valid", "width":width}]}]}}
+
+
+def test_mass_input_comparison_requires_all_pairs_slices_and_seeds():
+    comparisons = []
+    for seed in range(42, 47):
+        results = {f"M0c:{seed}": _inference(seed, "M0c", 10.)}
+        models = {f"M0c:{seed}": {"validation_absolute_weight_auc": .7}}
+        support = {"0":{"row_count":2,"sum_absolute_weight":2.,"effective_count":2.},
+                   "1":{"row_count":2,"sum_absolute_weight":2.,"effective_count":2.}}
+        for size in range(1, 5):
+            for groups in itertools.combinations("ABCD", size):
+                subset = "".join(groups); on = f"M3:{seed}:groups={subset}"; off = on + ":m4l=off"
+                results[on] = _inference(seed, "M3", 8.); results[off] = _inference(seed, "M3", 10.)
+                models[on] = {"validation_absolute_weight_auc": .8,
+                              "validation_mass_slice_auc":[{"slice_index":0,"mass_low":105.,"mass_high":110.,"status":"valid","auc":.75,"class_support":support}]}
+                models[off] = {"validation_absolute_weight_auc": .7,
+                               "validation_mass_slice_auc":[{"slice_index":0,"mass_low":105.,"mass_high":110.,"status":"valid","auc":.70,"class_support":support}]}
+        comparison = mass_input_comparison(results, models, seed=seed)
+        assert comparison['status'] == 'valid' and len(comparison['pairs']) == 15
+        assert comparison['pairs'][0]['relative_w68_improvement_from_m4l'] == pytest.approx(.2)
+        comparisons.append(comparison)
+    summary = mass_input_summary(comparisons)
+    assert summary['status'] == 'valid' and len(summary['combinations']) == 15
+    assert len(summary['mass_slices']) == 15
+    comparisons[0]['pairs'][0]['mass_slices'][0]['status'] = 'incomplete'
+    comparisons[0]['status'] = 'mass_input_comparison_incomplete'
+    assert mass_input_summary(comparisons)['status'] == 'mass_input_summary_incomplete'

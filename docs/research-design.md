@@ -20,6 +20,7 @@ Only the H4l package is maintained. Real data, off-shell width inference, CP/EFT
 | Q2: Do laboratory variables help? | `decay7` versus `engineered19` with common mass conditioning and physical CDF; a `lab-extension` control | Predictive increment and representation dependence |
 | Q3: How does mass treatment affect inference? | Raw, physical/absolute CDF, adversarial training, and matched zero-strength control | Effects of target measure, optimization, calibration, and binning |
 | Q4: Are groups complementary or replaceable? | All 15 nonempty A/B/C/D subsets and a matching empty-set baseline | Marginal contributions within the fixed procedure |
+| Q4a: How much does explicit mass add to each group subset? | Independently retrained `m4l` on/off pairs for all 15 nonempty subsets, with global and fixed-mass-slice AUC plus common-grid T1 W68 | Explicit mass contribution for the fixed learner; correlated kinematics may still encode mass |
 | Q5: Does an improvement generalize? | Independent events and documented generator, composition, or detector variations | Robustness within the variations actually tested |
 
 The pilot has one primary comparison: **M5 (`engineered19` with physical CDF) versus M4 (`decay7` with physical CDF), under the same T1 template-statistical model at injected `mu=1`.** Compare the expected 68% Asimov interval width across paired network seeds 42--46. Retain all values and failures. Definitions are in [Methods and evaluation](methods-and-evaluation.md#primary-and-supporting-metrics).

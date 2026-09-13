@@ -1,5 +1,5 @@
 {
-  "schema_version": "h4l-feature-combination-batch-v2",
+  "schema_version": "h4l-feature-combination-batch-v3",
   "dataset": "atlas2020_4lep",
   "protocol": "config/protocols/h4l_protocol.json",
   "seeds": [42, 43, 44, 45, 46],
@@ -8,6 +8,8 @@
   "t1_validation": "runs/h4l-prepare/inputs/t1-validation.json",
   "output_root": "runs/h4l-feature-combinations-all-seeds-001",
   "family_id": "engineered19_raw_T1",
+  "mass_input_comparison_family_id": "engineered19_raw_T1_m4l_on_off",
+  "mass_input_variants": ["on", "off"],
   "feature_combinations": [
     "A",
     "B",

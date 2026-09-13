@@ -81,8 +81,42 @@ def _diagnostics(mass, score, weight, edges, threshold, *, layout=None):
                 threshold_source='train_background_absolute_weight_median', bin_source='train_background_absolute_weight_quantiles', evaluation_source='validation_background')
 
 
+def mass_slice_auc(frame, scores, mass_edges):
+    """Validation absolute-weight AUC on fixed, common mass slices."""
+    edges = np.asarray(mass_edges, dtype=float)
+    scores = np.asarray(scores, dtype=float)
+    if edges.ndim != 1 or len(edges) < 2 or not np.isfinite(edges).all() or not np.all(np.diff(edges) > 0):
+        raise ResearchError('invalid mass-slice AUC edges')
+    required = {'m4l', 'label', 'physical_weight'}
+    if (not required <= set(frame) or len(frame) != len(scores) or not np.isfinite(scores).all()
+            or not np.isfinite(frame[['m4l', 'physical_weight']].to_numpy(float)).all()
+            or not set(frame.label) <= {0, 1}):
+        raise ResearchError('invalid mass-slice AUC scores')
+    result = []
+    mass = frame.m4l.to_numpy(float)
+    labels = frame.label.to_numpy(int)
+    weights = np.abs(frame.physical_weight.to_numpy(float))
+    for index, (low, high) in enumerate(zip(edges[:-1], edges[1:])):
+        selected = (mass >= low) & (mass < high)
+        support = {}
+        valid = True
+        for label in (0, 1):
+            chosen = selected & (labels == label)
+            chosen_weights = weights[chosen]
+            total = float(chosen_weights.sum())
+            sumw2 = float(np.square(chosen_weights).sum())
+            support[str(label)] = {'row_count': int(chosen.sum()), 'sum_absolute_weight': total,
+                                   'effective_count': total * total / sumw2 if sumw2 > 0 else 0.0}
+            valid &= bool(chosen.any() and total > 0)
+        auc = float(roc_auc_score(labels[selected], scores[selected], sample_weight=weights[selected])) if valid else None
+        result.append({'slice_index': index, 'mass_low': float(low), 'mass_high': float(high),
+                       'status': 'valid' if valid else 'insufficient_class_support',
+                       'auc': auc, 'class_support': support})
+    return result
+
+
 def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0., groups=None,
-                       *, _registered_first_width=64):
+                       mass_input='on', *, _registered_first_width=64):
     """Fit only train/validation roles. Serialize tensor lists, never pickle."""
     protocol = protocol_dict(protocol)
     if candidate not in CANDIDATES:
@@ -98,7 +132,9 @@ def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0
         raise ResearchError('M6 strength outside registered matrix; zero uses M3-fixed200')
     if type(_registered_first_width) is not int or _registered_first_width < 1:
         raise ResearchError('invalid registered classifier width')
-    names = list(representation_features(CANDIDATES[candidate], groups=groups))
+    if mass_input == 'off' and (candidate != 'M3' or groups is None):
+        raise ResearchError('m4l-off is registered only for grouped M3 models')
+    names = list(representation_features(CANDIDATES[candidate], groups=groups, mass_input=mass_input))
     _validate_frame(frame, ['train', 'validation'], names)
     if protocol.get('dataset', frame.dataset.iloc[0]) != frame.dataset.iloc[0]:
         raise ResearchError('training protocol dataset mismatch')
@@ -195,13 +231,14 @@ def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0
         threshold = _quantile(train_scores[bg], w[bg], [.5])[0]
         vb = valid.label.to_numpy() == 0
         result = dict(schema_version='research-discriminant-v1', candidate=candidate, representation=CANDIDATES[candidate],
-            groups=groups, ordered_inputs=names, dataset=str(frame.dataset.iloc[0]), protocol_id=digest(protocol), seed=seed,
+            groups=groups, mass_input=mass_input, ordered_inputs=names, dataset=str(frame.dataset.iloc[0]), protocol_id=digest(protocol), seed=seed,
             architecture=[len(names),_registered_first_width,64,32,1], scaler=dict(mean=mean.tolist(), scale=scale.tolist(), source_role='train', fitting_rows=len(train)),
             optimizer_class_absolute_weight_means=class_means, mass_bin_boundaries=edges.tolist(),
             state_dict={k:v.tolist() for k,v in model.state_dict().items()}, history=history,
             selected_epoch=selected, target_lambda=target_lambda, effective_lambda=effective_lambda(selected,target_lambda),
             checkpoint_rule='fixed-epoch-200' if fixed else 'validation-absolute-auc-patience20-delta1e-4',
             validation_absolute_weight_auc=float(roc_auc_score(valid.label,scores,sample_weight=np.abs(valid.physical_weight))),
+            validation_mass_slice_auc=mass_slice_auc(valid, scores, protocol['calibration']['mass_edges']),
             diagnostics=_diagnostics(valid_mass,scores[vb],valid_weights[vb],edges,threshold,layout=diagnostic_layout),
             status='trained', eligibility_gate='not_applicable_research')
         if detailed:
@@ -230,7 +267,8 @@ def _predict_discriminant_payload(artifact, frame):
     content = {k:v for k,v in artifact.items() if k != 'model_id'}
     if digest(content) != artifact.get('model_id'):
         raise ResearchError('model artifact digest mismatch')
-    expected = list(representation_features(artifact['representation'], groups=artifact['groups']))
+    expected = list(representation_features(artifact['representation'], groups=artifact['groups'],
+                                            mass_input=artifact.get('mass_input', 'on')))
     width = 64
     if artifact.get('schema_version') in {'research-discriminant-v2', 'h4l-capacity-discriminant-v1'}:
         width = artifact['architecture'][1]

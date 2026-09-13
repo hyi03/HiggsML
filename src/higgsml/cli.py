@@ -46,6 +46,8 @@ def build_parser():
         sub.add_argument('--seed', type=int, default=42)
         sub.add_argument('--strength', type=float, default=0.)
         sub.add_argument('--groups', help='Ordered subset of A/B/C/D; empty string is the mass-only group baseline')
+        sub.add_argument('--mass-input', choices=['on','off'], default='on',
+                         help='Grouped M3 only: explicitly include or exclude m4l')
         sub.add_argument('--transform', choices=['raw','physical','absolute'], default='raw')
         sub.add_argument('--layer', choices=['T0','T1'], default='T0')
         sub.add_argument('--mu', type=float, default=1.)
