@@ -35,7 +35,7 @@ The H→ZZ*→4ℓ final state combines a resonant mass distribution with multid
 
 本文以“额外运动学能否改善 μ 推断”为主线，将问题分为判别信息、分数处理和统计推断三个层次。主要比较预先固定为：在相同质量条件、校准角色、物理 CDF 方法、共同质量网格及 T1 模板误差模型下，十九维工程表示相对于七维衰变表示是否降低预期区间宽度。质量分类器用于辨认箱内质量细化收益；匹配后处理的矩阵元用于考察近似物理基线；对抗训练和两种权重 CDF 用于区分训练目标与校准目标；分组归因则量化特定学习与推断流程中的边际贡献。
 
-这一设计不预设正结果。若收益在有限 MC 误差下消失，或关键模板不能得到统计支持，这些结果同样说明所用数据与方法的适用边界。本文的现阶段贡献是形成可执行、可追溯的比较方法，并明确支持后续科学结论所需的证据。全文的具体实现对应关系与实验补充要求见[配套证据索引](../docs/validation/evidence-and-completion.md)。
+这一设计不预设正结果。若收益在有限 MC 误差下消失，或关键模板不能得到统计支持，这些结果同样说明所用数据与方法的适用边界。本文的现阶段贡献是形成可执行、可追溯的比较方法，并明确支持后续科学结论所需的证据。全文的具体实现对应关系与实验补充要求见[配套证据索引](../docs/results-and-limitations.md#evidence-required-for-conclusions)。
 
 ## 2 数据、物理定义与样本隔离
 
@@ -468,6 +468,6 @@ M1/M1c 与 M2/M4 的比较首先核对输入与后处理是否匹配；M5-abs �
 10. Datta, Larkoski. *How Much Information is in a Jet?* [arXiv:1704.08249](https://arxiv.org/abs/1704.08249). 用作表示／信息研究背景，不把 jet 结论直接迁移到四轻子。
 11. pyhf documentation. [Likelihood specification](https://pyhf.readthedocs.io/en/stable/likelihood.html). 实现锁定 0.7.6；正式方法附录需补入该版本的固定文档或归档，不以可变 stable 页面替代版本证据。
 
-**仓库方法来源：** [H4l 研究方案](../docs/methods/research-project.md)、[研究运行手册](../docs/reproducibility/runbook.md)、[当前科研状态](../docs/validation/current-status.md)、[H4l 研究协议](../config/protocols/h4l_protocol.json)。
+**仓库方法来源：** [H4l 研究方案](../docs/research-design.md)、[研究运行手册](../docs/implementation-and-reproduction.md)、[当前科研状态](../docs/results-and-limitations.md#software-and-validation-status)、[H4l 研究协议](../config/protocols/h4l_protocol.json)。
 
 **待补文献项：** 数据 release、受控样本元数据与预处理来源；实际 MELA 后端与独立参考；Shapley 原始定义及与当前价值函数相符的方法引用；有限 signed-MC 有效计数近似的适用性参考。须核验后增加正式条目，不能将待补项写成已经引用的支持证据。

@@ -12,7 +12,7 @@
 - 默认协议的 `protocol_scope` 是 `synthetic_software_defaults_not_physics_validation`；当前没有可直接作为论文结果的冻结完整 MC run。
 - MELA 只有导出/导入及可选 adapter 契约，实际后端和独立物理参考仍需验证。
 
-精确证据状态见[当前科研与软件状态](docs/validation/current-status.md)，研究设计见[研究方案](docs/methods/research-project.md)。
+精确证据状态见[当前科研与软件状态](docs/results-and-limitations.md#software-and-validation-status)，研究设计见[研究方案](docs/research-design.md)。
 
 ## 2. 了解代码库目录结构
 
@@ -71,7 +71,7 @@ python scripts/init_data.py --dataset atlas2020_4lep
 
 ## 5. 运行标准 H4l 工作流
 
-所有命令从仓库根目录运行。完整规则、门槛与恢复方式以[复现实验手册](docs/reproducibility/runbook.md)为准。
+所有命令从仓库根目录运行。完整规则、门槛与恢复方式以[复现实验手册](docs/implementation-and-reproduction.md)为准。
 
 ### 5.1 准备并固化可复用输入
 
@@ -142,7 +142,7 @@ higgsml mc-bootstrap --help
 higgsml evidence-import --help
 ```
 
-直接调用阶段时，必须显式绑定 dataset、`config/protocols/h4l_protocol.json`、上游 run 与 `runs/` 下的全新输出目录。编排脚本会自动传入该唯一默认协议；`higgsml` 子命令仍要求显式提供 `--protocol`。`manifest.json` 记录数据集、协议快照、上游 artifact、文件摘要、代码/环境、随机种子和科学终态；模型 JSON 只保存数值张量，不加载可执行 pickle。详细字段见[产物与谱系契约](docs/reproducibility/artifact-schema.md)。
+直接调用阶段时，必须显式绑定 dataset、`config/protocols/h4l_protocol.json`、上游 run 与 `runs/` 下的全新输出目录。编排脚本会自动传入该唯一默认协议；`higgsml` 子命令仍要求显式提供 `--protocol`。`manifest.json` 记录数据集、协议快照、上游 artifact、文件摘要、代码/环境、随机种子和科学终态；模型 JSON 只保存数值张量，不加载可执行 pickle。详细字段见[产物与谱系契约](docs/implementation-and-reproduction.md#artifact-and-lineage-contract)。
 
 最终 `report` 支持重复传入 `--training-run`、`--evaluation-run`、`--evidence-run`，并继续以
 `--result-run` 承载主推断结果。增强报告除 `report.json`/`report.md` 外，会发布完整精度 UTF-8 CSV、
@@ -174,7 +174,7 @@ python scripts/h4l_sample_efficiency_report.py --help
 python scripts/h4l_sample_efficiency_controls.py --help
 ```
 
-正式批次绑定 `config/protocols/sample_efficiency_v1.json`、compact candidate freeze、训练子集、G1 和 T1 证据。协议中的 `null` 是待注册占位，不能直接当作正式研究值。方法与确认边界见[样本效率方法](docs/methods/sample-efficiency.md)。
+正式批次绑定 `config/protocols/sample_efficiency_v1.json`、compact candidate freeze、训练子集、G1 和 T1 证据。协议中的 `null` 是待注册占位，不能直接当作正式研究值。方法与确认边界见[样本效率方法](docs/sample-efficiency.md)。
 
 ## 7. 遵守科学与运行约束
 
@@ -195,17 +195,17 @@ python scripts/h4l_sample_efficiency_controls.py --help
 & 'D:\apps\anaconda3\Scripts\conda.exe' run -n pytorch python -m pip check
 ```
 
-当前测试数量、警告和未完成的科学验证以[状态页](docs/validation/current-status.md)的日期化记录为准，不在 README 中复制易过期的数字。
+当前测试数量、警告和未完成的科学验证以[状态页](docs/results-and-limitations.md#software-and-validation-status)的日期化记录为准，不在 README 中复制易过期的数字。
 
 ## 9. 查阅项目文档
 
 - [文档索引](docs/README.md)
-- [研究方案](docs/methods/research-project.md)
-- [软件与科学模块结构](docs/methods/architecture.md)
-- [复现实验手册](docs/reproducibility/runbook.md)
-- [产物与谱系契约](docs/reproducibility/artifact-schema.md)
-- [证据与完成边界](docs/validation/evidence-and-completion.md)
-- [当前科研与软件状态](docs/validation/current-status.md)
+- [研究方案](docs/research-design.md)
+- [软件与科学模块结构](docs/implementation-and-reproduction.md#tools-and-architecture)
+- [复现实验手册](docs/implementation-and-reproduction.md)
+- [产物与谱系契约](docs/implementation-and-reproduction.md#artifact-and-lineage-contract)
+- [证据与完成边界](docs/results-and-limitations.md#evidence-required-for-conclusions)
+- [当前科研与软件状态](docs/results-and-limitations.md#software-and-validation-status)
 - [论文稿件](paper/manuscript.md)
 
 ## 10. 许可证与第三方条款
