@@ -110,7 +110,9 @@ python scripts/h4l_run.py --run-name pilot-001
 
 G1 reuses the prepared artifact, running seed-42 M0c/M2/M3, five calibrations, and common templates. The output root is `runs/h4l-train-pilot-001/`, with `g1/` and `batch/` underneath. On failure, preserve the run and use a new run name/output root; an explicit `--prepared-run` can reuse the same prepared artifact. Follow the script's printed next command to preserve the correct gate binding.
 
-The default batch uses seeds 42--46, training M0c, M2, M3, and every one of the 15 nonempty A/B/C/D feature combinations both with and without explicit `m4l`. Both variants receive raw calibration and enter the same template/T1 `mu=1` comparison; the existing M2/M3 physical calibrations remain unchanged. The documented matrix is 165 training, 175 calibration, and three aggregate stages; the actual plan output is authoritative. An explicit `--seed 42` is a 71-stage single-seed diagnostic, not a completed five-seed comparison.
+The default `h4l-feature-combination-batch-v3` batch uses seeds 42--46, training M0c, M2, M3, and every one of the 15 nonempty A/B/C/D feature combinations both with and without explicit `m4l`. The config binds the original `engineered19_raw_T1` family, the `engineered19_raw_T1_m4l_on_off` comparison family, and the ordered variants `["on","off"]`. Both variants receive raw calibration and enter the same common template/T1 model-self Asimov `mu=1` comparison; the existing M2/M3 physical calibrations remain unchanged. The documented matrix is 165 training, 175 calibration, and three aggregate stages; the actual plan output is authoritative. An explicit `--seed 42` is a 71-stage single-seed diagnostic, not a completed five-seed comparison.
+
+The on key is `M3:<seed>:groups=<subset>` and the off key appends `:m4l=off`; this prevents the two independently trained artifacts from colliding in templates, inference, or exports. Batch completion requires a valid 15-pair comparison for every requested seed. A complete five-seed run additionally requires a valid mass-input summary, so a missing model, invalid T1 width, mismatched/unsupported mass slice, missing M0c reference, duplicate seed, or deleted failure cannot be silently summarized.
 
 The three helpers accept `--protocol`, defaulting to the sole H4l protocol, and propagate it to child stages. `--plan-only` audits planned commands; it does not provide scientific qualification. The standard Asimov batch does not authorize assessment or complete the optional candidate/variation matrix.
 
@@ -128,9 +130,12 @@ For direct CLI calls, provide dataset, explicit protocol, correct upstream runs,
 higgsml train --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare/prepare --candidate M2 --seed 42 --run-dir runs/h4l-m2-42
 higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare/prepare --model-run runs/h4l-m2-42 --transform physical --run-dir runs/h4l-m4-42
 higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare/prepare --model-run runs/h4l-m2-42 --transform raw --run-dir runs/h4l-m2-raw-42
+higgsml train --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare/prepare --gate-run runs/h4l-train-pilot-001/g1 --candidate M3 --groups AB --mass-input off --seed 42 --run-dir runs/h4l-m3-ab-m4l-off-42
 ```
 
-Build the other minimum participants and pass their calibration runs together to `templates`. G1 precedes remaining seeds, M6, fixed200 control, absolute-weight bridge, and L1. Absolute calibration requires the same prepared population/protocol and passed `--gate-run` before calibration payload is read.
+`--mass-input` defaults to `on`. `off` is accepted only by `train` for a grouped M3 with a nonempty A/B/C/D subset; other stages and candidates reject it. The model records the flag, exact ordered inputs, and validation AUC for every registered 5 GeV mass slice. Downstream calibration reads the flag from the bound model, so it does not take another off switch.
+
+Build the other minimum participants and pass their calibration runs together to `templates`. G1 precedes remaining seeds, grouped on/off controls, M6, fixed200 control, absolute-weight bridge, and L1. Absolute calibration requires the same prepared population/protocol and passed `--gate-run` before calibration payload is read.
 
 ```powershell
 higgsml infer --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --template-run runs/h4l-templates-001 --layer T0 --mu 1 --run-dir runs/h4l-t0-001
@@ -168,7 +173,7 @@ Bind dataset/profile/protocol bytes and digests; each direct upstream path, stag
 | audit | Source manifest, dataset/profile/protocol, provenance and support |
 | prepare | `events.jsonl`, reconstructed population, identity/role and weight summaries |
 | me-export / me-import | Ordered inputs, backend/process/adapter, independent reference, result digest |
-| train | `model.json`, ordered inputs, scaler, architecture, seed, checkpoint, history/curves |
+| train | `model.json`, ordered inputs, explicit-mass flag, scaler, architecture, seed, checkpoint, global and fixed-mass-slice validation AUC, history/curves |
 | calibrate | Model, calibration population, weight target, mapping/threshold identity |
 | templates | Participant mappings, common edges, yields, sumw2/covariance, G1 |
 | freeze | Candidate/status completeness, template/likelihood identities, access budget |
@@ -191,8 +196,8 @@ The `h4l-analysis-export-v1` outputs include:
 |---|---|
 | `models.csv`, `training_history.csv`, `model_mass_diagnostics.csv` | Model/seed, model/epoch, model/mass bin |
 | `feature_metrics.csv`, `feature_summary.csv` | Combination/seed and paired five-seed summary |
-| `calibration_summary.csv`, `calibration_slices.csv`, `calibration_bins.csv` | Mapping, mass slice, score bin |
 | `mass_input_metrics.csv`, `mass_slice_auc.csv`, `mass_input_summary.csv` | Paired explicit-`m4l` on/off AUC, fixed 5 GeV validation-slice AUC with local support, and T1 W68 comparisons |
+| `calibration_summary.csv`, `calibration_slices.csv`, `calibration_bins.csv` | Mapping, mass slice, score bin |
 | `template_bins.csv`, `template_covariance.csv` | Candidate/process/bin and nonzero group covariance |
 | `inference_intervals.csv`, `toy_fits.csv` | Asimov interval and Toy/confidence-level fit |
 | `coverage_summary.csv`, `fit_diagnostics.csv`, `paired_comparisons.csv` | Coverage, bias/pull, paired observations |
@@ -202,7 +207,7 @@ The `h4l-analysis-export-v1` outputs include:
 
 `provenance.json` records protocol, populations, upstreams, plan, grid, environment, and export receipts. `data_dictionary.json` defines types, units, formulas, roles, and missingness. `analysis_records.jsonl` mirrors every CSV logical row as `{table,row}`, retaining JSON numeric precision. CSV is UTF-8 and retains full precision.
 
-Missing historical values remain null with `not_recorded` or explicit status, never zero-filled or inferred from total loss. AUC is `validation_absolute_weight_auc` at the selected checkpoint; M4/M5 do not inherit raw AUC under a CDF-AUC label. Training and inference states stay separate. `report.json` retains summaries, indices, row counts, and `result_count`/`results_export` rather than duplicating large per-Toy arrays. Missing or ambiguous paired fixed200 controls are recorded, not chosen by best performance.
+Missing historical values remain null with `not_recorded` or explicit status, never zero-filled or inferred from total loss. AUC is `validation_absolute_weight_auc` at the selected checkpoint; M4/M5 do not inherit raw AUC under a CDF-AUC label. For mass-input controls, `delta_auc_on_minus_off=AUC_on-AUC_off`, `delta_width68_on_minus_off=W68_on-W68_off`, and `relative_w68_improvement_from_m4l=1-W68_on/W68_off`. `mass_slice_auc.csv` retains background/signal row counts, absolute-weight sums, and effective counts for the fixed validation slices. Training and inference states stay separate. `report.json` retains summaries, indices, row counts, and `result_count`/`results_export` rather than duplicating large per-Toy arrays. Missing or ambiguous paired fixed200 controls are recorded, not chosen by best performance.
 
 ### Independent evidence
 

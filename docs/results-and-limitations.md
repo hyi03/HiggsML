@@ -15,6 +15,7 @@ That report was described as `scientific_results_obtained=false`, with a synthet
 | Research question | Evidence status | Supported interpretation |
 |---|---|---|
 | Do engineered inputs improve M5/M4 precision? | Method and reporting available; qualified full-MC primary comparison not documented | An executable hypothesis, not a confirmed gain |
+| How much does explicit `m4l` add within each feature subset? | Paired training, mass-slice diagnostics, T1 comparison, and exports implemented; qualified five-seed full-MC run not documented | An executable control, not evidence that mass is absent from off models or that mass improves precision |
 | Is a compact subset noninferior? | Historical exploratory candidate observation | Motivation for a registered independent test |
 | Does compactness reduce training-MC requirements? | Workflow exists; formal registered experiment pending | No established sample-saving factor |
 | Are intervals reliable under signed MC and variations? | Software/synthetic checks exist; independent and full-MC scope incomplete | No general coverage or physical-systematics conclusion |
@@ -30,6 +31,7 @@ The following consolidates the inherited status document. It is a dated record, 
 | Selection, reconstruction, Angular5, features, and weights | Implemented | Bound full-MC physical/source audit required |
 | Five-role physical-group isolation | Implemented with synthetic tests | Does not replace population/history audit or ROOT interpretation validation |
 | Mass-only, decay7, engineered19, lab-extension | Implemented | Interpretation depends on shared mass/input scope |
+| Grouped M3 explicit-`m4l` on/off pairs and fixed-mass AUC | Implemented with synthetic contract tests | No documented qualified five-seed full-MC comparison; off models can retain implicit mass information |
 | Ordinary/adversarial training and history | Implemented | Diagnostics do not prove convergence or generalization |
 | MELA export/import and adapter | Implemented interface | Actual backend and independent physical reference pending |
 | CDF, common templates, pyhf inference | Implemented | Signed-MC T1 approximation requires independent evidence |
@@ -95,13 +97,14 @@ Record wall/CPU time, RSS, input scale, ROOT request counts/span distribution, s
 |---|---|
 | Event/role independence | Source audit, prepared receipts, group non-overlap, historical-use review |
 | Additional discriminating power | Complete paired planned models on common inputs/populations, validation and mass-slice diagnostics |
+| Explicit-mass contribution | All 15 independently trained on/off pairs for all five seeds, valid local slice support, common-grid T1 widths, retained failures, and bound lineage |
 | Controlled mass sculpting | Independent mapping, acceptance diagnostics, common templates, frozen criteria |
 | Expected mu-precision improvement | Valid T1 primary M5/M4 comparison across five paired seeds, W68 and failures |
 | Reliable intervals | Registered injections/budgets, bias and coverage with binomial/paired uncertainty, boundary/failure accounting |
 | Compact noninferiority/sample efficiency | Frozen candidate/tolerance, complete batch and controls, independent confirmation; actual size curves for efficiency claims |
 | Physical robustness | Sourced variations, process/response/correlation definitions, independent references |
 
-Formal result provenance includes dataset, prepared population, protocol digest, code/dirty state/environment, representation and ordered inputs, seed/checkpoint/model ID, mapping ID, common mass edges, template/workspace ID, inference layer, injected mu, interval, failures, and all direct receipts. Toys additionally need freeze/claim, parent source, pairing ID, seed, budget, auxiliary-generation rule, and coverage/boundary/failure counts. Sample efficiency adds fraction/draw/full, actual train groups, subset/cell identities, multiplicity plan, and paired-bootstrap provenance.
+Formal result provenance includes dataset, prepared population, protocol digest, code/dirty state/environment, representation, feature subset, explicit-mass flag and ordered inputs, seed/checkpoint/model ID, mapping ID, common mass edges, template/workspace ID, inference layer, injected mu, interval, failures, comparison-family/cohort IDs, and all direct receipts. Toys additionally need freeze/claim, parent source, pairing ID, seed, budget, auxiliary-generation rule, and coverage/boundary/failure counts. Sample efficiency adds fraction/draw/full, actual train groups, subset/cell identities, multiplicity plan, and paired-bootstrap provenance.
 
 ## Interpretation limits and completion order
 

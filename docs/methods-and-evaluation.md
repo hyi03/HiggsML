@@ -13,7 +13,7 @@ Let m denote `m4l`, z the standard decay coordinates, and r additional observabl
 \log\frac{p_s(r\mid m,z)}{p_b(r\mid m,z)}.
 \]
 
-This chain rule does not assume independent feature groups and is not a unique causal decomposition. All principal MLP representations receive the same explicit mass condition. BCE training with that input does not guarantee a conditional likelihood ratio: the network can still learn mass discrimination, and absolute training weights define a surrogate measure.
+This chain rule does not assume independent feature groups and is not a unique causal decomposition. All primary and feature-attribution MLP representations receive the same explicit mass condition. The separate grouped-M3 control removes it only to form independently retrained on/off pairs. BCE training with mass does not guarantee a conditional likelihood ratio, while removing the explicit column does not remove mass information encoded by correlated kinematics; absolute training weights define a surrogate measure.
 
 `decay7` describes two dilepton masses and Angular5; engineered19 also exposes laboratory quantities and derived geometry. L1 checks whether adding `pt4l` and reliably reconstructed `y4l` partly reproduces the engineered representation's gain. This does not by itself identify production information: learning convenience, acceptance, and mass use remain alternatives. A future four-momentum study must preserve the beam direction and longitudinal production information rather than remove it by an arbitrary boost and then attribute the loss to other features.
 
@@ -138,7 +138,9 @@ Report all five paired `R_s` and their median. Failed seeds and undefined denomi
 
 AUC means absolute-weight AUC at the selected validation checkpoint. It is neither an assessment measurement nor a newly measured CDF AUC inherited from the raw network. Include fixed-mass-slice AUC and local support; the empty-set global AUC is not automatically 0.5 when mass is available. Report the pull denominator convention when using asymmetric intervals.
 
-For every nonempty A/B/C/D subset, the raw feature-combination family trains a paired model with explicit `m4l` and a model with `m4l` removed. The pair shares the event population, seed, learner, common template grid, and T1 contract, but each model is trained and checkpointed independently. Fixed-mass diagnostics use the registered 5 GeV calibration edges on validation events with absolute physical weights. Slices missing either class remain `insufficient_class_support`. The on/off effect is reported as `AUC_on-AUC_off` and `1-W68_on/W68_off`; only the mass-on family retains the registered M0c empty baseline and Shapley attribution.
+For every nonempty A/B/C/D subset, the raw feature-combination family trains a paired model with explicit `m4l` and a model with `m4l` removed. The pair shares the event population, seed, learner, common template grid, and T1 model-self Asimov contract at `mu=1`, but each model is trained and checkpointed independently. Candidate keys are `M3:<seed>:groups=<subset>` and `M3:<seed>:groups=<subset>:m4l=off`.
+
+Fixed-mass diagnostics use the registered 5 GeV calibration edges on validation events with absolute physical weights. Slices missing either class retain `insufficient_class_support`; they make the affected pair incomplete rather than being deleted or assigned a neutral AUC. The on/off effect is reported as `AUC_on-AUC_off`, `W68_on-W68_off`, and `1-W68_on/W68_off`. A seed-level comparison requires all 15 pairs, every registered slice, and a valid M0c reference; the five-seed summary requires seeds 42--46 with no failure deletion. Only the mass-on family uses M0c as its empty set and receives Shapley attribution; the off family has no empty-set surrogate.
 
 ## Pseudo-experiments, boundaries, and assessment
 
