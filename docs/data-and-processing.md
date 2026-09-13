@@ -62,17 +62,18 @@ Selected events retain lepton `pt`, `eta`, `phi`, energy, charge, flavour, pairi
 | C | `pt4l`, `deltaPhi_ZZ` | 2 |
 | D: Angular5 | `cos_theta_star`, `cos_theta_1`, `cos_theta_2`, `phi_decay_planes`, `phi_production_plane` | 5 |
 
-Leptons are pT-ordered; angles use radians, pseudorapidities/cosines are dimensionless, and masses/momenta use GeV. `m4l` is a separate common condition, outside engineered19. Registered B subdivisions are `B_mass` and `B_geometry`.
+Leptons are pT-ordered; angles use radians, pseudorapidities/cosines are dimensionless, and masses/momenta use GeV. `m4l` is outside engineered19. It is a common condition in the primary and feature-attribution families; the registered grouped-M3 control independently retrains each nonempty subset with this explicit input present or absent. Registered B subdivisions are `B_mass` and `B_geometry`.
 
 | Representation | Actual classifier dimension |
 |---|---:|
 | mass-only | 1 |
 | decay7: two Z masses and Angular5, plus mass | 8 |
 | engineered19 plus mass | 20 |
-| A/B/C/D subset plus mass | Selected count plus 1 |
+| A/B/C/D subset, explicit `m4l` on | Selected count plus 1 |
+| Nonempty A/B/C/D subset, explicit `m4l` off control | Selected count |
 | lab-extension: decay7, `pt4l`, `y4l`, mass | 10 |
 
-Order is fixed by the [representation registry](../src/higgsml/modeling/representations.py). Identity, source, label, role, and weight fields must not enter the classifier.
+Order is fixed by the [representation registry](../src/higgsml/modeling/representations.py). The off variant is registered only for a nonempty grouped `engineered19`/M3 model; an empty off model and off variants of mass-only, decay7, lab-extension, or adversarial candidates are rejected. Identity, source, label, role, and weight fields must not enter the classifier.
 
 For approximately massless leptons,
 

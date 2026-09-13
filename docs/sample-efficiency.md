@@ -6,7 +6,7 @@ This subordinate study asks whether fewer kinematic inputs can retain the full e
 
 Sample size means physical training-event groups, not table rows. Sample efficiency is the performance-versus-training-size relationship or the groups needed to reach a registered target. It is distinct from training speed, memory use, and total MC consumption across all analysis roles.
 
-All main representations receive `m4l`. Compactness counts inputs other than this common condition; it does not exclude dilepton masses `mZ1` and `mZ2`. This remains MC-only educational and technical research, not a physics measurement.
+The compact-candidate and learning-curve families receive `m4l`; compactness counts inputs other than this common condition and does not exclude dilepton masses `mZ1` and `mZ2`. The main feature-combination batch now adds a separate explicit-`m4l` on/off diagnostic family, but that family does not change the sample-efficiency schema or retroactively redefine compactness. This remains MC-only educational and technical research, not a physics measurement.
 
 ## Hypotheses and design choices
 
@@ -15,6 +15,7 @@ The study tests whether a compact candidate is noninferior to engineered19 withi
 | Choice | Reason | Limit |
 |---|---|---|
 | Full A/B/C/D discovery family | Measures complementarity rather than deleting inputs one at a time | Selection over 15 subsets requires independent confirmation |
+| Separately reported explicit-`m4l` on/off pairs | Diagnoses how much the fixed learner uses the mass column | Not an alternative compact-candidate search or a proof that the off representation is mass-independent |
 | Only three learning-curve representations | Restricts cost and avoids selecting another winner across the full size grid | Freeze the compact candidate before curve evaluation |
 | Nested group subsets | Makes changes with size interpretable and preserves pairing | Resampling cannot repair missing support |
 | Fixed evaluation populations | Isolates dependence on training MC | Does not measure total-analysis MC savings |
@@ -25,9 +26,9 @@ Freeze the variable dictionary described in [Data and processing](data-and-proce
 
 ## Discovery and candidate freeze
 
-Retrain all 15 nonempty A/B/C/D subsets and a same-procedure M0c empty set. Share mass conditioning, roles, train population, learner, weights, calibration, common grid, T1 model, and seeds 42--46. The discovery value is `v_s(S)=-W68_Asimov(S,s)` at `mu=1` and 10 fb^-1. Compute Shapley and interactions per seed before aggregation, using the [attribution rules](methods-and-evaluation.md#feature-attribution).
+For compact discovery, retrain all 15 nonempty A/B/C/D subsets with explicit `m4l` on and use a same-procedure M0c empty set. Share roles, train population, learner, weights, calibration, common grid, T1 model, and seeds 42--46. The discovery value is `v_s(S)=-W68_Asimov(S,s)` at `mu=1` and 10 fb^-1. Compute Shapley and interactions per seed before aggregation, using the [attribution rules](methods-and-evaluation.md#feature-attribution).
 
-Also record validation absolute-weight AUC, registered mass-slice AUC summaries, local class support, efficiencies, score distributions, parameter counts, epochs, and failures. Negative contributions and unestimable regions are retained.
+The main batch independently retrains the same 15 subsets with explicit `m4l` off and reports paired global AUC, registered mass-slice AUC with local support, and T1 W68 effects. These off models have no empty-set baseline, do not enter Shapley attribution, and do not participate in compact-candidate selection unless a future protocol explicitly registers that different question. Also record efficiencies, score distributions, parameter counts, epochs, and failures; negative effects and unestimable regions are retained.
 
 Candidate selection is not simply the smallest observed W68. Before confirmation access, register an ordered rule: exclude undefined inputs and incomplete comparisons; compare each subset directly with engineered19 using paired differences; require a prespecified practical tolerance; prefer fewer variables, clearer interpretation, and stable directions among qualifying candidates; freeze one primary compact candidate. If none qualifies, stop compact confirmation and report the discovery study with its limitations.
 

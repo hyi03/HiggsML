@@ -1,6 +1,6 @@
 # H4l research documentation
 
-HiggsML studies whether kinematic representations and mass-conditioned discrimination improve the expected precision of signal-strength inference in controlled `H -> ZZ* -> 4l` Monte Carlo (MC) samples. A related study asks whether a compact representation can retain that precision with fewer training events.
+HiggsML studies whether kinematic representations and mass-conditioned discrimination improve the expected precision of signal-strength inference in controlled `H -> ZZ* -> 4l` Monte Carlo (MC) samples. The registered feature-combination batch also retrains every nonempty A/B/C/D subset with explicit `m4l` switched on and off. A related study asks whether a compact representation can retain precision with fewer training events.
 
 This is an MC-only educational and technical workflow. Its outputs are not an ATLAS/CMS result, a Higgs discovery, or a physics measurement. The default protocol defines synthetic software rules, not full-MC qualification. Available evidence and remaining validation are recorded in [Results and limitations](results-and-limitations.md).
 
@@ -31,6 +31,7 @@ For execution, start with [environment and installation](implementation-and-repr
 ## Sources of truth
 
 - [H4l protocol](../config/protocols/h4l_protocol.json): versioned scientific parameters, roles, thresholds, and budgets.
+- [Feature-combination batch](../config/protocols/feature_combinations_seed42.json): five-seed A/B/C/D matrix, explicit-`m4l` on/off variants, and bound comparison-family IDs.
 - [Sample-efficiency overlay](../config/protocols/sample_efficiency_v1.json): registration template; null values require explicit registration.
 - [Dataset contracts](../config/datasets/): controlled member identities, locations, sizes, and hashes.
 - [Manuscript](../paper/manuscript.md): separate paper text supported by these method and reproduction documents.

@@ -33,7 +33,7 @@ AUC measures ranking on the declared nonnegative evaluation measure and remains 
 |---|---|---|
 | Controlled MC pilot | Explicit identity and closure studies before broader claims | No demonstration of agreement with real data |
 | One primary comparison | Separates hypothesis testing from selecting the best of many results | Auxiliary winners cannot replace it |
-| Common `m4l` input | Compares kinematics under the same available mass condition | The classifier is not automatically a conditional likelihood ratio |
+| Common `m4l` input in the primary and attribution families, plus a registered on/off control | Compares kinematics under the same available mass condition while measuring the finite learner's dependence on explicit mass | The classifier is not automatically a conditional likelihood ratio, and the off model may reconstruct mass information from correlated kinematics |
 | Shared roles, seeds, and templates | Supports fair, paired comparisons | Equal seeds alone do not guarantee event pairing |
 | Fixed small MLP | Controlled learner with manageable cost | Input dimension still changes parameter count |
 | Physical CDF for the primary pair | Equal post-processing opportunity | Signed calibration and finite statistics need validation |
@@ -51,12 +51,13 @@ These are methodological motivations, not proof of optimality. Exact windows, ro
 | M1 / M1c | Matrix-element score / physical CDF | Kinematic decay7 at fixed mass; independent backend reference required |
 | M2 / M4 | Ordinary MLP / physical CDF of M2 | decay7 plus mass, eight inputs |
 | M3 / M5 | Ordinary MLP / physical CDF of M3 | engineered19 plus mass, twenty inputs |
+| Grouped M3 explicit-mass control | Raw M3 models retrained separately for every nonempty A/B/C/D subset | `m4l` on has subset size plus one inputs; `m4l` off has subset size inputs |
 | M5-abs | Absolute-weight CDF of M3 | Calibration target changes; templates remain signed |
 | M3-fixed200 | Fixed-duration zero-strength control | Matched final epoch, initialization, and data order for M6 |
 | M6 | Adversarial MLP | Twenty inputs; strengths 0.05, 0.1, 0.2, 0.5 |
 | L1 | lab-extension with physical CDF | decay7, `pt4l`, `y4l`, mass; ten inputs, pilot seed 42 |
 
-M4/M5/M5-abs transform existing outputs without retraining. M1c reuses validated M1 scores. Early-stopped M3 cannot replace the fixed-epoch M6 control. These IDs denote scientific methods, not software milestones. The standard batch covers ordinary models and feature subsets; it does not execute every optional comparison or establish MELA validity.
+M4/M5/M5-abs transform existing outputs without retraining. The grouped explicit-mass control is still candidate M3; its candidate key appends `:m4l=off` only for the off variant. M1c reuses validated M1 scores. Early-stopped M3 cannot replace the fixed-epoch M6 control. These IDs denote scientific methods, not software milestones. The standard batch covers ordinary models, feature subsets, and their explicit-mass on/off controls; it does not execute every optional comparison or establish MELA validity.
 
 ## Stages and feedback boundaries
 
