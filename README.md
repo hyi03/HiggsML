@@ -15,7 +15,6 @@ data/raw/          本地 MC 输入（忽略，不提交）
 runs/              本地不可变运行产物（忽略，不提交）
 ```
 
-历史 legacy15 预处理、训练、qualification、final-fit、test-opening 和旧版 XGBoost 实现均不属于当前项目，相关运行入口与源码已经移除。
 
 ## 安装
 
@@ -49,10 +48,12 @@ python scripts/init_data.py --dataset atlas2020_4lep
 主要命令入口为 `higgsml`，完整参数可用 `higgsml --help` 查看。推荐通过跨平台编排脚本运行：
 
 ```bash
-python scripts/h4l_prepare.py --run-name 001
+python scripts/h4l_prepare.py
 python scripts/h4l_g1.py --run-name 001
 python scripts/h4l_run.py --run-name 001
 ```
+
+prepare 产物固定发布到 `runs/h4l-prepare/`，可供不同 `--run-name` 的后续工作流复用。
 
 默认协议位于 `config/protocols/h4l_protocol.json`。每次运行必须使用 `runs/` 下的新目录；已完成、失败或诊断运行均不可覆盖。样本效率子流程使用同一个入口：
 

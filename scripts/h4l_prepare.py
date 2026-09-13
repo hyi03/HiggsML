@@ -16,6 +16,7 @@ from jsonschema.exceptions import ValidationError
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = PROJECT_ROOT
 RUNS_ROOT = (PROJECT_ROOT / "runs").resolve()
+DEFAULT_RUN_ROOT = (RUNS_ROOT / "h4l-prepare").resolve()
 DEFAULT_PROTOCOL = (PROJECT_ROOT / "config" / "protocols" / "h4l_protocol.json").resolve()
 PROFILE = (PROJECT_ROOT / "config" / "profiles" / "open_data_2020.yaml").resolve()
 G1_SCRIPT = (PROJECT_ROOT / "scripts" / "h4l_g1.py").resolve()
@@ -37,7 +38,6 @@ from higgsml.artifacts import digest_json  # noqa: E402
 from higgsml.cleanup import remove_run_directories  # noqa: E402
 from higgsml.data import source_access_record  # noqa: E402
 from higgsml.protocol import load_protocol  # noqa: E402
-from higgsml.run_names import workflow_directory_name  # noqa: E402
 
 
 class WorkflowError(Exception):
@@ -51,13 +51,10 @@ def _parser() -> argparse.ArgumentParser:
         description="Generate bound H4l inputs and run audit and prepare.",
     )
     parser.add_argument("--dataset-receipt", type=Path, default=DEFAULT_RECEIPT)
-    destination = parser.add_mutually_exclusive_group(required=True)
-    destination.add_argument(
-        "--run-name",
-        help=("Short shared workflow name; for example 001 resolves to "
-              "runs/h4l-feature-combinations-prerequisites-001."),
+    parser.add_argument(
+        "--run-root", type=Path,
+        help="Override the default global prepare root at runs/h4l-prepare.",
     )
-    destination.add_argument("--run-root", type=Path)
     parser.add_argument("--protocol", type=Path, default=DEFAULT_PROTOCOL)
     parser.add_argument(
         "--diagnostic-entries-per-file",
@@ -95,20 +92,8 @@ def _resolve(value: Path) -> Path:
 
 
 def _run_root(args: argparse.Namespace) -> Path:
-    run_name = getattr(args, "run_name", None)
-    if run_name is None:
-        return _resolve(args.run_root)
-    if getattr(args, "diagnostic_entries_per_file", None) is not None:
-        raise WorkflowError(
-            "--run-name is reserved for reusable prepare runs and cannot be "
-            "combined with --diagnostic-entries-per-file; use --run-root for diagnostics",
-            2,
-        )
-    try:
-        directory = workflow_directory_name(run_name)
-    except ValueError as error:
-        raise WorkflowError(str(error), 2) from error
-    return (RUNS_ROOT / directory).resolve()
+    run_root = getattr(args, "run_root", None)
+    return DEFAULT_RUN_ROOT if run_root is None else _resolve(run_root)
 
 
 def _load_json(path: Path) -> dict:
@@ -394,16 +379,8 @@ def _run_workflow(args: argparse.Namespace, receipt: Path) -> None:
     next_command = [
         sys.executable, str(G1_SCRIPT),
         "--protocol", str(protocol_path),
+        "--run-name", "<RUN_NAME>",
     ]
-    run_name = getattr(args, "run_name", None)
-    if run_name is not None:
-        next_command.extend(["--run-name", run_name])
-    else:
-        next_command.extend([
-            "--prepared-run", str(prepared_run),
-            "--t1-validation", str(t1_validation),
-            "--output-root", str(run_root / "g1"),
-        ])
     print("Next G1 command:")
     print(_display(next_command))
     if args.plan_only:
@@ -415,17 +392,14 @@ def _run_workflow(args: argparse.Namespace, receipt: Path) -> None:
 def _clean(args: argparse.Namespace) -> None:
     if getattr(args, "plan_only", False):
         raise WorkflowError("--clean cannot be combined with --plan-only", 2)
-    run_name = getattr(args, "run_name", None)
-    if run_name is None:
-        run_root = Path(args.run_root).expanduser()
+    configured_root = getattr(args, "run_root", None)
+    if configured_root is None:
+        run_root = DEFAULT_RUN_ROOT
+    else:
+        run_root = Path(configured_root).expanduser()
         if not run_root.is_absolute():
             run_root = PROJECT_ROOT / run_root
         run_root = run_root.absolute()
-    else:
-        try:
-            run_root = (RUNS_ROOT / workflow_directory_name(run_name)).absolute()
-        except ValueError as error:
-            raise WorkflowError(str(error), 2) from error
     try:
         result = remove_run_directories(
             [run_root / "inputs", run_root / "audit", run_root / "prepare"],

@@ -95,7 +95,7 @@ def test_prepare_cli_has_no_manual_review_arguments() -> None:
     completed = _run(PREPARE_SCRIPT, "--help")
 
     assert completed.returncode == 0
-    assert "--run-name" in completed.stdout
+    assert "--run-name" not in completed.stdout
     assert "--run-root" in completed.stdout
     assert "--no-progress" in completed.stdout
     assert "--protocol" in completed.stdout
@@ -188,47 +188,41 @@ def test_prepare_metrics_output_is_opt_in(tmp_path: Path) -> None:
     assert not verbose_root.exists()
 
 
-def test_shared_run_name_derives_prepare_g1_and_batch_paths(tmp_path: Path) -> None:
-    receipt, _ = _dataset_receipt(tmp_path)
+def test_run_name_derives_global_prepare_and_scoped_output_paths() -> None:
     run_name = f"pytest-shared-{uuid.uuid4().hex}"
     run_root = PROJECT_ROOT / "runs" / f"h4l-feature-combinations-prerequisites-{run_name}"
-
-    prepare = _run(
-        PREPARE_SCRIPT,
-        "--dataset-receipt", str(receipt),
-        "--run-name", run_name,
-        "--plan-only",
-    )
-    assert prepare.returncode == 0, prepare.stderr
-    assert str(run_root / "prepare") in prepare.stdout
-    assert f"--run-name {run_name}" in prepare.stdout
+    global_root = PROJECT_ROOT / "runs" / "h4l-prepare"
 
     g1 = _run(G1_SCRIPT, "--run-name", run_name, "--plan-only")
     assert g1.returncode == 0, g1.stderr
-    assert g1.stdout.count(f"--input-run {run_root / 'prepare'}") == 9
-    assert str(run_root / "inputs" / "t1-validation.json") in g1.stdout
+    assert g1.stdout.count(f"--input-run {global_root / 'prepare'}") == 9
+    assert str(global_root / "inputs" / "t1-validation.json") in g1.stdout
     assert str(run_root / "g1" / "templates") in g1.stdout
     assert f"--run-name {run_name}" in g1.stdout
 
     batch = _run(RUN_SCRIPT, "--run-name", run_name, "--plan-only")
     assert batch.returncode == 0, batch.stderr
-    assert str(run_root / "prepare") in batch.stdout
+    assert str(global_root / "prepare") in batch.stdout
     assert str(run_root / "g1" / "templates") in batch.stdout
-    assert str(run_root / "inputs" / "t1-validation.json") in batch.stdout
+    assert str(global_root / "inputs" / "t1-validation.json") in batch.stdout
     assert str(run_root / "batch" / "all-seeds" / "seed42") in batch.stdout
     assert str(run_root / "batch" / "all-seeds" / "seed46") in batch.stdout
     assert not run_root.exists()
 
 
-@pytest.mark.parametrize("script", [PREPARE_SCRIPT, G1_SCRIPT, RUN_SCRIPT])
+def test_multiple_run_names_share_the_global_prepared_input() -> None:
+    global_prepared = PROJECT_ROOT / "runs" / "h4l-prepare" / "prepare"
+    for run_name in ("reuse-001", "reuse-002"):
+        completed = _run(G1_SCRIPT, "--run-name", run_name, "--plan-only")
+        assert completed.returncode == 0, completed.stderr
+        assert completed.stdout.count(f"--input-run {global_prepared}") == 9
+
+
+@pytest.mark.parametrize("script", [G1_SCRIPT, RUN_SCRIPT])
 def test_shared_run_name_rejects_path_traversal(
     script: Path, tmp_path: Path,
 ) -> None:
     arguments = ["--run-name", "../escape", "--plan-only"]
-    if script == PREPARE_SCRIPT:
-        receipt, _ = _dataset_receipt(tmp_path)
-        arguments[:0] = ["--dataset-receipt", str(receipt)]
-
     completed = _run(script, *arguments)
 
     assert completed.returncode == 2
@@ -238,7 +232,6 @@ def test_shared_run_name_rejects_path_traversal(
 @pytest.mark.parametrize(
     ("script", "explicit_option", "error_text"),
     [
-        (PREPARE_SCRIPT, "--run-root", "not allowed with argument"),
         (G1_SCRIPT, "--output-root", "cannot be combined"),
         (RUN_SCRIPT, "--output-root", "cannot be combined"),
     ],
@@ -276,16 +269,22 @@ def test_prepare_fixed_workload_diagnosis_does_not_offer_g1(tmp_path: Path) -> N
     assert not run_root.exists()
 
 
-def test_prepare_run_name_rejects_diagnostic_mode() -> None:
+def test_prepare_run_name_is_not_a_supported_argument() -> None:
     completed = _run(
         PREPARE_SCRIPT,
         "--run-name", "001",
-        "--diagnostic-entries-per-file", "1000",
         "--plan-only",
     )
 
     assert completed.returncode == 2
-    assert "use --run-root for diagnostics" in completed.stderr
+    assert "unrecognized arguments: --run-name 001" in completed.stderr
+
+
+def test_prepare_uses_global_default_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    module = _load_prepare_module()
+    expected = tmp_path / "h4l-prepare"
+    monkeypatch.setattr(module, "DEFAULT_RUN_ROOT", expected)
+    assert module._run_root(argparse.Namespace(run_root=None)) == expected
 
 
 def test_prepare_writes_automatic_inputs_before_running_prerequisites(
@@ -530,11 +529,25 @@ def test_prepare_clean_removes_only_prepare_owned_outputs(
         (run_root / name).mkdir(parents=True)
         (run_root / name / "owned.txt").write_text(name)
     monkeypatch.setattr(module, "RUNS_ROOT", tmp_path.resolve())
-    module._run(argparse.Namespace(run_name=None,run_root=run_root,clean=True,
+    module._run(argparse.Namespace(run_root=run_root,clean=True,
         plan_only=False,diagnostic_entries_per_file=None))
     assert all(not (run_root/name).exists() for name in ("inputs","audit","prepare"))
     assert (run_root/"g1"/"owned.txt").is_file()
     assert (run_root/"batch"/"owned.txt").is_file()
+
+
+def test_prepare_clean_without_override_targets_global_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_prepare_module()
+    global_root = tmp_path / "h4l-prepare"
+    for name in ("inputs", "audit", "prepare"):
+        (global_root / name).mkdir(parents=True)
+        (global_root / name / "owned.txt").write_text(name)
+    monkeypatch.setattr(module, "RUNS_ROOT", tmp_path.resolve())
+    monkeypatch.setattr(module, "DEFAULT_RUN_ROOT", global_root.resolve())
+    module._run(argparse.Namespace(run_root=None, clean=True, plan_only=False))
+    assert not global_root.exists()
 
 
 def test_g1_and_run_clean_remove_only_selected_output(
