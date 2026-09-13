@@ -76,13 +76,13 @@ assessment 必须绑定冻结分析。历史反馈是否影响当前设计仍需
 
 ## 自动分段脚本
 
-`scripts/h4l_prepare.py`只运行`audit`和`prepare`，完成ROOT读取后产生可复用的
-`<run-root>/prepare`。三个工作流脚本共享`--run-name`；例如`--run-name pilot-001`统一映射到
-`runs/h4l-feature-combinations-prerequisites-pilot-001`，各脚本自动推导自己的输入和输出路径。
+`scripts/h4l_prepare.py`只运行`audit`和`prepare`，完成ROOT读取后在全局目录
+`runs/h4l-prepare/prepare`产生可复用产物，输入证据位于`runs/h4l-prepare/inputs`。
+G1和batch的`--run-name`只控制各自实验输出，并自动读取这份全局prepare。
 prepare不会继续训练、校准或构建模板，完成时会打印下一条G1命令：
 
 ```powershell
-python scripts/h4l_prepare.py --run-name pilot-001
+python scripts/h4l_prepare.py
 ```
 
 prepare 默认显示单条 ROOT 事件进度，格式为
@@ -121,7 +121,7 @@ A/B/C/D组合，生成raw校准以及M2→M4、M3→M5的physical CDF；五个se
 T1 μ=1 inference和report。完整计划共90个train、100个calibrate和3个汇总阶段。可先审计命令：
 
 ```powershell
-python scripts/h4l_run.py --run-name all-mc-002 --plan-only
+python scripts/h4l_run.py --run-name pilot-002 --plan-only
 ```
 
 显式传入`--seed 42`时只运行该seed的41个阶段，用于诊断；这种结果不能完成五种子M4/M5主比较。
@@ -135,14 +135,14 @@ python scripts/h4l_run.py --run-name all-mc-002 --plan-only
 协议或上游产物，也不执行任何研究阶段。`--clean`不能与`--plan-only`同时使用。
 
 ```powershell
-python scripts/h4l_prepare.py --run-name 001 --clean
+python scripts/h4l_prepare.py --clean
 python scripts/h4l_g1.py --run-name 001 --clean
 python scripts/h4l_run.py --run-name 001 --clean
 python scripts/h4l_run.py --run-name 001 --seed 42 --clean
 ```
 
-共享run name下，各命令只删除自己拥有的输出：prepare删除`inputs`、`audit`和`prepare`，
-保留`g1`及`batch`；G1只删除`g1`；run默认删除`batch/all-seeds`，显式`--seed N`时只删除
+prepare清理全局根目录中的`inputs`、`audit`和`prepare`；G1只删除对应run name的`g1`；
+run默认删除对应run name的`batch/all-seeds`，显式`--seed N`时只删除
 `batch/seedN`。使用显式路径时，prepare接受`--run-root`，G1和run接受`--output-root`并删除
 该命令指定的精确目录。G1和run清理时必须显式提供run name或output root，不会采用配置文件中的
 默认输出路径。所有清理目标必须是`runs`下的真实目录；runs根目录、文件、符号链接和越界
@@ -150,12 +150,12 @@ python scripts/h4l_run.py --run-name 001 --seed 42 --clean
 
 ## 最小链路
 
-以下以已完成受控来源审计的 `runs/h4l-prepare-001` 为输入。目录名仅为示例，已有目录不可覆盖。
+以下以全局受控来源产物 `runs/h4l-prepare/prepare` 为输入。已有输出目录不可覆盖。
 
 ```powershell
-higgsml train --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare-001 --candidate M2 --seed 42 --run-dir runs/h4l-m2-42
-higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare-001 --model-run runs/h4l-m2-42 --transform physical --run-dir runs/h4l-m4-42
-higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare-001 --model-run runs/h4l-m2-42 --transform raw --run-dir runs/h4l-m2-raw-42
+higgsml train --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare/prepare --candidate M2 --seed 42 --run-dir runs/h4l-m2-42
+higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare/prepare --model-run runs/h4l-m2-42 --transform physical --run-dir runs/h4l-m4-42
+higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare/prepare --model-run runs/h4l-m2-42 --transform raw --run-dir runs/h4l-m2-raw-42
 ```
 
 同样建立 M0c、M3 及 M3 的物理 CDF（M5）；`templates` 一次传入所有共同候选的 calibration run。
@@ -175,7 +175,7 @@ M5-abs校准也属于G1后的候选扩展，必须传入同prepared、同协议�
 否则在读取校准payload前拒绝。例如（各路径须替换为实际已验证的上游）：
 
 ```powershell
-higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare-001 --model-run runs/h4l-m3-42 --gate-run runs/h4l-g1-passed --transform absolute --run-dir runs/h4l-m5-abs-42
+higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare/prepare --model-run runs/h4l-m3-42 --gate-run runs/h4l-g1-passed --transform absolute --run-dir runs/h4l-m5-abs-42
 ```
 
 ## 训练曲线与附录

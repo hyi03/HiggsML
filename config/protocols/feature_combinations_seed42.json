@@ -3,9 +3,9 @@
   "dataset": "atlas2020_4lep",
   "protocol": "config/protocols/h4l_protocol.json",
   "seeds": [42, 43, 44, 45, 46],
-  "prepared_run": "runs/h4l-prepare-001",
+  "prepared_run": "runs/h4l-prepare/prepare",
   "g1_gate_run": "runs/h4l-g1-001",
-  "t1_validation": "runs/h4l-t1-validation-001/t1-validation.json",
+  "t1_validation": "runs/h4l-prepare/inputs/t1-validation.json",
   "output_root": "runs/h4l-feature-combinations-all-seeds-001",
   "family_id": "engineered19_raw_T1",
   "feature_combinations": [

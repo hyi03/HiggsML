@@ -18,6 +18,7 @@ from tqdm.auto import tqdm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RUNS_ROOT = (PROJECT_ROOT / "runs").resolve()
+GLOBAL_PREPARE_ROOT = (RUNS_ROOT / "h4l-prepare").resolve()
 DEFAULT_CONFIG = PROJECT_ROOT / "config" / "protocols" / "feature_combinations_seed42.json"
 T1_SCHEMA = PROJECT_ROOT / "config" / "schemas" / "t1_validation_v1.schema.json"
 EXPECTED_SEEDS = tuple(range(42, 47))
@@ -54,8 +55,8 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--run-name",
-        help=("Short shared workflow name; resolves prepared/G1 inputs and writes "
-              "the complete batch below the shared run root."),
+        help=("Short experiment name; resolves global prepared inputs and the "
+              "experiment's G1 gate, then writes its batch output."),
     )
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--protocol", type=Path)
@@ -293,9 +294,9 @@ def _run(args: argparse.Namespace) -> None:
             root = RUNS_ROOT / workflow_directory_name(run_name)
         except ValueError as error:
             raise WorkflowError(str(error), 2) from error
-        prepared = root / "prepare"
+        prepared = GLOBAL_PREPARE_ROOT / "prepare"
         gate = root / "g1" / "templates"
-        t1_validation = root / "inputs" / "t1-validation.json"
+        t1_validation = GLOBAL_PREPARE_ROOT / "inputs" / "t1-validation.json"
         batch_root = root / "batch" / ("all-seeds" if complete else f"seed{seeds[0]}")
     else:
         prepared = _resolve(args.prepared_run or config["prepared_run"])
