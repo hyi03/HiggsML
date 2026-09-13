@@ -47,7 +47,7 @@ repository root:
 ```
 
 The installed console entry point is `higgsml`. The orchestration helpers are
-`scripts/h4l_prepare.py`, `scripts/h4l_g1.py`, `scripts/h4l_run.py`, and the
+`scripts/h4l_prepare.py`, `scripts/h4l_check.py`, `scripts/h4l_run.py`, and the
 sample-efficiency scripts. Do not use a webservice abstraction; authorized
 network access must use direct HTTP or HTTPS requests.
 

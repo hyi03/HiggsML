@@ -15,7 +15,7 @@ from jsonschema import Draft202012Validator
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PREPARE_SCRIPT = PROJECT_ROOT / "scripts" / "h4l_prepare.py"
-G1_SCRIPT = PROJECT_ROOT / "scripts" / "h4l_g1.py"
+G1_SCRIPT = PROJECT_ROOT / "scripts" / "h4l_check.py"
 RUN_SCRIPT = PROJECT_ROOT / "scripts" / "h4l_run.py"
 VALIDATION_ROOT = PROJECT_ROOT / "config" / "schemas"
 
@@ -152,7 +152,7 @@ def test_prepare_plan_stops_after_audit_and_prepare(
 
     assert completed.returncode == 0, completed.stderr
     output = completed.stdout
-    for expected in ("higgsml.cli audit", "higgsml.cli prepare", "h4l_g1.py"):
+    for expected in ("higgsml.cli audit", "higgsml.cli prepare", "h4l_check.py"):
         assert expected in output
     assert "higgsml.cli train" not in output
     assert "higgsml.cli calibrate" not in output

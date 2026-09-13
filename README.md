@@ -104,22 +104,22 @@ runs/h4l-prepare/
 
 `h4l_prepare.py` 不接受 `--run-name`。只有在诊断或需要独立新目录时才传入 `--run-root`；正式全局目录已存在时，脚本会拒绝覆盖。
 
-### 2. 执行 seed 42 的 G1 门
+### 2. 执行 Gate Check
 
 ```bash
-python scripts/h4l_g1.py --run-name pilot-001
+python scripts/h4l_check.py --run-name T1
 ```
 
-G1 从全局 prepared artifact 运行 M0c、M2、M3、五个校准和共同模板。只有 G1 通过后，才允许展开受门控的候选。失败目录仍是不可变证据；修复后必须使用新的 `--run-name` 或 `--output-root`。
-`--run-name pilot-001` 的实验输出根目录为 `runs/h4l-train-pilot-001/`。
+Gate 从全局 prepared artifact 运行 M0c、M2、M3、五个校准和共同模板。只有 Gate 通过后，才允许展开受门控的候选。失败目录仍是不可变证据；修复后必须使用新的 `--run-name` 或 `--output-root`。
+`--run-name T1` 的实验输出根目录为 `runs/h4l-train-T1/`。
 
 ### 3. 执行完整五种子批次
 
 先审计计划，再正式运行：
 
 ```bash
-python scripts/h4l_run.py --run-name pilot-001 --plan-only
-python scripts/h4l_run.py --run-name pilot-001
+python scripts/h4l_run.py --run-name T1 --plan-only
+python scripts/h4l_run.py --run-name T1
 ```
 
 默认批次执行 seed 42–46 的注册候选、校准、共同模板、T1 `mu=1` inference 与报告。显式 `--seed 42` 仅是单种子诊断，不能支持五种子主比较。
