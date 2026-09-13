@@ -110,7 +110,7 @@ python scripts/h4l_run.py --run-name pilot-001
 
 G1 reuses the prepared artifact, running seed-42 M0c/M2/M3, five calibrations, and common templates. The output root is `runs/h4l-train-pilot-001/`, with `g1/` and `batch/` underneath. On failure, preserve the run and use a new run name/output root; an explicit `--prepared-run` can reuse the same prepared artifact. Follow the script's printed next command to preserve the correct gate binding.
 
-The default batch uses seeds 42--46, training M0c, M2, M3, and all 15 feature combinations per seed, with raw calibrations and physical M2/M3 calibrations, then one shared template stage, T1 `mu=1` inference, and report. The documented matrix is 90 training, 100 calibration, and three aggregate stages; the actual plan output is authoritative. An explicit `--seed 42` is a 41-stage single-seed diagnostic, not a completed five-seed comparison.
+The default batch uses seeds 42--46, training M0c, M2, M3, and every one of the 15 nonempty A/B/C/D feature combinations both with and without explicit `m4l`. Both variants receive raw calibration and enter the same template/T1 `mu=1` comparison; the existing M2/M3 physical calibrations remain unchanged. The documented matrix is 165 training, 175 calibration, and three aggregate stages; the actual plan output is authoritative. An explicit `--seed 42` is a 71-stage single-seed diagnostic, not a completed five-seed comparison.
 
 The three helpers accept `--protocol`, defaulting to the sole H4l protocol, and propagate it to child stages. `--plan-only` audits planned commands; it does not provide scientific qualification. The standard Asimov batch does not authorize assessment or complete the optional candidate/variation matrix.
 
@@ -192,6 +192,7 @@ The `h4l-analysis-export-v1` outputs include:
 | `models.csv`, `training_history.csv`, `model_mass_diagnostics.csv` | Model/seed, model/epoch, model/mass bin |
 | `feature_metrics.csv`, `feature_summary.csv` | Combination/seed and paired five-seed summary |
 | `calibration_summary.csv`, `calibration_slices.csv`, `calibration_bins.csv` | Mapping, mass slice, score bin |
+| `mass_input_metrics.csv`, `mass_slice_auc.csv`, `mass_input_summary.csv` | Paired explicit-`m4l` on/off AUC, fixed 5 GeV validation-slice AUC with local support, and T1 W68 comparisons |
 | `template_bins.csv`, `template_covariance.csv` | Candidate/process/bin and nonzero group covariance |
 | `inference_intervals.csv`, `toy_fits.csv` | Asimov interval and Toy/confidence-level fit |
 | `coverage_summary.csv`, `fit_diagnostics.csv`, `paired_comparisons.csv` | Coverage, bias/pull, paired observations |

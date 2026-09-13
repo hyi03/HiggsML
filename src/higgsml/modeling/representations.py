@@ -15,14 +15,21 @@ B_MASS = ("mZ1", "mZ2")
 B_GEOMETRY = ("deltaR_Z1", "deltaR_Z2")
 
 
-def representation_features(name, groups=None):
+def representation_features(name, groups=None, mass_input="on"):
+    if mass_input not in {"on", "off"}:
+        raise ResearchError("mass_input must be on or off")
     if groups is not None:
         chosen = tuple(groups)
         if len(set(chosen)) != len(chosen) or set(chosen) - set(GROUPS):
             raise ResearchError("unknown or repeated feature group")
         if name != "engineered19":
             raise ResearchError("groups require engineered19 representation")
-        return sum((GROUPS[g] for g in GROUPS if g in chosen), ()) + ("m4l",)
+        if not chosen and mass_input == "off":
+            raise ResearchError("m4l-off requires a nonempty feature group subset")
+        features = sum((GROUPS[g] for g in GROUPS if g in chosen), ())
+        return features + (("m4l",) if mass_input == "on" else ())
+    if mass_input != "on":
+        raise ResearchError("m4l-off is registered only for grouped engineered19 models")
     options = {"mass-only": ("m4l",), "decay7": DECAY7 + ("m4l",),
                "engineered19": ENGINEERED19 + ("m4l",),
                "lab-extension": DECAY7 + ("pt4l", "y4l", "m4l"),

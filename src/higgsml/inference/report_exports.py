@@ -44,6 +44,8 @@ def _candidate_key(model):
         key += f":lambda={model.get('target_lambda'):g}"
     if model.get("groups") is not None:
         key += ":groups=" + _subset(model)
+    if model.get("mass_input", "on") == "off":
+        key += ":m4l=off"
     return key
 
 
@@ -73,6 +75,7 @@ def _model_tables(training_runs):
             raise ResearchError("duplicate training model in analysis export")
         model_payloads[key] = model
         base = {"candidate_key": key, "candidate": model.get("candidate"), "subset": _subset(model),
+                "mass_input": model.get("mass_input", "on"),
                 "seed": model.get("seed"), "representation": model.get("representation"),
                 "input_count": len(model.get("ordered_inputs", [])), "ordered_inputs": model.get("ordered_inputs", []),
                 "status": model.get("status"), "validation_absolute_weight_auc": model.get("validation_absolute_weight_auc"),
@@ -434,6 +437,37 @@ def _feature_tables(report, models):
     return metrics, summary
 
 
+def _mass_input_tables(report):
+    metrics, slices = [], []
+    for comparison in report.get("mass_input_comparisons", []):
+        baseline = comparison.get("mass_only_baseline", {})
+        for row in comparison.get("pairs", []):
+            metrics.append({key: value for key, value in row.items() if key != "mass_slices"} | {
+                "mass_only_candidate_key": baseline.get("candidate_key"),
+                "mass_only_auc": baseline.get("validation_absolute_weight_auc"),
+                "mass_only_width68": baseline.get("width68"),
+                "comparison_cohort_id": comparison.get("comparison_cohort_id")})
+            for part in row.get("mass_slices", []):
+                support = part.get("class_support") or {}
+                background, signal = support.get("0", {}), support.get("1", {})
+                slices.append({"subset": row.get("subset"), "seed": row.get("seed"),
+                               "on_candidate_key": row.get("on_candidate_key"),
+                               "off_candidate_key": row.get("off_candidate_key"),
+                               **{key: value for key, value in part.items() if key != "class_support"},
+                               "background_row_count": background.get("row_count"),
+                               "background_sum_absolute_weight": background.get("sum_absolute_weight"),
+                               "background_effective_count": background.get("effective_count"),
+                               "signal_row_count": signal.get("row_count"),
+                               "signal_sum_absolute_weight": signal.get("sum_absolute_weight"),
+                               "signal_effective_count": signal.get("effective_count")})
+    summary_payload = report.get("mass_input_summary", {})
+    summary = [{"summary_kind": "global", **row}
+               for row in summary_payload.get("combinations", [])]
+    summary.extend({"summary_kind": "mass_slice", **row}
+                   for row in summary_payload.get("mass_slices", []))
+    return metrics, slices, summary
+
+
 def publish_analysis_exports(run, report, *, training_runs=(), evaluation_runs=(), evidence_runs=(), result_runs=()):
     training_runs = _unique_runs(training_runs)
     evaluation_runs = _unique_runs(evaluation_runs)
@@ -453,6 +487,7 @@ def publish_analysis_exports(run, report, *, training_runs=(), evaluation_runs=(
     template_bins, covariance, grids = _template_tables(evaluation_runs)
     records, intervals, toys, coverage, diagnostics, paired, procedures, stress, bootstraps = _inference_tables(inference_runs)
     feature_metrics, feature_summary = _feature_tables(report, models)
+    mass_input_metrics, mass_slice_auc, mass_input_summary = _mass_input_tables(report)
     attribution, interactions = [], []
     for comparison in report.get("feature_combination_comparisons", []):
         shapley = comparison.get("shapley", {})
@@ -499,11 +534,14 @@ def publish_analysis_exports(run, report, *, training_runs=(), evaluation_runs=(
                              "artifact_id": item.manifest["artifact_id"]})
 
     tables = {
-        "models.csv": (models, ["candidate_key","candidate","subset","seed","representation","input_count","ordered_inputs","status","validation_absolute_weight_auc","selected_epoch","checkpoint_rule","target_lambda","effective_lambda","model_id","artifact_id","protocol_id","prepared_artifact_id","metric_role","weight_measure","selection_note"]),
+        "models.csv": (models, ["candidate_key","candidate","subset","mass_input","seed","representation","input_count","ordered_inputs","status","validation_absolute_weight_auc","selected_epoch","checkpoint_rule","target_lambda","effective_lambda","model_id","artifact_id","protocol_id","prepared_artifact_id","metric_role","weight_measure","selection_note"]),
         "training_history.csv": (history, ["candidate_key","seed","subset","epoch","loss","classification_loss","adversary_loss","effective_lambda","validation_absolute_weight_auc","absolute_weight_mass_ks","mass_bin_acceptance","is_selected_epoch","detail_status","model_id"]),
         "model_mass_diagnostics.csv": (mass, ["candidate_key","seed","subset","mass_bin_index","mass_low","mass_high","background_acceptance","absolute_weight_mass_ks","working_point","threshold","threshold_source","evaluation_source","model_id"]),
         "feature_metrics.csv": (feature_metrics, ["candidate_key","subset","seed","raw_validation_auc","delta_auc_vs_m0c","width68","relative_w68_improvement_vs_m0c","selected_epoch","model_status","inference_status","comparison_cohort_id"]),
         "feature_summary.csv": (feature_summary, ["subset","status","auc_status","inference_status","auc_complete_seed_count","inference_complete_seed_count","median_auc","min_auc","max_auc","median_delta_auc_vs_m0c","min_delta_auc_vs_m0c","max_delta_auc_vs_m0c","median_width68","min_width68","max_width68","median_relative_w68_improvement","min_relative_w68_improvement","max_relative_w68_improvement"]),
+        "mass_input_metrics.csv": (mass_input_metrics, ["subset","seed","status","on_candidate_key","off_candidate_key","auc_on","auc_off","delta_auc_on_minus_off","width68_on","width68_off","delta_width68_on_minus_off","relative_w68_improvement_from_m4l","mass_only_candidate_key","mass_only_auc","mass_only_width68","comparison_cohort_id"]),
+        "mass_slice_auc.csv": (mass_slice_auc, ["subset","seed","on_candidate_key","off_candidate_key","slice_index","mass_low","mass_high","status","auc_on","auc_off","delta_auc_on_minus_off","background_row_count","background_sum_absolute_weight","background_effective_count","signal_row_count","signal_sum_absolute_weight","signal_effective_count"]),
+        "mass_input_summary.csv": (mass_input_summary, ["summary_kind","subset","slice_index","mass_low","mass_high","status","median_delta_auc_on_minus_off","min_delta_auc_on_minus_off","max_delta_auc_on_minus_off","median_delta_width68_on_minus_off","min_delta_width68_on_minus_off","max_delta_width68_on_minus_off","median_relative_w68_improvement_from_m4l","min_relative_w68_improvement_from_m4l","max_relative_w68_improvement_from_m4l"]),
         "calibration_summary.csv": (calibration, ["candidate_key","candidate_id","seed","subset","transform","status","model_id","mapping_id","threshold_id","source_role","final_slice_count","merge_count","merge_history","min_effective_count","min_cancellation_ratio","max_correction_chi2","detail_status"]),
         "calibration_slices.csv": (slices, ["candidate_key","seed","mapping_id","slice_index","mass_low","mass_high","mass_center","effective_count","cancellation_ratio","total_yield","correction_chi2","raw_negative_bin_count","fitted_zero_bin_count","sum_absolute_correction","max_absolute_correction"]),
         "calibration_bins.csv": (calibration_bins, ["candidate_key","seed","mapping_id","slice_index","score_bin_index","score_low","score_high","raw_yield","fitted_yield","variance","correction","probability"]),
@@ -532,11 +570,16 @@ def publish_analysis_exports(run, report, *, training_runs=(), evaluation_runs=(
                 stream.write(_json({"table": table_name, "row": row}) + "\n")
     run.register_file(jsonl_name)
     units = {"validation_absolute_weight_auc": "dimensionless", "raw_validation_auc": "dimensionless",
+             "auc_on": "dimensionless", "auc_off": "dimensionless",
+             "delta_auc_on_minus_off": "absolute AUC difference",
              "delta_auc_vs_m0c": "absolute AUC difference", "width68": "mu", "muhat": "mu",
              "lower": "mu", "upper": "mu", "width": "mu", "bias": "mu",
              "bias_valid_fits": "mu", "mean_width": "mu", "median_width": "mu",
              "mass_low": "GeV", "mass_high": "GeV", "mass_center": "GeV"}
     formulas = {"delta_auc_vs_m0c": "AUC(subset,seed)-AUC(M0c,seed)",
+                "delta_auc_on_minus_off": "AUC(m4l_on)-AUC(m4l_off)",
+                "delta_width68_on_minus_off": "W68(m4l_on)-W68(m4l_off)",
+                "relative_w68_improvement_from_m4l": "1-W68(m4l_on)/W68(m4l_off)",
                 "relative_w68_improvement_vs_m0c": "1-W68(subset,seed)/W68(M0c,seed)",
                 "width": "upper-lower", "bias": "mean(muhat-injected_mu)",
                 "pull_mean": "mean((muhat-injected_mu)/(interval_width/2))",
@@ -559,6 +602,7 @@ def publish_analysis_exports(run, report, *, training_runs=(), evaluation_runs=(
                              for name, (rows, fields) in tables.items()},
                   "notes": {"template_covariance.csv": "sparse export containing nonzero entries only",
                             "analysis_records.jsonl": "full-precision JSONL mirror of every CSV logical row",
+                            "mass_slice_auc.csv": "fixed protocol 5 GeV validation slices; invalid local class support is retained",
                             "raw_validation_auc": "checkpoint selected using the same validation AUC; diagnostic, not independent evaluation"}}
     run.write_json("data_dictionary.json", dictionary)
     provenance = {"schema_version": EXPORT_VERSION, "dataset": run.manifest["dataset"],

@@ -240,11 +240,132 @@ def feature_combination_summary(comparisons, *, expected_seeds=range(42, 47)):
     }
 
 
-def build_report(candidate_statuses, *, primary_records=(), environment=None, results=None, feature_comparisons=()):
+def _t1_width(result, *, seed, candidate):
+    if result is None:
+        return None
+    asimov = result.get("asimov", {})
+    injections = [item for item in asimov.get("results", []) if item.get("mu") == 1]
+    interval = injections[0].get("intervals", [{}])[0] if len(injections) == 1 else {}
+    if not (result.get("status") == "valid" and result.get("seed") == seed
+            and asimov.get("candidate_id") == candidate and asimov.get("layer") == "T1"
+            and asimov.get("expectation_kind") == "model_self_asimov"
+            and interval.get("status") == "valid"
+            and np.isfinite(interval.get("width", np.nan)) and interval.get("width", 0) > 0):
+        return None
+    return float(interval["width"])
+
+
+def mass_input_comparison(results, models, *, seed,
+                          family_id="engineered19_raw_T1_m4l_on_off"):
+    """Pair every grouped M3 model with and without explicit m4l."""
+    subsets = ["".join(value) for size in range(1, 5)
+               for value in itertools.combinations(("A", "B", "C", "D"), size)]
+    baseline_key = f"M0c:{seed}"
+    baseline_model = models.get(baseline_key)
+    baseline_width = _t1_width(results.get(baseline_key), seed=seed, candidate="M0c")
+    baseline_auc = baseline_model.get("validation_absolute_weight_auc") if baseline_model else None
+    baseline_valid_auc = np.isfinite(baseline_auc if baseline_auc is not None else np.nan)
+    baseline = {"candidate_key": baseline_key, "validation_absolute_weight_auc": baseline_auc if baseline_valid_auc else None,
+                "width68": baseline_width,
+                "status": "valid" if baseline_model is not None and baseline_width is not None
+                and baseline_valid_auc else "incomplete"}
+    rows, failures = [], []
+    for subset in subsets:
+        on_key = f"M3:{seed}:groups={subset}"
+        off_key = on_key + ":m4l=off"
+        on_model, off_model = models.get(on_key), models.get(off_key)
+        on_width = _t1_width(results.get(on_key), seed=seed, candidate="M3")
+        off_width = _t1_width(results.get(off_key), seed=seed, candidate="M3")
+        auc_on = on_model.get("validation_absolute_weight_auc") if on_model else None
+        auc_off = off_model.get("validation_absolute_weight_auc") if off_model else None
+        auc_valid = (np.isfinite(auc_on if auc_on is not None else np.nan)
+                     and np.isfinite(auc_off if auc_off is not None else np.nan))
+        slices = []
+        on_slices = on_model.get("validation_mass_slice_auc", []) if on_model else []
+        off_slices = off_model.get("validation_mass_slice_auc", []) if off_model else []
+        slice_complete = len(on_slices) == len(off_slices) > 0
+        if slice_complete:
+            for left, right in zip(on_slices, off_slices):
+                matching = (left.get("slice_index"), left.get("mass_low"), left.get("mass_high")) == (
+                    right.get("slice_index"), right.get("mass_low"), right.get("mass_high"))
+                valid = (matching and left.get("status") == right.get("status") == "valid"
+                         and np.isfinite(left.get("auc", np.nan)) and np.isfinite(right.get("auc", np.nan)))
+                support = left.get("class_support") if left.get("class_support") == right.get("class_support") else None
+                slices.append({"slice_index": left.get("slice_index"), "mass_low": left.get("mass_low"),
+                               "mass_high": left.get("mass_high"), "status": "valid" if valid else "incomplete",
+                               "auc_on": left.get("auc") if valid else None,
+                               "auc_off": right.get("auc") if valid else None,
+                               "delta_auc_on_minus_off": left["auc"] - right["auc"] if valid else None,
+                               "class_support": support})
+                slice_complete &= valid
+        complete = (on_model is not None and off_model is not None and on_width is not None
+                    and off_width is not None and auc_valid and slice_complete)
+        row = {"subset": subset, "seed": seed, "on_candidate_key": on_key,
+               "off_candidate_key": off_key, "status": "valid" if complete else "incomplete",
+               "auc_on": auc_on if auc_valid else None, "auc_off": auc_off if auc_valid else None,
+               "delta_auc_on_minus_off": auc_on - auc_off if auc_valid else None,
+               "width68_on": on_width, "width68_off": off_width,
+               "delta_width68_on_minus_off": on_width - off_width if on_width is not None and off_width is not None else None,
+               "relative_w68_improvement_from_m4l": 1 - on_width / off_width if on_width is not None and off_width else None,
+               "mass_slices": slices}
+        rows.append(row)
+        if not complete:
+            failures.append({"subset": subset, "reason": "missing_or_invalid_paired_model_metric"})
+    if baseline["status"] != "valid":
+        failures.append({"subset": "m4l-only", "reason": "missing_or_invalid_mass_only_baseline"})
+    return {"status": "valid" if not failures else "mass_input_comparison_incomplete",
+            "family_id": family_id, "seed": seed, "mass_only_baseline": baseline,
+            "pairs": rows, "failures": failures,
+            "summary_rule": "all_15_pairs_and_all_registered_mass_slices_required"}
+
+
+def mass_input_summary(comparisons, *, expected_seeds=range(42, 47)):
+    expected_seeds = list(expected_seeds)
+    by_seed = {row.get("seed"): row for row in comparisons}
+    failures = [{"seed": seed, "reason": "missing_or_invalid_comparison"}
+                for seed in expected_seeds if by_seed.get(seed, {}).get("status") != "valid"]
+    if len(by_seed) != len(comparisons):
+        failures.append({"reason": "duplicate_seed"})
+    if failures:
+        return {"status": "mass_input_summary_incomplete", "expected_seeds": expected_seeds,
+                "failures": failures, "combinations": []}
+    rows, slice_rows = [], []
+    for subset in [row["subset"] for row in by_seed[expected_seeds[0]]["pairs"]]:
+        paired = [next(row for row in by_seed[seed]["pairs"] if row["subset"] == subset)
+                  for seed in expected_seeds]
+        auc = [row["delta_auc_on_minus_off"] for row in paired]
+        width = [row["delta_width68_on_minus_off"] for row in paired]
+        relative = [row["relative_w68_improvement_from_m4l"] for row in paired]
+        rows.append({"subset": subset, "status": "valid",
+                     "median_delta_auc_on_minus_off": float(np.median(auc)),
+                     "min_delta_auc_on_minus_off": min(auc), "max_delta_auc_on_minus_off": max(auc),
+                     "median_delta_width68_on_minus_off": float(np.median(width)),
+                     "min_delta_width68_on_minus_off": min(width), "max_delta_width68_on_minus_off": max(width),
+                     "median_relative_w68_improvement_from_m4l": float(np.median(relative)),
+                     "min_relative_w68_improvement_from_m4l": min(relative),
+                     "max_relative_w68_improvement_from_m4l": max(relative)})
+        for slice_index in range(len(paired[0]["mass_slices"])):
+            slices = [row["mass_slices"][slice_index] for row in paired]
+            if any(row.get("status") != "valid" for row in slices):
+                raise ResearchError("valid mass-input comparison contains invalid mass slice")
+            deltas = [row["delta_auc_on_minus_off"] for row in slices]
+            slice_rows.append({"subset": subset, "slice_index": slice_index,
+                               "mass_low": slices[0]["mass_low"], "mass_high": slices[0]["mass_high"],
+                               "status": "valid", "median_delta_auc_on_minus_off": float(np.median(deltas)),
+                               "min_delta_auc_on_minus_off": min(deltas),
+                               "max_delta_auc_on_minus_off": max(deltas)})
+    return {"status": "valid", "seeds": expected_seeds,
+            "summary_rule": "all_five_paired_seeds_no_failure_deletion", "combinations": rows,
+            "mass_slices": slice_rows}
+
+
+def build_report(candidate_statuses, *, primary_records=(), environment=None, results=None,
+                 feature_comparisons=(), mass_input_comparisons=()):
     if not candidate_statuses:
         raise ResearchError("Report must enumerate planned candidate states")
     feature_comparisons = list(feature_comparisons)
-    return {"status":"software_report","scope":"MC-only educational/technical research","candidate_statuses":dict(candidate_statuses),"primary_comparison":main_comparison(primary_records),"feature_combination_comparisons":feature_comparisons,"feature_combination_summary":feature_combination_summary(feature_comparisons),"environment":environment or {"repository_authority_validation":"not_run","scientific_numerical_validation":"not_run"},"results":results or {},"scientific_results_obtained":False,"future_R_experiments":"require_separate_registration"}
+    mass_input_comparisons = list(mass_input_comparisons)
+    return {"status":"software_report","scope":"MC-only educational/technical research","candidate_statuses":dict(candidate_statuses),"primary_comparison":main_comparison(primary_records),"feature_combination_comparisons":feature_comparisons,"feature_combination_summary":feature_combination_summary(feature_comparisons),"mass_input_comparisons":mass_input_comparisons,"mass_input_summary":mass_input_summary(mass_input_comparisons),"environment":environment or {"repository_authority_validation":"not_run","scientific_numerical_validation":"not_run"},"results":results or {},"scientific_results_obtained":False,"future_R_experiments":"require_separate_registration"}
 
 
 def write_learning_curves(models, path):

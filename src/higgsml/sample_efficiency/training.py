@@ -265,6 +265,10 @@ def _train_model(prepared, selection, base, overlay, representation_id, network_
                                target_lambda=0.0, groups=groups,
                                _registered_first_width=architecture[1])
     model.pop("model_id")
+    # The subordinate v2 schema remains unchanged; explicit mass controls belong
+    # only to the main grouped-M3 experiment family.
+    model.pop("mass_input")
+    model.pop("validation_mass_slice_auc")
     model["schema_version"] = (CAPACITY_MODEL_SCHEMA if
         architecture_variant == CAPACITY_ARCHITECTURE_VARIANT else MODEL_SCHEMA)
     model.update(base_research_protocol_sha256=base.digest,

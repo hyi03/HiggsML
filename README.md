@@ -8,7 +8,7 @@
 
 - 活跃代码只有 `src/higgsml` 下的 H4l 包；旧 legacy15 预处理、旧训练/测试流程和 XGBoost 实现已移除。
 - 默认研究对象是受控 `atlas2020_4lep` MC 对，协议终态为 `2e2mu`，质量范围为 105–140 GeV。
-- `mass-only`、`decay7`、`engineered19`、`lab-extension`，普通/对抗训练、条件 CDF、共同二维模板、冻结 assessment、T0/T1 推断及样本效率链路均已有软件实现。
+- `mass-only`、`decay7`、`engineered19`、`lab-extension`，全部 A/B/C/D 非空组合的显式 `m4l` on/off 重训练对照、普通/对抗训练、条件 CDF、共同二维模板、冻结 assessment、T0/T1 推断及样本效率链路均已有软件实现。
 - 默认协议的 `protocol_scope` 是 `synthetic_software_defaults_not_physics_validation`；当前没有可直接作为论文结果的冻结完整 MC run。
 - MELA 只有导出/导入及可选 adapter 契约，实际后端和独立物理参考仍需验证。
 

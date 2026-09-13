@@ -369,7 +369,7 @@ def test_named_protocol_propagates_prepare_to_g1_to_batch(tmp_path: Path) -> Non
                  "--output-root", str(run_root / "batch" / "seed42"),
                  "--protocol", str(protocol), "--plan-only")
     assert batch.returncode == 0, batch.stderr
-    assert batch.stdout.count(f"--protocol {protocol}") == 41
+    assert batch.stdout.count(f"--protocol {protocol}") == 71
 
 
 def test_run_plan_covers_all_combinations_without_creating_run() -> None:
@@ -383,13 +383,14 @@ def test_run_plan_covers_all_combinations_without_creating_run() -> None:
 
     assert completed.returncode == 0, completed.stderr
     output = completed.stdout
-    assert output.count("higgsml.cli train") == 90
-    assert output.count("higgsml.cli calibrate") == 100
+    assert output.count("higgsml.cli train") == 165
+    assert output.count("higgsml.cli calibrate") == 175
     assert "--groups ABCD" in output
+    assert output.count("--mass-input off") == 75
     assert output.count("higgsml.cli templates") == 1
     assert output.count("higgsml.cli infer") == 1
     assert output.count("higgsml.cli report") == 1
-    assert output.count("--training-run") == 90
+    assert output.count("--training-run") == 165
     assert output.count("--evaluation-run") == 1
     assert "seed42" in output and "seed46" in output
     assert not output_root.exists()
@@ -400,8 +401,9 @@ def test_run_explicit_seed_keeps_single_seed_diagnostic_plan() -> None:
     completed = _run(RUN_SCRIPT, "--seed", "42", "--output-root", str(output_root),
                      "--plan-only")
     assert completed.returncode == 0, completed.stderr
-    assert completed.stdout.count("higgsml.cli train") == 18
-    assert completed.stdout.count("higgsml.cli calibrate") == 20
+    assert completed.stdout.count("higgsml.cli train") == 33
+    assert completed.stdout.count("higgsml.cli calibrate") == 35
+    assert completed.stdout.count("--mass-input off") == 15
     assert "seed43" not in completed.stdout
     assert not output_root.exists()
 
@@ -480,9 +482,12 @@ def test_run_shows_progress_for_all_batch_stages(
             report_run.mkdir(parents=True)
             (report_run / "report.json").write_text(
                 json.dumps({
-                    "feature_combination_comparisons": [
-                        {"status": "valid", "seed": 42}
-                    ]
+                        "feature_combination_comparisons": [
+                            {"status": "valid", "seed": 42}
+                        ],
+                        "mass_input_comparisons": [
+                            {"status": "valid", "seed": 42}
+                        ],
                 }),
                 encoding="utf-8",
             )
@@ -505,7 +510,7 @@ def test_run_shows_progress_for_all_batch_stages(
 
     progress_output = capsys.readouterr().err
     assert "H4l diagnostic seed 42" in progress_output
-    assert "41/41" in progress_output
+    assert "71/71" in progress_output
 
 
 def test_run_cli_supports_disabling_progress() -> None:

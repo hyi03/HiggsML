@@ -83,3 +83,31 @@ def test_analysis_export_rejects_mixed_prepared_populations(tmp_path):
     right = InputRun("right", "train", {"model.json": model("M3", 42, .9, groups=["A"])}, prepared_id="p2")
     with pytest.raises(ResearchError, match="cannot mix prepared populations"):
         publish_analysis_exports(OutputRun(tmp_path), {}, training_runs=[left, right])
+
+
+def test_analysis_export_publishes_mass_input_pair_and_slice_support(tmp_path):
+    pair = {"subset":"BC", "seed":42, "status":"valid",
+            "on_candidate_key":"M3:42:groups=BC", "off_candidate_key":"M3:42:groups=BC:m4l=off",
+            "auc_on":.8, "auc_off":.75, "delta_auc_on_minus_off":.05,
+            "width68_on":8., "width68_off":10., "delta_width68_on_minus_off":-2.,
+            "relative_w68_improvement_from_m4l":.2,
+            "mass_slices":[{"slice_index":0,"mass_low":105.,"mass_high":110.,"status":"valid",
+                "auc_on":.7,"auc_off":.6,"delta_auc_on_minus_off":.1,
+                "class_support":{"0":{"row_count":3,"sum_absolute_weight":4.,"effective_count":2.},
+                                 "1":{"row_count":2,"sum_absolute_weight":2.,"effective_count":2.}}}]}
+    report = {"mass_input_comparisons":[{"seed":42,"comparison_cohort_id":"cohort",
+        "mass_only_baseline":{"candidate_key":"M0c:42","validation_absolute_weight_auc":.7,"width68":11.},
+        "pairs":[pair]}], "mass_input_summary":{"combinations":[{"subset":"BC","status":"valid",
+            "median_delta_auc_on_minus_off":.05,"min_delta_auc_on_minus_off":.05,"max_delta_auc_on_minus_off":.05,
+            "median_delta_width68_on_minus_off":-2.,"min_delta_width68_on_minus_off":-2.,"max_delta_width68_on_minus_off":-2.,
+            "median_relative_w68_improvement_from_m4l":.2,"min_relative_w68_improvement_from_m4l":.2,
+            "max_relative_w68_improvement_from_m4l":.2}]}}
+    publish_analysis_exports(OutputRun(tmp_path), report)
+    with (tmp_path / "mass_input_metrics.csv").open(encoding="utf-8", newline="") as stream:
+        metric = next(csv.DictReader(stream))
+    assert metric["off_candidate_key"].endswith(":m4l=off")
+    assert float(metric["mass_only_auc"]) == pytest.approx(.7)
+    with (tmp_path / "mass_slice_auc.csv").open(encoding="utf-8", newline="") as stream:
+        mass = next(csv.DictReader(stream))
+    assert int(mass["background_row_count"]) == 3
+    assert float(mass["delta_auc_on_minus_off"]) == pytest.approx(.1)
