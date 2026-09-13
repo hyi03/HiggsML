@@ -79,6 +79,7 @@ assessment 必须绑定冻结分析。历史反馈是否影响当前设计仍需
 `scripts/h4l_prepare.py`只运行`audit`和`prepare`，完成ROOT读取后在全局目录
 `runs/h4l-prepare/prepare`产生可复用产物，输入证据位于`runs/h4l-prepare/inputs`。
 G1和batch的`--run-name`只控制各自实验输出，并自动读取这份全局prepare。
+例如`--run-name pilot-001`统一使用短路径`runs/h4l-train-pilot-001/`，其下分别保存`g1/`和`batch/`。
 prepare不会继续训练、校准或构建模板，完成时会打印下一条G1命令：
 
 ```powershell

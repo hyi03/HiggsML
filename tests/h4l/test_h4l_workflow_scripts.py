@@ -190,7 +190,7 @@ def test_prepare_metrics_output_is_opt_in(tmp_path: Path) -> None:
 
 def test_run_name_derives_global_prepare_and_scoped_output_paths() -> None:
     run_name = f"pytest-shared-{uuid.uuid4().hex}"
-    run_root = PROJECT_ROOT / "runs" / f"h4l-feature-combinations-prerequisites-{run_name}"
+    run_root = PROJECT_ROOT / "runs" / f"h4l-train-{run_name}"
     global_root = PROJECT_ROOT / "runs" / "h4l-prepare"
 
     g1 = _run(G1_SCRIPT, "--run-name", run_name, "--plan-only")
@@ -573,7 +573,7 @@ def test_run_name_clean_removes_the_default_complete_batch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _load_run_module()
-    workflow = tmp_path / "h4l-feature-combinations-prerequisites-001"
+    workflow = tmp_path / "h4l-train-001"
     complete_batch = workflow / "batch" / "all-seeds"
     single_seed_batch = workflow / "batch" / "seed42"
     complete_batch.mkdir(parents=True)

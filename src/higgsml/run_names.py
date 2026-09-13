@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 
-RUN_DIRECTORY_PREFIX = "h4l-feature-combinations-prerequisites-"
+RUN_DIRECTORY_PREFIX = "h4l-train-"
 _RUN_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
 
 
