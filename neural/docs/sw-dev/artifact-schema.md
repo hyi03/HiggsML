@@ -177,3 +177,51 @@ contract使用`h4l-sample-efficiency-report-contract-v1`，绑定batch artifact/
 summary使用`h4l-sample-efficiency-summary-v1`，curve row按表示/fraction/实际组数聚合显式planned/complete/terminal/pair分母、均值及network/subset/evaluation/calibration/template有限MC分层状态。评价bootstrap由batch级canonical group/PCG64 multiplicity plan ID绑定；聚合AUC逐replicate先汇总cell。Q*只允许完整、唯一actual-count观测点上的精确命中或相邻严格下降线性包围，不外推。
 
 CSV是summary curve rows的UTF-8/LF/RFC4180规范视图；summary内plot spec绑定PNG语义，PNG仅为非权威缓存；Markdown由固定模板生成。reader重新执行M4及cell public readers、bootstrap、配对、聚合、Q*，并逐字节重放JSON/JSONL/CSV/Markdown，验证PNG receipt与plot-spec ID。任何自洽重签语义漂移均拒绝。
+
+## 12. M6 容量、CDF 与独立确认
+
+**当前代码已实现，证据范围为 Windows synthetic 软件验证。** M6 增加独立的 controls 与 confirmation 边界；两者都不能修改 M5 主曲线、compact freeze、候选、容差、fraction、seed、宽度或 CI 算法。正式 controlled-MC evaluation package、native ARM64 authority 与 scientific numerical validation 仍为 external pending。
+
+### 12.1 Controls
+
+`sample-efficiency-controls` workflow root 保存容量模型子 run 和最终 `artifact/` run。最终 run 的固定文件为：
+
+```text
+protocol.json
+sample-efficiency-protocol.json
+capacity-control.json
+cdf-check.json
+manifest.json
+```
+
+| 文件 / stage | Schema | 关键约束 |
+|---|---|---|
+| capacity model `model.json` / `sample-efficiency-capacity-train` | `h4l-capacity-discriminant-v1` | 唯一 `match_engineered19_parameter_count_v1` variant；第一层宽度为 `5568/(d+67)` 最近正整数且半整数向下；后两层固定 64/32。reader 从输入维数重算 architecture、参数量、subset、cell、pairing 和全部 state tensor。普通 `research-discriminant-v2` reader 不接受该 stage。 |
+| `capacity-control.json` | `h4l-sample-efficiency-capacity-control-v1` | partial fraction 遍历全部 draw，full 只保留 canonical `full`；每 cell 绑定 M2 subset、模型、raw calibration、共同 M4 grid、template、T1 inference 与 W68。disabled 形态固定为 `enabled=false,status=disabled,cells=[]`，planned/canonical 数量均为 0，且不打开 prepared payload、不调用训练器。 |
+| `cdf-check.json` | `h4l-sample-efficiency-cdf-check-v1` | 只遍历协议注册 fraction 的全部 M4 canonical raw cell；复用并核对 M4 `grid_id/final_mass_edges`，重新拟合 physical mapping 与其 median threshold。报告 calibration background absolute-weight 接受率相对 0.5 的绝对误差，以及 template background 各有效质量箱 mapped/raw absolute-weight 接受率最大绝对差。 |
+
+CDF 指标不使用 signed weight 作为报告分母，也不除以 raw acceptance；signed physical weight 仅用于冻结 physical mapping 拟合。`insufficient_statistics`、`nonpositive_calibration_yield`、`outside_calibration_support` 和 `template_stat_model_unvalidated` 静态映射为 `calibration_uncertainty_dominant`。disabled CDF 同样固定为空 cells，不能解码 payload。controls manifest 的直接前缀 upstream 为 prepared、freeze、training-subsets、G1/T1、verified M4 batch 和 replayed M5 report；容量模型 runs 作为后续直接 upstream 登记。
+
+容量 cell 在 template 统计有效时必须具有 model、calibration、template、inference 四段 artifact 和固定 W68 pointer。若 template 本身返回注册的统计终态，cell 固定记为 `scientific_terminal`，保留前三段 artifact，`inference=null` 且 `blocked_stages=["inference"]`；不得为了补齐链条放宽统计规则或伪造 W68。reader 逐段重算并拒绝自洽重签、stage 替换或终态漂移。
+
+### 12.2 Confirmation evaluation input
+
+外部输入 schema 为 `h4l-noninferiority-evaluation-input-v1`，必须是小于等于 64 MiB 的 UTF-8、无 BOM、纯 LF、LF 结尾普通非 link 文件。字节语法为：一行 canonical header；至少两行 `identity-json<TAB>`；唯一 `--PAYLOAD--`；恰好一行 canonical payload。重复 JSON key、CR、额外 TAB、超长行、额外 payload 行、重复组、错误 role/split/dataset 或缺任一 label 均拒绝。
+
+scanner 使用一个已打开文件句柄，只解释 header 与 identity 区，同时流式计算整个文件 SHA-256；payload 在 claim 前不做 JSON decode。独立性检查使用 receipt-bound `h4l-excluded-identity-set-v1` event-group 集合，拒绝任意 partial overlap，并额外拒绝 overlay/freeze 已登记 population。文件 identity、size、mtime 和 SHA 在 decode 后再次核对。
+
+`evaluation_artifact_receipts` 是固定顺序的 typed receipt 列表，exact keys 为 `role,representation_id,population_id,artifact_id,stage,sha256,pointer`。角色依次为 compact 与 engineered19 两侧各自的 model、calibration、template、inference，再加 shared common-grid 与 multiplicity-plan；每项绑定 confirmation population、精确 stage 和 JSON pointer，artifact ID 不得重复。M6 synthetic package 只证明此契约和重放逻辑；controlled-MC package 在 M7 正式 producer/authority 证据完成前仍固定为 `external_pending`。
+
+### 12.3 Durable claim 与 confirmation run
+
+全局 claim 位于 allowed root 的 `.sample-efficiency-confirmation-claims/<claim-key>.json`，namespace 为 `h4l-sample-efficiency-confirmation-v1`。claim root 若为 symlink/junction/reparse 或逃逸 allowed root 则拒绝。attempt 先在 staging 写入 `preclaim.json`，再以 `O_CREAT|O_EXCL` 创建 claim，flush/fsync 文件；POSIX 同时 fsync 目录。只有此后才 seek 同一输入句柄并 decode payload。
+
+已有 claim 默认终态为 `assessment_already_started`。只有 static claim key 完全一致且调用者显式 `repeat=true` 时，才允许在新的 immutable output name 重放；claim 不追加、不覆盖。claim 后的 decode、验证或发布失败保留 claim 和失败 manifest，不允许更换 freeze/config 重新设计。
+
+`sample-efficiency-confirmation` run 的固定成功文件为 `protocol.json`、`preclaim.json` 与 `confirmation.json`，schema 为 `h4l-noninferiority-confirmation-v1`，直接 upstream 顺序固定为 compact-freeze、verified M4 batch、replayed M5 report。reader 重新验证 base/overlay/freeze、三段 upstream、原 evaluation input、排除集覆盖、preclaim exact schema、claim 固定路径与 key preimage，并从 replicate 重算 payload、CI、decision/status 和 confirmation ID；自洽重签也不能改变科学字段。M6 reader 明确拒绝提前出现任何 scientific confirmed 状态。
+
+CI 固定为逐 replicate paired difference 的 NumPy `method="linear"` 双侧等尾 percentile，estimate 为均值，上界 `<= delta_w68` 命中规则。synthetic 只发布 `synthetic_rule_satisfied` 或 `synthetic_rule_not_satisfied`，`validation_scope=synthetic_software_validation`；controlled-MC 在 M7 authority/evaluation 门完成前固定 `external_pending`，不得提前发布 `confirmed_noninferior_within_registered_margin`。
+
+### 12.4 CLI 与退出码
+
+`python -m src.cli.sample_efficiency_controls` 和 `scripts/h4l_sample_efficiency_controls.py` 只接受 exact tagged config，并要求互斥的 `--controls-only` / `--confirm`。controls config 必须令 `confirmation_input=null`、`repeat=false` 且 exclusion list 为空；confirm 必须显式给 input 与 exclusion sets。production output root 固定为 `neural/runs`。usage 为 2、输入/绑定失败为 3、路径/事务失败为 4、拒绝访问为 5、正常科学终态为 0、未知异常为 70。

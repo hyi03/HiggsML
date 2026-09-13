@@ -17,8 +17,11 @@ from .training_subsets import TrainingSubset, load_training_subset, summarize_tr
 
 
 MODEL_SCHEMA = "research-discriminant-v2"
+CAPACITY_MODEL_SCHEMA = "h4l-capacity-discriminant-v1"
 MODEL_STAGE = "sample-efficiency-train"
+CAPACITY_MODEL_STAGE = "sample-efficiency-capacity-train"
 ARCHITECTURE_VARIANT = "baseline-fixed64x64x32"
+CAPACITY_ARCHITECTURE_VARIANT = "match_engineered19_parameter_count_v1"
 _LOADED_TOKEN = object()
 _V1_REQUIRED = {
     "schema_version", "candidate", "representation", "groups", "ordered_inputs", "dataset", "protocol_id",
@@ -38,6 +41,27 @@ _V2_EXTRA = {
 
 def _fail(message):
     raise ResearchError(message, status="training_subset_binding_mismatch")
+
+
+def capacity_first_width(input_count):
+    """Resolve the sole registered capacity width using exact integer arithmetic."""
+    if type(input_count) is not int or input_count < 1:
+        _fail("invalid capacity input dimension")
+    denominator = input_count + 67
+    lower = max(1, 5568 // denominator)
+    upper = lower + 1
+    # Strictly prefer upper only when it is closer; exact ties stay lower.
+    return upper if 2 * 5568 > (2 * lower + 1) * denominator else lower
+
+
+def architecture_for(input_count, architecture_variant):
+    if architecture_variant == ARCHITECTURE_VARIANT:
+        width = 64
+    elif architecture_variant == CAPACITY_ARCHITECTURE_VARIANT:
+        width = capacity_first_width(input_count)
+    else:
+        _fail("unsupported sample-efficiency architecture variant")
+    return [input_count, width, 64, 32, 1]
 
 
 def _finite_json(value):
@@ -88,7 +112,7 @@ def _representation(selection, overlay, representation_id):
 
 
 def validate_discriminant_v2(model, *, selection=None, base=None, overlay=None):
-    if type(model) is not dict or model.get("schema_version") != MODEL_SCHEMA:
+    if type(model) is not dict or model.get("schema_version") not in {MODEL_SCHEMA, CAPACITY_MODEL_SCHEMA}:
         _fail("invalid v2 discriminant schema")
     base_raw = base.to_dict() if isinstance(base, ResearchProtocol) else None
     history_required = base_raw is not None and "diagnostics" in base_raw
@@ -115,7 +139,10 @@ def validate_discriminant_v2(model, *, selection=None, base=None, overlay=None):
         _fail("invalid nested v2 model schema")
     if model["seed"] != model["network_seed"] or type(model["network_seed"]) is not int:
         _fail("v2 network seed mismatch")
-    if model["architecture_variant"] != ARCHITECTURE_VARIANT or model["target_lambda"] != 0:
+    variant = model["architecture_variant"]
+    expected_schema = (CAPACITY_MODEL_SCHEMA if variant == CAPACITY_ARCHITECTURE_VARIANT else MODEL_SCHEMA)
+    if model["schema_version"] != expected_schema or variant not in {
+            ARCHITECTURE_VARIANT, CAPACITY_ARCHITECTURE_VARIANT} or model["target_lambda"] != 0:
         _fail("unsupported v2 architecture or lambda")
     full = model["sample_fraction_target"] == 1.0
     if (type(model["sample_fraction_target"]) is not float
@@ -161,10 +188,16 @@ def validate_discriminant_v2(model, *, selection=None, base=None, overlay=None):
                                 or model["sample_efficiency_protocol_sha256"] != overlay.digest):
         _fail("v2 overlay mismatch")
     if overlay is not None:
-        if (model["network_seed"] not in overlay["network_seeds"]
+        control = overlay["capacity_control"]
+        allowed_seeds = (control["network_seeds"] if variant == CAPACITY_ARCHITECTURE_VARIANT
+                         else overlay["network_seeds"])
+        allowed_fractions = (control["sample_fractions"] if variant == CAPACITY_ARCHITECTURE_VARIANT
+                             else overlay["sample_fractions"])
+        if (variant == CAPACITY_ARCHITECTURE_VARIANT and not control["enabled"]
+                or model["network_seed"] not in allowed_seeds
                 or model["representation_id"] not in overlay["representations"]
                 or not any(canonical(model["sample_fraction_target"]) == canonical(value)
-                           for value in overlay["sample_fractions"])
+                           for value in allowed_fractions)
                 or (not full and model["sample_draw_seed"] not in overlay["sample_draw_seeds"])):
             _fail("v2 experiment coordinate is outside the overlay")
     if selection is not None and overlay is not None:
@@ -175,8 +208,9 @@ def validate_discriminant_v2(model, *, selection=None, base=None, overlay=None):
             _fail("v2 representation mapping mismatch")
     else:
         names = model["ordered_inputs"]
-    expected_architecture = [len(names), 64, 64, 32, 1]
-    parameters = sum(parameter.numel() for parameter in ResearchClassifier(len(names)).parameters())
+    expected_architecture = architecture_for(len(names), variant)
+    parameters = sum(parameter.numel() for parameter in
+                     ResearchClassifier(len(names), expected_architecture[1]).parameters())
     if (model["architecture"] != expected_architecture or model["trainable_parameter_count"] != parameters
             or model["scaler"].get("fitting_rows") != model["training_summary_total"].get("row_count")
             or model["train_fitted_statistics_source"] != model["training_subset_id"]):
@@ -197,9 +231,15 @@ def _verified(run, base, stage, name):
 
 
 def _train_model(prepared, selection, base, overlay, representation_id, network_seed, architecture_variant):
-    if architecture_variant != ARCHITECTURE_VARIANT or network_seed not in overlay["network_seeds"]:
+    control = overlay["capacity_control"]
+    allowed = (architecture_variant == ARCHITECTURE_VARIANT
+               and network_seed in overlay["network_seeds"])
+    if architecture_variant == CAPACITY_ARCHITECTURE_VARIANT:
+        allowed = (control["enabled"] and network_seed in control["network_seeds"]
+                   and selection["sample_fraction_target"] in control["sample_fractions"])
+    if not allowed:
         _fail("architecture or network seed is outside the protocol")
-    candidate, _, groups = _representation(selection, overlay, representation_id)
+    candidate, representation, groups = _representation(selection, overlay, representation_id)
     frame = load_research_data(prepared.file("events.jsonl"), base["dataset"], base)
     if frame.attrs.get("population_id") != selection["population_id"]:
         _fail("prepared frame population differs from subset")
@@ -219,10 +259,14 @@ def _train_model(prepared, selection, base, overlay, representation_id, network_
                                | (frame.role == "validation")].copy()
     if len(training_frame) != len(selected_train) + len(validation):
         _fail("validation preservation mismatch")
+    input_count = len(representation_features(representation, groups=groups))
+    architecture = architecture_for(input_count, architecture_variant)
     model = train_discriminant(training_frame, base, candidate=candidate, seed=network_seed,
-                               target_lambda=0.0, groups=groups)
+                               target_lambda=0.0, groups=groups,
+                               _registered_first_width=architecture[1])
     model.pop("model_id")
-    model["schema_version"] = MODEL_SCHEMA
+    model["schema_version"] = (CAPACITY_MODEL_SCHEMA if
+        architecture_variant == CAPACITY_ARCHITECTURE_VARIANT else MODEL_SCHEMA)
     model.update(base_research_protocol_sha256=base.digest,
         sample_efficiency_protocol_sha256=overlay.digest,
         training_subset_artifact_id=selection["training_subset_artifact_id"],
@@ -233,7 +277,8 @@ def _train_model(prepared, selection, base, overlay, representation_id, network_
         full_endpoint_canonicalized=selection["sample_fraction_target"] == 1.0,
         network_seed=network_seed, representation_id=representation_id,
         architecture_variant=architecture_variant,
-        trainable_parameter_count=sum(parameter.numel() for parameter in ResearchClassifier(len(model["ordered_inputs"])).parameters()),
+        trainable_parameter_count=sum(parameter.numel() for parameter in
+            ResearchClassifier(len(model["ordered_inputs"]), architecture[1]).parameters()),
         training_summary_by_label=selection["summary_by_label"], training_summary_total=selection["summary_total"],
         train_fitted_statistics_source=selection["training_subset_id"])
     model["experiment_cell_id"], model["pairing_id"] = _ids(model)
@@ -262,8 +307,10 @@ def require_loaded_subset_discriminant(value):
             or getattr(value, "_capability", None) is not _LOADED_TOKEN):
         _fail("verified sample-efficiency model handle is required")
     try:
+        stage = (CAPACITY_MODEL_STAGE if value.model.get("schema_version") == CAPACITY_MODEL_SCHEMA
+                 else MODEL_STAGE)
         reread = read_run(value.run.path, dataset=value.model["dataset"],
-                          protocol=value.run.read_json("protocol.json"), stages=(MODEL_STAGE,))
+                          protocol=value.run.read_json("protocol.json"), stages=(stage,))
         model = reread.read_json("model.json")
     except (ResearchError, KeyError, TypeError) as exc:
         raise ResearchError("invalid sample-efficiency model handle",
@@ -306,7 +353,8 @@ def publish_subset_discriminant(output_dir, *, allowed_root, prepared, freeze_ru
                                      base=base, overlay=overlay, fraction=fraction, draw=draw)
     model = _train_model(prepared, selection, base, overlay, representation_id, network_seed,
                          architecture_variant)
-    with ResearchRun(output_dir, allowed_root=allowed_root, stage=MODEL_STAGE, dataset=base["dataset"],
+    stage = (CAPACITY_MODEL_STAGE if architecture_variant == CAPACITY_ARCHITECTURE_VARIANT else MODEL_STAGE)
+    with ResearchRun(output_dir, allowed_root=allowed_root, stage=stage, dataset=base["dataset"],
                      protocol=base.to_dict(), upstreams=[prepared, freeze_run, subset_run],
                      context={"experiment_cell_id": model["experiment_cell_id"], "pairing_id": model["pairing_id"]}) as run:
         run.write_json("sample-efficiency-protocol.json", overlay.to_dict())
@@ -325,7 +373,8 @@ def read_subset_discriminant_run(run, *, prepared, freeze_run, subset_run, base,
     subset_run = _verified(subset_run, base, "training-subsets", "training-subsets")
     run_path = run.path if isinstance(run, LoadedRun) else run
     try:
-        run = read_run(run_path, dataset=base["dataset"], protocol=base.to_dict(), stages=(MODEL_STAGE,))
+        stage = (CAPACITY_MODEL_STAGE if architecture_variant == CAPACITY_ARCHITECTURE_VARIANT else MODEL_STAGE)
+        run = read_run(run_path, dataset=base["dataset"], protocol=base.to_dict(), stages=(stage,))
     except ResearchError as exc:
         raise ResearchError("invalid sample-efficiency model run", status="training_subset_binding_mismatch") from exc
     expected_upstreams = [{"artifact_id": item.manifest["artifact_id"], "stage": item.manifest["stage"],
