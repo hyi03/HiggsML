@@ -111,6 +111,7 @@ python scripts/h4l_g1.py --run-name pilot-001
 ```
 
 G1 从全局 prepared artifact 运行 M0c、M2、M3、五个校准和共同模板。只有 G1 通过后，才允许展开受门控的候选。失败目录仍是不可变证据；修复后必须使用新的 `--run-name` 或 `--output-root`。
+`--run-name pilot-001` 的实验输出根目录为 `runs/h4l-train-pilot-001/`。
 
 ### 3. 执行完整五种子批次
 
