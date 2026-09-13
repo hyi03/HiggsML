@@ -21,7 +21,7 @@ from http.client import HTTPException
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 _spec = importlib.util.spec_from_file_location(
-    "higgsml_download_contract", REPOSITORY_ROOT / "neural" / "src" / "data_contract.py"
+    "higgsml_download_contract", REPOSITORY_ROOT / "src" / "higgsml" / "data_contract.py"
 )
 _contract = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = _contract

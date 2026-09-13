@@ -1,0 +1,33 @@
+{
+  "schema_version": "dataset-science-v1",
+  "event_identity_policy_id": "channel-event-conservative-v2",
+  "cross_release_equivalence": "unproven_no_combined_training",
+  "normalization": {
+    "atlas2020_4lep": {
+      "higgs": {
+        "xsec_pb": 0.0060239,
+        "k_factor": 1.0,
+        "filter_efficiency": 1.0,
+        "sum_of_weights": 27881776.6536
+      },
+      "zz": {
+        "xsec_pb": 1.2578,
+        "k_factor": 1.0,
+        "filter_efficiency": 1.0,
+        "sum_of_weights": 7538705.8077
+      }
+    },
+    "atlas2025_exactly4lep": {
+      "higgs": null,
+      "zz": null
+    }
+  },
+  "normalization_mode": {
+    "atlas2020_4lep": "effective_xsec",
+    "atlas2025_exactly4lep": "factorized_event_fields"
+  },
+  "normalization_source": {
+    "atlas2020_4lep": "https://raw.githubusercontent.com/atlas-outreach-data-tools/atlas-outreach-Python-uproot-framework-13tev/master/infofile.py",
+    "atlas2025_exactly4lep": "bound ROOT xsec,kfac,filteff,sum_of_weights"
+  }
+}
