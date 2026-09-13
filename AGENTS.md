@@ -20,7 +20,7 @@ runbook before changing scientific behavior. The main entry points are:
 - `docs/reproducibility/runbook.md`
 - `docs/reproducibility/artifact-schema.md`
 - `docs/validation/current-status.md`
-- `config/protocols/h4l_v2.json`
+- `config/protocols/h4l_protocol.json`
 
 ## Repository layout
 

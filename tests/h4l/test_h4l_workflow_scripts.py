@@ -349,10 +349,10 @@ def test_g1_plan_reuses_prepared_run_without_preparing_root_again() -> None:
     assert not output_root.exists()
 
 
-def test_exploratory_protocol_propagates_prepare_to_g1_to_batch(tmp_path: Path) -> None:
+def test_named_protocol_propagates_prepare_to_g1_to_batch(tmp_path: Path) -> None:
     receipt, _ = _dataset_receipt(tmp_path)
-    protocol = PROJECT_ROOT / "config" / "protocols" / "exploratory_all_mc_v1.json"
-    run_root = _new_run_root("pytest-exploratory-plan")
+    protocol = PROJECT_ROOT / "config" / "protocols" / "h4l_protocol.json"
+    run_root = _new_run_root("pytest-protocol-plan")
     prepare = _run(PREPARE_SCRIPT, "--dataset-receipt", str(receipt),
                    "--run-root", str(run_root), "--protocol", str(protocol), "--plan-only")
     assert prepare.returncode == 0, prepare.stderr

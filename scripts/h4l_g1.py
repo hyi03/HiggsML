@@ -18,7 +18,7 @@ from tqdm.auto import tqdm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RUNS_ROOT = (PROJECT_ROOT / "runs").resolve()
-DEFAULT_PROTOCOL = (PROJECT_ROOT / "config" / "protocols" / "h4l_v1.json").resolve()
+DEFAULT_PROTOCOL = (PROJECT_ROOT / "config" / "protocols" / "h4l_protocol.json").resolve()
 RUN_SCRIPT = (PROJECT_ROOT / "scripts" / "h4l_run.py").resolve()
 T1_SCHEMA = (PROJECT_ROOT / "config" / "schemas" / "t1_validation_v1.schema.json").resolve()
 DATASET = "atlas2020_4lep"

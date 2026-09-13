@@ -62,15 +62,3 @@ def test_invalid_support_observations_and_contract():
     bad = copy.deepcopy(DIAGNOSTICS['signed_mu']); bad['nuisance_policy'] = 'profile_T1'
     with pytest.raises(ResearchError):
         signed_mu_fit(template(), [2.], bad)
-
-
-def test_versioned_diagnostics_preserve_v1_and_reject_changed_rules(tmp_path):
-    import json
-    old = load_protocol(DEFAULT_PATH.with_name('h4l_v1.json')).to_dict()
-    assert old['schema_version'] == 'h4l-research-v1' and 'diagnostics' not in old
-    new = load_protocol().to_dict()
-    assert new['diagnostics'] == DIAGNOSTICS
-    new['diagnostics']['signed_mu']['mu_bounds'][0] = -100
-    changed = tmp_path/'protocol.json'; changed.write_text(json.dumps(new))
-    with pytest.raises(ResearchError, match='diagnostic'):
-        load_protocol(changed)

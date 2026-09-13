@@ -1,7 +1,7 @@
 {
   "schema_version": "h4l-sample-efficiency-batch-config-v1",
   "dataset": "atlas2020_4lep",
-  "protocol": "config/protocols/h4l_v2.json",
+  "protocol": "config/protocols/h4l_protocol.json",
   "sample_efficiency_protocol": "config/protocols/sample_efficiency_v1.registered.json",
   "prepared_run": "runs/example/prepare",
   "compact_freeze_run": "runs/example/compact-freeze",

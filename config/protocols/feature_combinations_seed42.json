@@ -1,7 +1,7 @@
 {
   "schema_version": "h4l-feature-combination-batch-v2",
   "dataset": "atlas2020_4lep",
-  "protocol": "config/protocols/h4l_v1.json",
+  "protocol": "config/protocols/h4l_protocol.json",
   "seeds": [42, 43, 44, 45, 46],
   "prepared_run": "runs/h4l-prepare-001",
   "g1_gate_run": "runs/h4l-g1-001",

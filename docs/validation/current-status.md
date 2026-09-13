@@ -34,4 +34,4 @@
 - 在冻结后执行 assessment，并保证结果不回流改变研究设计；
 - 在锁定原生 ARM64 环境中完成单独的 authority 重放。
 
-继续工作应从[研究方案](../methods/research-project.md)、[运行手册](../reproducibility/runbook.md)、[产物契约](../reproducibility/artifact-schema.md)和 `config/protocols/h4l_v2.json` 开始。
+继续工作应从[研究方案](../methods/research-project.md)、[运行手册](../reproducibility/runbook.md)、[产物契约](../reproducibility/artifact-schema.md)和 `config/protocols/h4l_protocol.json` 开始。

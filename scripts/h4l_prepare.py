@@ -16,7 +16,7 @@ from jsonschema.exceptions import ValidationError
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = PROJECT_ROOT
 RUNS_ROOT = (PROJECT_ROOT / "runs").resolve()
-DEFAULT_PROTOCOL = (PROJECT_ROOT / "config" / "protocols" / "h4l_v1.json").resolve()
+DEFAULT_PROTOCOL = (PROJECT_ROOT / "config" / "protocols" / "h4l_protocol.json").resolve()
 PROFILE = (PROJECT_ROOT / "config" / "profiles" / "open_data_2020.yaml").resolve()
 G1_SCRIPT = (PROJECT_ROOT / "scripts" / "h4l_g1.py").resolve()
 VALIDATION_ROOT = (PROJECT_ROOT / "config" / "schemas").resolve()

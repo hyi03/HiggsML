@@ -5,7 +5,7 @@ date: 2026-09-10
 version: writing-draft-v0.1
 status: methods-and-experimental-design-draft-results-pending
 code_baseline: 3bac339283805cdf13ff479c7462b9518ce8106d
-protocol_reference: h4l-on-shell-software-v2
+protocol_reference: h4l-on-shell-software-v1
 scope: MC-only educational and technical demonstration
 ---
 
@@ -64,7 +64,7 @@ y_{4\ell}=\frac{1}{2}\log\frac{E_{4\ell}+p_{z,4\ell}}
 | 积分亮度 | 10000 pb⁻¹，即 10 fb⁻¹ |
 | 历史 development 概率 | 0.8 |
 | 模型主比较种子 | 42、43、44、45、46 |
-| 软件协议 | h4l-on-shell-software-v2 |
+| 软件协议 | h4l-on-shell-software-v1 |
 | 协议适用性 | 合成软件默认规则，尚非绑定 MC 的科学验证 |
 | 2e2μ 实际入选计数及物理产额 | 【待填：绑定输入审计】 |
 
@@ -208,7 +208,7 @@ L_{\mathrm{cls}}=\frac{1}{N_{\mathrm{train}}}
 
 M6 与其 λ=0 对照均完成并选择第 200 轮，不恢复早期最高 AUC 模型。对照也构造 adversary，以匹配初始化和随机数消耗。固定最终轮数防止选回约束尚未生效的模型，但并不证明训练收敛。
 
-v2 按轮保存分类 BCE、背景对抗 CE、有效 λ、验证绝对权重 AUC，以及固定定义的背景质量 KS 和分箱接受率。每轮用 eval 模式下的 train 背景绝对权重分数中位数设定工作点，在 validation 评价质量依赖。这些诊断不参与 checkpoint 选择。对抗质量箱、CDF 质量切片和似然质量箱分别定义，不混用。
+扩展诊断实现可以按轮保存分类 BCE、背景对抗 CE、有效 λ、验证绝对权重 AUC，以及固定定义的背景质量 KS 和分箱接受率；当前默认协议不启用该扩展。对抗质量箱、CDF 质量切片和似然质量箱分别定义，不混用。
 
 ### 4.4 矩阵元参照
 
@@ -310,7 +310,7 @@ R_{\mathrm{primary}}=\operatorname{median}_{s=42}^{46}R_s. \tag{15}
 
 对于 500 次独立条件伪实验，覆盖率的二项标准误差约为 \(\sqrt{p(1-p)/500}\)：p=0.68 时为 2.09 个百分点，p=0.95 时为 0.97 个百分点。这是预算的算术精度说明，不是观测覆盖结果。增加 Toy 次数不会补充有限母模板缺失的相空间支持。方法覆盖差还需使用配对覆盖指示量估计误差。
 
-纯背景下的 μ≥0 最大似然估计可能受边界影响而偏正，因此 v2 另设允许负 μ 的固定名义模板诊断。其 Poisson 率必须逐箱满足 \(b_i+\mu s_i>0\)，默认搜索域为 [-20,20] 与此正率域内侧的交集。该诊断只求点估计，固定全部 nuisance，即使主分析选择 T1，它仍标为 `T0_fixed_template_diagnostic`。缺乏信号灵敏度、背景非正或最优点触及搜索边界时保留对应状态。
+纯背景下的 μ≥0 最大似然估计可能受边界影响而偏正。软件保留允许负 μ 的固定名义模板诊断实现，但当前默认协议不启用该扩展，不能将其作为本协议运行结果的一部分。
 
 当前 Toy 只检查式 (14) 的覆盖，不自动校准临界值。低计数及 μ=0 边界是否满足期望覆盖仍需证据；如需校准区间，必须另行预注册、实现并使用未参与校准选择的验证样本。
 
@@ -468,6 +468,6 @@ M1/M1c 与 M2/M4 的比较首先核对输入与后处理是否匹配；M5-abs �
 10. Datta, Larkoski. *How Much Information is in a Jet?* [arXiv:1704.08249](https://arxiv.org/abs/1704.08249). 用作表示／信息研究背景，不把 jet 结论直接迁移到四轻子。
 11. pyhf documentation. [Likelihood specification](https://pyhf.readthedocs.io/en/stable/likelihood.html). 实现锁定 0.7.6；正式方法附录需补入该版本的固定文档或归档，不以可变 stable 页面替代版本证据。
 
-**仓库方法来源：** [H4l 研究方案](../docs/methods/research-project.md)、[研究运行手册](../docs/reproducibility/runbook.md)、[当前科研状态](../docs/validation/current-status.md)、[研究协议 v2](../config/protocols/h4l_v2.json)。
+**仓库方法来源：** [H4l 研究方案](../docs/methods/research-project.md)、[研究运行手册](../docs/reproducibility/runbook.md)、[当前科研状态](../docs/validation/current-status.md)、[H4l 研究协议](../config/protocols/h4l_protocol.json)。
 
 **待补文献项：** 数据 release、受控样本元数据与预处理来源；实际 MELA 后端与独立参考；Shapley 原始定义及与当前价值函数相符的方法引用；有限 signed-MC 有效计数近似的适用性参考。须核验后增加正式条目，不能将待补项写成已经引用的支持证据。

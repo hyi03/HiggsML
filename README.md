@@ -54,7 +54,7 @@ python scripts/h4l_g1.py --run-name 001
 python scripts/h4l_run.py --run-name 001
 ```
 
-默认协议位于 `config/protocols/h4l_v2.json`。每次运行必须使用 `runs/` 下的新目录；已完成、失败或诊断运行均不可覆盖。样本效率子流程使用同一个入口：
+默认协议位于 `config/protocols/h4l_protocol.json`。每次运行必须使用 `runs/` 下的新目录；已完成、失败或诊断运行均不可覆盖。样本效率子流程使用同一个入口：
 
 ```bash
 higgsml sample-efficiency --help

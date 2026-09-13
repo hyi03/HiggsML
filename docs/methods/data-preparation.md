@@ -32,7 +32,7 @@
                   先读 event/channel 身份字段
                               │
                               ▼
-          development-only 或 exploratory all-MC 总体选择
+                    development-only 总体选择
                               │
                               ▼
                 按连续 eligible span 读取 ROOT payload
@@ -68,7 +68,7 @@ ROOT 转换由 `higgsml.data.export_research_data()` 实现；训练前加载由
 
 受控 ROOT prepare 接收：
 
-- research protocol，例如 `config/protocols/h4l_v2.json`；
+- research protocol，即 `config/protocols/h4l_protocol.json`；
 - dataset 名称，必须与 protocol 一致；
 - `h4l-root-input-v1` manifest；
 - 数据集对应的封存 profile；
@@ -95,19 +95,13 @@ ROOT 转换由 `higgsml.data.export_research_data()` 实现；训练前加载由
 
 ### 4.1 development-only 协议
 
-常规 v1/v2 research protocol 先仅读取 `eventNumber` 和 `channelNumber`，调用冻结的 `event_split(eventNumber, dsid)` 判定历史 split。只有 `split != test` 的 entry 才进入 payload 解码；最终 research split 标记为 `development`。
+当前 research protocol 先仅读取 `eventNumber` 和 `channelNumber`，调用冻结的 `event_split(eventNumber, dsid)` 判定历史 split。只有 `split != test` 的 entry 才进入 payload 解码；最终 research split 标记为 `development`。
 
 eligible entries 被整理为升序、半开且不跨 forbidden entry 的连续 span，每个 span 最多读取 `root_max_entries` 条。这降低碎片化读取开销，同时保证应用层不会为了拼接区间跨过 test entry 解码其事件数组。
 
 ROOT basket 可能同时包含相邻 development/test 字节。这里保证的是“不解码 test 事件数组”，不是“底层存储从未读取包含 test 字节的混合 basket”。
 
-### 4.2 exploratory all-MC 协议
-
-当 protocol 声明 `source_population=all_mc` 时，所有 MC entries 都是 eligible，最终 split 标记为 `exploratory`。该模式不保留历史 held-out test 边界，不能产生独立 test 泛化证据。
-
-内部五角色和 assessment 冻结门禁仍然存在，但它们是从合并后的全 MC 总体重新划分的。
-
-### 4.3 诊断条目上限
+### 4.2 诊断条目上限
 
 `--diagnostic-entries-per-file N` 只保留每个源文件前 N 个 eligible entries，用于固定工作量性能诊断。它不是科学事件选择，不得把这种 prepare run 用作训练输入；workflow 会把它发布为诊断终态。
 
@@ -246,7 +240,7 @@ sampling_probability = role_probability × development_probability
 yield_weight          = physical_weight / sampling_probability
 ```
 
-对于当前 development-only v2，`development_probability=0.8`。对于 all-MC protocol，该字段应由协议设置为与其总体语义一致的值；读取器会逐行复算并拒绝不一致的 prepared artifact。
+当前协议固定 `development_probability=0.8`；读取器会逐行复算并拒绝不一致的 prepared artifact。
 
 ## 8. 角色划分与防泄漏
 
@@ -259,7 +253,7 @@ SHA256("h4l-role-v1:" + event_group_id)
 → 按 protocol 比例映射角色
 ```
 
-当前 v2 比例为：
+当前协议比例为：
 
 | 角色 | 比例 | 用途 |
 |---|---:|---|
@@ -379,7 +373,6 @@ signal 和 background 分别按 train 角色中的类别平均绝对权重归一
 - role hash、特征顺序、protocol digest、population ID 和 artifact SHA 共同绑定处理结果；
 - prepare、训练和后续阶段必须写入新的 run 目录；
 - Windows synthetic tests 只能提供软件证据，不能替代完整 ROOT、独立物理来源或原生 ARM64 权威验证；
-- exploratory all-MC 不具有 held-out test 解释；
 - `diagnostic_entries_per_file` 产物不是训练输入；
 - 当前流程没有缺失值填补、异常值 winsorization、类别过采样或基于观测结果的自适应 cut；不合法输入会失败，物理 cuts 由预先声明的协议决定。
 

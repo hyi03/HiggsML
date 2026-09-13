@@ -124,16 +124,6 @@ def test_protocol_roundtrip_digest_and_dataset_rejection(tmp_path):
         load_protocol(path, "atlas2025_exactly4lep")
 
 
-def test_exploratory_protocol_accepts_all_mc_population():
-    path = PROJECT_ROOT / "config" / "protocols" / "exploratory_all_mc_v1.json"
-    protocol = load_protocol(path)
-    assert protocol["schema_version"] == "h4l-research-v3"
-    assert protocol["source_population"] == "all_mc"
-    assert protocol["development_probability"] == 1.0
-    assert protocol["historical_held_out_test_preserved"] is False
-    assert protocol["protocol_scope"] == "exploratory_all_mc_not_independent_validation"
-
-
 def test_write_research_data_returns_streamed_digest_and_size(tmp_path):
     protocol, frame = load_protocol(), frame_for_roles()
     path = tmp_path / "events.jsonl"
@@ -178,18 +168,14 @@ def test_mc_source_rejected_before_uproot_open(tmp_path, monkeypatch):
         export_research_data(manifest, tmp_path / "missing.yaml", load_protocol())
 
 
-@pytest.mark.parametrize(
-    "protocol_name,expected_rows,expected_ranges,expected_split,payload_access",
-    [
-        ("h4l_v2.json", 2, [(0, 1), (0, 1)], "development", "development_entries_only"),
-        ("exploratory_all_mc_v1.json", 4,
-         [(0, 1), (1, 2), (0, 1), (1, 2)], "exploratory", "all_mc_entries"),
-    ],
-)
 def test_root_export_selects_protocol_population_before_payload(
-    tmp_path, monkeypatch, protocol_name, expected_rows, expected_ranges,
-    expected_split, payload_access,
+    tmp_path, monkeypatch,
 ):
+    protocol_name = "h4l_protocol.json"
+    expected_rows = 2
+    expected_ranges = [(0, 1), (0, 1)]
+    expected_split = "development"
+    payload_access = "development_entries_only"
     import copy
     import math
     import awkward as ak
@@ -259,8 +245,6 @@ def test_root_export_selects_protocol_population_before_payload(
     assert [(start, stop) for _, start, stop in payload_calls] == expected_ranges
     assert set(frame.split) == {expected_split}
     assert frame.attrs["source_evidence"]["payload_access"] == payload_access
-    if expected_split == "exploratory":
-        assert frame.attrs["source_evidence"]["historical_held_out_test_preserved"] is False
     assert all(len(v)==4 for v in frame.lep_pt)
     assert metrics["source_files_total"] == metrics["source_files_processed"] == 2
     assert metrics["source_entries_total"] == 4
