@@ -71,6 +71,8 @@ Update tests, schemas, examples, and documentation when a contract changes.
 Generated data, models, plots, runs, caches, build outputs, environments, and
 package metadata must not be committed.
 
-Use the codebase knowledge graph for code discovery when its tools are
-available; otherwise use `rg`. Run focused tests before the full suite and
-report exactly which evidence levels were and were not verified.
+The codebase knowledge graph database for this project is stored in
+`.codebase-memory/` at the repository root. Use the codebase knowledge graph
+for code discovery when its tools are available; otherwise use `rg`. Run
+focused tests before the full suite and report exactly which evidence levels
+were and were not verified.
