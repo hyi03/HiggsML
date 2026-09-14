@@ -126,7 +126,8 @@ class PrepareEventProgress:
         selected = self.metrics.get("selected_entries", 0)
         return (
             "{desc}: {percentage:.0f}%|{bar:10}| "
-            "{n:,.0f}/{total:,.0f} events | selected: "
+            "{n:,.0f}/{total:,.0f} events "
+            "[{elapsed}<{remaining}, {rate_fmt}] | selected: "
             f"{selected:,}"
         )
 

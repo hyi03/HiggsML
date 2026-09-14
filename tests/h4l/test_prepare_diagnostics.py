@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import re
 
 import awkward as ak
 import numpy as np
@@ -135,6 +136,19 @@ def test_event_progress_shows_percentage_counts_and_selected_total():
     assert "ROOT prepare: 35%" in output
     assert "251,904/718,995 events" in output
     assert "selected: 84,210" in output
+
+
+def test_event_progress_shows_elapsed_and_remaining_time():
+    """Removing tqdm's elapsed or ETA fields must fail this display contract."""
+    stream = io.StringIO()
+    progress = PrepareEventProgress({"selected_entries": 0}, 100, stream=stream)
+    progress._bar.start_t -= 1
+    progress._bar.last_print_t -= 1
+
+    progress.update(50)
+    progress.close()
+
+    assert re.search(r"\d{2}:\d{2}<\d{2}:\d{2}", stream.getvalue())
 
 
 def test_finalize_prepare_metrics_identifies_fragmented_root_reads():
