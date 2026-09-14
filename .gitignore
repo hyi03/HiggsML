@@ -225,5 +225,7 @@ var/
 runs/
 artifacts/
 .worktrees/
+.codebase-memory/
 
 .DS_Store
+project/
