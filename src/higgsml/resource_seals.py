@@ -1,4 +1,4 @@
 """Reviewed scientific resource hashes used by the H4l workflow."""
-RESOURCE_HASHES = {'protocols/h4l_selection_v1.yaml': 'a34fac16155a0e1d4fe5686c766faa6f6d6a04a160f0943f27032819d05437a1', 'dataset_science_v1.json': '86b4543b99e8a73828a2c9eeebea180c893c25e4e66bb166cb57886e49cb4076', 'profiles/open_data_2020.yaml': '12767a68c1cfaa43b9c933c7fcde51485110b1909b2597f4c8d86b0374e43380', 'profiles/release22.yaml': '094c29bce3ef6db14dfc357e1c72cc9c762b00cd1ea977adf3b6f646c8802758'}
+RESOURCE_HASHES = {'protocols/h4l_selection_v1.yaml': '1dbb99079294c7d077b0afa534a2ddb02744ade92bd5bbfef62f382bc135fae1', 'dataset_science_v1.json': 'cad1756d37c037ce21928a8f19d1a92c14c85796de2d101f26441e3b6a0e1e7a', 'profiles/open_data_2020.yaml': '7a897a7e894967607cbaf672d47f2483c8b56fc7c6f24176182a132e351c92d9', 'profiles/release22.yaml': 'd822ae0bd2fb818b323c1014d2efb0e2b8694bd60e681aa3ff6f73294750a877'}
 
-RESOURCE_HASHES["schemas/registry.json"] = 'e3566b3a06430868d71e9287dfd6c6c520a3da027aabea01951d407ee131dc2f'
+RESOURCE_HASHES["schemas/registry.json"] = 'ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356'
