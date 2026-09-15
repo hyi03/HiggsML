@@ -470,7 +470,7 @@ def report(registration_path,nominal_path,freeze_path,protocol,output,allowed_ro
     if summary['status']!='valid': raise ResearchError('failed Asimov is not a successful report input')
     plan=evaluation_plan(protocol,registered,prepared,nominal_run,frozen_run,result_run)
     layers={'mc-bootstrap':{'status':'not_run'},'model-self':{},'assessment':{},'t2':{'status':'not_run'},
-            'external_reference':{'status':'pending'},'native_arm64':{'status':'not_run'}}
+            'external_reference':{'status':'pending'}}
     for name in ('model-self','assessment'):
         layers[name]={str(mu):{'status':'not_run'} for mu in (0,1,2)}
     evaluations=[]

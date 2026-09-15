@@ -61,7 +61,7 @@ network access must use direct HTTP or HTTPS requests.
 - Do not tune candidates, thresholds, bins, mappings, or protocols after assessment.
 - Preserve dataset identity, hashes, protocol seals, checkpoint bindings, and lineage.
 - Never overwrite a completed, failed, diagnostic, or otherwise published run.
-- Distinguish software tests, synthetic validation, full-MC validation, and native ARM64 authority validation.
+- Distinguish software tests, synthetic validation, full-MC validation, and platform compatibility checks.
 
 ## Change discipline
 

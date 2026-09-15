@@ -6,13 +6,13 @@ The active paper objective is to quantify the contribution, complementarity and 
 
 The six result areas are all off-only: paired W68; complete subset ranking/stability; exact Shapley and 24 conditional interactions; validation-checkpoint AUC versus W68; BC/AC versus ABCD as exploration-selected comparisons pending frozen validation; and all 105 direct subset pairs. AUC is descriptive, not an inference or coverage qualification. Older physical-CDF M5/M4, explicit-mass controls, MELA and sample-efficiency workflows remain compatible background/extension studies and are not required off-family candidates.
 
-The versioned [definition](../config/protocols/feature_attribution_mass_off_v1.json) is not a completed scientific registration. A new immutable registration run binds the actual core protocol, prepared population and 75 audited model/calibration artifacts. The candidate family has its own 80-identity G1 and freeze; freezing does not grant assessment access. Automatic P0/T1 materials remain software evidence, with independent qualification pending. Actual uncertainty/coverage stages and native ARM64 are separate evidence levels.
+The versioned [definition](../config/protocols/feature_attribution_mass_off_v1.json) is not a completed scientific registration. A new immutable registration run binds the actual core protocol, prepared population and 75 audited model/calibration artifacts. The candidate family has its own 80-identity G1 and freeze; freezing does not grant assessment access. Automatic P0/T1 materials remain software evidence, with independent qualification pending. Actual uncertainty and coverage stages are separate evidence levels; no operating system or CPU architecture is an authority requirement.
 
 ## Evidence summary
 
 The retained status record is dated **2026-09-13**. It describes an implemented MC-only educational and technical workflow, not a completed physics analysis. This English documentation rewrite did not run training, open assessment, execute full-MC validation, or repeat the historical test campaigns below.
 
-There is currently no documented publication-ready frozen full-MC run establishing improved mu precision or reliable coverage. The default protocol scope is `synthetic_software_defaults_not_physics_validation`. Software implementation, synthetic closure, controlled-MC evidence, independent matrix elements, and native ARM64 authority are separate accomplishments.
+There is currently no documented publication-ready frozen full-MC run establishing improved mu precision or reliable coverage. The default protocol scope is `synthetic_software_defaults_not_physics_validation`. Software implementation, synthetic closure, controlled-MC evidence, and independent matrix elements are separate accomplishments. Platform compatibility is useful engineering evidence, not scientific authority.
 
 ## Exploratory observations
 
@@ -48,7 +48,7 @@ The following consolidates the inherited status document. It is a dated record, 
 | Registered evaluation orchestration | Implemented with synthetic software tests | Formal MC bootstrap/Toy/T2/stress budgets not completed |
 | Independent evidence import | Receipt/type guards implemented | Missing materials remain `external_pending` |
 | Sample-efficiency subsets, batch, report, controls, confirmation | Implemented with synthetic tests | Registration values and independent/full-MC evidence pending |
-| Native macOS ARM64 authority | Not run in the recorded change | Windows results do not substitute |
+| Cross-platform compatibility | Not comprehensively run in the recorded change | The recorded platform only establishes behavior on that environment |
 
 ### Dated software checks
 
@@ -88,7 +88,7 @@ Consequently, an application request that excludes held-out entry indices is ins
 
 Preserve event order, identities, participant order, role assignment, random inputs, merge histories, and states exactly. Compare numerical values at predeclared tolerances, especially cancellation, thresholds, and interval boundaries. Compare payload digests separately from approximate numerical agreement; new software/environment metadata can change a full manifest without implying identical artifacts.
 
-Record wall/CPU time, RSS, input scale, ROOT request counts/span distribution, statistical reconstruction counts, MLE/root-search calls, workers/threads, and software versions. Separate prepare identity/payload/selection/feature/write timings. Use a fixed independent oracle or baseline and tests for alternating/no/all eligible entries, repeated groups, zero occupancy versus cancellation, cross-bin covariance, failed intervals, out-of-order workers, exceptions, and receipt mismatches. Representative end-to-end gains must exceed noise and respect memory/access limits before default adoption. Native ARM64 and Windows evidence remain separate.
+Record wall/CPU time, RSS, input scale, ROOT request counts/span distribution, statistical reconstruction counts, MLE/root-search calls, workers/threads, and software versions. Separate prepare identity/payload/selection/feature/write timings. Use a fixed independent oracle or baseline and tests for alternating/no/all eligible entries, repeated groups, zero occupancy versus cancellation, cross-bin covariance, failed intervals, out-of-order workers, exceptions, and receipt mismatches. Representative end-to-end gains must exceed noise and respect memory/access limits before default adoption. Record each tested operating system and CPU architecture without assigning authority to one platform.
 
 ## Evidence required for conclusions
 
@@ -99,7 +99,7 @@ Record wall/CPU time, RSS, input scale, ROOT request counts/span distribution, s
 | Controlled-MC G0/G1 | Bound source, support, calibration, and template gates | Frozen assessment or external generalization |
 | Frozen MC inference/assessment | Registered-population precision, bias, and coverage | Independent MELA, cross-release equivalence, or platform replay |
 | Independent reference/variation | Numerical or physical robustness in declared scope | Other missing scientific evidence |
-| Native ARM64 authority | Locked-platform repository replay | Physical validity on its own |
+| Cross-platform compatibility check | Reproduction on the explicitly recorded environment | Physical validity or universal portability |
 
 | Proposed claim | Minimum required evidence |
 |---|---|
@@ -128,7 +128,7 @@ Complete the scientific work in this order:
 4. Freeze the applicable protocol, candidates, mappings, grids, likelihood, and evaluation budgets.
 5. Execute registered paired Asimov/Toy/bootstrap/T2/stress studies, retaining failures and preventing feedback.
 6. Complete compact discovery/controls and genuinely independent confirmation; execute size curves before claiming sample efficiency.
-7. Run the locked native ARM64 replay and sourced robustness studies for the claims that need them.
+7. Run sourced robustness studies and any cross-platform compatibility checks needed for the intended deployment environments.
 8. Generate manuscript figures/tables only from qualified bound artifacts.
 
 Expected figures include the role/analysis flow, epoch diagnostics and matched control, raw/CDF acceptance versus mass, paired T1 widths, injection-wise bias/coverage/failures, and qualified sample-efficiency curves. Schematic figures must be labelled as such. Missing experiments cannot be replaced with illustrative numerical results.
@@ -170,4 +170,4 @@ These comparisons use the already documented literature references and do not re
 
 On 2026-09-14, the isolated off-only implementation completed a controlled-MC A/B replay using 75 existing off checkpoints and five deterministic M0off identities: common grid, G1, freeze, fixed-T1 Asimov and the complete off-only report. The report contains 4 contributions, 24 interactions, 105 pairs, 75 AUC observations and 3125 joint seed resamples. Source model/calibration hashes and timestamps remained unchanged. The post-review output is `runs/m4l-off-003/report-B` in the isolated worktree; its generated evaluation plan binds actual manifests. See [delivery evidence](4-Reviews/sprint-m4-01-delivery.md) and [MC replay receipts](4-Reviews/sprint-m4-01-mc-stage-b.md).
 
-This replay used automatic software-contract P0/T1 materials and has exploratory model-self Asimov scope. Full-MC event bootstrap, model-self/assessment Toys, T2 and native ARM64 were not run; independent applicability and assessment-history review remain pending. No assessment population was decoded. The implemented C–E commands and synthetic tests do not complete those scientific evidence requirements.
+This replay used automatic software-contract P0/T1 materials and has exploratory model-self Asimov scope. Full-MC event bootstrap, model-self/assessment Toys and T2 were not run; independent applicability and assessment-history review remain pending. No assessment population was decoded. The implemented C–E commands and synthetic tests do not complete those scientific evidence requirements.

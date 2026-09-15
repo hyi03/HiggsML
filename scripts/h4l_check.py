@@ -55,6 +55,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", type=Path)
     parser.add_argument("--protocol", type=Path, default=DEFAULT_PROTOCOL)
     parser.add_argument("--plan-only", action="store_true")
+    parser.add_argument("--show-command", action="store_true",
+                        help="Print each stage command before it is run.")
     parser.add_argument(
         "--clean", action="store_true",
         help="Delete the G1 output directory selected by --run-name or --output-root.",
@@ -133,9 +135,10 @@ def _validate_t1(path: Path, protocol_path: Path) -> None:
         )
 
 
-def _invoke(arguments: list[str], *, plan_only: bool) -> None:
+def _invoke(arguments: list[str], *, plan_only: bool, show_command: bool = False) -> None:
     command = [sys.executable, "-m", "higgsml.cli", *arguments]
-    print(_display(command), flush=True)
+    if show_command:
+        print(_display(command), flush=True)
     if plan_only:
         return
     process = subprocess.Popen(command, cwd=PROJECT_ROOT)
@@ -287,7 +290,7 @@ def _run(args: argparse.Namespace) -> None:
     ) as progress:
         for label, arguments in progress:
             progress.set_postfix_str(label, refresh=True)
-            _invoke(arguments, plan_only=args.plan_only)
+            _invoke(arguments, plan_only=args.plan_only, show_command=args.show_command)
 
     if not args.plan_only:
         status = _load_json(gate_run / "g1.json").get("status")

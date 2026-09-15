@@ -223,7 +223,7 @@ def main(argv=None):
         packages={n:importlib.metadata.version(n) for n in ('numpy','pandas','torch','scipy','uproot','pyhf')},
         resources={'workers':1,'torch_threads':1},input='synthetic only',cache='in-process repeated, OS cache not flushed',
         tolerance={'rtol':1e-12,'atol':1e-12,'discrete':'exact'},results=results,
-        limitations=['Not bound MC or ARM64 authority validation',
+        limitations=['Not bound MC or cross-platform compatibility validation',
                      'RSS sampled every 10ms in one process, includes retained allocations; not isolated per-operation high-water marks',
                      'Production end-to-end and worker memory acceptance require representative measurement'])
     args.output.parent.mkdir(parents=True,exist_ok=True)

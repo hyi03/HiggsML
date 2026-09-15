@@ -12,7 +12,6 @@ EVIDENCE_TYPES = {
     "signed_mc_t1",
     "physical_systematics",
     "mela",
-    "arm64_authority",
     "frozen_assessment",
 }
 EVIDENCE_STATUSES = {"validated", "external_pending", "failed"}
@@ -83,15 +82,7 @@ def _validated_reference(reference, evidence_type, package_root):
                 or path.stat().st_size != receipt["size_bytes"]
                 or sha256_file(path) != receipt["sha256"]):
             raise ResearchError("evidence reference file receipt mismatch")
-    if evidence_type == "arm64_authority":
-        machine = str(reference.get("machine", "")).lower()
-        if (machine not in {"arm64", "aarch64"} or reference.get("native") is not True
-                or reference.get("exit_code") != 0 or not reference.get("command")
-                or not isinstance(reference.get("environment_lock_sha256"), str)
-                or len(reference["environment_lock_sha256"]) != 64
-                or not isinstance(reference.get("comparison"), dict)):
-            raise ResearchError("ARM64 authority evidence lacks a native successful reproducibility receipt")
-    elif evidence_type == "physical_systematics":
+    if evidence_type == "physical_systematics":
         if (not reference.get("source") or not isinstance(reference.get("variations"), list)
                 or not reference["variations"] or not isinstance(reference.get("nuisance_definitions"), list)
                 or not reference["nuisance_definitions"]):

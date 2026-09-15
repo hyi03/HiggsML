@@ -108,7 +108,6 @@ class ResearchRun:
             "upstreams": [{"artifact_id": run.manifest["artifact_id"],
                            "stage": run.manifest["stage"], "path": str(run.path)}
                           for run in upstreams or []],
-            "repository_authority_validation": "not_run",
             "scientific_numerical_validation": "not_run",
             "claim_scope": "MC-only educational/technical demo",
             "context": context or {},

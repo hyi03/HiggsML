@@ -846,7 +846,6 @@ def execute(args, *, allowed_root=None):
                 'physical_robustness': evidence_by_type.get('physical_systematics',{}).get('status')=='validated',
                 'mela': evidence_by_type.get('mela',{}).get('status')=='validated',
                 'signed_mc_t1': evidence_by_type.get('signed_mc_t1',{}).get('status')=='validated',
-                'platform_reproduction': evidence_by_type.get('arm64_authority',{}).get('status')=='validated',
             }
             run.write_json('report.json', report)
             lines = ['# H4l research software report','','MC-only educational/technical demo.',
@@ -924,7 +923,7 @@ def execute(args, *, allowed_root=None):
             for curve in curves:
                 if curve['status']=='complete':
                     lines += ['', f'![Paired training diagnostics]({curve["file"]})']
-            lines += ['', 'Repository ARM64 authority: not_run.',
+            lines += ['',
                       'Scientific numerical validation and external robustness require independent evidence.']
             (run.path/'report.md').write_text('\n'.join(lines)+'\n', encoding='utf-8')
             run.register_file('report.md')

@@ -426,6 +426,114 @@ def test_run_refuses_existing_output_without_invoking_stages(
     assert failure.value.exit_code == 4
 
 
+def test_run_continue_quarantines_invalid_stage_before_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _load_run_module()
+    prepared = tmp_path / "prepared"; prepared.mkdir()
+    gate = tmp_path / "gate"; gate.mkdir()
+    t1_validation = tmp_path / "t1-validation.json"; t1_validation.write_text("{}")
+    output_root = tmp_path / "batch"; output_root.mkdir()
+    invalid = output_root / "seed42" / "train" / "m0c"
+    invalid.mkdir(parents=True)
+    (invalid / "manifest.json").write_text("not-json", encoding="utf-8")
+    monkeypatch.setattr(run, "RUNS_ROOT", tmp_path.resolve())
+    monkeypatch.setattr(run, "_validate_t1", lambda *_args: None)
+
+    class RetryObserved(Exception):
+        pass
+
+    def observe_retry(arguments: list[str], *, plan_only: bool) -> None:
+        assert plan_only is False
+        assert Path(arguments[arguments.index("--run-dir") + 1]) == invalid
+        raise RetryObserved
+
+    monkeypatch.setattr(run, "_invoke", observe_retry)
+
+    with pytest.raises(RetryObserved):
+        run._run(argparse.Namespace(seed=42, config=run.DEFAULT_CONFIG, protocol=None,
+            prepared_run=prepared, gate_run=gate, t1_validation=t1_validation,
+            output_root=output_root, plan_only=False, no_progress=True,
+            continue_run=True))
+
+    quarantined = list(invalid.parent.glob(".m0c.*.invalid"))
+    assert not invalid.exists()
+    assert len(quarantined) == 1
+    assert (quarantined[0] / "manifest.json").read_text(encoding="utf-8") == "not-json"
+
+
+def test_run_continue_skips_valid_complete_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _load_run_module()
+    from higgsml.artifacts import ResearchRun
+
+    prepared = tmp_path / "prepared"; prepared.mkdir()
+    gate = tmp_path / "gate"; gate.mkdir()
+    t1_validation = tmp_path / "t1-validation.json"; t1_validation.write_text("{}")
+    output_root = tmp_path / "batch"; output_root.mkdir()
+    protocol = run.load_protocol(run.DEFAULT_CONFIG.parent / "h4l_protocol.json",
+                                 dataset="atlas2020_4lep").to_dict()
+    complete = output_root / "seed42" / "train" / "m0c"
+    with ResearchRun(complete, allowed_root=output_root, stage="train",
+                     dataset="atlas2020_4lep", protocol=protocol):
+        pass
+    monkeypatch.setattr(run, "RUNS_ROOT", tmp_path.resolve())
+    monkeypatch.setattr(run, "_validate_t1", lambda *_args: None)
+
+    class NextStageObserved(Exception):
+        pass
+
+    def observe_next_stage(arguments: list[str], *, plan_only: bool) -> None:
+        assert plan_only is False
+        assert Path(arguments[arguments.index("--run-dir") + 1]).name == "m2"
+        raise NextStageObserved
+
+    monkeypatch.setattr(run, "_invoke", observe_next_stage)
+
+    with pytest.raises(NextStageObserved):
+        run._run(argparse.Namespace(seed=42, config=run.DEFAULT_CONFIG, protocol=None,
+            prepared_run=prepared, gate_run=gate, t1_validation=t1_validation,
+            output_root=output_root, plan_only=False, no_progress=True,
+            continue_run=True))
+
+    assert complete.exists()
+    assert not list(complete.parent.glob(".m0c.*.invalid"))
+
+
+def test_run_continue_quarantines_protocol_mismatch(
+    tmp_path: Path,
+) -> None:
+    run = _load_run_module()
+    from higgsml.artifacts import ResearchRun
+
+    batch_root = tmp_path / "batch"
+    stage = batch_root / "seed42" / "train" / "m0c"
+    expected = run.load_protocol(run.DEFAULT_CONFIG.parent / "h4l_protocol.json",
+                                 dataset="atlas2020_4lep").to_dict()
+    mismatched = dict(expected)
+    mismatched["protocol_id"] = "wrong-protocol"
+    with ResearchRun(stage, allowed_root=batch_root, stage="train",
+                     dataset="atlas2020_4lep", protocol=mismatched):
+        pass
+
+    action = run._continue_stage(
+        ["train", "--run-dir", str(stage)], batch_root=batch_root,
+        dataset="atlas2020_4lep", protocol=expected,
+    )
+
+    assert action == "retry"
+    assert not stage.exists()
+    assert len(list(stage.parent.glob(".m0c.*.invalid"))) == 1
+
+
+def test_run_continue_rejects_plan_only() -> None:
+    completed = _run(RUN_SCRIPT, "--run-name", "02", "--continue", "--plan-only")
+
+    assert completed.returncode == 2
+    assert "--continue cannot be combined" in completed.stderr
+
+
 def test_conclusion_output_contains_combination_shapley_and_primary(
     tmp_path: Path, capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -518,6 +626,7 @@ def test_run_cli_supports_disabling_progress() -> None:
 
     assert completed.returncode == 0
     assert "--no-progress" in completed.stdout
+    assert "--continue" in completed.stdout
 
 
 @pytest.mark.parametrize("script", [PREPARE_SCRIPT, G1_SCRIPT, RUN_SCRIPT])

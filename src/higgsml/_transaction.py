@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,6 +11,7 @@ from types import TracebackType
 
 
 _REPARSE_POINT = 0x400
+_PUBLISH_RETRY_DELAYS = (0.1, 0.2, 0.4, 0.8)
 
 
 def _is_link_or_reparse(path: Path) -> bool:
@@ -175,13 +177,28 @@ class RunTransaction:
     def _publish(self) -> None:
         if self._finished:
             raise RuntimeError("run transaction already finished")
-        if self.run_dir.exists():
-            raise RunPathError(f"run directory already exists: {self.run_dir}")
-        try:
-            self.path.rename(self.run_dir)
-        except OSError as error:
-            raise RunPathError(f"cannot publish run directory: {self.run_dir}") from error
-        self._finished = True
+        for attempt, delay in enumerate((*_PUBLISH_RETRY_DELAYS, None), start=1):
+            if os.path.lexists(self.run_dir):
+                raise RunPathError(f"run directory already exists: {self.run_dir}")
+            try:
+                self.path.rename(self.run_dir)
+            except OSError as error:
+                if os.path.lexists(self.run_dir):
+                    raise RunPathError(
+                        f"run directory already exists: {self.run_dir}"
+                    ) from error
+                if delay is None or not self.path.is_dir():
+                    details = (
+                        f"winerror={getattr(error, 'winerror', None)}, "
+                        f"errno={error.errno}, attempts={attempt}"
+                    )
+                    raise RunPathError(
+                        f"cannot publish run directory: {self.run_dir}; {details}"
+                    ) from error
+                time.sleep(delay)
+                continue
+            self._finished = True
+            return
 
     def _record_publish_failure(self, error: BaseException) -> None:
         try:
