@@ -40,13 +40,14 @@ def categorize_bundle(bundle, frame):
     return result
 
 
-def _joint_mother(grid, bundles, mother, protocol, categorize):
+def _joint_mother(grid, bundles, mother, protocol, categorize, *, parent_role='assessment'):
     reject_sample_efficiency_assessment(grid, bundles)
-    if mother.empty or set(mother.role) != {"assessment"} or set(mother.dataset) != {protocol["dataset"]}:
+    if parent_role not in {'assessment','template'} or mother.empty or set(mother.role) != {parent_role} or set(mother.dataset) != {protocol["dataset"]}:
         raise ResearchError("identified nonempty assessment mother required")
-    if not mother.label.isin([0, 1]).all() or not np.isfinite(mother[["m4l", "yield_weight"]].to_numpy(float)).all():
+    if set(mother.label) != {0, 1} or not np.isfinite(mother[["m4l", "yield_weight"]].to_numpy(float)).all():
         raise ResearchError("invalid assessment label/rates")
-    if mother.event_group_id.isna().any() or (mother.groupby("event_group_id").label.nunique() > 1).any():
+    process_column = 'process' if 'process' in mother else 'label'
+    if mother[process_column].isna().any() or mother.event_group_id.isna().any() or (mother.groupby("event_group_id")[process_column].nunique() > 1).any():
         raise ResearchError("assessment event group spans processes")
     edges = np.array(grid["mass_edges"], float)
     if edges.ndim != 1 or len(edges) < 2 or not np.isfinite(edges).all() or not (np.diff(edges) > 0).all():
@@ -54,7 +55,13 @@ def _joint_mother(grid, bundles, mother, protocol, categorize):
     if (mother.m4l < edges[0]).any() or (mother.m4l >= edges[-1]).any():
         raise ResearchError("assessment outside frozen half-open support")
     keys = sorted(grid["templates"])
-    if "M0" not in keys or set(bundles) != set(keys) - {"M0"}:
+    from higgsml.inference.attribution import FAMILY, candidate_keys
+    off_family = grid.get('family_id') == FAMILY
+    if parent_role!='assessment' and not off_family:
+        raise ResearchError('template-parent joint generation requires the registered off family')
+    if off_family and (set(keys)!=set(candidate_keys()) or set(bundles)!=set(keys)):
+        raise ResearchError('joint off family requires all 80 identities')
+    if not off_family and ("M0" not in keys or set(bundles) != set(keys) - {"M0"}):
         raise ResearchError("all frozen methods plus M0 are required for joint pairing")
     n = len(edges) - 1
     mass_bin = np.searchsorted(edges, mother.m4l, side="right") - 1
@@ -83,11 +90,14 @@ def _joint_mother(grid, bundles, mother, protocol, categorize):
         raise ResearchStateError("one physical event spans joint observation cells; event covariance is unvalidated", status="template_stat_model_unvalidated")
     # A positive S+B cancellation cannot repair an invalid negative process rate.
     rates = {}
-    for label in (0, 1):
-        sums = np.bincount(inverse, weights=work.yield_weight.to_numpy() * (work.label.to_numpy() == label), minlength=len(cells))
+    for process, indices in work.groupby(process_column, sort=True).indices.items():
+        rows = work.iloc[indices]
+        if rows.label.nunique() != 1:
+            raise ResearchError('a physical process cannot mix signal and background')
+        sums = np.bincount(inverse[indices], weights=rows.yield_weight.to_numpy(), minlength=len(cells))
         if not np.isfinite(sums).all() or (sums < 0).any() or sums.sum() <= 0:
             raise ResearchStateError("assessment joint process rates are not nonnegative with positive support", status="insufficient_statistics")
-        rates[label] = sums
+        rates[str(process)] = sums
     for j, key in enumerate(keys):
         active = grid["templates"][key]["active_bins"]
         if len(set(active)) != len(active) or any(type(i) is not int or not 0 <= i < 2 * n for i in active):
@@ -95,11 +105,21 @@ def _joint_mother(grid, bundles, mother, protocol, categorize):
         unsupported = ~np.isin(cells[:, j], active)
         if any(np.any(v[unsupported] > 0) for v in rates.values()):
             raise ResearchStateError("positive assessment support lies in a template structural-zero bin", status="unsupported_assessment_support")
+        if parent_role == 'template':
+            samples = {sample['name']: sample for sample in grid['templates'][key]['samples']}
+            if set(samples) != set(rates):
+                raise ResearchStateError('joint process identities differ from nominal marginals', status='insufficient_statistics')
+            for process, values in rates.items():
+                marginal = np.bincount(cells[:, j], weights=values, minlength=2*n)
+                signal = bool(work.loc[work[process_column].astype(str)==process,'label'].iloc[0])
+                if samples[process]['is_signal']!=signal or not np.allclose(marginal, samples[process]['yield'], rtol=1e-10, atol=1e-10):
+                    raise ResearchStateError('joint process marginal differs from nominal template', status='insufficient_statistics')
     return work, columns, (cells,inverse)
 
 
 def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, mu, count,
-                     seed, prepared_id, freeze_id, categorize=None, stress_responses=None,stress_direction=0, workers=1, worker_threads=1):
+                     seed, prepared_id, freeze_id, categorize=None, stress_responses=None,stress_direction=0, workers=1, worker_threads=1,
+                     parent_role='assessment'):
     """Return per-candidate results using one shared joint-cell Poisson draw.
 
     Root verifies the immutable freeze artifact before granting mother access.
@@ -118,11 +138,12 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
     levels = cfg["confidence_levels"]
     if levels != [.68, .95]:
         raise ResearchError("unsupported frozen confidence levels")
-    work, columns, joint_cells = _joint_mother(grid, bundles, mother, p, categorize or categorize_bundle)
+    work, columns, joint_cells = _joint_mother(grid, bundles, mother, p, categorize or categorize_bundle,parent_role=parent_role)
     mother_id = digest_json({"prepared_id": prepared_id, "freeze_id": freeze_id,
                             "rows": mother[["event_group_id", "label", "m4l", "yield_weight"]].to_dict("records")})
     paired = paired_event_toys(work, category_columns=columns, mass_edges=grid["mass_edges"],
-                              mu=mu, count=count, seed=seed, mother_id=mother_id, _joint_cells=joint_cells)
+                              mu=mu, count=count, seed=seed, mother_id=mother_id, _joint_cells=joint_cells,
+                              parent_role=parent_role)
     pairing_id = digest_json({"mother": mother_id, "grid": grid["mass_edges"], "seed": seed,
                              "mu": mu, "count": count, "observations": paired["observations"]})
     results = {}
@@ -202,7 +223,7 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
             results[key] = result
         except ResearchStateError as exc:
             results[key] = {"status": exc.status, "reason": str(exc)}
-    if count >= 2 and "toys" in results["M0"]:
+    if count >= 2 and "toys" in results.get("M0",{}):
         for key, result in results.items():
             if "toys" in result:
                 result["paired_coverage_vs_M0"] = {str(level): paired_coverage_error(
@@ -216,6 +237,18 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
                     [row["intervals"][index] for row in results[left_key]["toys"]["results"]],
                     [row["intervals"][index] for row in results[right_key]["toys"]["results"]],
                     mu=mu, pairing_id=pairing_id) for index, level in enumerate(levels)}
+    if grid.get('family_id') == 'engineered19_raw_T1_m4l_off_attribution_v1':
+        from higgsml.inference.attribution import SEEDS, SUBSETS, candidate_key
+        import itertools
+        for network_seed in SEEDS:
+            for left,right in itertools.combinations(SUBSETS[1:],2):
+                lk,rk=candidate_key(network_seed,left),candidate_key(network_seed,right)
+                if all('toys' in results.get(key,{}) for key in (lk,rk)):
+                    results[lk].setdefault('paired_coverage',{})[rk] = {
+                        str(level):paired_coverage_error(
+                            [r['intervals'][i] for r in results[lk]['toys']['results']],
+                            [r['intervals'][i] for r in results[rk]['toys']['results']],mu=mu,pairing_id=pairing_id)
+                        for i,level in enumerate(levels)}
     return results
 
 
@@ -265,7 +298,8 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
                 mapping = fit_calibration(bootstrap, scores, p, target=bundle["mapping"]["target"], model_id=bundle["model_id"])
                 scores = apply_calibration(mapping, bootstrap.m4l.to_numpy(), scores, model_id=bundle["model_id"])
             mapping_id = mapping["mapping_id"] if mapping else "raw:" + bundle["model_id"]
-            thresholds = fit_thresholds(bootstrap, scores, p, model_id=bundle["model_id"], mapping_id=mapping_id)
+            thresholds = (bundle['thresholds'] if bundle.get('candidate_id')=='M0off' else
+                          fit_thresholds(bootstrap, scores, p, model_id=bundle["model_id"], mapping_id=mapping_id))
             bundle.update(mapping=mapping, mapping_id=mapping_id, thresholds=thresholds)
             fitted[key] = bundle
         return {"bundles": fitted, "mapping_id": digest_json(fitted)}
@@ -285,8 +319,13 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
         category_lookup = {key: f"_t2_category_{i}" for i, key in enumerate(sorted(fitted))}
         for key, original in grid["templates"].items():
             source = mapped_template.assign(category=0 if key == "M0" else mapped_template[category_lookup[key]])
+            structural = None
+            if original['candidate_id']=='M0off':
+                from higgsml.inference.attribution import structural_evidence
+                structural=structural_evidence(fitted[key],source,grid['mass_edges'])
             built = build_templates(source, mass_edges=grid["mass_edges"], mapping_id=fitted[key]["mapping_id"] if key != "M0" else original["mapping_id"],
-                                    candidate_id=original["candidate_id"], thresholds=p["templates"], categories=(0,) if key == "M0" else (0, 1))
+                                    candidate_id=original["candidate_id"], thresholds=p["templates"], categories=(0,) if key == "M0" else (0, 1),
+                                    structural_zero_evidence=structural)
             built["seed"] = original.get("seed")
             if built["status"] != "valid":
                 raise ResearchStateError("T2 template support fails on frozen grid", status="insufficient_statistics")
@@ -295,7 +334,7 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
         def categorize(bundle, frame):
             key = bundle_keys[id(bundle)]
             return frame.assign(category=frame[category_lookup[key]])
-        result = infer_assessment({"status": "valid", "mass_edges": grid["mass_edges"], "templates": templates}, fitted,
+        result = infer_assessment({"status": "valid", "mass_edges": grid["mass_edges"], "templates": templates, 'family_id':grid.get('family_id')}, fitted,
             mapped_mother, p, layer=layer, t1_validation=t1_validation, mu=mu, count=inner_toys, seed=inner_seed,
             prepared_id=prepared_id, freeze_id=freeze_id, categorize=categorize)
         return {"status": "valid" if all(r["status"] == "valid" for r in result.values()) else "inference_incomplete", "candidates": result}
@@ -303,6 +342,7 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
     return run_t2_procedure(calibration, template, mother, fit_mapping=fit_mapping, apply_mapping=apply_mapping,
         evaluate=evaluate, outer_replicas=cfg["outer_replicas"], inner_toys=cfg["inner_toys"], seed=seed,
         workers=workers, worker_threads=worker_threads,
+        record_mappings=grid.get('family_id')=='engineered19_raw_T1_m4l_off_attribution_v1',
         model_id=digest_json({k: b["model_id"] for k,b in bundles.items()}), mother_id=digest_json({"prepared_id":prepared_id,"freeze_id":freeze_id}))
 
 

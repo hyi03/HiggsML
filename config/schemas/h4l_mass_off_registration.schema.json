@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol_id",
+    "analysis_definition_sha256",
+    "protocol_sha256",
+    "dataset",
+    "prepared_artifact_id",
+    "prepared_path",
+    "population_id",
+    "source_root",
+    "value_function",
+    "estimator",
+    "seed_resampling",
+    "pairing_rule",
+    "registration_id",
+    "schema_version",
+    "family_id",
+    "registration_status",
+    "candidate_keys",
+    "budgets",
+    "historical_claims",
+    "qualification"
+  ],
+  "properties": {
+    "protocol_id": {
+      "type": "string"
+    },
+    "analysis_definition_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "protocol_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "dataset": {
+      "type": "string"
+    },
+    "prepared_artifact_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "prepared_path": {
+      "type": "string"
+    },
+    "population_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "source_root": {
+      "type": "string"
+    },
+    "value_function": {
+      "type": "string"
+    },
+    "estimator": {
+      "type": "string"
+    },
+    "seed_resampling": {
+      "type": "string"
+    },
+    "pairing_rule": {
+      "type": "string"
+    },
+    "registration_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "schema_version": {
+      "const": "h4l-mass-off-registration-v1"
+    },
+    "family_id": {
+      "const": "engineered19_raw_T1_m4l_off_attribution_v1"
+    },
+    "registration_status": {
+      "const": "exploratory_posthoc"
+    },
+    "candidate_keys": {
+      "const": [
+        "M0off:42",
+        "M3:42:groups=A:m4l=off",
+        "M3:42:groups=B:m4l=off",
+        "M3:42:groups=C:m4l=off",
+        "M3:42:groups=D:m4l=off",
+        "M3:42:groups=AB:m4l=off",
+        "M3:42:groups=AC:m4l=off",
+        "M3:42:groups=AD:m4l=off",
+        "M3:42:groups=BC:m4l=off",
+        "M3:42:groups=BD:m4l=off",
+        "M3:42:groups=CD:m4l=off",
+        "M3:42:groups=ABC:m4l=off",
+        "M3:42:groups=ABD:m4l=off",
+        "M3:42:groups=ACD:m4l=off",
+        "M3:42:groups=BCD:m4l=off",
+        "M3:42:groups=ABCD:m4l=off",
+        "M0off:43",
+        "M3:43:groups=A:m4l=off",
+        "M3:43:groups=B:m4l=off",
+        "M3:43:groups=C:m4l=off",
+        "M3:43:groups=D:m4l=off",
+        "M3:43:groups=AB:m4l=off",
+        "M3:43:groups=AC:m4l=off",
+        "M3:43:groups=AD:m4l=off",
+        "M3:43:groups=BC:m4l=off",
+        "M3:43:groups=BD:m4l=off",
+        "M3:43:groups=CD:m4l=off",
+        "M3:43:groups=ABC:m4l=off",
+        "M3:43:groups=ABD:m4l=off",
+        "M3:43:groups=ACD:m4l=off",
+        "M3:43:groups=BCD:m4l=off",
+        "M3:43:groups=ABCD:m4l=off",
+        "M0off:44",
+        "M3:44:groups=A:m4l=off",
+        "M3:44:groups=B:m4l=off",
+        "M3:44:groups=C:m4l=off",
+        "M3:44:groups=D:m4l=off",
+        "M3:44:groups=AB:m4l=off",
+        "M3:44:groups=AC:m4l=off",
+        "M3:44:groups=AD:m4l=off",
+        "M3:44:groups=BC:m4l=off",
+        "M3:44:groups=BD:m4l=off",
+        "M3:44:groups=CD:m4l=off",
+        "M3:44:groups=ABC:m4l=off",
+        "M3:44:groups=ABD:m4l=off",
+        "M3:44:groups=ACD:m4l=off",
+        "M3:44:groups=BCD:m4l=off",
+        "M3:44:groups=ABCD:m4l=off",
+        "M0off:45",
+        "M3:45:groups=A:m4l=off",
+        "M3:45:groups=B:m4l=off",
+        "M3:45:groups=C:m4l=off",
+        "M3:45:groups=D:m4l=off",
+        "M3:45:groups=AB:m4l=off",
+        "M3:45:groups=AC:m4l=off",
+        "M3:45:groups=AD:m4l=off",
+        "M3:45:groups=BC:m4l=off",
+        "M3:45:groups=BD:m4l=off",
+        "M3:45:groups=CD:m4l=off",
+        "M3:45:groups=ABC:m4l=off",
+        "M3:45:groups=ABD:m4l=off",
+        "M3:45:groups=ACD:m4l=off",
+        "M3:45:groups=BCD:m4l=off",
+        "M3:45:groups=ABCD:m4l=off",
+        "M0off:46",
+        "M3:46:groups=A:m4l=off",
+        "M3:46:groups=B:m4l=off",
+        "M3:46:groups=C:m4l=off",
+        "M3:46:groups=D:m4l=off",
+        "M3:46:groups=AB:m4l=off",
+        "M3:46:groups=AC:m4l=off",
+        "M3:46:groups=AD:m4l=off",
+        "M3:46:groups=BC:m4l=off",
+        "M3:46:groups=BD:m4l=off",
+        "M3:46:groups=CD:m4l=off",
+        "M3:46:groups=ABC:m4l=off",
+        "M3:46:groups=ABD:m4l=off",
+        "M3:46:groups=ACD:m4l=off",
+        "M3:46:groups=BCD:m4l=off",
+        "M3:46:groups=ABCD:m4l=off"
+      ]
+    },
+    "budgets": {
+      "const": {
+        "mc_bootstrap": {
+          "replicas": 200,
+          "seed": 42001
+        },
+        "toys": {
+          "injections": [
+            0,
+            1,
+            2
+          ],
+          "count": 500,
+          "seed": 42
+        },
+        "t2": {
+          "mu": 1,
+          "outer_replicas": 20,
+          "inner_toys": 100,
+          "seed": 42
+        }
+      }
+    },
+    "historical_claims": {
+      "type": "array"
+    },
+    "qualification": {
+      "type": "object"
+    }
+  }
+}

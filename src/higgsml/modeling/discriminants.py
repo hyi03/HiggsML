@@ -255,6 +255,12 @@ def train_discriminant(frame, protocol, candidate='M3', seed=42, target_lambda=0
 
 def predict_discriminant(artifact, frame):
     schema = artifact.get('schema_version') if isinstance(artifact, dict) else None
+    if schema == 'h4l-zero-information-v1':
+        validate_empty_model(artifact)
+        _validate_frame(frame, ['train','validation','calibration','template','assessment'], [])
+        if set(frame.dataset) != {artifact['dataset']}:
+            raise ResearchError('model dataset binding mismatch')
+        return np.full(len(frame), .5)
     if schema in {'research-discriminant-v2', 'h4l-capacity-discriminant-v1'}:
         raise ResearchError('v2 prediction requires a verified sample-efficiency model handle',
                             status='training_subset_binding_mismatch')
@@ -291,3 +297,31 @@ def _predict_discriminant_payload(artifact, frame):
     model.eval()
     with torch.no_grad():
         return torch.sigmoid(model(torch.tensor((frame[expected].to_numpy(float)-mean)/scale,dtype=torch.float32))).numpy()
+
+
+def make_empty_model(protocol, prepared_id, seed):
+    if type(seed) is not int or seed not in range(42,47):
+        raise ResearchError("unregistered M0off seed")
+    if not isinstance(prepared_id, str) or len(prepared_id) != 64:
+        raise ResearchError("M0off requires prepared artifact identity")
+    result = {"schema_version": "h4l-zero-information-v1", "candidate": "M0off",
+              "family_id": "engineered19_raw_T1_m4l_off_attribution_v1", "dataset": protocol["dataset"], "seed": seed,
+              "protocol_id": digest(protocol), "prepared_artifact_id": prepared_id,
+              "mass_input": "off", "ordered_inputs": [], "state_dict": {}, "score": .5,
+              "status": "deterministic", "training": "not_applicable"}
+    return {**result, "model_id": digest(result)}
+
+
+def validate_empty_model(model):
+    fields = {"schema_version", "candidate", "family_id", "dataset", "seed", "protocol_id",
+              "prepared_artifact_id", "mass_input", "ordered_inputs", "state_dict", "score",
+              "status", "training", "model_id"}
+    if (not isinstance(model, dict) or set(model) != fields
+            or model["schema_version"] != "h4l-zero-information-v1" or model["candidate"] != "M0off"
+            or model["family_id"] != "engineered19_raw_T1_m4l_off_attribution_v1" or model["mass_input"] != "off"
+            or model["ordered_inputs"] != [] or model["state_dict"] != {} or model["score"] != .5
+            or model["status"] != "deterministic" or model["training"] != "not_applicable"
+            or model["model_id"] != digest({k:v for k,v in model.items() if k != "model_id"})):
+        raise ResearchError("invalid M0off zero-information artifact")
+    if type(model["seed"]) is not int or model["seed"] not in range(42,47):
+        raise ResearchError("unregistered M0off seed")

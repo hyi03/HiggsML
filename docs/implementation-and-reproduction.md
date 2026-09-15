@@ -294,3 +294,44 @@ git diff --check
 Optional syntax/package checks use `python -m compileall -q src scripts tests` and `python -m build --wheel --no-isolation` when build tooling is installed. Generated outputs are not committed. A separate synthetic benchmark is available as `python -m scripts.research_performance_benchmark --output <fresh-path.json>`; never overwrite retained measurements or benchmark alongside competing training/tests.
 
 Relevant scientific-contract checks include all/none/alternating eligible ROOT spans, boundaries, repeated groups, signed cancellation, cross-bin covariance, bootstrap multiplicity, CDF tails/ties, exact training histories, MLE/root failures, worker-order/failure cleanup, ME coverage/bindings, and artifact round trips. Independent expected values or a fixed baseline must accompany implementation checks. Full-MC, external MELA, source access, and native ARM64 validation remain distinct from these tests; dated evidence is in [Results and limitations](results-and-limitations.md).
+
+## Off-only attribution execution
+
+Use a fresh run root. The source model run is read-only and is audited for candidate, seed, exact inputs, mass flag, selected checkpoint/AUC, core protocol, prepared population and calibrated mapping. The registration records allowed-source hashes and timestamps and inspects historical claim metadata without opening assessment payload. Historical detailed diagnostics are optional; missing histories are not fabricated.
+
+```bash
+python -m higgsml.cli attribution register \
+  --source-root runs/h4l-train-T2/batch/all-seeds \
+  --prepared-run runs/h4l-prepare/prepare \
+  --t1-validation runs/h4l-train-T2/batch/all-seeds/templates/t1-validation.json \
+  --run-dir runs/off-study-001/register
+python -m higgsml.cli attribution nominal \
+  --registration-run runs/off-study-001/register --run-dir runs/off-study-001/nominal
+python -m higgsml.cli attribution freeze \
+  --registration-run runs/off-study-001/register --template-run runs/off-study-001/nominal \
+  --run-dir runs/off-study-001/freeze
+python -m higgsml.cli attribution asimov \
+  --registration-run runs/off-study-001/register --template-run runs/off-study-001/nominal \
+  --freeze-run runs/off-study-001/freeze --run-dir runs/off-study-001/asimov
+python -m higgsml.cli attribution report \
+  --registration-run runs/off-study-001/register --template-run runs/off-study-001/nominal \
+  --freeze-run runs/off-study-001/freeze --result-run runs/off-study-001/asimov \
+  --run-dir runs/off-study-001/report-B
+```
+
+The paths must point to actual eligible artifacts. Each stage refuses an existing destination. A Stage B report may be published while later evidence is `not_run` or `pending`. Constant M0off models are embedded in the nominal calibration artifact with individual model IDs and prepared/seed binding; they have no trainable parameters. Nominal G1 requires exactly 80 identities and an active-bin likelihood equivalence certificate. The immutable freeze binds the registration, nominal artifact, mappings, mass grid and budget definition; the later evaluation plan binds the freeze, without a circular digest.
+
+The Stage B report automatically writes `evaluation-plan.json` from the five actual registration/prepared/nominal/freeze/Asimov manifests; no manual ID editing is needed. Every C–E run stores this snapshot, its canonical digest and all five input identities, which report/reuse ingestion checks again. The [off-only evaluation example](../config/examples/h4l_mass_off_evaluation_plan.json) contains unresolved zero IDs for schema illustration only. `--plan-only` reads safe manifests/protocol snapshots, displays the 80 candidates and complete budgets, and reports unresolved identities without opening assessment payload. It does not validate numerical payloads or authorize assessment. Old evaluation v1 remains compatible. The off-only default does not run the legacy stress matrix; additional stress requires separate registration outside this fixed plan.
+
+```bash
+python scripts/h4l_evaluate.py --plan runs/off-study-001/report-B/evaluation-plan.json \
+  --registration-run runs/off-study-001/register --prepared-run runs/h4l-prepare/prepare \
+  --template-run runs/off-study-001/nominal --freeze-run runs/off-study-001/freeze \
+  --result-run runs/off-study-001/asimov --output-root runs/off-evaluation-001 --plan-only
+```
+
+Individual `mc-bootstrap`, `model-self --mu 0|1|2`, `assessment --mu 0|1|2` and `t2` stages use the same registration/template/freeze arguments plus `--evaluation-plan runs/off-study-001/report-B/evaluation-plan.json --result-run runs/off-study-001/asimov`. Assessment/T2 additionally require `--access-review` with schema `h4l-off-assessment-access-v1`, exact population/protocol/freeze binding, independent P0/T1 file receipts, explicit historical-use and group-isolation review. P0 must satisfy [the applicability schema](../config/schemas/h4l_off_p0_applicability.schema.json): its recomputed `package_id` hashes the package without that field; dataset, prepared, protocol, freeze, template and original P0 source-file hash must match. Each physical definition has nonempty referenced content and a typed, finite expected/actual numerical comparison within declared tolerances. Source files have verified receipts and an independent producer/reference/basis. The schema checks evidence structure and bindings; independent human review must establish physical validity and acceptable tolerances. T1 uses the existing independent evidence package contract. Missing evidence is `assessment_qualification_pending`; an automatic reference or a new freeze name cannot restore independence. The original prepared run's `.research-claims` root owns exclusive per-cell budget claims; a failed or interrupted claimed cell is not rerun automatically.
+
+For evaluator recovery use `--reuse-stage STAGE:MU=RUN`, for example `--reuse-stage model-self:1=runs/off-evaluation-001/model-self-mu1`, with a fresh output root. The tool verifies successful manifests, original registration/template/freeze bindings and budgets before skipping a cell. Failed scientific fits inside a completed budget remain recorded; fatal stage errors stop dependent commands. To publish intermediate evidence, pass each completed stage using repeated `--evaluation-run` to a fresh `attribution report`.
+
+Exports include four `mass_off_*.csv` tables, complete JSON, JSONL, provenance and a data dictionary. Seed and event-MC uncertainty are separate fields; planned denominators and missing evidence remain visible. The paper-facing Markdown contains only off-family results.

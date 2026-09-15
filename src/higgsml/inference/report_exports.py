@@ -15,6 +15,74 @@ from higgsml.errors import ResearchError
 EXPORT_VERSION = "h4l-analysis-export-v1"
 
 
+def publish_mass_off_exports(run, report):
+    summary=report['mass_off_feature_summary']
+    event=report['evidence_layers']['mc-bootstrap']
+    def layered(rows,kind):
+        intervals=event.get('uncertainty',{}).get(kind,[])
+        return [{**row,'event_mc_uncertainty':intervals[i] if i<len(intervals) else None,
+                 'event_mc_status':event.get('status','not_run')} for i,row in enumerate(rows)]
+    tables={'mass_off_feature_metrics.csv':summary['records'],
+            'mass_off_feature_attribution.csv':layered(summary['contributions'],'contributions'),
+            'mass_off_feature_interactions.csv':layered(summary['interactions'],'interactions'),
+            'mass_off_pairwise_comparisons.csv':layered(summary['pairwise_comparisons'],'pairwise')}
+    dictionary={}
+    for name,rows in tables.items():
+        fields=list(dict.fromkeys(k for row in rows for k in row))
+        _write_csv(run,name,rows,fields)
+        dictionary[name]={'fields':fields,'rows':len(rows),'numeric_precision':'full_float_serialization',
+                          'nested_values':'JSON','missing':'empty','intervals':'seed_stability_conditional_on_MC_not_total_uncertainty'}
+        dictionary[name]['semantics']={
+            'width68':'upper68-lower68 in dimensionless signal strength mu; smaller is better',
+            'auc':'selected-checkpoint validation absolute-physical-weight AUC; dimensionless descriptive metric',
+            'median':'median over five per-seed estimates; Shapley and interactions use v=-W68, in mu units',
+            'interval68/interval95':'linear percentile intervals from 3125 joint ordered seed vectors, conditional on current MC',
+            'delta_width68_left_minus_right':'W68(left)-W68(right), mu units; negative favors left',
+            'relative_improvement_left_vs_right':'1-W68(left)/W68(right), dimensionless; positive favors left',
+            'event_mc_uncertainty':'separate 200-replica fixed-network calibration/template event-group bootstrap; null unless complete',
+            'strict_win_count/tie_count':'number of the five paired seeds; ties use exact numerical equality',
+            'identities':'candidate_key, seed, subset, family_id, cohort_id and model_id preserve source bindings'}
+    run.write_json('data_dictionary.json',dictionary)
+    run.write_json('provenance.json',{'family_id':report['family_id'],'upstreams':run.manifest['upstreams'],
+                                    'budgets':report['budgets'],'registration_status':report['registration_status'],
+                                    'evaluation_plan_id':report['evaluation_plan_id'],'evaluation_plan':report['evaluation_plan']})
+    path=run.path/'analysis_records.jsonl'
+    with path.open('x',encoding='utf-8') as stream:
+        for name,rows in tables.items():
+            for row in rows: stream.write(json.dumps({'table':name,'record':row},allow_nan=False)+'\n')
+    run.register_file('analysis_records.jsonl')
+    lines=['# Mass-off feature attribution','',
+           'Exploratory MC-only technical study. The classifier omits explicit m4l; the likelihood retains the mass coordinate.',
+           'Independent physical and signed-MC/T1 qualification remains pending. This is not a physics measurement.','',
+           '| Subset | Median W68 | Seed range | Shared first places |','|---|---:|---|---:|']
+    for row in summary['ranking_stability']:
+        lines.append(f"| {row['subset']} | {row['width68']['median']:.8g} | {row['min_width68']:.8g}–{row['max_width68']:.8g} | {row['first_place_count']} |")
+    lines+=['','## Exact contributions','', '| Group | Median contribution | 68% seed stability | 95% seed stability |','|---|---:|---|---|']
+    for row in summary['contributions']:
+        lines.append(f"| {row['group']} | {row['median']:.8g} | {row['interval68']} | {row['interval95']} |")
+    lines+=['','Contributions and 24 conditional interactions are computed per seed before taking medians. Median contributions need not sum to the median endpoint difference.',
+            'All 105 pairs are exported; intervals are per pair and do not provide simultaneous coverage.',
+            'The 3125 joint seed vectors describe training-seed stability conditional on current MC. Event-MC intervals remain a separate layer.','',
+            'Event-MC contribution intervals: '+json.dumps(event.get('uncertainty',{}).get('contributions',{'status':event.get('status')})),
+            '', '## Conditional interactions','', '| Pair | Conditioning subset | Median | 68% seed stability |','|---|---|---:|---|']
+    for row in summary['interactions']:
+        lines.append(f"| {row['pair']} | {row['conditioning_subset'] or 'empty'} | {row['median']:.8g} | {row['interval68']} |")
+    lines+=['','Event-MC interaction intervals: '+json.dumps(event.get('uncertainty',{}).get('interactions',{'status':event.get('status')})),
+            '', '## Per-seed ranks','',json.dumps(summary['display_order']),
+            '', 'Exact ties retain average ranks and shared first-place counts. Display order does not prove superiority.','',
+            '## Validation AUC and W68','',json.dumps(summary['auc_width_relationship']['per_seed']),
+            '', 'Candidate-median correlations: '+json.dumps(summary['auc_width_relationship']['candidate_medians']),
+            '', 'Correlations are descriptive; each AUC belongs to the same selected checkpoint and validation role.','',
+            '## Compact comparisons','', 'BC and AC versus ABCD were selected from exploration and await frozen validation.',
+            '',json.dumps(summary['compact_vs_full']['comparisons']), '', '## Evidence status','']
+    for name,value in report['evidence_layers'].items():
+        state=value.get('status') or {k:v.get('status') for k,v in value.items()}
+        lines.append(f'- {name}: {state}')
+    lines+=['','Full per-seed ranks, tie groups, interactions, pairing provenance, budgets and failures are preserved in report.json and the CSV/JSONL exports.']
+    (run.path/'report.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
+    run.register_file('report.md')
+
+
 def _json(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 

@@ -34,7 +34,14 @@ def coverage_summary(intervals, *, mu, confidence=.95):
         raise ResearchError("Coverage needs a positive declared toy budget")
     p=covered/n; z=float(norm.ppf((1+confidence)/2)); denom=1+z*z/n
     center=(p+z*z/(2*n))/denom; half=z*math.sqrt(p*(1-p)/n+z*z/(4*n*n))/denom
-    return {"status":"valid" if len(valid)==n else "coverage_incomplete","budget":n,"valid_fits":len(valid),"failed_fits":n-len(valid),"failure_rate":(n-len(valid))/n,"covered":covered,"coverage":p if len(valid)==n else None,"success_and_coverage_fraction":p,"wilson_interval_success_and_coverage":[center-half,center+half],"binomial_standard_error":math.sqrt(p*(1-p)/n),"interpretation":"failed fits are reported; success-and-coverage is not conditional coverage"}
+    conditional = None
+    conditional_interval = None
+    if valid:
+        nv=len(valid); conditional=covered/nv; d=1+z*z/nv
+        c=(conditional+z*z/(2*nv))/d
+        h=z*math.sqrt(conditional*(1-conditional)/nv+z*z/(4*nv*nv))/d
+        conditional_interval=[c-h,c+h]
+    return {"status":"valid" if len(valid)==n else "coverage_incomplete","budget":n,"valid_fits":len(valid),"failed_fits":n-len(valid),"failure_rate":(n-len(valid))/n,"covered":covered,"coverage":p if len(valid)==n else None,"success_and_coverage_fraction":p,"wilson_interval_success_and_coverage":[center-half,center+half],"conditional_coverage":conditional,"wilson_interval_conditional_coverage":conditional_interval,"binomial_standard_error":math.sqrt(p*(1-p)/n),"interpretation":"failed fits are reported; success-and-coverage is not conditional coverage"}
 
 
 def paired_coverage_error(left, right, *, mu, pairing_id):

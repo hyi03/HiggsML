@@ -84,7 +84,8 @@ def build_templates(frame, *, mass_edges, mapping_id, candidate_id,
     return {"status": "valid" if not issues else "insufficient_statistics", "dataset": str(frame.dataset.iloc[0]), "role": "template", "candidate_id": candidate_id, "mapping_id": mapping_id, "mass_edges": edges.tolist(), "categories": list(categories), "active_bins": active, "samples": samples, "issues": issues, "structural_zero_evidence": structural_zero_evidence, "variance_convention": "sum_outer_products_of_group_bin_signed_weights"}
 
 
-def common_mass_grid(candidate_frames, *, mass_edges, thresholds, assessment_started=False):
+def common_mass_grid(candidate_frames, *, mass_edges, thresholds, assessment_started=False,
+                     structural_zero_bundles=None):
     """Remove the right edge of the leftmost failing mass bin for every candidate."""
     if assessment_started:
         raise ResearchError("Mass-grid selection is forbidden after assessment starts")
@@ -93,7 +94,17 @@ def common_mass_grid(candidate_frames, *, mass_edges, thresholds, assessment_sta
     edges, history = list(mass_edges), []
     statistics = {name: {} for name in candidate_frames}
     while True:
-        artifacts = {name: build_templates(frame, mass_edges=edges, mapping_id=name, candidate_id=name, thresholds=thresholds, categories=(0,) if name == "M0" else (0,1), _statistics=statistics[name]) for name, frame in sorted(candidate_frames.items())}
+        artifacts = {}
+        for name, frame in sorted(candidate_frames.items()):
+            bundle = (structural_zero_bundles or {}).get(name)
+            evidence = None
+            if bundle is not None:
+                from higgsml.inference.attribution import structural_evidence
+                evidence = structural_evidence(bundle, frame, edges)
+            artifacts[name] = build_templates(frame, mass_edges=edges,
+                mapping_id=bundle['mapping_id'] if bundle else name, candidate_id=name,
+                thresholds=thresholds, categories=(0,) if name == 'M0' else (0,1),
+                structural_zero_evidence=evidence, _statistics=statistics[name])
         bad = [issue["bin"] % (len(edges)-1) for t in artifacts.values() for issue in t["issues"]]
         if not bad or len(edges) == 2:
             return {"status": "valid" if not bad else "insufficient_statistics", "mass_edges": edges, "merge_history": history, "templates": artifacts}
