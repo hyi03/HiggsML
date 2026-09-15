@@ -124,7 +124,6 @@
     "min_rho": 0.2
   },
   "validation": {
-    "repository_authority_validation": "not_run",
     "scientific_numerical_validation": "pending_independent_reference",
     "bound_mc_pilot": "not_run",
     "matrix_element": "blocked_missing_reference",

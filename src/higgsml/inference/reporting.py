@@ -372,7 +372,7 @@ def build_report(candidate_statuses, *, primary_records=(), environment=None, re
         raise ResearchError("Report must enumerate planned candidate states")
     feature_comparisons = list(feature_comparisons)
     mass_input_comparisons = list(mass_input_comparisons)
-    return {"status":"software_report","scope":"MC-only educational/technical research","candidate_statuses":dict(candidate_statuses),"primary_comparison":main_comparison(primary_records),"feature_combination_comparisons":feature_comparisons,"feature_combination_summary":feature_combination_summary(feature_comparisons),"mass_input_comparisons":mass_input_comparisons,"mass_input_summary":mass_input_summary(mass_input_comparisons),"environment":environment or {"repository_authority_validation":"not_run","scientific_numerical_validation":"not_run"},"results":results or {},"scientific_results_obtained":False,"future_R_experiments":"require_separate_registration"}
+    return {"status":"software_report","scope":"MC-only educational/technical research","candidate_statuses":dict(candidate_statuses),"primary_comparison":main_comparison(primary_records),"feature_combination_comparisons":feature_comparisons,"feature_combination_summary":feature_combination_summary(feature_comparisons),"mass_input_comparisons":mass_input_comparisons,"mass_input_summary":mass_input_summary(mass_input_comparisons),"environment":environment or {"scientific_numerical_validation":"not_run"},"results":results or {},"scientific_results_obtained":False,"future_R_experiments":"require_separate_registration"}
 
 
 def write_learning_curves(models, path):

@@ -78,7 +78,7 @@ def test_scientific_terminal_state_is_durable_and_not_usable(tmp_path):
         raise ResearchStateError("MELA reference absent", status="external_reference_missing")
     receipt = json.loads((tmp_path / "blocked" / "manifest.json").read_text())
     assert receipt["status"] == "external_reference_missing"
-    assert receipt["repository_authority_validation"] == "not_run"
+    assert receipt["scientific_numerical_validation"] == "not_run"
     with pytest.raises(ResearchError, match="usable"):
         read_run(tmp_path / "blocked", dataset="atlas2020_4lep", protocol={})
 

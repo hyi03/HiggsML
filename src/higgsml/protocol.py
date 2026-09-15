@@ -132,7 +132,7 @@ def validate_protocol(raw, dataset):
     _number(me["reference_atol"],"reference_atol")
     if me["reference_rtol"]>1e-3 or me["reference_atol"]>1e-5 or me["probability_semantics"]!="nonnegative_densities_common_input_support" or me["score"]!="p_signal/(p_signal+p_background)":
         raise ResearchError("unsupported ME numerical contract")
-    expected_validation={"repository_authority_validation":"not_run","scientific_numerical_validation":"pending_independent_reference",
+    expected_validation={"scientific_numerical_validation":"pending_independent_reference",
                          "bound_mc_pilot":"not_run","matrix_element":"blocked_missing_reference","external_robustness":"not_run"}
     if raw["validation"]!=expected_validation:
         raise ResearchError("run validation evidence cannot overwrite software protocol evidence states")

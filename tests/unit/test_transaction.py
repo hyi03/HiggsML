@@ -115,3 +115,52 @@ def test_double_publish_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="already finished"):
         transaction._publish()
+
+
+def test_publish_retries_a_transient_directory_rename_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "runs"
+    target = root / "run-retried"
+    transaction = RunTransaction(target, allowed_root=root)
+    (transaction.path / "result.txt").write_text("ok", encoding="utf-8")
+    original_rename = Path.rename
+    attempts = 0
+
+    def transient_rename(path: Path, destination: Path) -> Path:
+        nonlocal attempts
+        if path == transaction.path:
+            attempts += 1
+            if attempts == 1:
+                raise OSError("temporary directory lock")
+        return original_rename(path, destination)
+
+    monkeypatch.setattr(Path, "rename", transient_rename)
+
+    transaction._publish()
+
+    assert attempts == 2
+    assert target.joinpath("result.txt").read_text(encoding="utf-8") == "ok"
+
+
+def test_publish_retry_does_not_overwrite_a_competing_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "runs"
+    target = root / "run-raced"
+    transaction = RunTransaction(target, allowed_root=root)
+    original_rename = Path.rename
+
+    def competing_rename(path: Path, destination: Path) -> Path:
+        if path == transaction.path:
+            target.mkdir()
+            raise OSError("competing publisher")
+        return original_rename(path, destination)
+
+    monkeypatch.setattr(Path, "rename", competing_rename)
+
+    with pytest.raises(RunPathError, match="already exists"):
+        transaction._publish()
+
+    assert transaction.path.is_dir()
+    assert target.is_dir()

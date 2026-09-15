@@ -2,7 +2,7 @@
 
 本仓库只维护 `H -> ZZ* -> 4l` 的 **MC-only 教育与技术研究流程**。当前论文主线是在分类器移除显式 `m4l` 输入后，研究 A/B/C/D 运动学特征组对信号强度 `mu` 推断精度的贡献、互补性及五种子稳定性，并以绑定协议、不可覆盖产物和冻结后的 assessment 隔离保证流程可审计。
 
-仓库输出不构成 ATLAS/CMS 官方结果、Higgs discovery 或物理测量。软件实现、合成测试、完整 MC 验证、独立矩阵元参考和原生 ARM64 authority 验证是不同证据层级，不能互相替代。
+仓库输出不构成 ATLAS/CMS 官方结果、Higgs discovery 或物理测量。软件实现、合成测试、完整 MC 验证和独立矩阵元参考是不同证据层级，不能互相替代。支持的平台与 CPU 架构不具有科研权威等级差异。
 
 ## 1. 了解项目范围与证据状态
 
@@ -46,7 +46,7 @@ python -m pip check
 python -m pip install -r requirements.txt
 ```
 
-`win.yml` 与 `osx.yml` 分别记录 Windows 和 macOS ARM64 锁定环境。Windows 测试不能替代原生 ARM64 authority 验证；MELA 后端需在独立 Linux/WSL 环境中配置。
+`win.yml` 与 `osx.yml` 是已有 Windows 和 macOS 环境快照，`environment.yml` 提供通用环境定义；它们都不是权威平台要求。项目可在依赖可用的 Windows、Linux 或 macOS，以及不同 CPU 架构上运行。MELA 后端需在独立 Linux/WSL 环境中配置。
 
 安装后统一核心入口为：
 
@@ -122,8 +122,41 @@ python scripts/h4l_run.py --run-name T1
 ```
 
 默认批次执行 seed 42–46 的注册候选、校准、共同模板、T1 `mu=1` inference 与报告。显式 `--seed 42` 仅是单种子诊断，不能支持五种子主比较。
+批次中断后，使用 `python scripts/h4l_run.py --run-name T1 --continue` 继续：合法的完整阶段会被跳过；不完整、损坏或绑定不匹配的最终阶段目录会先隔离为 `.名称.<uuid>.invalid`，再重试一次。已有 `.failed` 证据不会被删除。
 
 三个脚本均支持 `--help`、`--plan-only` 和 `--no-progress`。它们也提供严格限于所选 `runs/` 子目录的 `--clean`；`--clean` 不能与 `--plan-only` 同时使用，执行前应先用 `--help` 或单独的计划命令核对路径。清理会删除不可恢复的本地运行产物；完成、失败、诊断或已发布的 run 均不得原地覆盖。
+
+### 5.4 复用既有产物运行 off-only 特征归因
+
+本次新增流程可以直接复用已有的 `runs/h4l-prepare/prepare`，无需重新 prepare 或训练。注册阶段会核对 prepared artifact、population、核心协议，以及 75 个 `m4l=off` 训练/校准产物的候选、seed、checkpoint 和上游绑定；任一身份不一致时拒绝复用。所有输出目录必须是 `runs/` 下尚不存在的新目录。
+
+```bash
+python -m higgsml.cli attribution register \
+  --source-root runs/h4l-train-T2/batch/all-seeds \
+  --prepared-run runs/h4l-prepare/prepare \
+  --t1-validation runs/h4l-train-T2/batch/all-seeds/templates/t1-validation.json \
+  --run-dir runs/off-study-001/register
+python -m higgsml.cli attribution nominal \
+  --registration-run runs/off-study-001/register \
+  --run-dir runs/off-study-001/nominal
+python -m higgsml.cli attribution freeze \
+  --registration-run runs/off-study-001/register \
+  --template-run runs/off-study-001/nominal \
+  --run-dir runs/off-study-001/freeze
+python -m higgsml.cli attribution asimov \
+  --registration-run runs/off-study-001/register \
+  --template-run runs/off-study-001/nominal \
+  --freeze-run runs/off-study-001/freeze \
+  --run-dir runs/off-study-001/asimov
+python -m higgsml.cli attribution report \
+  --registration-run runs/off-study-001/register \
+  --template-run runs/off-study-001/nominal \
+  --freeze-run runs/off-study-001/freeze \
+  --result-run runs/off-study-001/asimov \
+  --run-dir runs/off-study-001/report-B
+```
+
+`report-B/evaluation-plan.json` 由上述真实 registration、prepared、nominal、freeze 和 Asimov manifest 自动生成，不需要手工填写 artifact ID。它是后续 `mc-bootstrap`、三组 model-self Toys、三组受控 assessment Toys 和 T2 的绑定输入。Stage B 可以在独立 P0/T1 与 assessment 历史审查尚未满足时发布探索性 Asimov 报告；这不表示事件 bootstrap、coverage、T2 或完整 MC 科学验证已经完成。完整 C–E 命令及恢复规则见[off-only 复现步骤](docs/implementation-and-reproduction.md#off-only-attribution-execution)。
 
 ## 6. 使用项目工具开展研究
 
@@ -165,7 +198,7 @@ python scripts/h4l_evaluate.py --plan config/examples/h4l_evaluation_plan.json \
 
 示例计划是 `exploratory_posthoc` 模板，三个输入 artifact ID 均为待替换的零值，不能直接作为正式
 注册计划执行。实际执行会核对 prepared/template/freeze artifact ID、协议摘要和 Toy/T2 预算；
-计划模式只审计矩阵，不打开 assessment。外部 signed-MC/T1、物理系统变化、MELA 和原生 ARM64
+计划模式只审计矩阵，不打开 assessment。外部 signed-MC/T1、物理系统变化和 MELA
 材料通过 `evidence-import` 只读接入；缺失材料必须保持 `external_pending`。
 
 ### 6.2 运行样本效率研究

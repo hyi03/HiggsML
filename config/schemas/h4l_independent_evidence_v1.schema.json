@@ -5,7 +5,7 @@
   "required": ["schema_version", "evidence_type", "status", "dataset", "protocol_sha256", "prepared_artifact_id", "scope", "independent", "reference", "findings", "limitations"],
   "properties": {
     "schema_version": {"const": "h4l-independent-evidence-v1"},
-    "evidence_type": {"enum": ["signed_mc_t1", "physical_systematics", "mela", "arm64_authority", "frozen_assessment"]},
+    "evidence_type": {"enum": ["signed_mc_t1", "physical_systematics", "mela", "frozen_assessment"]},
     "status": {"enum": ["validated", "external_pending", "failed"]},
     "dataset": {"const": "atlas2020_4lep"},
     "protocol_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},

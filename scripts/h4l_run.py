@@ -10,6 +10,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import sys
+import uuid
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
@@ -31,7 +32,7 @@ SOURCE_ROOT = PROJECT_ROOT / "src"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
-from higgsml.artifacts import digest_json  # noqa: E402
+from higgsml.artifacts import digest_json, read_run  # noqa: E402
 from higgsml.cleanup import remove_run_directories  # noqa: E402
 from higgsml.errors import ResearchError  # noqa: E402
 from higgsml.protocol import load_protocol  # noqa: E402
@@ -65,6 +66,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--t1-validation", type=Path)
     parser.add_argument("--output-root", type=Path)
     parser.add_argument("--plan-only", action="store_true")
+    parser.add_argument("--show-command", action="store_true",
+                        help="Print each stage command before it is run.")
+    parser.add_argument(
+        "--continue", dest="continue_run", action="store_true",
+        help=("Continue an existing batch: skip valid complete stages and quarantine "
+              "an invalid stage directory before retrying it once."),
+    )
     parser.add_argument(
         "--clean", action="store_true",
         help="Delete the complete or explicit single-seed batch selected by this command.",
@@ -126,9 +134,10 @@ def _load_config(path: Path) -> dict:
     return config
 
 
-def _invoke(arguments: list[str], *, plan_only: bool) -> None:
+def _invoke(arguments: list[str], *, plan_only: bool, show_command: bool = False) -> None:
     command = [sys.executable, "-m", "higgsml.cli", *arguments]
-    print(_display(command), flush=True)
+    if show_command:
+        print(_display(command), flush=True)
     if plan_only:
         return
     process = subprocess.Popen(command, cwd=PROJECT_ROOT)
@@ -148,6 +157,35 @@ def _invoke(arguments: list[str], *, plan_only: bool) -> None:
         sys.stderr.flush()
     if return_code != 0:
         raise WorkflowError(f"higgsml failed with exit code {return_code}", return_code)
+
+
+def _continue_stage(
+    arguments: list[str], *, batch_root: Path, dataset: str, protocol: dict,
+) -> str:
+    """Classify a continued stage, quarantining an invalid existing run."""
+    run_dir = Path(arguments[arguments.index("--run-dir") + 1])
+    try:
+        relative = run_dir.relative_to(batch_root)
+    except ValueError as error:
+        raise WorkflowError(f"Stage run directory is outside OutputRoot: {run_dir}", 4) from error
+    if not relative.parts:
+        raise WorkflowError(f"Stage run directory cannot be OutputRoot: {run_dir}", 4)
+    if not os.path.lexists(run_dir):
+        return "run"
+    try:
+        read_run(run_dir, dataset=dataset, protocol=protocol, stages=(arguments[0],))
+    except ResearchError as error:
+        quarantine = run_dir.parent / f".{run_dir.name}.{uuid.uuid4().hex}.invalid"
+        try:
+            run_dir.rename(quarantine)
+        except OSError as rename_error:
+            raise WorkflowError(
+                f"Cannot quarantine invalid stage run: {run_dir}", 4
+            ) from rename_error
+        print(f"QUARANTINE invalid: {run_dir} -> {quarantine} ({error})", flush=True)
+        return "retry"
+    print(f"SKIP complete: {run_dir}", flush=True)
+    return "skip"
 
 
 def _validate_t1(path: Path, protocol_path: Path, dataset: str) -> None:
@@ -232,7 +270,7 @@ def _print_conclusions(report: dict, report_path: Path, *, complete: bool) -> No
     for row in mass_summary.get("combinations", []):
         print(f"  {row['subset']}: median delta AUC={row['median_delta_auc_on_minus_off']:.6g}, "
               f"median W68 improvement={row['median_relative_w68_improvement_from_m4l']:.4%}")
-    print("Repository ARM64 authority and independent scientific numerical validation remain separate.")
+    print("Independent scientific numerical validation remains separate from software execution.")
     print(f"Report: {report_path}")
 
 
@@ -282,6 +320,9 @@ def _clean(args: argparse.Namespace) -> None:
 
 
 def _run(args: argparse.Namespace) -> None:
+    continue_run = getattr(args, "continue_run", False)
+    if continue_run and (getattr(args, "clean", False) or args.plan_only):
+        raise WorkflowError("--continue cannot be combined with --clean or --plan-only", 2)
     if getattr(args, "clean", False):
         _clean(args)
         return
@@ -329,8 +370,16 @@ def _run(args: argparse.Namespace) -> None:
             if not required.exists():
                 raise WorkflowError(f"Required bound input does not exist: {required}", 3)
         _validate_t1(t1_validation, protocol, config["dataset"])
-        if batch_root.exists():
+        if continue_run and (not batch_root.is_dir() or batch_root.is_symlink()):
+            raise WorkflowError(
+                f"OutputRoot must be an existing ordinary directory for --continue: {batch_root}", 4
+            )
+        if not continue_run and batch_root.exists():
             raise WorkflowError(f"OutputRoot already exists and cannot be reused: {batch_root}", 4)
+
+    continuation_protocol = (
+        load_protocol(protocol, dataset=config["dataset"]).to_dict() if continue_run else None
+    )
 
     common = ["--dataset", config["dataset"], "--protocol", str(protocol)]
     calibration_runs: list[Path] = []
@@ -423,7 +472,19 @@ def _run(args: argparse.Namespace) -> None:
               disable=args.plan_only or args.no_progress) as progress:
         for label, arguments in progress:
             progress.set_postfix_str(label, refresh=True)
-            _invoke(arguments, plan_only=args.plan_only)
+            if continue_run:
+                action = _continue_stage(
+                    arguments, batch_root=batch_root, dataset=config["dataset"],
+                    protocol=continuation_protocol,
+                )
+                if action == "skip":
+                    continue
+                run_dir = arguments[arguments.index("--run-dir") + 1]
+                print(f"{action.upper()}: {run_dir}", flush=True)
+            invoke_options = {"plan_only": args.plan_only}
+            if getattr(args, "show_command", False):
+                invoke_options["show_command"] = True
+            _invoke(arguments, **invoke_options)
 
     if args.plan_only:
         print(f"Plan complete: {len(seeds)} seed(s), {33 * len(seeds)} model trainings, "

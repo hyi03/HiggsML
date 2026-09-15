@@ -42,7 +42,7 @@ The IDs below retain the former requirements document's traceability. Implementa
 | MODEL-01, CAL-01 | Bind candidate, inputs, architecture, seed, checkpoint, diagnostics, calibration measure, grid, ties, and mapping |
 | INF-01, INF-02 | Preserve signed template statistics and common bins; record likelihood, intervals, injection, budget, and failures |
 | ART-01, ART-02 | Staging, atomic publication, manifest-last, success/failure separation, full lineage and platform |
-| QA-01, QA-02, QA-03 | Test isolation and numerical contracts; report evidence levels separately; require independent MELA/coverage/ARM64 evidence for matching claims |
+| QA-01, QA-02, QA-03 | Test isolation and numerical contracts; report evidence levels separately; require independent MELA/coverage evidence for matching claims |
 
 ## Environment and installation
 
@@ -59,7 +59,7 @@ higgsml --help
 
 Create the environment only if it does not already exist. `requirements.txt` supplies the inference additions including pyhf. The optional package extra is `.[parallel]`, containing cloudpickle and threadpoolctl; it is not named `research-parallel`. Serial defaults do not require activating parallel execution. Do not change environment locks merely to make a validation claim pass.
 
-Native ARM64 authority replay is a separate task from Windows development or numerical checks. MELA uses an independently configured Linux/WSL environment, described below.
+Windows, Linux, and macOS on supported CPU architectures are peer execution platforms; none is an authority requirement. Record the actual platform in provenance when evaluating portability. MELA uses an independently configured Linux/WSL environment, described below.
 
 ### Controlled acquisition
 
@@ -211,7 +211,7 @@ Missing historical values remain null with `not_recorded` or explicit status, ne
 
 ### Independent evidence
 
-`h4l-independent-evidence-v1` supports `signed_mc_t1`, `physical_systematics`, `mela`, `arm64_authority`, and `frozen_assessment`. A validated package needs external producer/reference ID, independence explanation, type-specific comparison metadata, and at least one contained file receipt with size/hash. Reject escaping/link paths, invalid receipts, unsourced variations, or non-native authority claims.
+`h4l-independent-evidence-v1` supports `signed_mc_t1`, `physical_systematics`, `mela`, and `frozen_assessment`. A validated package needs external producer/reference ID, independence explanation, type-specific comparison metadata, and at least one contained file receipt with size/hash. Reject escaping/link paths, invalid receipts, or unsourced variations.
 
 The [pending example](../config/examples/h4l_independent_evidence.pending.json) can represent missing evidence as `external_pending`. `evidence-import --evidence-file <package>` only validates declared metadata/files; it does not run external experiments or promote schema validity to scientific validity. An empty [schema registry](../config/schemas/registry.json) provides no self-certified golden reference; authority references must be independently registered.
 
@@ -293,7 +293,7 @@ git diff --check
 
 Optional syntax/package checks use `python -m compileall -q src scripts tests` and `python -m build --wheel --no-isolation` when build tooling is installed. Generated outputs are not committed. A separate synthetic benchmark is available as `python -m scripts.research_performance_benchmark --output <fresh-path.json>`; never overwrite retained measurements or benchmark alongside competing training/tests.
 
-Relevant scientific-contract checks include all/none/alternating eligible ROOT spans, boundaries, repeated groups, signed cancellation, cross-bin covariance, bootstrap multiplicity, CDF tails/ties, exact training histories, MLE/root failures, worker-order/failure cleanup, ME coverage/bindings, and artifact round trips. Independent expected values or a fixed baseline must accompany implementation checks. Full-MC, external MELA, source access, and native ARM64 validation remain distinct from these tests; dated evidence is in [Results and limitations](results-and-limitations.md).
+Relevant scientific-contract checks include all/none/alternating eligible ROOT spans, boundaries, repeated groups, signed cancellation, cross-bin covariance, bootstrap multiplicity, CDF tails/ties, exact training histories, MLE/root failures, worker-order/failure cleanup, ME coverage/bindings, and artifact round trips. Independent expected values or a fixed baseline must accompany implementation checks. Full-MC, external MELA, source access, and optional cross-platform compatibility checks remain distinct from these tests; dated evidence is in [Results and limitations](results-and-limitations.md).
 
 ## Off-only attribution execution
 
