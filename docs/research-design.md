@@ -1,5 +1,13 @@
 # Research design
 
+## Active off-only study
+
+The active paper objective is to quantify the contribution, complementarity and training-seed stability of A/B/C/D kinematic groups when the classifier omits explicit `m4l`. The likelihood still uses the registered mass window and mass coordinate. The 15 nonempty combinations use seeds 42–46 and their existing checkpoints; five deterministic `M0off` identities supply the same-family empty set. No model is retrained for this analysis.
+
+The six result areas are all off-only: paired W68; complete subset ranking/stability; exact Shapley and 24 conditional interactions; validation-checkpoint AUC versus W68; BC/AC versus ABCD as exploration-selected comparisons pending frozen validation; and all 105 direct subset pairs. AUC is descriptive, not an inference or coverage qualification. Older physical-CDF M5/M4, explicit-mass controls, MELA and sample-efficiency workflows remain compatible background/extension studies and are not required off-family candidates.
+
+The versioned [definition](../config/protocols/feature_attribution_mass_off_v1.json) is not a completed scientific registration. A new immutable registration run binds the actual core protocol, prepared population and 75 audited model/calibration artifacts. The candidate family has its own 80-identity G1 and freeze; freezing does not grant assessment access. Automatic P0/T1 materials remain software evidence, with independent qualification pending. Actual uncertainty/coverage stages and native ARM64 are separate evidence levels.
+
 ## Physical motivation and scope
 
 The `H -> ZZ* -> 4l` channel connects a reconstructible four-lepton final state to a resonant signal and a continuum background. At a Higgs mass near 125 GeV, at least one Z is off shell. Dilepton masses and angles describe the decay geometry; transverse momentum, rapidity, and individual-lepton observables also reflect production, acceptance, and reconstruction.
@@ -12,7 +20,7 @@ Signal strength, `mu`, scales the bound ggH125 signal template. This is an MC-on
 
 Only the H4l package is maintained. Real data, off-shell width inference, CP/EFT fits, unrestricted architecture searches, legacy15 training, and XGBoost workflows are outside scope. Historical implementations are not active alternatives.
 
-## Questions and primary comparison
+## Historical questions and supporting comparisons
 
 | Question | Controlled comparison | Interpretation after validation |
 |---|---|---|
@@ -23,7 +31,7 @@ Only the H4l package is maintained. Real data, off-shell width inference, CP/EFT
 | Q4a: How much does explicit mass add to each group subset? | Independently retrained `m4l` on/off pairs for all 15 nonempty subsets, with global and fixed-mass-slice AUC plus common-grid T1 W68 | Explicit mass contribution for the fixed learner; correlated kinematics may still encode mass |
 | Q5: Does an improvement generalize? | Independent events and documented generator, composition, or detector variations | Robustness within the variations actually tested |
 
-The pilot has one primary comparison: **M5 (`engineered19` with physical CDF) versus M4 (`decay7` with physical CDF), under the same T1 template-statistical model at injected `mu=1`.** Compare the expected 68% Asimov interval width across paired network seeds 42--46. Retain all values and failures. Definitions are in [Methods and evaluation](methods-and-evaluation.md#primary-and-supporting-metrics).
+The retained legacy pilot has one primary comparison: **M5 (`engineered19` with physical CDF) versus M4 (`decay7` with physical CDF), under the same T1 template-statistical model at injected `mu=1`.** Compare the expected 68% Asimov interval width across paired network seeds 42--46. Retain all values and failures. Definitions are in [Methods and evaluation](methods-and-evaluation.md#primary-and-supporting-metrics).
 
 AUC measures ranking on the declared nonnegative evaluation measure and remains useful for training and diagnostics. It does not incorporate the final mass templates, yields, nuisance model, or coverage. Narrower intervals are useful only when bias, coverage, and assumptions are also acceptable.
 

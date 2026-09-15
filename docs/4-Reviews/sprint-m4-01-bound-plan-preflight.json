@@ -1,0 +1,170 @@
+{
+  "schema_version": "h4l-mass-off-evaluation-plan-v1",
+  "family_id": "engineered19_raw_T1_m4l_off_attribution_v1",
+  "candidate_count": 80,
+  "candidate_keys": [
+    "M0off:42",
+    "M3:42:groups=A:m4l=off",
+    "M3:42:groups=B:m4l=off",
+    "M3:42:groups=C:m4l=off",
+    "M3:42:groups=D:m4l=off",
+    "M3:42:groups=AB:m4l=off",
+    "M3:42:groups=AC:m4l=off",
+    "M3:42:groups=AD:m4l=off",
+    "M3:42:groups=BC:m4l=off",
+    "M3:42:groups=BD:m4l=off",
+    "M3:42:groups=CD:m4l=off",
+    "M3:42:groups=ABC:m4l=off",
+    "M3:42:groups=ABD:m4l=off",
+    "M3:42:groups=ACD:m4l=off",
+    "M3:42:groups=BCD:m4l=off",
+    "M3:42:groups=ABCD:m4l=off",
+    "M0off:43",
+    "M3:43:groups=A:m4l=off",
+    "M3:43:groups=B:m4l=off",
+    "M3:43:groups=C:m4l=off",
+    "M3:43:groups=D:m4l=off",
+    "M3:43:groups=AB:m4l=off",
+    "M3:43:groups=AC:m4l=off",
+    "M3:43:groups=AD:m4l=off",
+    "M3:43:groups=BC:m4l=off",
+    "M3:43:groups=BD:m4l=off",
+    "M3:43:groups=CD:m4l=off",
+    "M3:43:groups=ABC:m4l=off",
+    "M3:43:groups=ABD:m4l=off",
+    "M3:43:groups=ACD:m4l=off",
+    "M3:43:groups=BCD:m4l=off",
+    "M3:43:groups=ABCD:m4l=off",
+    "M0off:44",
+    "M3:44:groups=A:m4l=off",
+    "M3:44:groups=B:m4l=off",
+    "M3:44:groups=C:m4l=off",
+    "M3:44:groups=D:m4l=off",
+    "M3:44:groups=AB:m4l=off",
+    "M3:44:groups=AC:m4l=off",
+    "M3:44:groups=AD:m4l=off",
+    "M3:44:groups=BC:m4l=off",
+    "M3:44:groups=BD:m4l=off",
+    "M3:44:groups=CD:m4l=off",
+    "M3:44:groups=ABC:m4l=off",
+    "M3:44:groups=ABD:m4l=off",
+    "M3:44:groups=ACD:m4l=off",
+    "M3:44:groups=BCD:m4l=off",
+    "M3:44:groups=ABCD:m4l=off",
+    "M0off:45",
+    "M3:45:groups=A:m4l=off",
+    "M3:45:groups=B:m4l=off",
+    "M3:45:groups=C:m4l=off",
+    "M3:45:groups=D:m4l=off",
+    "M3:45:groups=AB:m4l=off",
+    "M3:45:groups=AC:m4l=off",
+    "M3:45:groups=AD:m4l=off",
+    "M3:45:groups=BC:m4l=off",
+    "M3:45:groups=BD:m4l=off",
+    "M3:45:groups=CD:m4l=off",
+    "M3:45:groups=ABC:m4l=off",
+    "M3:45:groups=ABD:m4l=off",
+    "M3:45:groups=ACD:m4l=off",
+    "M3:45:groups=BCD:m4l=off",
+    "M3:45:groups=ABCD:m4l=off",
+    "M0off:46",
+    "M3:46:groups=A:m4l=off",
+    "M3:46:groups=B:m4l=off",
+    "M3:46:groups=C:m4l=off",
+    "M3:46:groups=D:m4l=off",
+    "M3:46:groups=AB:m4l=off",
+    "M3:46:groups=AC:m4l=off",
+    "M3:46:groups=AD:m4l=off",
+    "M3:46:groups=BC:m4l=off",
+    "M3:46:groups=BD:m4l=off",
+    "M3:46:groups=CD:m4l=off",
+    "M3:46:groups=ABC:m4l=off",
+    "M3:46:groups=ABD:m4l=off",
+    "M3:46:groups=ACD:m4l=off",
+    "M3:46:groups=BCD:m4l=off",
+    "M3:46:groups=ABCD:m4l=off"
+  ],
+  "budgets": {
+    "mc_bootstrap": {
+      "replicas": 200,
+      "seed": 42001
+    },
+    "toys": {
+      "injections": [
+        0,
+        1,
+        2
+      ],
+      "count": 500,
+      "seed": 42
+    },
+    "t2": {
+      "mu": 1,
+      "outer_replicas": 20,
+      "inner_toys": 100,
+      "seed": 42
+    }
+  },
+  "inputs": {
+    "asimov_artifact_id": "faddb4e6d0a9a7d3be8d2245df06e99a9f8e73b6751ed141260f5b53d5947fad",
+    "freeze_artifact_id": "0f8cc5f7d161fc419f8489e4d9bb498c7746f45393e726313618f1a42571d00b",
+    "prepared_artifact_id": "de25bcfb0c9ea11bd9caec54aae0daf934f3a53b9a1d96d738bf5f2fb1bb88e8",
+    "registration_artifact_id": "65445ac6080355dc12a90179b7b0db8c1b200f090bb1706642e94cab8b77147c",
+    "template_artifact_id": "948e4edbed55ff891298c70177cadeea2e4cf7d60910a7a2f4e1e0babe5b9c1a"
+  },
+  "status": "metadata_bound_payload_and_access_checks_pending",
+  "unresolved": [],
+  "stages": [
+    {
+      "stage": "mc-bootstrap",
+      "mu": 1,
+      "output": "D:\\code\\HiggsML-m4l-off\\runs\\m4l-off-evaluate-003\\mc-bootstrap-mu1"
+    },
+    {
+      "stage": "model-self",
+      "mu": 0,
+      "output": "D:\\code\\HiggsML-m4l-off\\runs\\m4l-off-evaluate-003\\model-self-mu0"
+    },
+    {
+      "stage": "model-self",
+      "mu": 1,
+      "output": "D:\\code\\HiggsML-m4l-off\\runs\\m4l-off-evaluate-003\\model-self-mu1"
+    },
+    {
+      "stage": "model-self",
+      "mu": 2,
+      "output": "D:\\code\\HiggsML-m4l-off\\runs\\m4l-off-evaluate-003\\model-self-mu2"
+    },
+    {
+      "stage": "assessment",
+      "mu": 0,
+      "output": "D:\\code\\HiggsML-m4l-off\\runs\\m4l-off-evaluate-003\\assessment-mu0"
+    },
+    {
+      "stage": "assessment",
+      "mu": 1,
+      "output": "D:\\code\\HiggsML-m4l-off\\runs\\m4l-off-evaluate-003\\assessment-mu1"
+    },
+    {
+      "stage": "assessment",
+      "mu": 2,
+      "output": "D:\\code\\HiggsML-m4l-off\\runs\\m4l-off-evaluate-003\\assessment-mu2"
+    },
+    {
+      "stage": "t2",
+      "mu": 1,
+      "output": "D:\\code\\HiggsML-m4l-off\\runs\\m4l-off-evaluate-003\\t2-mu1"
+    }
+  ],
+  "completed_upstream_stages": [
+    "registration_artifact_id",
+    "prepared_artifact_id",
+    "template_artifact_id",
+    "freeze_artifact_id",
+    "asimov_artifact_id"
+  ],
+  "assessment_payload_opened": false,
+  "reused_stages": {},
+  "registration_status": "exploratory_posthoc",
+  "stress": "not_registered"
+}

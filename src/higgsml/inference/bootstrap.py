@@ -14,6 +14,77 @@ from higgsml.modeling.calibration import apply_calibration, assign_categories, f
 from higgsml.modeling.discriminants import predict_discriminant
 
 
+def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_validation):
+    """Full registered event-group reconstruction; failed replicas are not replaced."""
+    from higgsml.inference.attribution import BUDGETS, FAMILY, candidate_keys, structural_evidence, summarize
+    from higgsml.inference.attribution_workflow import asimov_records
+    from higgsml.inference.assessment import categorize_bundle
+    if set(bundles) != set(candidate_keys()) or set(grid['templates']) != set(candidate_keys()):
+        raise ResearchError('MC bootstrap requires the complete off family')
+    if (set(calibration.role) != {'calibration'} or set(template.role) != {'template'}
+            or set(calibration.event_group_id) & set(template.event_group_id)):
+        raise ResearchError('MC bootstrap role/group isolation failed')
+    budget = BUDGETS['mc_bootstrap']
+    rng = np.random.default_rng(budget['seed'])
+    replicas = []
+    for index in range(budget['replicas']):
+        row = {'replica':index,'status':'bootstrap_incomplete','candidate_states':{}}
+        try:
+            c,cm = _resample_groups(calibration,rng,f'c{index}')
+            t,tm = _resample_groups(template,rng,f't{index}')
+            row.update(calibration_group_multiplicities=cm,template_group_multiplicities=tm,mappings={})
+            fitted,built = {},{}
+            for key,bundle in bundles.items():
+                try:
+                    value = deepcopy(bundle)
+                    if value['transform'] != 'raw' or value['mapping'] is not None:
+                        raise ResearchError('off bootstrap must retain raw mapping')
+                    if value['candidate_id'] != 'M0off':
+                        value['thresholds'] = fit_thresholds(c,predict_discriminant(value['model'],c),protocol,
+                                                            model_id=value['model_id'],mapping_id=value['mapping_id'])
+                    frame = categorize_bundle(value,t)
+                    structural = structural_evidence(value,frame,grid['mass_edges']) if value['candidate_id']=='M0off' else None
+                    artifact = build_templates(frame,mass_edges=grid['mass_edges'],mapping_id=value['mapping_id'],
+                                               candidate_id=value['candidate_id'],thresholds=protocol['templates'],
+                                               structural_zero_evidence=structural)
+                    artifact['seed'] = value['seed']
+                    row['candidate_states'][key] = artifact['status']
+                    row['mappings'][key] = {'mapping_id':value['mapping_id'],'thresholds':value['thresholds']}
+                    if artifact['status']=='valid': fitted[key],built[key] = value,artifact
+                except ResearchError as error:
+                    row['candidate_states'][key] = {'status':error.status,'reason':str(error)}
+            if set(built)==set(candidate_keys()):
+                records,results = asimov_records({'templates':built},fitted,protocol,t1_validation,f'replica:{index}')
+                summary = summarize(records,require_auc=False)
+                row.update(status=summary['status'],summary=summary,inference=results)
+        except ResearchError as error:
+            row.update(status=error.status,reason=str(error))
+        replicas.append(row)
+    valid = [r for r in replicas if r['status']=='valid']
+    complete = len(valid)==budget['replicas']
+    def intervals(values):
+        return {'interval68':np.quantile(values,[.16,.84],method='linear').tolist() if complete else None,
+                'interval95':np.quantile(values,[.025,.975],method='linear').tolist() if complete else None}
+    uncertainty = {'contributions':[], 'interactions':[], 'pairwise':[], 'ranking':[]}
+    if valid:
+        for field,target in (('contributions','contributions'),('interactions','interactions')):
+            for i,entry in enumerate(valid[0]['summary'][field]):
+                identity = {k:v for k,v in entry.items() if k in {'group','pair','conditioning_subset'}}
+                uncertainty[target].append({**identity,**intervals([r['summary'][field][i]['median'] for r in valid])})
+        for i,entry in enumerate(valid[0]['summary']['pairwise_comparisons']):
+            uncertainty['pairwise'].append({'left':entry['left'],'right':entry['right'],
+                **{field:intervals([r['summary']['pairwise_comparisons'][i][field]['median'] for r in valid])
+                   for field in ('delta_width68_left_minus_right','relative_improvement_left_vs_right')}})
+        for subset in (r['subset'] for r in valid[0]['summary']['ranking_stability']):
+            uncertainty['ranking'].append({'subset':subset,'estimand':'rank_of_five_seed_median_width68',**intervals([
+                next(x['rank_of_median_width68'] for x in r['summary']['ranking_stability'] if x['subset']==subset) for r in valid])})
+    return {'family_id':FAMILY,'status':'valid' if complete else 'bootstrap_incomplete',
+            'planned_replicas':budget['replicas'],'valid_replicas':len(valid),'failed_replicas':budget['replicas']-len(valid),
+            'seed':budget['seed'],'mass_grid':grid['mass_edges'],'replicas':replicas,'uncertainty':uncertainty,
+            'interval_scope':'event_MC_only_fixed_network_not_total_uncertainty',
+            'successful_replica_interpretation':'conditional_diagnostic_only' if not complete else 'registered_percentile'}
+
+
 def _resample_groups(frame, rng, label):
     groups = np.asarray(sorted(frame.event_group_id.astype(str).unique()))
     if not len(groups):

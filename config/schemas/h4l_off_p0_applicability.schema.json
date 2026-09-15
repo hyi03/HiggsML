@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "package_id", "status", "independent", "dataset", "protocol_sha256", "prepared_artifact_id", "freeze_artifact_id", "template_artifact_id", "source_evidence_sha256", "statistical_model", "reference", "physical_definitions", "numerical_comparisons"],
+  "properties": {
+    "schema_version": {"const": "h4l-off-p0-applicability-v1"},
+    "package_id": {"$ref": "#/$defs/digest"},
+    "status": {"const": "validated"}, "independent": {"const": true},
+    "dataset": {"const": "atlas2020_4lep"},
+    "protocol_sha256": {"$ref": "#/$defs/digest"},
+    "prepared_artifact_id": {"$ref": "#/$defs/digest"},
+    "freeze_artifact_id": {"$ref": "#/$defs/digest"},
+    "template_artifact_id": {"$ref": "#/$defs/digest"},
+    "source_evidence_sha256": {"$ref": "#/$defs/digest"},
+    "statistical_model": {"const": "signed_mc_T1_independent_process_bins_poisson_tau_gamma"},
+    "reference": {"type": "object"},
+    "physical_definitions": {
+      "type": "object", "additionalProperties": false,
+      "required": ["processes", "units", "four_vectors", "pairing", "weights", "selection"],
+      "properties": {
+        "processes": {"$ref": "#/$defs/definition"}, "units": {"$ref": "#/$defs/definition"},
+        "four_vectors": {"$ref": "#/$defs/definition"}, "pairing": {"$ref": "#/$defs/definition"},
+        "weights": {"$ref": "#/$defs/definition"}, "selection": {"$ref": "#/$defs/definition"}
+      }
+    },
+    "numerical_comparisons": {
+      "type": "array", "minItems": 6,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["definition", "quantity", "unit", "expected", "actual", "atol", "rtol", "reference_path"],
+        "properties": {
+          "definition": {"enum": ["processes", "units", "four_vectors", "pairing", "weights", "selection"]},
+          "quantity": {"$ref": "#/$defs/text"}, "unit": {"$ref": "#/$defs/text"},
+          "expected": {"type": "number"}, "actual": {"type": "number"},
+          "atol": {"type": "number", "minimum": 0}, "rtol": {"type": "number", "minimum": 0},
+          "reference_path": {"$ref": "#/$defs/text"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "text": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "definition": {
+      "type": "object", "additionalProperties": false, "required": ["description", "reference_files"],
+      "properties": {
+        "description": {"$ref": "#/$defs/text"},
+        "reference_files": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/text"}}
+      }
+    }
+  }
+}

@@ -1,5 +1,13 @@
 # Methods and evaluation
 
+## Active off-only study
+
+The active paper objective is to quantify the contribution, complementarity and training-seed stability of A/B/C/D kinematic groups when the classifier omits explicit `m4l`. The likelihood still uses the registered mass window and mass coordinate. The 15 nonempty combinations use seeds 42–46 and their existing checkpoints; five deterministic `M0off` identities supply the same-family empty set. No model is retrained for this analysis.
+
+The six result areas are all off-only: paired W68; complete subset ranking/stability; exact Shapley and 24 conditional interactions; validation-checkpoint AUC versus W68; BC/AC versus ABCD as exploration-selected comparisons pending frozen validation; and all 105 direct subset pairs. AUC is descriptive, not an inference or coverage qualification. Older physical-CDF M5/M4, explicit-mass controls, MELA and sample-efficiency workflows remain compatible background/extension studies and are not required off-family candidates.
+
+The versioned [definition](../config/protocols/feature_attribution_mass_off_v1.json) is not a completed scientific registration. A new immutable registration run binds the actual core protocol, prepared population and 75 audited model/calibration artifacts. The candidate family has its own 80-identity G1 and freeze; freezing does not grant assessment access. Automatic P0/T1 materials remain software evidence, with independent qualification pending. Actual uncertainty/coverage stages and native ARM64 are separate evidence levels.
+
 This document defines how the [research questions](research-design.md) are translated into models and statistical comparisons. Input definitions and weights are maintained in [Data and processing](data-and-processing.md); commands and persisted interfaces are in [Implementation and reproduction](implementation-and-reproduction.md). Exact numerical rules belong to the [versioned protocol](../config/protocols/h4l_protocol.json), whose default scope is synthetic software validation rather than full-MC scientific qualification.
 
 ## Representations and common mass information
@@ -13,7 +21,7 @@ Let m denote `m4l`, z the standard decay coordinates, and r additional observabl
 \log\frac{p_s(r\mid m,z)}{p_b(r\mid m,z)}.
 \]
 
-This chain rule does not assume independent feature groups and is not a unique causal decomposition. All primary and feature-attribution MLP representations receive the same explicit mass condition. The separate grouped-M3 control removes it only to form independently retrained on/off pairs. BCE training with mass does not guarantee a conditional likelihood ratio, while removing the explicit column does not remove mass information encoded by correlated kinematics; absolute training weights define a surrogate measure.
+This chain rule does not assume independent feature groups and is not a unique causal decomposition. Legacy mass-conditioned MLP representations receive the same explicit mass condition. The active raw off-only attribution family omits that input. The separate grouped-M3 control removes it only to form independently retrained on/off pairs. BCE training with mass does not guarantee a conditional likelihood ratio, while removing the explicit column does not remove mass information encoded by correlated kinematics; absolute training weights define a surrogate measure.
 
 `decay7` describes two dilepton masses and Angular5; engineered19 also exposes laboratory quantities and derived geometry. L1 checks whether adding `pt4l` and reliably reconstructed `y4l` partly reproduces the engineered representation's gain. This does not by itself identify production information: learning convenience, acceptance, and mass use remain alternatives. A future four-momentum study must preserve the beam direction and longitudinal production information rather than remove it by an arbitrary boost and then attribute the loss to other features.
 
@@ -140,7 +148,7 @@ AUC means absolute-weight AUC at the selected validation checkpoint. It is neith
 
 For every nonempty A/B/C/D subset, the raw feature-combination family trains a paired model with explicit `m4l` and a model with `m4l` removed. The pair shares the event population, seed, learner, common template grid, and T1 model-self Asimov contract at `mu=1`, but each model is trained and checkpointed independently. Candidate keys are `M3:<seed>:groups=<subset>` and `M3:<seed>:groups=<subset>:m4l=off`.
 
-Fixed-mass diagnostics use the registered 5 GeV calibration edges on validation events with absolute physical weights. Slices missing either class retain `insufficient_class_support`; they make the affected pair incomplete rather than being deleted or assigned a neutral AUC. The on/off effect is reported as `AUC_on-AUC_off`, `W68_on-W68_off`, and `1-W68_on/W68_off`. A seed-level comparison requires all 15 pairs, every registered slice, and a valid M0c reference; the five-seed summary requires seeds 42--46 with no failure deletion. Only the mass-on family uses M0c as its empty set and receives Shapley attribution; the off family has no empty-set surrogate.
+Fixed-mass diagnostics use the registered 5 GeV calibration edges on validation events with absolute physical weights. Slices missing either class retain `insufficient_class_support`; they make the affected pair incomplete rather than being deleted or assigned a neutral AUC. The on/off effect is reported as `AUC_on-AUC_off`, `W68_on-W68_off`, and `1-W68_on/W68_off`. A seed-level comparison requires all 15 pairs, every registered slice, and a valid M0c reference; the five-seed summary requires seeds 42--46 with no failure deletion. The legacy mass-on export uses M0c. The separately registered off-only export uses M0off and never substitutes M0c or M0.
 
 ## Pseudo-experiments, boundaries, and assessment
 
@@ -165,7 +173,7 @@ Train every nonempty subset of `N={A,B,C,D}` afresh within the same experiment f
 \frac{|S|!(4-|S|-1)!}{4!}[v(S\cup\{G\})-v(S)].
 \]
 
-The raw family's empty set is the same-procedure M0c, not score-free M0. Report M0c/M0 separately. Compute Shapley per seed, check `sum(phi)=v(N)-v(empty)`, then summarize; medians of individual contributions need not obey the identity. Contributions have interval-width units, not percentages of physical information.
+The legacy mass-conditioned raw family's empty set is M0c. The new raw off-only family's empty set is constant M0off, with structural-zero category evidence and a same-grid likelihood-equivalence check. Report M0c/M0 separately. Compute Shapley per seed, check `sum(phi)=v(N)-v(empty)`, then summarize; medians of individual contributions need not obey the identity. Contributions have interval-width units, not percentages of physical information.
 
 A CDF family must run its own mass-only empty set through the same calibration. At exact mass, a mass-only score is a conditional point mass; strict continuous-CDF assumptions fail. Follow ties/plateau/structural-zero rules without manufacturing two occupied categories. If an empty set or subset is invalid, exact Shapley for that family is unavailable; do not insert zero or substitute a different procedure. This need not block M5/M4.
 
@@ -180,3 +188,15 @@ Compare omitted perturbations with modeled ones. Modeled stress uses fixed endpo
 Sourced studies require process/version/settings, weights or variation samples, correlations, and independent provenance for generators, showers, PDFs, background composition, lepton scale/resolution, or efficiency. Lepton variations must redo selection, pairing, features, matrix elements, and scores, including migration into and out of selection. Modifying only the accepted nineteen-feature table misses acceptance migration.
 
 Freeze models/CDF for robustness evaluation. Adaptive recalibration is a separate strategy. Cross-release identity, event overlap, and process equivalence must be established before combination. Reliable gain claims require the registered primary comparison, valid normalization and T1 model, uncertainty, acceptable bias/coverage, and evidence for every asserted systematic scope. See [Results and limitations](results-and-limitations.md).
+
+## Off-only estimands and uncertainty
+
+For every seed compute all 16 coalition values `v(S)=-W68(S)` under fixed T1 model-self Asimov at mu=1, then four exact Shapley contributions and 24 conditional second differences. Summarize each estimand over the five seeds by its median. Medians of individual contributions need not obey the per-seed efficiency identity. Seed intervals enumerate all 3125 ordered joint seed vectors, with linear 16/84 and 2.5/97.5 percentiles. They are training-seed stability conditional on the current MC, not total confidence intervals.
+
+Display nonempty subsets by median W68, subset size, then alphabetic order. Statistical ties use unrounded equality and average ranks; first-place counts include shared minima. Every one of 105 canonical nonempty subset pairs keeps five differences and ratios: `W_left-W_right` (negative favours left) and `1-W_left/W_right` (positive favours left). Intervals are per pair, without simultaneous-coverage claims. BC and AC remain the exploration-selected compact comparisons and are not retrospectively preregistered. Missing/failed seeds or mixed cohorts make complete summaries unavailable; values are never imputed.
+
+Event-MC bootstrap uses 200 common physical-group draws for calibration and template roles separately, seed 42001, fixed networks and frozen nominal mass grid. Raw thresholds are refit, M0off stays constant, and the full inference/attribution chain is rebuilt. All 200 complete replicas are required for formal percentile intervals; failures keep their identities, mappings and budgets. Do not add event-MC and training-seed intervals.
+
+T1 Toys use mu=0,1,2 and 500 marginal Toys per candidate per expectation. Joint physical cells must have nonnegative process rates and compatible marginals. If the model-self joint construction fails, retain marginal closure and mark pairing unavailable; never claim pairing from equal seeds. Report successful-fit conditional coverage and its Wilson interval, planned-denominator success-and-coverage with its Wilson interval, and failure rates. No generic pilot pass threshold is introduced.
+
+T2 uses T1 at mu=1, 20 common calibration-group outer draws and 100 joint inner Toys per outer draw. A replica mapping transforms both template and pseudo-event classification on the fixed grid. Preserve outer mapping records, multiplicities and failed inner budgets; 20 outer replicas are the independent procedure units, not 2000 unconditional experiments. Independent assessment requires a separate reviewed access/evidence receipt and durable cell claim before payload decoding.

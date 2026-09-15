@@ -1,0 +1,140 @@
+...............................................................F........ [ 15%]
+.......................................s................................ [ 31%]
+..........................................................F............. [ 47%]
+.................................................................F...... [ 63%]
+........................................................................ [ 78%]
+..............................sss....................................... [ 94%]
+..................s.....                                                 [100%]
+================================== FAILURES ===================================
+__________ test_loss_components_use_declared_denominators_and_curves __________
+
+tmp_path = WindowsPath('C:/Users/whchen/AppData/Local/Temp/pytest-of-whchen/pytest-278/test_loss_components_use_decla0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002A4A08703E0>
+
+    def test_loss_components_use_declared_denominators_and_curves(tmp_path, monkeypatch):
+        from higgsml.inference.reporting import write_learning_curves
+        monkeypatch.setattr(torch.nn.functional, 'binary_cross_entropy_with_logits',
+                            lambda logits, target, **kw: logits*0 + 2.)
+        monkeypatch.setattr(torch.nn.functional, 'cross_entropy',
+                            lambda logits, target, **kw: logits.sum(dim=1)*0 + 3.)
+        result = train_discriminant(frame(),load_protocol(),'M3-fixed200')
+>       assert [r['classification_loss'] for r in result['history']] == pytest.approx([2.]*200)
+                ^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'classification_loss'
+
+tests\h4l\test_discriminants.py:153: KeyError
+________ test_enabled_controls_publish_and_replay_capacity_stage_chain ________
+
+tmp_path = WindowsPath('C:/Users/whchen/AppData/Local/Temp/pytest-of-whchen/pytest-278/test_enabled_controls_publish_0')
+
+    def test_enabled_controls_publish_and_replay_capacity_stage_chain(tmp_path):
+        inputs = tmp_path / "inputs"
+        inputs.mkdir()
+        base, prepared, freeze_run, overlay, subset_run = build_sample_efficiency_fixture(
+            inputs, fractions=(0.5, 1.0), draws=(100,), capacity_enabled=True, cdf_enabled=True,
+            minimum_groups=20, template_groups=320,
+        )
+        t1 = _t1(base)
+        gate_run = _gate(inputs / "gate", prepared, base, t1)
+        runs = tmp_path / "runs"
+        runs.mkdir()
+        batch = execute_learning_curve(
+            prepared=prepared, freeze_run=freeze_run, subset_run=subset_run,
+            gate_run=gate_run, t1_validation=t1, base=base, overlay=overlay,
+            output_root=runs, output_name="batch", resources={"workers": 1},
+        )
+        report = publish_sample_efficiency_report(
+            runs / "report", allowed_root=runs, batch_path=batch.path,
+            prepared=prepared, freeze_run=freeze_run, subset_run=subset_run,
+            gate_run=gate_run, t1_validation=t1, base=base, overlay=overlay,
+        )
+>       controls = publish_sample_efficiency_controls(
+            runs / "controls", allowed_root=runs, batch_path=batch.path,
+            report_path=report.path, prepared=prepared, freeze_run=freeze_run,
+            subset_run=subset_run, gate_run=gate_run, t1_validation=t1,
+            base=base, overlay=overlay,
+        )
+
+tests\h4l\test_sample_efficiency_controls.py:192: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\higgsml\sample_efficiency\controls.py:529: in publish_sample_efficiency_controls
+    batch, report, capacity, cdf, capacity_runs = _build_controls(target=target,
+src\higgsml\sample_efficiency\controls.py:355: in _build_controls
+    model = publish_subset_discriminant(
+src\higgsml\sample_efficiency\training.py:364: in publish_subset_discriminant
+    run.write_json("sample-efficiency-protocol.json", overlay.to_dict())
+src\higgsml\artifacts.py:139: in write_json
+    path.write_bytes(canonical_json_bytes(value))
+C:\Users\whchen\anaconda3\envs\pytorch\Lib\pathlib.py:1036: in write_bytes
+    with self.open(mode='wb') as f:
+         ^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = WindowsPath('C:/Users/whchen/AppData/Local/Temp/pytest-of-whchen/pytest-278/test_enabled_controls_publish_0/runs/contr...dd18b650a15485ee1fdc890dcb67bb4531cfb9f25/.model.09192afd6b0546da9b4335a9de785f11.tmp/sample-efficiency-protocol.json')
+mode = 'wb', buffering = -1, encoding = None, errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\whchen\\AppData\\Local\\Temp\\pytest-of-whchen\\pytest-278\\test_enabled_controls_publish_0\\runs\\controls\\capacity-cells\\e244f5555f13edcdf7e8095dd18b650a15485ee1fdc890dcb67bb4531cfb9f25\\.model.09192afd6b0546da9b4335a9de785f11.tmp\\sample-efficiency-protocol.json'
+
+C:\Users\whchen\anaconda3\envs\pytorch\Lib\pathlib.py:1013: FileNotFoundError
+____ test_reader_rejects_resigned_out_of_overlay_seed_and_missing_history _____
+
+tmp_path = WindowsPath('C:/Users/whchen/AppData/Local/Temp/pytest-of-whchen/pytest-278/test_reader_rejects_resigned_o0')
+
+    def test_reader_rejects_resigned_out_of_overlay_seed_and_missing_history(tmp_path):
+        base, prepared, freeze, overlay, subsets = build_sample_efficiency_fixture(tmp_path)
+        good = publish_subset_discriminant(tmp_path / "good", allowed_root=tmp_path,
+            prepared=prepared, freeze_run=freeze, subset_run=subsets, base=base, overlay=overlay,
+            fraction=0.5, draw=100, representation_id="decay7", network_seed=42)
+        for name, mutate, requested_seed in (
+            ("seed", lambda model: model.update(seed=-1, network_seed=-1), -1),
+            ("history", lambda model: model.pop("history_contract"), 42),
+            ("nested", lambda model: model.update(scaler=[]), 42),
+        ):
+            model = copy.deepcopy(good.model)
+>           mutate(model)
+
+tests\h4l\test_sample_efficiency_training.py:151: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+model = {'architecture': [8, 64, 64, 32, 1], 'architecture_variant': 'baseline-fixed64x64x32', 'base_research_protocol_sha256': 'bddc5ba0efbdc0262dc71a5c4ecb6d3592323b5226453af3208189177c8b1f39', 'candidate': 'M2', ...}
+
+>       ("history", lambda model: model.pop("history_contract"), 42),
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        ("nested", lambda model: model.update(scaler=[]), 42),
+    ):
+E   KeyError: 'history_contract'
+
+tests\h4l\test_sample_efficiency_training.py:147: KeyError
+============================== warnings summary ===============================
+tests/h4l/test_assessment.py: 17 warnings
+tests/h4l/test_diagnostics.py: 3 warnings
+tests/h4l/test_final_guards.py: 8 warnings
+tests/h4l/test_inference.py: 6 warnings
+tests/h4l/test_performance_refactor.py: 9 warnings
+tests/h4l/test_sample_efficiency_controls.py: 75 warnings
+tests/h4l/test_sample_efficiency_lineage.py: 1 warning
+tests/h4l/test_sample_efficiency_report.py: 105 warnings
+tests/h4l/test_sample_efficiency_workflow.py: 61 warnings
+tests/h4l/test_stress.py: 13 warnings
+tests/h4l/test_workflow.py: 6 warnings
+  C:\Users\whchen\anaconda3\envs\pytorch\Lib\site-packages\pyhf\schema\validator.py:80: DeprecationWarning: jsonschema.RefResolver is deprecated as of v4.18.0, in favor of the https://github.com/python-jsonschema/referencing library, which provides more compliant referencing behavior as well as more flexible APIs for customization. A future release will remove RefResolver. Please file a feature request (on referencing) if you are missing an API for the kind of customization you need.
+    resolver = jsonschema.RefResolver(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/h4l/test_discriminants.py::test_loss_components_use_declared_denominators_and_curves
+FAILED tests/h4l/test_sample_efficiency_controls.py::test_enabled_controls_publish_and_replay_capacity_stage_chain
+FAILED tests/h4l/test_sample_efficiency_training.py::test_reader_rejects_resigned_out_of_overlay_seed_and_missing_history
+3 failed, 448 passed, 5 skipped, 304 warnings in 657.32s (0:10:57)
+ERROR conda.cli.main_run:execute(127): `conda run python -m pytest -q` failed. (See above for error)
+

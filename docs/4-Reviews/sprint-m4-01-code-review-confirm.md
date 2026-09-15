@@ -1,0 +1,22 @@
+# Sprint M4-01 code review confirmation
+
+Review date: 2026-09-14. Inputs: `sprint-m4-01-code-review-by-gpt-5.6-sol.md`, `sprint-m4-01-code-review-by-gpt-5.5.md`; target: approved FR/Sprint, working-tree implementation and directly referenced domain services. Both configured independent reviews completed. This confirmation precedes review-driven edits.
+
+The implementation is not accepted as-is. Source inspection confirms the following corrections are required; Stage A/B replay does not exercise C–E or establish independent qualification.
+
+| No. | Severity | Type | Review Source | Original Comment Summary | Decision | Evidence | Follow-up Plan / Rejection Reason |
+|---|---|---|---|---|---|---|---|
+| 1 | High | Correctness | M4CODE-G55-001 | Valid template-parent Toys hit assessment-only guard. | Accept | `infer_assessment` propagates the frame but `paired_event_toys` rejects its role. | Propagate an explicit validated parent role and test the connected model-self joint path. |
+| 2 | Medium | Binding | M4CODE-G55-002 | Report misses family/budget/cell validation. | Accept | `report` only checks upstream containment and a stage name. | Share a strict evaluation manifest validator with reuse and report; test malformed bindings. |
+| 3 | High | Correctness | SOL-CR-001 | Template-parent joint path aborts. | Accept | Same incompatible guard as item 1, independently confirmed. | Resolve through item 1 and retain fallback coverage. |
+| 4 | High | Scientific correctness | SOL-CR-002 | Labels hide negative individual-process rates and marginal mismatch. | Partial | `_joint_mother` loops over labels although `build_templates` uses physical process when available. The registered rule requires nonnegative process cells and exact model-self marginals. | Validate each process and its template marginal; test negative background cancellation. Retain one Poisson draw from the sum of validated independent process rates: the Poisson superposition law gives exactly the same observation distribution and cross-candidate projection, so separate stored process draws are unnecessary. |
+| 5 | High | Access | SOL-CR-003 | P0 null definitions and placeholder comparisons can authorize access. | Accept | `_assessment_frame` checks key sets and truthiness only before claiming and decoding. | Add a versioned, digest-bound P0 applicability schema and semantic validator with source receipts, dataset/prepared/protocol/freeze/statistical scope, nonempty definition references, finite comparisons and tolerances. Test forged packages before any claim/payload access. |
+| 6 | Medium | Statistics | SOL-CR-004 | Event bootstrap uses median rank instead of rank of median widths. | Accept | `bootstrap` reads `median_rank`; `summarize` primary order uses median W68. | Add explicit rank-of-five-seed-median-W68 and use it for event-MC intervals; test noncommutativity. |
+| 7 | Medium | Provenance | SOL-CR-005 | Evaluation stages/report lack plan identity. | Accept | Stage context has family/mu/budgets only; evaluator does not forward plan. | Generate the bound plan from real A/B manifests in report-B, require and persist its snapshot/digest for C–E, and verify the five inputs in stage/reuse/report. Test wrong plan/family/budget/input/cell. |
+| 8 | Low | Correctness | SOL-CR-006 | Invalid plan JSON escapes controlled error handling. | Accept | `_run` reads twice and calls `.get` before a controlled wrapper. | Read once, reject nonobjects, translate JSON/I/O errors; add missing/malformed/array CLI checks. |
+
+No review item is deferred. Also complete the already-required manifest-generated evaluation plan and improve export field semantics while updating affected documentation. No changes to candidate definitions, budgets or scientific estimands beyond correcting implementation to the confirmed plan. No commit/push, per source plan. Final acceptance awaits fixes and verification; C–E MC execution and independent references remain separate evidence gates.
+
+## Verified closure
+
+All accepted and partially accepted implementation actions are applied. Final focused checks passed (46 tests plus 2 legacy bootstrap tests); full suite passed with 481 passed, 5 skipped, 500 warnings in 701.60 seconds, exit 0. Dependency and diff checks passed. The post-review actual B report and generated bound evaluation plan passed artifact checks. See sprint-m4-01-delivery.md for traceability and the unrun C–E/independent-reference evidence boundary. Software accepted; no claim of complete scientific validation.

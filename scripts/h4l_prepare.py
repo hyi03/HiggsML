@@ -214,10 +214,10 @@ def _automated_validations(manifest: dict, protocol_path: Path = DEFAULT_PROTOCO
         "physical_definitions": {
             "processes": {"status": "validated", "reference": "dataset-receipt:higgs,zz"},
             "units": {"status": "validated", "reference": "open_data_2020.yaml:momentum_unit"},
-            "four_vectors": {"status": "validated", "reference": "src/domain/four_vectors.py"},
-            "pairing": {"status": "validated", "reference": "src/domain/reconstruction.py:pair_four_leptons"},
-            "weights": {"status": "validated", "reference": "src/domain/weights.py:physical_event_weight"},
-            "selection": {"status": "validated", "reference": "src/domain/selection.py"},
+            "four_vectors": {"status": "validated", "reference": "src/higgsml/physics/four_vectors.py"},
+            "pairing": {"status": "validated", "reference": "src/higgsml/physics/reconstruction.py:pair_four_leptons"},
+            "weights": {"status": "validated", "reference": "src/higgsml/physics/weights.py:physical_event_weight"},
+            "selection": {"status": "validated", "reference": "src/higgsml/physics/selection.py"},
         },
     }
     t1_contract = {

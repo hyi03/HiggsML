@@ -144,7 +144,7 @@ def test_reader_rejects_resigned_out_of_overlay_seed_and_missing_history(tmp_pat
         fraction=0.5, draw=100, representation_id="decay7", network_seed=42)
     for name, mutate, requested_seed in (
         ("seed", lambda model: model.update(seed=-1, network_seed=-1), -1),
-        ("history", lambda model: model.pop("history_contract"), 42),
+        ("history", lambda model: model.pop("history"), 42),
         ("nested", lambda model: model.update(scaler=[]), 42),
     ):
         model = copy.deepcopy(good.model)

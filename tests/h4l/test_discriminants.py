@@ -149,7 +149,10 @@ def test_loss_components_use_declared_denominators_and_curves(tmp_path, monkeypa
                         lambda logits, target, **kw: logits*0 + 2.)
     monkeypatch.setattr(torch.nn.functional, 'cross_entropy',
                         lambda logits, target, **kw: logits.sum(dim=1)*0 + 3.)
-    result = train_discriminant(frame(),load_protocol(),'M3-fixed200')
+    from higgsml.protocol import DIAGNOSTICS
+    protocol = load_protocol().to_dict()
+    protocol['diagnostics'] = DIAGNOSTICS
+    result = train_discriminant(frame(),protocol,'M3-fixed200')
     assert [r['classification_loss'] for r in result['history']] == pytest.approx([2.]*200)
     assert [r['adversary_loss'] for r in result['history']] == pytest.approx([3.]*200)
     assert [r['loss'] for r in result['history']] == pytest.approx([5.]*200)
