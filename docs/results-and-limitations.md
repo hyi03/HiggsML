@@ -1,5 +1,13 @@
 # Results and limitations
 
+## Active off-only study
+
+The active paper objective is to quantify the contribution, complementarity and training-seed stability of A/B/C/D kinematic groups when the classifier omits explicit `m4l`. The likelihood still uses the registered mass window and mass coordinate. The 15 nonempty combinations use seeds 42–46 and their existing checkpoints; five deterministic `M0off` identities supply the same-family empty set. No model is retrained for this analysis.
+
+The six result areas are all off-only: paired W68; complete subset ranking/stability; exact Shapley and 24 conditional interactions; validation-checkpoint AUC versus W68; BC/AC versus ABCD as exploration-selected comparisons pending frozen validation; and all 105 direct subset pairs. AUC is descriptive, not an inference or coverage qualification. Older physical-CDF M5/M4, explicit-mass controls, MELA and sample-efficiency workflows remain compatible background/extension studies and are not required off-family candidates.
+
+The versioned [definition](../config/protocols/feature_attribution_mass_off_v1.json) is not a completed scientific registration. A new immutable registration run binds the actual core protocol, prepared population and 75 audited model/calibration artifacts. The candidate family has its own 80-identity G1 and freeze; freezing does not grant assessment access. Automatic P0/T1 materials remain software evidence, with independent qualification pending. Actual uncertainty/coverage stages and native ARM64 are separate evidence levels.
+
 ## Evidence summary
 
 The retained status record is dated **2026-09-13**. It describes an implemented MC-only educational and technical workflow, not a completed physics analysis. This English documentation rewrite did not run training, open assessment, execute full-MC validation, or repeat the historical test campaigns below.
@@ -146,3 +154,20 @@ The English rewrite merged the former topic documents as follows. These are hist
 | performance-synthetic-results.json | Unmodified raw evidence at the document root |
 
 Superseded development intentions are not presented as current missing implementations. Obsolete legacy compatibility plans are omitted because that code is outside the active repository scope; source-history and feedback constraints remain. Unbound illustrative event-count arithmetic is omitted from scientific results. The rewrite preserves scientific meaning rather than preserving contradictory historical wording.
+
+## Off-only applicability and evidence checklist
+
+| Item | Available basis | Current limit |
+|---|---|---|
+| Kinematic attribution | Existing representations and exact Shapley/second-difference definitions; the Datta–Larkoski representation study is related motivation | Applying Shapley alone does not establish methodological novelty; no claim of a sufficient statistic or causal information decomposition |
+| Signal-strength likelihood | Existing Cowan likelihood reference and pinned pyhf shapesys model | Signed-weight cancellation, low counts and group covariance require independent numerical/applicability review |
+| Finite training variability | Five fixed checkpoints and complete joint seed-vector enumeration | Conditional on the current MC; no retraining uncertainty beyond these seeds |
+| Event-MC and calibration variability | Registered 200-replica bootstrap and 20-by-100 T2 implementation | Actual registered runs, failures and coverage must be reported before a scientific reliability claim |
+| MELA and sample efficiency | Existing optional repository studies | Neither is required for the six off-only outputs; no superiority-to-ME or training-sample-saving claim |
+| Historical access | Prepared audit metadata and original-root claim inspection | Absence of a local claim is not proof of independent historical use; reviewed access evidence remains required |
+
+These comparisons use the already documented literature references and do not represent a new literature search. Parameter choices (mass window, luminosity, minimum effective count, cancellation threshold, learner and pilot budgets) remain the bound core protocol defaults; no claim of optimization or independent physical validation is made. Current code-development verification is recorded separately from historical test counts in the Sprint review evidence.
+
+On 2026-09-14, the isolated off-only implementation completed a controlled-MC A/B replay using 75 existing off checkpoints and five deterministic M0off identities: common grid, G1, freeze, fixed-T1 Asimov and the complete off-only report. The report contains 4 contributions, 24 interactions, 105 pairs, 75 AUC observations and 3125 joint seed resamples. Source model/calibration hashes and timestamps remained unchanged. The post-review output is `runs/m4l-off-003/report-B` in the isolated worktree; its generated evaluation plan binds actual manifests. See [delivery evidence](4-Reviews/sprint-m4-01-delivery.md) and [MC replay receipts](4-Reviews/sprint-m4-01-mc-stage-b.md).
+
+This replay used automatic software-contract P0/T1 materials and has exploratory model-self Asimov scope. Full-MC event bootstrap, model-self/assessment Toys, T2 and native ARM64 were not run; independent applicability and assessment-history review remain pending. No assessment population was decoded. The implemented C–E commands and synthetic tests do not complete those scientific evidence requirements.

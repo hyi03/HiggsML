@@ -44,3 +44,32 @@ def test_evaluation_plan_rejects_protocol_or_t2_budget_changes(tmp_path):
     completed = invoke(path)
     assert completed.returncode == 3
     assert "protocol digest mismatch" in completed.stderr
+
+
+def test_off_only_plan_is_unresolved_without_payload_access():
+    example=PROJECT_ROOT/'config/examples/h4l_mass_off_evaluation_plan.json'
+    completed=invoke(example)
+    assert completed.returncode==0, completed.stderr
+    result=json.loads(completed.stdout)
+    assert result['status']=='unresolved' and result['candidate_count']==80
+    assert result['assessment_payload_opened'] is False
+    assert len(result['stages'])==8
+    assert result['stress']=='not_registered'
+    assert len(result['unresolved'])==5
+
+
+def test_off_only_plan_rejects_changed_budget(tmp_path):
+    value=json.loads((PROJECT_ROOT/'config/examples/h4l_mass_off_evaluation_plan.json').read_text())
+    value['budgets']['toys']['count']=499
+    path=tmp_path/'off-plan.json'
+    path.write_text(json.dumps(value))
+    assert invoke(path).returncode==3
+
+
+def test_malformed_missing_and_nonobject_plans_have_controlled_errors(tmp_path):
+    path=tmp_path/'invalid.json'
+    for content in (None,'{','[]'):
+        if content is not None: path.write_text(content,encoding='utf-8')
+        result=invoke(path)
+        assert result.returncode==3 and 'Invalid evaluation plan' in result.stderr
+        assert 'Traceback' not in result.stderr

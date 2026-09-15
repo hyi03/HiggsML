@@ -1,0 +1,1 @@
+{"status": "valid", "artifact_id": "cccde13076eb75681dfad5449eb78436f3bbf079b3ff1810942ff552b5a70ac9", "csv_rows": {"mass_off_feature_metrics.csv": 80, "mass_off_feature_attribution.csv": 4, "mass_off_feature_interactions.csv": 24, "mass_off_pairwise_comparisons.csv": 105}, "plan_id": "ab6ad310d42eef8defc61290bfcfee1ae7cf04b44195ee4c212a070dcb98c21c", "assessment_read": false}

@@ -65,6 +65,7 @@ def build_parser():
 def main(argv=None):
     arguments = list(sys.argv[1:] if argv is None else argv)
     delegated = {
+        "attribution": "higgsml.cli_attribution",
         "sample-efficiency": "higgsml.cli_sample_efficiency",
         "sample-efficiency-report": "higgsml.cli_sample_efficiency_report",
         "sample-efficiency-controls": "higgsml.cli_sample_efficiency_controls",
