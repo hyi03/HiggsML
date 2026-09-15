@@ -1,0 +1,25 @@
+........................................................................ [ 15%]
+.........................................s.............................. [ 30%]
+........................................................................ [ 45%]
+........................................................................ [ 60%]
+........................................................................ [ 76%]
+...............................................sss...................... [ 91%]
+...................................s.....                                [100%]
+============================== warnings summary ===============================
+tests/h4l/test_assessment.py: 17 warnings
+tests/h4l/test_diagnostics.py: 3 warnings
+tests/h4l/test_final_guards.py: 8 warnings
+tests/h4l/test_inference.py: 6 warnings
+tests/h4l/test_performance_refactor.py: 9 warnings
+tests/h4l/test_sample_efficiency_controls.py: 111 warnings
+tests/h4l/test_sample_efficiency_lineage.py: 1 warning
+tests/h4l/test_sample_efficiency_report.py: 105 warnings
+tests/h4l/test_sample_efficiency_workflow.py: 61 warnings
+tests/h4l/test_stress.py: 13 warnings
+tests/h4l/test_workflow.py: 6 warnings
+  C:\Users\whchen\anaconda3\envs\pytorch\Lib\site-packages\pyhf\schema\validator.py:80: DeprecationWarning: jsonschema.RefResolver is deprecated as of v4.18.0, in favor of the https://github.com/python-jsonschema/referencing library, which provides more compliant referencing behavior as well as more flexible APIs for customization. A future release will remove RefResolver. Please file a feature request (on referencing) if you are missing an API for the kind of customization you need.
+    resolver = jsonschema.RefResolver(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+468 passed, 5 skipped, 340 warnings in 712.06s (0:11:52)
+

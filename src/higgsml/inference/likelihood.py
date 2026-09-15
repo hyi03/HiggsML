@@ -187,13 +187,14 @@ def run_toys(template, *, mu=1., count=500, seed=42, layer="T0", t1_validation=N
     return output
 
 
-def paired_event_toys(frame, *, category_columns, mass_edges, mu, count, seed, mother_id, _joint_cells=None):
+def paired_event_toys(frame, *, category_columns, mass_edges, mu, count, seed, mother_id, _joint_cells=None,
+                      parent_role='assessment'):
     """Draw joint-bin Poisson counts once and project into each candidate.
 
     Signed rows are aggregated into physical joint cells first; a negative
     physical cell is rejected, never sampled as a negative Poisson intensity.
     """
-    if not mother_id or set(frame.role) != {"assessment"}:
+    if not mother_id or parent_role not in {'assessment','template'} or set(frame.role) != {parent_role}:
         raise ResearchError("Paired mothers require identified assessment events")
     edges = np.asarray(mass_edges,float)
     if len(edges)<2 or not (np.diff(edges)>0).all() or mu<0 or count<1:
@@ -251,7 +252,8 @@ def stress_weights(frame, *, kind, direction, reference_score_column="reference_
 
 
 def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mapping, evaluate,
-                     outer_replicas, inner_toys, seed, model_id, mother_id, workers=1, worker_threads=1):
+                     outer_replicas, inner_toys, seed, model_id, mother_id, workers=1, worker_threads=1,
+                     record_mappings=False):
     """Bounded paired group-bootstrap; callbacks retain scientific binding checks."""
     if not model_id or not mother_id or min(outer_replicas,inner_toys)<1:
         raise ResearchError("T2 requires frozen identities and positive budgets")
@@ -276,8 +278,14 @@ def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mappin
                     bootstrap[column] *= factor
             bootstrap = bootstrap.loc[factor>0].copy()
             row = {"replica": replica, "bootstrap_group_multiplicities": dict(zip(map(str,groups),map(int,multiplicity)))}
+            if record_mappings:
+                row['planned_inner_toys']=inner_toys
             try:
                 mapping = fit_mapping(bootstrap)
+                if record_mappings:
+                    row['mappings']={k:{'model_id':v['model_id'],'mapping_id':v['mapping_id'],
+                                       'mapping':v['mapping'],'thresholds':v['thresholds']}
+                                     for k,v in mapping['bundles'].items()}
                 mapped_template = apply_mapping(mapping,template.copy())
                 mapped_mother = apply_mapping(mapping,mother.copy())
                 # Failures above MUST NOT consume this draw (legacy random stream).

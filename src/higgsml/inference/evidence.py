@@ -18,6 +18,38 @@ EVIDENCE_TYPES = {
 EVIDENCE_STATUSES = {"validated", "external_pending", "failed"}
 
 
+def validate_off_p0(value, *, expected, package_root):
+    """Validate numerical applicability before any assessment claim or decoding."""
+    import math
+    from jsonschema import Draft202012Validator
+    from jsonschema.exceptions import ValidationError
+    from higgsml.artifacts import read_json
+    schema = read_json(Path(__file__).resolve().parents[3]/'config/schemas/h4l_off_p0_applicability.schema.json')
+    try:
+        Draft202012Validator(schema).validate(value)
+    except ValidationError as error:
+        raise ResearchError('invalid P0 applicability schema: '+error.message) from error
+    if (value['package_id'] != digest_json({k:v for k,v in value.items() if k!='package_id'})
+            or any(value.get(k)!=v for k,v in expected.items())):
+        raise ResearchError('P0 applicability identity/scope mismatch')
+    _validated_reference(value['reference'], 'p0', package_root)
+    if 'automat' in str(value['reference']).lower():
+        raise ResearchError('automatic reference cannot qualify independent P0')
+    receipts = {r['path'] for r in value['reference']['files']}
+    definitions = value['physical_definitions']
+    if any(not set(v['reference_files']) <= receipts for v in definitions.values()):
+        raise ResearchError('P0 physical definition lacks bound reference files')
+    comparisons = value['numerical_comparisons']
+    if {r['definition'] for r in comparisons} != set(definitions):
+        raise ResearchError('P0 comparisons do not cover every physical definition')
+    for row in comparisons:
+        if (any(type(row[k]) not in (int,float) or not math.isfinite(row[k]) for k in ('expected','actual','atol','rtol'))
+                or row['reference_path'] not in definitions[row['definition']]['reference_files']
+                or abs(row['actual']-row['expected']) > row['atol']+row['rtol']*abs(row['expected'])):
+            raise ResearchError('P0 numerical comparison invalid or outside declared tolerance')
+    return value
+
+
 def _validated_reference(reference, evidence_type, package_root):
     for field in ("producer", "reference_id", "independence_basis"):
         if not isinstance(reference.get(field), str) or not reference[field].strip():

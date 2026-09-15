@@ -1,6 +1,6 @@
 # HiggsML：H → ZZ* → 4l 的 MC-only 研究流程
 
-本仓库只维护 `H -> ZZ* -> 4l` 的 **MC-only 教育与技术研究流程**。当前研究比较不同运动学表示、质量条件化与样本效率对信号强度 `mu` 推断精度的影响，并以绑定协议、不可覆盖产物和冻结后的 assessment 隔离保证流程可审计。
+本仓库只维护 `H -> ZZ* -> 4l` 的 **MC-only 教育与技术研究流程**。当前论文主线是在分类器移除显式 `m4l` 输入后，研究 A/B/C/D 运动学特征组对信号强度 `mu` 推断精度的贡献、互补性及五种子稳定性，并以绑定协议、不可覆盖产物和冻结后的 assessment 隔离保证流程可审计。
 
 仓库输出不构成 ATLAS/CMS 官方结果、Higgs discovery 或物理测量。软件实现、合成测试、完整 MC 验证、独立矩阵元参考和原生 ARM64 authority 验证是不同证据层级，不能互相替代。
 
@@ -69,7 +69,11 @@ python scripts/init_data.py --dataset atlas2020_4lep
 - [`config/datasets/atlas2020_4lep.json`](config/datasets/atlas2020_4lep.json)
 - [`config/datasets/atlas2025_exactly4lep.json`](config/datasets/atlas2025_exactly4lep.json)
 
-## 5. 运行标准 H4l 工作流
+## 5. 运行 H4l 工作流
+
+新增 off-only 分析入口为 `python -m higgsml.cli attribution --help`。它复用现有 75 个 off 模型，新增五个确定性 M0off 身份，并依次发布注册、共同模板、freeze、Asimov、事件 bootstrap、Toys、T2 和独立报告。完整命令见[off-only 复现步骤](docs/implementation-and-reproduction.md#off-only-attribution-execution)。已有标准训练链路保留兼容，不需要为这项分析重训模型。
+
+`m4l=off` 仅指分类器不输入显式四轻子质量；似然仍保留质量坐标。自动 P0/T1 材料不能授予独立科学资格；事件 bootstrap、Toys、T2 和外部参考状态分别保存。
 
 所有命令从仓库根目录运行。完整规则、门槛与恢复方式以[复现实验手册](docs/implementation-and-reproduction.md)为准。
 
