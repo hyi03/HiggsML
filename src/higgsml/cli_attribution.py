@@ -19,6 +19,7 @@ def main(argv=None):
         parser.add_argument('--'+flag)
     parser.add_argument('--evaluation-run',action='append',default=[])
     parser.add_argument('--mu',type=int,choices=[0,1,2],default=1)
+    parser.add_argument('--workers',type=int,default=1)
     parser.add_argument('--worker-threads',type=int,default=1)
     parser.add_argument('--force',action='store_true',
                         help='Debug only: bypass source protocol consistency checks; outputs are non-authoritative')
@@ -28,7 +29,8 @@ def main(argv=None):
     progress_bar=None
     try:
         p=load_protocol(args.protocol).to_dict()
-        if args.worker_threads<1: raise ResearchError('worker threads must be positive')
+        if args.workers<1 or args.worker_threads<1:
+            raise ResearchError('workers and worker threads must be positive')
         import torch
         torch.set_num_threads(args.worker_threads)
         if args.stage=='register':
@@ -59,7 +61,8 @@ def main(argv=None):
                                       position=1,leave=False,disable=args.no_progress)
                     result=workflow.evaluate(*common,stage=args.stage,mu=args.mu,access_review=args.access_review,
                                              evaluation_plan_path=args.evaluation_plan,result_path=args.result_run,
-                                             force=args.force,progress=progress_bar.update)
+                                             force=args.force,workers=args.workers,worker_threads=args.worker_threads,
+                                             progress=progress_bar.update)
         print(json.dumps(result,allow_nan=False))
         return 0 if result['status']=='complete' else 3
     except (ResearchError,RunPathError) as error:

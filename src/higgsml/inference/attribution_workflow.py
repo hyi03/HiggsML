@@ -517,7 +517,7 @@ def validate_evaluation_manifest(item, plan):
 
 
 def evaluate(registration_path,nominal_path,freeze_path,protocol,output,allowed_root,*,stage,mu=1,access_review=None,
-             evaluation_plan_path=None,result_path=None,force=False,progress=None):
+             evaluation_plan_path=None,result_path=None,force=False,workers=1,worker_threads=1,progress=None):
     from higgsml.inference.bootstrap import mass_off_mc_bootstrap
     from higgsml.inference.assessment import infer_assessment,run_assessment_t2,_joint_mother
     from higgsml.inference.likelihood import run_toys
@@ -557,12 +557,12 @@ def evaluate(registration_path,nominal_path,freeze_path,protocol,output,allowed_
         template=frame.loc[frame.role=='template'].copy()
         if stage=='mc-bootstrap':
             result=mass_off_mc_bootstrap(grid,bundles,calibration,template,protocol,t1_validation=t1,
-                                         progress=progress)
+                                         workers=workers,worker_threads=worker_threads,progress=progress)
         elif stage=='t2':
             result=run_assessment_t2(grid,bundles,calibration,template,frame.loc[frame.role=='assessment'].copy(),protocol,
                                     layer='T1',t1_validation=t1,mu=1,seed=BUDGETS['t2']['seed'],
                                     prepared_id=prepared.manifest['artifact_id'],freeze_id=frozen_run.manifest['artifact_id'],
-                                    progress=progress)
+                                    workers=workers,worker_threads=worker_threads,progress=progress)
             result['independent_unit']='20_outer_calibration_replicas_not_2000_unconditional_toys'
         else:
             role='template' if stage=='model-self' else 'assessment'
@@ -577,7 +577,7 @@ def evaluate(registration_path,nominal_path,freeze_path,protocol,output,allowed_
                 candidates=infer_assessment(grid,bundles,mother,protocol,layer='T1',t1_validation=t1,mu=mu,
                                             count=BUDGETS['toys']['count'],seed=BUDGETS['toys']['seed'],
                                             prepared_id=prepared.manifest['artifact_id'],freeze_id=frozen_run.manifest['artifact_id'],
-                                            parent_role=role,progress=progress)
+                                            parent_role=role,workers=workers,worker_threads=worker_threads,progress=progress)
             else:
                 candidates={}
                 for index,(key,artifact) in enumerate(sorted(grid['templates'].items())):

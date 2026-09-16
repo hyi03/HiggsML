@@ -157,6 +157,34 @@ def test_full_mc_budget_failures_preserve_draws_and_raw_family(monkeypatch):
     assert result['uncertainty']['contributions']==[]
 
 
+def test_mc_bootstrap_workers_preserve_draws_order_and_failures(monkeypatch):
+    from higgsml.inference import bootstrap
+    from higgsml.inference.attribution import BUDGETS, candidate_keys
+    from higgsml.errors import ResearchStateError
+
+    monkeypatch.setitem(BUDGETS['mc_bootstrap'], 'replicas', 2)
+    p=load_protocol().to_dict()
+    bundles={k:{'key':k,'candidate_id':'M3','model':{},'model_id':k,'mapping_id':k,
+                'mapping':None,'transform':'raw','seed':42} for k in candidate_keys()}
+    grid={'templates':{k:{} for k in bundles},'mass_edges':[105.,140.],'family_id':FAMILY}
+    frame=lambda role: pd.DataFrame([{'role':role,'event_group_id':f'{role}-{i}','label':i%2,
+                                      'dataset':p['dataset'],'m4l':120.,'physical_weight':1.,
+                                      'yield_weight':1.} for i in range(4)])
+    def unsupported(*a,**kw):
+        raise ResearchStateError('frozen support failed',status='insufficient_statistics')
+    monkeypatch.setattr(bootstrap,'predict_discriminant',lambda m,f:np.full(len(f),.5))
+    monkeypatch.setattr(bootstrap,'fit_thresholds',unsupported)
+    args=(grid,bundles,frame('calibration'),frame('template'),p)
+    serial_progress=[]
+    parallel_progress=[]
+    serial=bootstrap.mass_off_mc_bootstrap(
+        *args,t1_validation={},progress=lambda:serial_progress.append(None))
+    parallel=bootstrap.mass_off_mc_bootstrap(
+        *args,t1_validation={},workers=2,progress=lambda:parallel_progress.append(None))
+    assert parallel==serial
+    assert len(serial_progress)==len(parallel_progress)==160
+
+
 def test_access_review_missing_fails_before_any_payload(monkeypatch):
     from higgsml.inference.attribution_workflow import _assessment_frame
     from higgsml.errors import ResearchStateError

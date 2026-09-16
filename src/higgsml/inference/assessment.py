@@ -146,8 +146,9 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
                               parent_role=parent_role)
     pairing_id = digest_json({"mother": mother_id, "grid": grid["mass_edges"], "seed": seed,
                              "mu": mu, "count": count, "observations": paired["observations"]})
-    results = {}
-    for key, template in sorted(grid["templates"].items()):
+    def evaluate_candidate(task):
+        key, template = task
+        completed_toys = 0
         try:
             model, metadata = (build_stress_model(template,stress_responses[key],protocol=p,layer=layer,t1_validation=t1_validation,mu_max=cfg['mu_bounds'][1])
                                if stress_responses is not None else
@@ -190,10 +191,9 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
                          'reason':'Signed diagnostic fixes nominal templates; no stress/T1 nuisance profiling'})
                 return row
             toys = []
-            for toy in ordered_map(fit, tasks(), workers=workers, worker_threads=worker_threads):
-                toys.append(toy)
-                if progress is not None:
-                    progress()
+            for toy_task in tasks():
+                toys.append(fit(toy_task))
+                completed_toys += 1
             if stress_responses is None:
                 asimov = run_asimov(template, protocol=p, layer=layer, t1_validation=t1_validation, injections=[mu], _built_model=(model,metadata))
             else:
@@ -224,9 +224,18 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
                 result["diagnostics"][str(level)] = fit_diagnostics(intervals, mu=mu)
             if mu == 0 and 'diagnostics' in p:
                 result['diagnostics']['signed_mu'] = signed_mu_summary([t['signed_mu_diagnostic'] for t in toys])
-            results[key] = result
+            return key, result, completed_toys
         except ResearchStateError as exc:
-            results[key] = {"status": exc.status, "reason": str(exc)}
+            return key, {"status": exc.status, "reason": str(exc)}, completed_toys
+
+    results = {}
+    candidate_tasks = sorted(grid["templates"].items())
+    for key, result, completed_toys in ordered_map(
+            evaluate_candidate, candidate_tasks, workers=workers, worker_threads=worker_threads):
+        results[key] = result
+        if progress is not None:
+            for _ in range(completed_toys):
+                progress()
     if count >= 2 and "toys" in results.get("M0",{}):
         for key, result in results.items():
             if "toys" in result:

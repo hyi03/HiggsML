@@ -94,6 +94,20 @@ def test_attribution_cli_supports_disabling_internal_progress():
     assert "--no-progress" in completed.stdout
 
 
+def test_evaluator_and_attribution_cli_expose_process_workers():
+    evaluator = subprocess.run(
+        [sys.executable, str(SCRIPT), "--help"], cwd=PROJECT_ROOT,
+        text=True, capture_output=True, check=False,
+    )
+    attribution = subprocess.run(
+        [sys.executable, "-m", "higgsml.cli", "attribution", "--help"],
+        cwd=PROJECT_ROOT, text=True, capture_output=True, check=False,
+    )
+    assert evaluator.returncode == attribution.returncode == 0
+    assert "--workers" in evaluator.stdout and "--worker-threads" in evaluator.stdout
+    assert "--workers" in attribution.stdout and "--worker-threads" in attribution.stdout
+
+
 def test_long_off_stage_refreshes_progress_while_child_is_running(monkeypatch):
     spec = importlib.util.spec_from_file_location("h4l_evaluate_progress_test", SCRIPT)
     module = importlib.util.module_from_spec(spec)

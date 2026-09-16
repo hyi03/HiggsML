@@ -69,6 +69,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--show-command", action="store_true")
     parser.add_argument("--no-progress", action="store_true",
                         help="Disable stage progress bars.")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="Process workers for evaluation stages (default: 1).")
     parser.add_argument("--worker-threads", type=int, default=1)
     return parser
 
@@ -109,6 +111,8 @@ def _invoke(command: list[str], *, show_command: bool, progress=None) -> None:
 
 
 def _run(args: argparse.Namespace) -> None:
+    if args.workers < 1:
+        raise WorkflowError("--workers must be positive", 2)
     if args.worker_threads < 1:
         raise WorkflowError("--worker-threads must be positive", 2)
     if args.stage_b and args.evaluation:
@@ -179,7 +183,8 @@ def _run(args: argparse.Namespace) -> None:
             "--plan", str(evaluation_plan), "--registration-run", str(register),
             "--prepared-run", str(prepared), "--template-run", str(nominal),
             "--freeze-run", str(freeze), "--result-run", str(asimov),
-            "--output-root", str(evaluation),
+            "--output-root", str(evaluation), "--workers", str(args.workers),
+            "--worker-threads", str(args.worker_threads),
         ]
         if access_review is not None:
             evaluation_command.extend(["--access-review", str(access_review)])

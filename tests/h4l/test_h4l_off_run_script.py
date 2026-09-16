@@ -77,6 +77,24 @@ def test_no_progress_is_supported_and_forwarded_to_evaluator():
     assert "--no-progress" in completed.stdout
 
 
+def test_workers_are_validated_and_forwarded_to_evaluator():
+    completed = invoke(
+        "--source-run-name", "02", "--run-name", "paper-001",
+        "--evaluation", "--workers", "2", "--worker-threads", "1", "--plan",
+    )
+    assert completed.returncode == 0, completed.stderr
+    evaluator = next(line for line in completed.stdout.splitlines() if "h4l_evaluate.py" in line)
+    assert "--workers 2" in evaluator
+    assert "--worker-threads 1" in evaluator
+
+    invalid = invoke(
+        "--source-run-name", "02", "--run-name", "paper-001",
+        "--evaluation", "--workers", "0", "--plan",
+    )
+    assert invalid.returncode == 2
+    assert "--workers must be positive" in invalid.stderr
+
+
 def test_run_names_reject_path_traversal():
     completed = invoke(
         "--source-run-name", "../escape", "--run-name", "paper-001", "--plan",

@@ -54,6 +54,10 @@ def _parser():
                         help='Debug only: allow a forced-protocol off-only registration')
     parser.add_argument('--no-progress', action='store_true',
                         help='Disable stage progress bars.')
+    parser.add_argument('--workers', type=int, default=1,
+                        help='Process workers for evaluation stages (default: 1).')
+    parser.add_argument('--worker-threads', type=int, default=1,
+                        help='Threads available inside each worker (default: 1).')
     return parser
 
 
@@ -102,6 +106,8 @@ def _load_plan(path, protocol, plan=None):
 
 
 def _run(args):
+    if args.workers < 1 or args.worker_threads < 1:
+        raise EvaluationError('--workers and --worker-threads must be positive', 2)
     protocol_path = _resolve(args.protocol)
     protocol = load_protocol(protocol_path).to_dict()
     plan_path = _resolve(args.plan)
@@ -269,7 +275,8 @@ def _run_mass_off(args, protocol, plan):
     if args.plan_only: return
     if unresolved: raise EvaluationError('Off-only plan has unresolved upstream identities')
     common=['--protocol',str(_resolve(args.protocol)),'--registration-run',str(_resolve(args.registration_run)),
-            '--template-run',str(_resolve(args.template_run)),'--freeze-run',str(_resolve(args.freeze_run))]
+            '--template-run',str(_resolve(args.template_run)),'--freeze-run',str(_resolve(args.freeze_run)),
+            '--workers',str(args.workers),'--worker-threads',str(args.worker_threads)]
     if args.force: common.append('--force')
     if args.no_progress: common.append('--no-progress')
     outputs=[]
