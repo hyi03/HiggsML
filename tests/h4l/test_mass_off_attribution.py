@@ -144,8 +144,12 @@ def test_full_mc_budget_failures_preserve_draws_and_raw_family(monkeypatch):
     def unsupported(*a,**kw): raise ResearchStateError('frozen support failed',status='insufficient_statistics')
     monkeypatch.setattr(bootstrap,'predict_discriminant',lambda m,f:np.full(len(f),.5))
     monkeypatch.setattr(bootstrap,'fit_thresholds',unsupported)
-    result=bootstrap.mass_off_mc_bootstrap(grid,bundles,frame('calibration'),frame('template'),p,t1_validation={})
+    completed=[]
+    result=bootstrap.mass_off_mc_bootstrap(
+        grid,bundles,frame('calibration'),frame('template'),p,t1_validation={},
+        progress=lambda:completed.append(None))
     assert result['planned_replicas']==200 and result['failed_replicas']==200
+    assert len(completed)==16000
     assert all(len(r['candidate_states'])==80 for r in result['replicas'])
     for row in result['replicas']:
         assert sum(row['calibration_group_multiplicities'].values())==8
@@ -374,9 +378,12 @@ def test_model_self_joint_generation_and_process_marginals(monkeypatch,tmp_path)
     # Keep real joint generation, model construction and projection; stub costly interval optimizers only.
     monkeypatch.setattr(assessment,'profile_intervals',lambda *a,**kw:[{'status':'valid','lower':0.,'upper':2.,'width':2.,'muhat':1.}]*2)
     monkeypatch.setattr(assessment,'run_asimov',lambda *a,**kw:{'status':'valid'})
+    completed=[]
     result=assessment.infer_assessment(grid,bundles,frame,p,layer='T0',t1_validation=None,mu=1,count=2,
-                                     seed=42,prepared_id='p',freeze_id='f',categorize=categorize,parent_role='template')
+                                     seed=42,prepared_id='p',freeze_id='f',categorize=categorize,parent_role='template',
+                                     progress=lambda:completed.append(None))
     assert len(result)==80 and all(r['status']=='valid' and r['toys']['paired'] for r in result.values())
+    assert len(completed)==160
     totals=[sum(r['toys']['results'][0]['observations']) for r in result.values()]
     assert len(set(totals))==1
     # Exercise the actual stage dispatcher, with real joint service and a reduced test-only fit count.

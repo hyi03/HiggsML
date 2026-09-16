@@ -114,9 +114,11 @@ def test_t2_actual_mapping_template_and_mother_on_frozen_grid():
     thresholds=fit_thresholds(cal,cal.score,p,model_id="model",mapping_id="raw:model")
     bundle={"model":None,"model_id":"model","me_scores":scores,"mapping":None,"mapping_id":"raw:model","thresholds":thresholds}
     grid["templates"]["A"]["mapping_id"]="raw:model"
+    completed=[]
     result=run_assessment_t2(grid,{"A":bundle},cal,source,mother,p,layer="T0",t1_validation=None,
-        mu=1.,seed=42,prepared_id="prepared",freeze_id="freeze")
+        mu=1.,seed=42,prepared_id="prepared",freeze_id="freeze",progress=lambda:completed.append(None))
     assert result["outer_replicas"]==1
+    assert len(completed)==2
     assert "candidates" in result["replicas"][0]["result"]
     toy=result["replicas"][0]["result"]["candidates"]["A"]["toys"]
     assert toy["expectation_kind"]=="assessment" and toy["paired"]

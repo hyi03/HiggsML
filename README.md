@@ -114,27 +114,29 @@ Gate 从全局 prepared artifact 运行 M0c、M2、M3、五个校准和共同模
 
 ### 5.3 运行五随机种子正式批次
 
-先审计计划，再正式运行：
-
 ```bash
-python scripts/h4l_run.py --run-name test01 --plan-only
 python scripts/h4l_run.py --run-name test01
 ```
 
 默认批次执行 seed 42–46 的注册候选、校准、共同模板、T1 `mu=1` inference 与报告。显式 `--seed 42` 仅是单种子诊断，不能支持五种子主比较。
-批次中断后，使用 `python scripts/h4l_run.py --run-name test01 --continue` 继续：合法的完整阶段会被跳过；不完整、损坏或绑定不匹配的最终阶段目录会先隔离为 `.名称.<uuid>.invalid`，再重试一次。已有 `.failed` 证据不会被删除。
+
+批次中断后，使用 `--continue` 继续：合法的完整阶段会被跳过；不完整、损坏或绑定不匹配的最终阶段目录会先隔离为 `.名称.<uuid>.invalid`，再重试一次。已有 `.failed` 证据不会被删除。
+
+```bash
+python scripts/h4l_run.py --run-name test01 --continue
+```
 
 三个脚本均支持 `--help`、`--plan-only` 和 `--no-progress`。它们也提供严格限于所选 `runs/` 子目录的 `--clean`；`--clean` 不能与 `--plan-only` 同时使用，执行前应先用 `--help` 或单独的计划命令核对路径。清理会删除不可恢复的本地运行产物；完成、失败、诊断或已发布的 run 均不得原地覆盖。
 
-### 5.4 复用既有产物运行 off-only 特征归因
-
-`scripts/h4l_off_run.py` 直接复用已有的完整五随机种子批次及 `runs/h4l-prepare/prepare`，不重新 prepare 或训练。它自动核对 prepared artifact、population、核心协议，以及 75 个 `m4l=off` 训练/校准产物的候选、seed、checkpoint 和上游绑定；任一身份不一致时拒绝复用。
-
-先运行 Stage B，产生 freeze 和自动绑定的 evaluation plan：
+### 5.4 运行 Stage B 生成 freeze
 
 ```bash
 python scripts/h4l_off_run.py --source-run-name test01 --run-name study-001 --stage-b
 ```
+先运行 Stage B，产生 freeze 和自动绑定的 evaluation plan。
+
+`scripts/h4l_off_run.py` 直接复用已有的完整五随机种子批次及 `runs/h4l-prepare/prepare`，不重新 prepare 或训练。它自动核对 prepared artifact、population、核心协议，以及 75 个 `m4l=off` 训练/校准产物的候选、seed、checkpoint 和上游绑定；任一身份不一致时拒绝复用。
+
 
 调试协议或流程代码时，可以复用协议摘要不一致的既有 prepare/train/calibrate 产物：
 
@@ -144,25 +146,31 @@ python scripts/h4l_off_run.py --source-run-name test01 --run-name debug-001 --st
 
 `--force` 只绕过来源产物的协议一致性检查，仍校验 dataset、artifact digest、候选身份、checkpoint、population 和上游关系。输出会标记为 `forced_protocol_mismatch_debug`，仅用于调试，不能作为论文或科学结论证据。调试完成后必须去掉 `--force`，使用新的 run name 正常运行。
 
-独立审核者根据该 freeze、独立 P0 和 signed-MC T1 材料完成 assessment access review 后，先检查 C--E 计划，再正式执行：
+### 5.5 评估访问审核
 
-```bash
-python scripts/h4l_off_run.py --source-run-name test01 --run-name study-001 --evaluation --plan
+Stage B 完成后，assessment/T2 只能使用与实际 freeze、population、protocol 和 P0/T1 文件绑定的 access-review。独立审核者应依据
+`config/examples/h4l_off_assessment_access.pending.json` 生成并审核一份完整的
+`validated-off-assessment-access.json`，然后在最终执行时通过 `--access-review` 显式传入。该 pending 文件含占位 ID 和 receipt，不能直接使用；脚本也不会自动把它提升为独立证据。
 
-python scripts/h4l_off_run.py --source-run-name test01 --run-name study-001 --evaluation
-```
-
-运行时默认显示阶段级进度条。Stage B 显示五个阶段；C--E evaluation 显示八个注册计算单元和最终报告，并在长阶段运行期间持续刷新当前阶段及已用时间。日志重定向或 CI 中可追加 `--no-progress` 关闭进度条；需要查看完整子命令时使用 `--show-command`。`--plan` 只打印计划，不显示动态进度。
-
-如果项目全程只有一名研究者，无法形成独立审核，可以在 Stage B 完成后生成明确标注的单人自审访问包：
+如果项目只有一名研究者，不能形成独立审核，可明确生成单人自审包：
 
 ```bash
 python scripts/h4l_off_self_review.py --run-name study-001 --reviewer "Researcher Name"
-python scripts/h4l_off_run.py --source-run-name test01 --run-name study-001 --evaluation --plan
+```
+
+该命令只生成标记为 `single_researcher_self_review` 的 access-review，不代表独立验证；`--reviewer` 必须填写实际姓名。它不会执行最终评估。
+
+### 5.6 生成最终报告
+
+完成独立审核，或生成单人自审包后，执行：
+
+```bash
 python scripts/h4l_off_run.py --source-run-name test01 --run-name study-001 --evaluation
 ```
 
-该命令读取并绑定实际 prepared、registration、nominal、freeze 和 evaluation-plan artifact，自动生成：
+默认读取 `runs/h4l-off-study-001/access-review/validated-off-assessment-access.json`；独立审核包位于其他路径时，显式追加 `--access-review <path>`。该命令读取并绑定实际 prepared、registration、nominal、freeze 和 evaluation-plan artifact，随后执行 C–E evaluation 并生成最终报告。它不会自动生成或批准 access-review。
+
+单人自审命令生成的 access-review 包含：
 
 ```text
 runs/h4l-off-study-001/access-review/
@@ -172,8 +180,6 @@ runs/h4l-off-study-001/access-review/
 ```
 
 单人自审允许执行冻结的 assessment、T2 和最终报告，但不会伪装成独立验证。生成文件和最终报告固定记录 `single_researcher_self_review`、`independent: false` 与 `exploratory_self_reviewed_not_independently_validated`；论文必须披露该限制。命令拒绝覆盖既有 `access-review`。如果 Stage B 使用了 `--force`，最终输出还会保留 debug-only 标记，不能作为正式科学证据；应优先用协议一致的来源 run 和新名称重新运行 Stage B。
-
-输出统一写入 `runs/h4l-off-study-001/`。`--evaluation` 自动读取 `runs/h4l-off-study-001/access-review/validated-off-assessment-access.json`；仅在文件位于其他位置时显式传入 `--access-review`。待审核文件结构见 `config/examples/h4l_off_assessment_access.pending.json`；它包含未解析的 ID 和 receipt，不能直接作为 validated review 使用。
 
 脚本依次完成 registration、共同 nominal 模板、freeze、Asimov、事件 bootstrap、三组 model-self Toys、三组受控 assessment Toys、T2 和最终报告。Stage B 使用新目录；`--evaluation` 复用该 Stage B 并拒绝覆盖已有 evaluation。若来源批次尚不存在或不完整，先使用 `scripts/h4l_run.py` 生成新的完整五随机种子批次。详细阶段契约与恢复规则见[off-only 复现步骤](docs/implementation-and-reproduction.md#off-only-attribution-execution)。
 
