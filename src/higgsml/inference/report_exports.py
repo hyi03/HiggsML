@@ -55,6 +55,16 @@ def publish_mass_off_exports(run, report):
            'Exploratory MC-only technical study. The classifier omits explicit m4l; the likelihood retains the mass coordinate.',
            'Independent physical and signed-MC/T1 qualification remains pending. This is not a physics measurement.','',
            '| Subset | Median W68 | Seed range | Shared first places |','|---|---:|---|---:|']
+    if report.get('forced_protocol_mismatch_debug'):
+        lines[2:2] = [
+            '**DEBUG-ONLY: source protocol consistency checks were bypassed with `--force`. '
+            'Do not use this output as scientific or paper evidence.**', ''
+        ]
+    if 'single_researcher_self_review' in report.get('assessment_access_modes',[]):
+        lines[2:2] = [
+            '**SELF-REVIEWED EXPLORATORY EVIDENCE: assessment access was authorized by the sole '
+            'researcher and was not independently validated. Report this limitation in any paper.**', ''
+        ]
     for row in summary['ranking_stability']:
         lines.append(f"| {row['subset']} | {row['width68']['median']:.8g} | {row['min_width68']:.8g}–{row['max_width68']:.8g} | {row['first_place_count']} |")
     lines+=['','## Exact contributions','', '| Group | Median contribution | 68% seed stability | 95% seed stability |','|---|---:|---|---|']

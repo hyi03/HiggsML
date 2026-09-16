@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import time
+from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing, nullcontext
 from dataclasses import dataclass
@@ -430,8 +431,17 @@ def write_research_data(frame, path, protocol):
     )
 
 
-def load_research_data(path, dataset, protocol, *, allow_assessment=False, assessment_freeze=None):
+def load_research_data(path, dataset, protocol, *, allow_assessment=False, assessment_freeze=None,
+                       provenance_protocol=None, force_protocol_mismatch=False):
     p = protocol_dict(protocol)
+    provenance = protocol_dict(provenance_protocol) if provenance_protocol is not None else p
+    if provenance != p and not force_protocol_mismatch:
+        normalized = deepcopy(provenance)
+        validation = normalized.get('validation')
+        if (not isinstance(validation, dict)
+                or validation.pop('repository_authority_validation', None) != 'not_run'
+                or normalized != p):
+            raise ResearchError("research data provenance protocol is not compatible")
     if allow_assessment:
         from higgsml.artifacts import digest_json
         if (not isinstance(assessment_freeze, dict) or assessment_freeze.get("status") != "frozen"
@@ -444,9 +454,10 @@ def load_research_data(path, dataset, protocol, *, allow_assessment=False, asses
         with Path(path).open(encoding="utf-8") as stream:
             header = json.loads(next(stream))
             if (header.get("schema_version") != "h4l-events-v1" or header.get("dataset") != dataset
-                    or dataset != p["dataset"] or header.get("mc_only") is not True
+                    or dataset != p["dataset"] or dataset != provenance["dataset"]
+                    or header.get("mc_only") is not True
                     or header.get("source_kind") not in {"synthetic", "controlled_mc"}
-                    or header.get("protocol_digest") != hashlib.sha256(canonical(p)).hexdigest()):
+                    or header.get("protocol_digest") != hashlib.sha256(canonical(provenance)).hexdigest()):
                 raise ResearchError("research data provenance/protocol mismatch")
             for line in stream:
                 first, payload = line.rstrip("\n").split("\t", 1)

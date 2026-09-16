@@ -106,57 +106,76 @@ runs/h4l-prepare/
 ### 5.2 运行门控检查
 
 ```bash
-python scripts/h4l_check.py --run-name T1
+python scripts/h4l_check.py --run-name test01
 ```
 
 Gate 从全局 prepared artifact 运行 M0c、M2、M3、五个校准和共同模板。只有 Gate 通过后，才允许展开受门控的候选。失败目录仍是不可变证据；修复后必须使用新的 `--run-name` 或 `--output-root`。
-`--run-name T1` 的实验输出根目录为 `runs/h4l-train-T1/`。
+`--run-name test01` 的实验输出根目录为 `runs/h4l-train-test01/`。
 
 ### 5.3 运行五随机种子正式批次
 
 先审计计划，再正式运行：
 
 ```bash
-python scripts/h4l_run.py --run-name T1 --plan-only
-python scripts/h4l_run.py --run-name T1
+python scripts/h4l_run.py --run-name test01 --plan-only
+python scripts/h4l_run.py --run-name test01
 ```
 
 默认批次执行 seed 42–46 的注册候选、校准、共同模板、T1 `mu=1` inference 与报告。显式 `--seed 42` 仅是单种子诊断，不能支持五种子主比较。
-批次中断后，使用 `python scripts/h4l_run.py --run-name T1 --continue` 继续：合法的完整阶段会被跳过；不完整、损坏或绑定不匹配的最终阶段目录会先隔离为 `.名称.<uuid>.invalid`，再重试一次。已有 `.failed` 证据不会被删除。
+批次中断后，使用 `python scripts/h4l_run.py --run-name test01 --continue` 继续：合法的完整阶段会被跳过；不完整、损坏或绑定不匹配的最终阶段目录会先隔离为 `.名称.<uuid>.invalid`，再重试一次。已有 `.failed` 证据不会被删除。
 
 三个脚本均支持 `--help`、`--plan-only` 和 `--no-progress`。它们也提供严格限于所选 `runs/` 子目录的 `--clean`；`--clean` 不能与 `--plan-only` 同时使用，执行前应先用 `--help` 或单独的计划命令核对路径。清理会删除不可恢复的本地运行产物；完成、失败、诊断或已发布的 run 均不得原地覆盖。
 
 ### 5.4 复用既有产物运行 off-only 特征归因
 
-本次新增流程可以直接复用已有的 `runs/h4l-prepare/prepare`，无需重新 prepare 或训练。注册阶段会核对 prepared artifact、population、核心协议，以及 75 个 `m4l=off` 训练/校准产物的候选、seed、checkpoint 和上游绑定；任一身份不一致时拒绝复用。所有输出目录必须是 `runs/` 下尚不存在的新目录。
+`scripts/h4l_off_run.py` 直接复用已有的完整五随机种子批次及 `runs/h4l-prepare/prepare`，不重新 prepare 或训练。它自动核对 prepared artifact、population、核心协议，以及 75 个 `m4l=off` 训练/校准产物的候选、seed、checkpoint 和上游绑定；任一身份不一致时拒绝复用。
+
+先运行 Stage B，产生 freeze 和自动绑定的 evaluation plan：
 
 ```bash
-python -m higgsml.cli attribution register \
-  --source-root runs/h4l-train-T2/batch/all-seeds \
-  --prepared-run runs/h4l-prepare/prepare \
-  --t1-validation runs/h4l-train-T2/batch/all-seeds/templates/t1-validation.json \
-  --run-dir runs/off-study-001/register
-python -m higgsml.cli attribution nominal \
-  --registration-run runs/off-study-001/register \
-  --run-dir runs/off-study-001/nominal
-python -m higgsml.cli attribution freeze \
-  --registration-run runs/off-study-001/register \
-  --template-run runs/off-study-001/nominal \
-  --run-dir runs/off-study-001/freeze
-python -m higgsml.cli attribution asimov \
-  --registration-run runs/off-study-001/register \
-  --template-run runs/off-study-001/nominal \
-  --freeze-run runs/off-study-001/freeze \
-  --run-dir runs/off-study-001/asimov
-python -m higgsml.cli attribution report \
-  --registration-run runs/off-study-001/register \
-  --template-run runs/off-study-001/nominal \
-  --freeze-run runs/off-study-001/freeze \
-  --result-run runs/off-study-001/asimov \
-  --run-dir runs/off-study-001/report-B
+python scripts/h4l_off_run.py --source-run-name test01 --run-name study-001 --stage-b
 ```
 
-`report-B/evaluation-plan.json` 由上述真实 registration、prepared、nominal、freeze 和 Asimov manifest 自动生成，不需要手工填写 artifact ID。它是后续 `mc-bootstrap`、三组 model-self Toys、三组受控 assessment Toys 和 T2 的绑定输入。Stage B 可以在独立 P0/T1 与 assessment 历史审查尚未满足时发布探索性 Asimov 报告；这不表示事件 bootstrap、coverage、T2 或完整 MC 科学验证已经完成。完整 C–E 命令及恢复规则见[off-only 复现步骤](docs/implementation-and-reproduction.md#off-only-attribution-execution)。
+调试协议或流程代码时，可以复用协议摘要不一致的既有 prepare/train/calibrate 产物：
+
+```bash
+python scripts/h4l_off_run.py --source-run-name test01 --run-name debug-001 --stage-b --force
+```
+
+`--force` 只绕过来源产物的协议一致性检查，仍校验 dataset、artifact digest、候选身份、checkpoint、population 和上游关系。输出会标记为 `forced_protocol_mismatch_debug`，仅用于调试，不能作为论文或科学结论证据。调试完成后必须去掉 `--force`，使用新的 run name 正常运行。
+
+独立审核者根据该 freeze、独立 P0 和 signed-MC T1 材料完成 assessment access review 后，先检查 C--E 计划，再正式执行：
+
+```bash
+python scripts/h4l_off_run.py --source-run-name test01 --run-name study-001 --evaluation --plan
+
+python scripts/h4l_off_run.py --source-run-name test01 --run-name study-001 --evaluation
+```
+
+运行时默认显示阶段级进度条。Stage B 显示五个阶段；C--E evaluation 显示八个注册计算单元和最终报告，并在长阶段运行期间持续刷新当前阶段及已用时间。日志重定向或 CI 中可追加 `--no-progress` 关闭进度条；需要查看完整子命令时使用 `--show-command`。`--plan` 只打印计划，不显示动态进度。
+
+如果项目全程只有一名研究者，无法形成独立审核，可以在 Stage B 完成后生成明确标注的单人自审访问包：
+
+```bash
+python scripts/h4l_off_self_review.py --run-name study-001 --reviewer "Researcher Name"
+python scripts/h4l_off_run.py --source-run-name test01 --run-name study-001 --evaluation --plan
+python scripts/h4l_off_run.py --source-run-name test01 --run-name study-001 --evaluation
+```
+
+该命令读取并绑定实际 prepared、registration、nominal、freeze 和 evaluation-plan artifact，自动生成：
+
+```text
+runs/h4l-off-study-001/access-review/
+├── self-reviewed-p0-applicability.json
+├── self-reviewed-signed-mc-t1.json
+└── validated-off-assessment-access.json
+```
+
+单人自审允许执行冻结的 assessment、T2 和最终报告，但不会伪装成独立验证。生成文件和最终报告固定记录 `single_researcher_self_review`、`independent: false` 与 `exploratory_self_reviewed_not_independently_validated`；论文必须披露该限制。命令拒绝覆盖既有 `access-review`。如果 Stage B 使用了 `--force`，最终输出还会保留 debug-only 标记，不能作为正式科学证据；应优先用协议一致的来源 run 和新名称重新运行 Stage B。
+
+输出统一写入 `runs/h4l-off-study-001/`。`--evaluation` 自动读取 `runs/h4l-off-study-001/access-review/validated-off-assessment-access.json`；仅在文件位于其他位置时显式传入 `--access-review`。待审核文件结构见 `config/examples/h4l_off_assessment_access.pending.json`；它包含未解析的 ID 和 receipt，不能直接作为 validated review 使用。
+
+脚本依次完成 registration、共同 nominal 模板、freeze、Asimov、事件 bootstrap、三组 model-self Toys、三组受控 assessment Toys、T2 和最终报告。Stage B 使用新目录；`--evaluation` 复用该 Stage B 并拒绝覆盖已有 evaluation。若来源批次尚不存在或不完整，先使用 `scripts/h4l_run.py` 生成新的完整五随机种子批次。详细阶段契约与恢复规则见[off-only 复现步骤](docs/implementation-and-reproduction.md#off-only-attribution-execution)。
 
 ## 6. 使用项目工具开展研究
 

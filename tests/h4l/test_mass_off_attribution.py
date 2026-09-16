@@ -25,6 +25,65 @@ def values():
             for s in SEEDS for g in SUBSETS]
 
 
+def test_off_reuse_accepts_only_legacy_repository_validation_metadata(tmp_path):
+    from copy import deepcopy
+
+    from higgsml.artifacts import ResearchRun, digest_json, read_run
+    from higgsml.inference.attribution_workflow import (
+        _load_reusable, _validate_reusable_bundle,
+    )
+
+    current = load_protocol().to_dict()
+    legacy = deepcopy(current)
+    legacy['validation']['repository_authority_validation'] = 'not_run'
+    with ResearchRun(tmp_path/'legacy', allowed_root=tmp_path, stage='prepare',
+                     dataset=current['dataset'], protocol=legacy) as run:
+        run.write_json('payload.json', {'status':'synthetic'})
+
+    # The repository-wide reader remains strict.
+    with pytest.raises(ResearchError, match='protocol mismatch'):
+        read_run(tmp_path/'legacy', dataset=current['dataset'], protocol=current)
+
+    loaded, binding = _load_reusable(tmp_path/'legacy', current, 'prepare')
+    assert loaded.read_json('payload.json') == {'status':'synthetic'}
+    assert binding == {
+        'mode':'normalized_legacy_validation_metadata',
+        'source_protocol_sha256':digest_json(legacy),
+        'current_protocol_sha256':digest_json(current),
+        'source_protocol_path':str((tmp_path/'legacy'/'protocol.json').resolve()),
+        'removed_metadata':{
+            'validation.repository_authority_validation':'not_run',
+        },
+    }
+    legacy_model = make_empty_model(legacy, '1'*64, 42)
+    legacy_bundle = empty_bundle(legacy_model, legacy)
+    _validate_reusable_bundle(legacy_bundle, current, '1'*64)
+
+    scientific_change = deepcopy(legacy)
+    scientific_change['templates']['mass_edges'][0] += 1
+    with ResearchRun(tmp_path/'changed', allowed_root=tmp_path, stage='prepare',
+                     dataset=current['dataset'], protocol=scientific_change):
+        pass
+    with pytest.raises(ResearchError, match='protocol mismatch'):
+        _load_reusable(tmp_path/'changed', current, 'prepare')
+    forced, forced_binding = _load_reusable(
+        tmp_path/'changed', current, 'prepare', force=True)
+    assert forced.manifest['protocol_sha256'] == digest_json(scientific_change)
+    assert forced_binding['mode'] == 'forced_protocol_mismatch_debug'
+    forced_model = make_empty_model(scientific_change, '1'*64, 42)
+    _validate_reusable_bundle(
+        empty_bundle(forced_model, scientific_change), current, '1'*64,
+        source_protocol=scientific_change, force=True)
+
+    unsupported_metadata = deepcopy(current)
+    unsupported_metadata['validation']['repository_authority_validation'] = 'validated'
+    with ResearchRun(tmp_path/'unsupported', allowed_root=tmp_path, stage='prepare',
+                     dataset=current['dataset'], protocol=unsupported_metadata):
+        pass
+    with pytest.raises(ResearchError, match='protocol mismatch'):
+        _load_reusable(tmp_path/'unsupported', current, 'prepare')
+
+
 def test_exact_complete_summary_and_pairing():
     result = summarize(values())
     assert result["status"] == "valid"
@@ -260,7 +319,8 @@ def test_access_gate_validates_before_claim_and_decodes_only_once(monkeypatch,tm
     p=load_protocol().to_dict()
     prepared_path=tmp_path/'old'/'prepare'; prepared_path.mkdir(parents=True)
     (prepared_path/'p0-validation.json').write_text('{}',encoding='utf-8')
-    prepared=SimpleNamespace(path=prepared_path,manifest={'artifact_id':'1'*64},file=lambda n:prepared_path/n)
+    prepared=SimpleNamespace(path=prepared_path,manifest={'artifact_id':'1'*64},
+                             file=lambda n:prepared_path/n,read_json=lambda n:p)
     frozen=SimpleNamespace(manifest={'artifact_id':'2'*64},read_json=lambda n:{'template_artifact_id':'3'*64})
     overlay={'population_id':'4'*64}
     receipts={}
@@ -330,7 +390,7 @@ def test_model_self_joint_generation_and_process_marginals(monkeypatch,tmp_path)
     asimov.manifest['upstreams']=[{'artifact_id':x.manifest['artifact_id']} for x in (registered,nominal,frozen)]
     plan=workflow.evaluation_plan(p,*upstreams)
     plan_path=tmp_path/'plan.json'; plan_path.write_text(json.dumps(plan),encoding='utf-8')
-    monkeypatch.setattr(workflow,'load_frozen',lambda *a:(registered,{'qualification':{}},prepared,nominal,grid,bundles,frozen))
+    monkeypatch.setattr(workflow,'load_frozen',lambda *a,**kw:(registered,{'qualification':{}},prepared,nominal,grid,bundles,frozen))
     monkeypatch.setattr(workflow,'_load',lambda *a:asimov)
     monkeypatch.setattr(workflow,'load_research_data',lambda *a,**kw:frame)
     monkeypatch.setattr(workflow,'categorize_bundle',categorize)
@@ -361,7 +421,7 @@ def test_model_self_joint_generation_and_process_marginals(monkeypatch,tmp_path)
     with pytest.raises(ResearchError,match='nonnegative'):
         assessment._joint_mother(grid,bundles,negative,p,categorize,parent_role='template')
     # A marginal mismatch must select the registered unpaired model-self fallback.
-    monkeypatch.setattr(workflow,'load_frozen',lambda *a:(registered,{'qualification':{}},prepared,nominal,wrong,bundles,frozen))
+    monkeypatch.setattr(workflow,'load_frozen',lambda *a,**kw:(registered,{'qualification':{}},prepared,nominal,wrong,bundles,frozen))
     from higgsml.inference import likelihood
     def marginal(*a,**kw):
         assert kw['count']==500

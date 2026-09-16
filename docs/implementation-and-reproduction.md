@@ -335,3 +335,15 @@ Individual `mc-bootstrap`, `model-self --mu 0|1|2`, `assessment --mu 0|1|2` and 
 For evaluator recovery use `--reuse-stage STAGE:MU=RUN`, for example `--reuse-stage model-self:1=runs/off-evaluation-001/model-self-mu1`, with a fresh output root. The tool verifies successful manifests, original registration/template/freeze bindings and budgets before skipping a cell. Failed scientific fits inside a completed budget remain recorded; fatal stage errors stop dependent commands. To publish intermediate evidence, pass each completed stage using repeated `--evaluation-run` to a fresh `attribution report`.
 
 Exports include four `mass_off_*.csv` tables, complete JSON, JSONL, provenance and a data dictionary. Seed and event-MC uncertainty are separate fields; planned denominators and missing evidence remain visible. The paper-facing Markdown contains only off-family results.
+
+The direct stages above can be orchestrated in the same naming and planning style as `h4l_run.py`. Stage B must run first because the independent access review binds its actual freeze:
+
+```bash
+python scripts/h4l_off_run.py --source-run-name T2 --run-name study-001 --stage-b
+python scripts/h4l_off_run.py --source-run-name T2 --run-name study-001 --evaluation --plan
+python scripts/h4l_off_run.py --source-run-name T2 --run-name study-001 --evaluation
+```
+
+For protocol/debug development only, append `--force` and use a fresh debug run name. This bypasses source protocol consistency checks while retaining dataset, artifact digest, candidate, checkpoint, population, and upstream checks. Every generated stage is marked `forced_protocol_mismatch_debug`; these outputs are non-authoritative and must not be used as paper or scientific evidence. Remove `--force` for the final run.
+
+This writes Stage A--E under `runs/h4l-off-study-001/`. `--evaluation` requires the completed Stage B directories, reads `runs/h4l-off-study-001/access-review/validated-off-assessment-access.json` by default, and refuses an existing evaluation output. Use `--access-review` only to override that deterministic path. The pending structure in `config/examples/h4l_off_assessment_access.pending.json` is not valid access evidence until an independent reviewer replaces every placeholder with bound IDs and verified P0/T1 file receipts. The wrapper delegates every scientific operation and registered budget to the existing attribution CLI and `h4l_evaluate.py`.
