@@ -1,5 +1,6 @@
 import hashlib
 import json
+from copy import deepcopy
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -124,6 +125,29 @@ def test_protocol_roundtrip_digest_and_dataset_rejection(tmp_path):
     assert load_protocol(path).digest == p.digest
     with pytest.raises(ResearchError):
         load_protocol(path, "atlas2025_exactly4lep")
+
+
+def test_legacy_repository_validation_metadata_can_bind_data_provenance(tmp_path):
+    current = load_protocol().to_dict()
+    legacy = deepcopy(current)
+    legacy['validation']['repository_authority_validation'] = 'not_run'
+    path = tmp_path/'legacy-events.jsonl'
+    write_research_data(frame_for_roles(), path, legacy)
+    loaded = load_research_data(
+        path, current['dataset'], current, provenance_protocol=legacy)
+    assert not loaded.empty
+
+    changed = deepcopy(legacy)
+    changed['templates']['mass_edges'][0] += 1
+    with pytest.raises(ResearchError, match='not compatible'):
+        load_research_data(
+            path, current['dataset'], current, provenance_protocol=changed)
+    changed_path = tmp_path/'changed-events.jsonl'
+    write_research_data(frame_for_roles(), changed_path, changed)
+    forced = load_research_data(
+        changed_path, current['dataset'], current, provenance_protocol=changed,
+        force_protocol_mismatch=True)
+    assert not forced.empty
 
 
 def test_write_research_data_returns_streamed_digest_and_size(tmp_path):

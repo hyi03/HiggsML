@@ -1,0 +1,22 @@
+{
+  "schema_version": "h4l-off-assessment-access-v1",
+  "status": "pending",
+  "prepared_artifact_id": "0000000000000000000000000000000000000000000000000000000000000000",
+  "population_id": "0000000000000000000000000000000000000000000000000000000000000000",
+  "protocol_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "freeze_artifact_id": "0000000000000000000000000000000000000000000000000000000000000000",
+  "independent": false,
+  "reviewer": "",
+  "history_review": "pending_independent_review",
+  "p0_reference": {
+    "path": "independent-p0-applicability.json",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "size_bytes": 0
+  },
+  "t1_reference": {
+    "path": "independent-signed-mc-t1.json",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "size_bytes": 0
+  },
+  "role_isolation": "pending_physical_group_review"
+}

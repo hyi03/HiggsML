@@ -28,9 +28,74 @@ def _load(path, protocol, *stages):
     return read_run(path, dataset=protocol['dataset'], protocol=protocol, stages=stages or None)
 
 
-def audit_sources(source_root, prepared, protocol):
+def _load_reusable(path, protocol, *stages, force=False):
+    """Load a source run, allowing one non-scientific legacy metadata removal."""
+    try:
+        run = _load(path, protocol, *stages)
+        return run, {
+            'mode': 'exact',
+            'source_protocol_sha256': run.manifest['protocol_sha256'],
+            'current_protocol_sha256': digest_json(protocol),
+            'source_protocol_path': str(run.file('protocol.json')),
+        }
+    except ResearchError as error:
+        if str(error) != 'research artifact protocol mismatch':
+            raise
+        source_protocol = read_json(Path(path)/'protocol.json')
+        normalized = deepcopy(source_protocol)
+        validation = normalized.get('validation')
+        compatible = (isinstance(validation, dict)
+                      and validation.pop('repository_authority_validation', None) == 'not_run'
+                      and normalized == protocol)
+        if source_protocol.get('dataset') != protocol.get('dataset'):
+            raise ResearchError('forced protocol reuse cannot change dataset')
+        if not compatible and not force:
+            raise error
+        # Re-run the complete immutable-run validation against the original
+        # snapshot. This keeps manifest, receipt, status and stage checks strict.
+        run = read_run(path, dataset=protocol['dataset'], protocol=source_protocol,
+                       stages=stages or None)
+        return run, {
+            'mode': ('normalized_legacy_validation_metadata' if compatible
+                     else 'forced_protocol_mismatch_debug'),
+            'source_protocol_sha256': digest_json(source_protocol),
+            'current_protocol_sha256': digest_json(protocol),
+            'source_protocol_path': str(run.file('protocol.json')),
+            **({'removed_metadata': {
+                'validation.repository_authority_validation': 'not_run',
+            }} if compatible else {
+                'warning': 'debug_only_protocol_consistency_bypassed',
+            }),
+        }
+
+
+def _validate_reusable_bundle(bundle, protocol, prepared_id, *, source_protocol=None, force=False):
+    """Validate a bundle against its exact current or accepted legacy protocol."""
+    legacy_protocol = deepcopy(protocol)
+    legacy_protocol.setdefault('validation', {})['repository_authority_validation'] = 'not_run'
+    model_protocol_id = bundle.get('model', {}).get('protocol_id')
+    threshold_protocol_id = bundle.get('thresholds', {}).get('protocol_id')
+    candidates = [source_protocol] if source_protocol is not None else [protocol]
+    if source_protocol is None and legacy_protocol != protocol:
+        candidates.append(legacy_protocol)
+    if source_protocol is not None and not force:
+        normalized = deepcopy(source_protocol)
+        validation = normalized.get('validation')
+        if source_protocol != protocol and (not isinstance(validation, dict)
+                or validation.pop('repository_authority_validation', None) != 'not_run'
+                or normalized != protocol):
+            raise ResearchError('off-family bundle protocol is not reusable')
+    matches = [candidate for candidate in candidates
+               if model_protocol_id == digest(candidate)
+               and threshold_protocol_id == digest(candidate)]
+    if len(matches) != 1:
+        raise ResearchError('off-family bundle protocol is not reusable')
+    validate_bundle(bundle, matches[0], prepared_id)
+
+
+def audit_sources(source_root, prepared, protocol, *, force=False):
     """Only declared train/calibration artifacts and safe metadata; never scan events."""
-    rows, bundles, upstreams = [], {}, []
+    rows, bundles, upstreams, bundle_protocols = [], {}, [], {}
     source_root = Path(source_root).resolve()
     for seed in SEEDS:
         for subset in SUBSETS[1:]:
@@ -38,8 +103,10 @@ def audit_sources(source_root, prepared, protocol):
             name = f'groups-{subset}-m4l-off'
             row = {'candidate_key':key, 'status':'reuse_blocked', 'files':[]}
             try:
-                train = _load(source_root/f'seed{seed}'/'train'/name, protocol, 'train')
-                calibrated = _load(source_root/f'seed{seed}'/'calibrate'/name, protocol, 'calibrate')
+                train, train_protocol = _load_reusable(
+                    source_root/f'seed{seed}'/'train'/name, protocol, 'train', force=force)
+                calibrated, calibrated_protocol = _load_reusable(
+                    source_root/f'seed{seed}'/'calibrate'/name, protocol, 'calibrate', force=force)
                 for item in (train, calibrated):
                     context = item.manifest.get('context',{})
                     if (context.get('candidate_key') != key
@@ -54,7 +121,12 @@ def audit_sources(source_root, prepared, protocol):
                                              'size_bytes':path.stat().st_size,'mtime_ns':path.stat().st_mtime_ns})
                 model = train.read_json('model.json')
                 bundle = calibrated.read_json('calibration.json')
-                validate_bundle(bundle, protocol, prepared.manifest['artifact_id'])
+                source_protocol = calibrated.read_json('protocol.json')
+                if train.read_json('protocol.json') != source_protocol:
+                    raise ResearchError('train/calibration protocol snapshot mismatch')
+                _validate_reusable_bundle(
+                    bundle, protocol, prepared.manifest['artifact_id'],
+                    source_protocol=source_protocol, force=force)
                 if bundle['model'] != model or not any(u['artifact_id'] == train.manifest['artifact_id'] for u in calibrated.manifest['upstreams']):
                     raise ResearchError('calibration does not reuse bound checkpoint')
                 selected = [r for r in model['history'] if r['epoch'] == model['selected_epoch']]
@@ -64,12 +136,17 @@ def audit_sources(source_root, prepared, protocol):
                 row.update(status='reusable_exploratory',train_path=str(train.path),calibration_path=str(calibrated.path),
                            train_id=train.manifest['artifact_id'],calibration_id=calibrated.manifest['artifact_id'],
                            model_id=model['model_id'],diagnostics='recorded' if 'history_contract' in model else 'historical_detailed_history_missing')
+                row['protocol_bindings'] = {
+                    'train': train_protocol,
+                    'calibration': calibrated_protocol,
+                }
                 bundles[key] = bundle
+                bundle_protocols[key] = source_protocol
                 upstreams.extend((train,calibrated))
             except (ResearchError, KeyError, TypeError, ValueError) as error:
                 row['reason'] = str(error)
             rows.append(row)
-    return rows, bundles, upstreams
+    return rows, bundles, upstreams, bundle_protocols
 
 
 def _unchanged(rows):
@@ -81,24 +158,37 @@ def _unchanged(rows):
                 raise ResearchError('immutable source changed: '+str(path))
 
 
-def _qualification(prepared, t1, protocol):
+def _qualification(prepared, t1, protocol, accepted_protocol_sha256, *, force=False):
     p0 = prepared.read_json('p0-validation.json') if 'p0-validation.json' in prepared.manifest['files'] else {}
     automated = [name for name,value in (('p0',p0),('t1',t1 or {}))
                  if 'automated' in str(value.get('independent_reference','')).lower()]
     # A free-form reference string is never a reviewed numerical evidence package.
-    return {'software_contract':'valid' if t1 and t1.get('protocol_sha256') == digest_json(protocol) else 'pending',
+    if force:
+        return {'software_contract':'forced_debug_unverified', 'independent_reference':'pending',
+                'automated_materials':automated,
+                'assessment_access':'pending_independent_history_and_reference_review',
+                'allowed_conclusions':'debug_only_no_scientific_conclusions',
+                'missing':['protocol_consistency_bypassed','independent_P0_physical_definitions',
+                           'signed_MC_T1_applicability_reference','assessment_history_review']}
+    return {'software_contract':'valid' if t1 and t1.get('protocol_sha256') in accepted_protocol_sha256 else 'pending',
             'independent_reference':'pending', 'automated_materials':automated,
             'assessment_access':'pending_independent_history_and_reference_review',
             'allowed_conclusions':'exploratory_MC_model_self_only',
             'missing':['independent_P0_physical_definitions','signed_MC_T1_applicability_reference','assessment_history_review']}
 
 
-def register(source_root, prepared_path, protocol, output, allowed_root, t1_path):
-    prepared = _load(prepared_path, protocol, 'prepare')
+def register(source_root, prepared_path, protocol, output, allowed_root, t1_path, *, force=False):
+    prepared, prepared_protocol = _load_reusable(
+        prepared_path, protocol, 'prepare', force=force)
+    accepted_protocol_sha256 = {
+        digest_json(protocol), prepared_protocol['source_protocol_sha256'],
+    }
     t1 = read_json(Path(t1_path)) if t1_path else None
-    if t1 and (t1.get('protocol_sha256') != digest_json(protocol) or t1.get('dataset') != protocol['dataset']):
+    if t1 and ((not force and t1.get('protocol_sha256') not in accepted_protocol_sha256)
+               or t1.get('dataset') != protocol['dataset']):
         raise ResearchError('T1 reference binding mismatch')
-    rows,bundles,upstreams = audit_sources(source_root,prepared,protocol)
+    rows,bundles,upstreams,_ = audit_sources(
+        source_root, prepared, protocol, force=force)
     # Inspect the original population's claim directory, not this new output root.
     claims_root = prepared.path.parents[1]/'.research-claims'
     claims = []
@@ -117,20 +207,30 @@ def register(source_root, prepared_path, protocol, output, allowed_root, t1_path
                'value_function':'-W68','estimator':'per_seed_then_median',
                'seed_resampling':'3125_ordered_joint_vectors_linear_quantiles',
                'pairing_rule':'joint_process_cells_nonnegative_with_exact_marginals_else_unavailable',
-               'historical_claims':claims,'qualification':_qualification(prepared,t1,protocol)}
+               'historical_claims':claims,
+               'qualification':_qualification(
+                   prepared,t1,protocol,accepted_protocol_sha256,force=force)}
     overlay['registration_id'] = digest_json(overlay)
     with ResearchRun(output,allowed_root=allowed_root,stage='attribution-register',dataset=protocol['dataset'],
-                     protocol=protocol,upstreams=[prepared,*upstreams]) as run:
+                     protocol=protocol,upstreams=[prepared,*upstreams],
+                     context={'forced_protocol_mismatch_debug':force}) as run:
         run.write_json('registration.json',overlay)
-        run.write_json('reuse-audit.json',{'rows':rows,'assessment_payload_read':False})
+        run.write_json('reuse-audit.json',{
+            'rows':rows, 'assessment_payload_read':False,
+            'prepared_protocol_binding':prepared_protocol,
+            'forced_protocol_mismatch_debug':force,
+        })
         run.write_json('t1-validation.json',t1)
         if len(bundles) != 75:
             raise ResearchStateError('incomplete reusable off family',status='reuse_blocked')
     return _result(run,output)
 
 
-def load_registration(path, protocol):
+def load_registration(path, protocol, *, force=False):
     run = _load(path,protocol,'attribution-register')
+    forced = run.manifest.get('context',{}).get('forced_protocol_mismatch_debug') is True
+    if forced and not force:
+        raise ResearchError('forced debug registration requires --force')
     overlay = run.read_json('registration.json')
     from jsonschema import Draft202012Validator
     from jsonschema.exceptions import ValidationError
@@ -148,7 +248,8 @@ def load_registration(path, protocol):
     if (overlay.get('value_function')!='-W68' or overlay.get('estimator')!='per_seed_then_median'
             or overlay.get('pairing_rule')!='joint_process_cells_nonnegative_with_exact_marginals_else_unavailable'):
         raise ResearchError('unsupported attribution estimand/pairing rule')
-    prepared = _load(overlay['prepared_path'],protocol,'prepare')
+    prepared, _ = _load_reusable(
+        overlay['prepared_path'],protocol,'prepare',force=force)
     if prepared.manifest['artifact_id'] != overlay['prepared_artifact_id'] or prepared.manifest.get('population_id') != overlay['population_id']:
         raise ResearchError('registration prepared identity mismatch')
     _unchanged(run.read_json('reuse-audit.json')['rows'])
@@ -159,17 +260,25 @@ def _result(run, output):
     return {'status':run.status,'run_dir':str(output),'artifact_id':run.manifest.get('artifact_id')}
 
 
-def nominal(registration_path, protocol, output, allowed_root):
-    registered,overlay,prepared = load_registration(registration_path,protocol)
-    rows,bundles,_ = audit_sources(overlay['source_root'],prepared,protocol)
+def nominal(registration_path, protocol, output, allowed_root, *, force=False):
+    registered,overlay,prepared = load_registration(registration_path,protocol,force=force)
+    rows,bundles,_,bundle_protocols = audit_sources(
+        overlay['source_root'],prepared,protocol,force=force)
     if len(bundles) != 75: raise ResearchError('off-only reuse audit no longer complete')
     t1 = registered.read_json('t1-validation.json')
     with ResearchRun(output,allowed_root=allowed_root,stage='attribution-nominal',dataset=protocol['dataset'],
                      protocol=protocol,upstreams=[registered,prepared],
-                     context={'family_id':FAMILY,'registration_id':overlay['registration_id']}) as run:
-        frame = load_research_data(prepared.file('events.jsonl'),protocol['dataset'],protocol)
+                     context={'family_id':FAMILY,'registration_id':overlay['registration_id'],
+                              'forced_protocol_mismatch_debug':force}) as run:
+        frame = load_research_data(
+            prepared.file('events.jsonl'), protocol['dataset'], protocol,
+            provenance_protocol=prepared.read_json('protocol.json'),
+            force_protocol_mismatch=force)
         for seed in SEEDS:
-            bundles[candidate_key(seed,'')] = empty_bundle(make_empty_model(protocol,prepared.manifest['artifact_id'],seed),protocol)
+            key = candidate_key(seed,'')
+            bundles[key] = empty_bundle(
+                make_empty_model(protocol,prepared.manifest['artifact_id'],seed),protocol)
+            bundle_protocols[key] = protocol
         validation=frame.loc[frame.role=='validation']
         support={str(label):float(np.abs(validation.loc[validation.label==label,'physical_weight']).sum()) for label in (0,1)}
         run.write_json('empty-validation.json',{'status':'valid' if all(v>0 for v in support.values()) else 'unavailable',
@@ -189,6 +298,7 @@ def nominal(registration_path, protocol, output, allowed_root):
         if set(grid['templates']) != set(candidate_keys()): raise ResearchError('G1 missing registered identity')
         run.write_json('templates.json',grid)
         run.write_json('calibrations.json',bundles)
+        run.write_json('bundle-protocols.json',bundle_protocols)
         run.write_json('g1.json',{**g1,'family_id':FAMILY,'qualification':overlay['qualification']})
         run.write_json('t1-validation.json',t1)
         if g1['status'] != 'passed': raise ResearchStateError('off-only G1 failed',status='g1_not_passed')
@@ -207,24 +317,29 @@ def nominal(registration_path, protocol, output, allowed_root):
     return _result(run,output)
 
 
-def load_nominal(path, registered, overlay, protocol):
+def load_nominal(path, registered, overlay, protocol, *, force=False):
     nominal_run = _load(path,protocol,'attribution-nominal')
     if not any(u['artifact_id']==registered.manifest['artifact_id'] for u in nominal_run.manifest['upstreams']):
         raise ResearchError('nominal registration mismatch')
     grid,bundles = nominal_run.read_json('templates.json'),nominal_run.read_json('calibrations.json')
+    bundle_protocols = (nominal_run.read_json('bundle-protocols.json')
+                        if 'bundle-protocols.json' in nominal_run.manifest['files'] else {})
     if grid.get('family_id')!=FAMILY or set(grid['templates'])!=set(candidate_keys()) or set(bundles)!=set(candidate_keys()):
         raise ResearchError('off-only nominal family mismatch')
     for key,bundle in bundles.items():
-        validate_bundle(bundle,protocol,overlay['prepared_artifact_id'])
+        _validate_reusable_bundle(
+            bundle,protocol,overlay['prepared_artifact_id'],
+            source_protocol=bundle_protocols.get(key),force=force)
         if bundle['key']!=key or grid['templates'][key]['mapping_id']!=bundle['mapping_id']:
             raise ResearchError('nominal mapping mismatch')
     if nominal_run.read_json('g1.json')['status']!='passed': raise ResearchError('nominal G1 did not pass')
     return nominal_run,grid,bundles
 
 
-def freeze(registration_path, nominal_path, protocol, output, allowed_root):
-    registered,overlay,prepared = load_registration(registration_path,protocol)
-    nominal_run,grid,bundles = load_nominal(nominal_path,registered,overlay,protocol)
+def freeze(registration_path, nominal_path, protocol, output, allowed_root, *, force=False):
+    registered,overlay,prepared = load_registration(registration_path,protocol,force=force)
+    nominal_run,grid,bundles = load_nominal(
+        nominal_path,registered,overlay,protocol,force=force)
     value = {'status':'frozen','family_id':FAMILY,'protocol_sha256':digest_json(protocol),
              'registration_id':overlay['registration_id'],'prepared_artifact_id':prepared.manifest['artifact_id'],
              'template_artifact_id':nominal_run.manifest['artifact_id'],'mass_edges':grid['mass_edges'],
@@ -234,14 +349,16 @@ def freeze(registration_path, nominal_path, protocol, output, allowed_root):
              'assessment_access':'pending_independent_history_and_reference_review'}
     value['evidence_id'] = digest_json(value)
     with ResearchRun(output,allowed_root=allowed_root,stage='attribution-freeze',dataset=protocol['dataset'],
-                     protocol=protocol,upstreams=[registered,prepared,nominal_run]) as run:
+                     protocol=protocol,upstreams=[registered,prepared,nominal_run],
+                     context={'forced_protocol_mismatch_debug':force}) as run:
         run.write_json('freeze.json',value)
     return _result(run,output)
 
 
-def load_frozen(registration_path, nominal_path, freeze_path, protocol):
-    registered,overlay,prepared = load_registration(registration_path,protocol)
-    nominal_run,grid,bundles = load_nominal(nominal_path,registered,overlay,protocol)
+def load_frozen(registration_path, nominal_path, freeze_path, protocol, *, force=False):
+    registered,overlay,prepared = load_registration(registration_path,protocol,force=force)
+    nominal_run,grid,bundles = load_nominal(
+        nominal_path,registered,overlay,protocol,force=force)
     frozen_run = _load(freeze_path,protocol,'attribution-freeze')
     frozen = frozen_run.read_json('freeze.json')
     if (frozen.get('evidence_id')!=digest_json({k:v for k,v in frozen.items() if k!='evidence_id'})
@@ -276,10 +393,12 @@ def asimov_records(grid,bundles,protocol,t1,cohort):
     return records,results
 
 
-def asimov(registration_path,nominal_path,freeze_path,protocol,output,allowed_root):
-    registered,overlay,prepared,nominal_run,grid,bundles,frozen_run = load_frozen(registration_path,nominal_path,freeze_path,protocol)
+def asimov(registration_path,nominal_path,freeze_path,protocol,output,allowed_root,*,force=False):
+    registered,overlay,prepared,nominal_run,grid,bundles,frozen_run = load_frozen(
+        registration_path,nominal_path,freeze_path,protocol,force=force)
     with ResearchRun(output,allowed_root=allowed_root,stage='attribution-asimov',dataset=protocol['dataset'],
-                     protocol=protocol,upstreams=[registered,nominal_run,frozen_run]) as run:
+                     protocol=protocol,upstreams=[registered,nominal_run,frozen_run],
+                     context={'forced_protocol_mismatch_debug':force}) as run:
         records,results = asimov_records(grid,bundles,protocol,nominal_run.read_json('t1-validation.json'),nominal_run.manifest['artifact_id'])
         summary = summarize(records)
         run.write_json('inference.json',results)
@@ -289,7 +408,7 @@ def asimov(registration_path,nominal_path,freeze_path,protocol,output,allowed_ro
     return _result(run,output)
 
 
-def _assessment_frame(prepared,overlay,frozen_run,protocol,access_review,cell):
+def _assessment_frame(prepared,overlay,frozen_run,protocol,access_review,cell,*,force=False):
     """Verify independent evidence and consume one durable cell before decoding."""
     import os
     from higgsml.inference.evidence import validate_evidence_package, validate_off_p0
@@ -297,6 +416,48 @@ def _assessment_frame(prepared,overlay,frozen_run,protocol,access_review,cell):
         raise ResearchStateError('independent P0/T1 and history/access review missing',status='assessment_qualification_pending')
     path=Path(access_review).resolve()
     review=read_json(path)
+    if review.get('review_mode')=='single_researcher_self_review':
+        from higgsml.inference.self_review import validate_self_review_access
+        validate_self_review_access(review,path.parent)
+        if (review['prepared_artifact_id']!=prepared.manifest['artifact_id']
+                or review['population_id']!=overlay['population_id']
+                or review['protocol_sha256']!=digest_json(protocol)
+                or review['freeze_artifact_id']!=frozen_run.manifest['artifact_id']):
+            raise ResearchError('single-researcher assessment access binding mismatch')
+    else:
+        _validate_independent_access_review(review,path,prepared,overlay,frozen_run,protocol)
+    # Shared original root prevents a new output directory from clearing history.
+    from higgsml.workflow import _claim_assessment
+    root=prepared.path.parents[1]
+    old_claim=root/'.research-claims'
+    if old_claim.exists():
+        for file in old_claim.glob('*.json'):
+            previous=read_json(file)
+            if previous.get('population_id')==overlay['population_id'] and previous.get('freeze_artifact_id')!=frozen_run.manifest['artifact_id']:
+                raise ResearchStateError('population previously used under another freeze',status='assessment_already_started')
+    _claim_assessment(root,prepared.manifest['artifact_id'],protocol,frozen_run.manifest['artifact_id'],
+                      population_id=overlay['population_id'],repeat=True)
+    cells=root/'.research-claims'/('off-cells-'+frozen_run.manifest['artifact_id'])
+    if cells.is_symlink(): raise ResearchError('unsafe assessment budget ledger')
+    cells.mkdir(exist_ok=True)
+    cell_path=cells/(cell+'.json')
+    try:
+        with cell_path.open('x',encoding='utf-8') as stream:
+            stream.write(__import__('json').dumps({'cell':cell,'freeze_id':frozen_run.manifest['artifact_id'],
+                                                'access_review_sha256':sha256_file(path),'budgets':BUDGETS,
+                                                'review_mode':review.get('review_mode','independent_validated')}))
+            stream.flush(); os.fsync(stream.fileno())
+    except FileExistsError as error:
+        raise ResearchStateError('assessment cell budget already consumed; reuse published output',status='assessment_already_started') from error
+    return load_research_data(
+        prepared.file('events.jsonl'), protocol['dataset'], protocol,
+        allow_assessment=True, assessment_freeze=frozen_run.read_json('freeze.json'),
+        provenance_protocol=prepared.read_json('protocol.json'),
+        force_protocol_mismatch=force)
+
+
+def _validate_independent_access_review(review,path,prepared,overlay,frozen_run,protocol):
+    from higgsml.inference.evidence import validate_evidence_package, validate_off_p0
     expected={'schema_version','status','prepared_artifact_id','population_id','protocol_sha256','freeze_artifact_id',
               'independent','reviewer','history_review','p0_reference','t1_reference','role_isolation'}
     if (set(review)!=expected or review['schema_version']!='h4l-off-assessment-access-v1'
@@ -329,30 +490,6 @@ def _assessment_frame(prepared,overlay,frozen_run,protocol,access_review,cell):
                 'freeze_artifact_id':frozen_run.manifest['artifact_id'],
                 'template_artifact_id':frozen_run.read_json('freeze.json')['template_artifact_id'],
                 'source_evidence_sha256':sha256_file(prepared.file('p0-validation.json'))})
-    # Shared original root prevents a new output directory from clearing history.
-    from higgsml.workflow import _claim_assessment
-    root=prepared.path.parents[1]
-    old_claim=root/'.research-claims'
-    if old_claim.exists():
-        for file in old_claim.glob('*.json'):
-            previous=read_json(file)
-            if previous.get('population_id')==overlay['population_id'] and previous.get('freeze_artifact_id')!=frozen_run.manifest['artifact_id']:
-                raise ResearchStateError('population previously used under another freeze',status='assessment_already_started')
-    _claim_assessment(root,prepared.manifest['artifact_id'],protocol,frozen_run.manifest['artifact_id'],
-                      population_id=overlay['population_id'],repeat=True)
-    cells=root/'.research-claims'/('off-cells-'+frozen_run.manifest['artifact_id'])
-    if cells.is_symlink(): raise ResearchError('unsafe assessment budget ledger')
-    cells.mkdir(exist_ok=True)
-    cell_path=cells/(cell+'.json')
-    try:
-        with cell_path.open('x',encoding='utf-8') as stream:
-            stream.write(__import__('json').dumps({'cell':cell,'freeze_id':frozen_run.manifest['artifact_id'],
-                                                'access_review_sha256':sha256_file(path),'budgets':BUDGETS}))
-            stream.flush(); os.fsync(stream.fileno())
-    except FileExistsError as error:
-        raise ResearchStateError('assessment cell budget already consumed; reuse published output',status='assessment_already_started') from error
-    return load_research_data(prepared.file('events.jsonl'),protocol['dataset'],protocol,
-                              allow_assessment=True,assessment_freeze=frozen_run.read_json('freeze.json'))
 
 
 def evaluation_plan(protocol, registered, prepared, nominal_run, frozen_run, result_run):
@@ -380,12 +517,13 @@ def validate_evaluation_manifest(item, plan):
 
 
 def evaluate(registration_path,nominal_path,freeze_path,protocol,output,allowed_root,*,stage,mu=1,access_review=None,
-             evaluation_plan_path=None,result_path=None):
+             evaluation_plan_path=None,result_path=None,force=False):
     from higgsml.inference.bootstrap import mass_off_mc_bootstrap
     from higgsml.inference.assessment import infer_assessment,run_assessment_t2,_joint_mother
     from higgsml.inference.likelihood import run_toys
     from higgsml.inference.reporting import coverage_summary,fit_diagnostics
-    registered,overlay,prepared,nominal_run,grid,bundles,frozen_run=load_frozen(registration_path,nominal_path,freeze_path,protocol)
+    registered,overlay,prepared,nominal_run,grid,bundles,frozen_run=load_frozen(
+        registration_path,nominal_path,freeze_path,protocol,force=force)
     if not evaluation_plan_path or not result_path:
         raise ResearchError('evaluation requires bound --evaluation-plan and --result-run')
     result_run=_load(result_path,protocol,'attribution-asimov')
@@ -397,16 +535,24 @@ def evaluate(registration_path,nominal_path,freeze_path,protocol,output,allowed_
     if stage not in {'mc-bootstrap','model-self','assessment','t2'} or mu not in (0,1,2) or (stage in {'mc-bootstrap','t2'} and mu!=1):
         raise ResearchError('evaluation outside registered stage/injection')
     t1=nominal_run.read_json('t1-validation.json')
+    access_mode=(read_json(Path(access_review)).get('review_mode','independent_validated')
+                 if stage in {'assessment','t2'} and access_review else None)
     with ResearchRun(output,allowed_root=allowed_root,stage='attribution-'+stage,dataset=protocol['dataset'],protocol=protocol,
                      upstreams=[registered,prepared,nominal_run,frozen_run,result_run],
                      context={'family_id':FAMILY,'mu':mu,'budgets':BUDGETS,
-                              'evaluation_plan_id':digest_json(plan),'evaluation_inputs':plan['inputs']}) as run:
+                              'evaluation_plan_id':digest_json(plan),'evaluation_inputs':plan['inputs'],
+                              'forced_protocol_mismatch_debug':force,
+                              'assessment_access_mode':access_mode}) as run:
         run.write_json('evaluation-plan.json',plan)
         if stage in {'assessment','t2'}:
-            frame=_assessment_frame(prepared,overlay,frozen_run,protocol,access_review,f'{stage}-mu{mu}')
+            frame=_assessment_frame(
+                prepared,overlay,frozen_run,protocol,access_review,f'{stage}-mu{mu}',force=force)
             run.write_json('access-review.json',read_json(Path(access_review)))
         else:
-            frame=load_research_data(prepared.file('events.jsonl'),protocol['dataset'],protocol)
+            frame=load_research_data(
+                prepared.file('events.jsonl'), protocol['dataset'], protocol,
+                provenance_protocol=prepared.read_json('protocol.json'),
+                force_protocol_mismatch=force)
         calibration=frame.loc[frame.role=='calibration'].copy()
         template=frame.loc[frame.role=='template'].copy()
         if stage=='mc-bootstrap':
@@ -459,9 +605,10 @@ def evaluate(registration_path,nominal_path,freeze_path,protocol,output,allowed_
     return _result(run,output)
 
 
-def report(registration_path,nominal_path,freeze_path,protocol,output,allowed_root,*,result_path,evaluation_paths=()):
+def report(registration_path,nominal_path,freeze_path,protocol,output,allowed_root,*,result_path,evaluation_paths=(),force=False):
     from higgsml.inference.report_exports import publish_mass_off_exports
-    registered,overlay,prepared,nominal_run,grid,bundles,frozen_run=load_frozen(registration_path,nominal_path,freeze_path,protocol)
+    registered,overlay,prepared,nominal_run,grid,bundles,frozen_run=load_frozen(
+        registration_path,nominal_path,freeze_path,protocol,force=force)
     result_run=_load(result_path,protocol,'attribution-asimov')
     required={registered.manifest['artifact_id'],nominal_run.manifest['artifact_id'],frozen_run.manifest['artifact_id']}
     if not required <= {u['artifact_id'] for u in result_run.manifest['upstreams']}:
@@ -474,6 +621,7 @@ def report(registration_path,nominal_path,freeze_path,protocol,output,allowed_ro
     for name in ('model-self','assessment'):
         layers[name]={str(mu):{'status':'not_run'} for mu in (0,1,2)}
     evaluations=[]
+    access_modes=set()
     seen=set()
     for path in evaluation_paths:
         item=_load(path,protocol)
@@ -490,13 +638,21 @@ def report(registration_path,nominal_path,freeze_path,protocol,output,allowed_ro
         if stage in {'model-self','assessment'}: layers[stage][str(mu)]=value
         else: layers[stage]=value
         evaluations.append(item)
+        if item.manifest.get('context',{}).get('assessment_access_mode'):
+            access_modes.add(item.manifest['context']['assessment_access_mode'])
     with ResearchRun(output,allowed_root=allowed_root,stage='attribution-report',dataset=protocol['dataset'],protocol=protocol,
-                     upstreams=[registered,nominal_run,frozen_run,result_run,*evaluations]) as run:
+                     upstreams=[registered,nominal_run,frozen_run,result_run,*evaluations],
+                     context={'forced_protocol_mismatch_debug':force,
+                              'assessment_access_modes':sorted(access_modes)}) as run:
         result={'schema_version':'h4l-mass-off-report-v1','family_id':FAMILY,
                 'mass_off_feature_comparisons':summary['per_seed'],'mass_off_feature_summary':summary,
                 'mass_off_pairwise_comparisons':summary['pairwise_comparisons'],'evidence_layers':layers,
                 'qualification':overlay['qualification'],'budgets':BUDGETS,'registration_status':overlay['registration_status'],
-                'evaluation_plan':plan,'evaluation_plan_id':digest_json(plan)}
+                'evaluation_plan':plan,'evaluation_plan_id':digest_json(plan),
+                'forced_protocol_mismatch_debug':force,
+                'assessment_access_modes':sorted(access_modes),
+                'independent_validation':('independent_validated' in access_modes
+                                          and 'single_researcher_self_review' not in access_modes)}
         run.write_json('evaluation-plan.json',plan)
         run.write_json('report.json',result)
         publish_mass_off_exports(run,result)

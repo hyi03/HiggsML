@@ -19,6 +19,8 @@ def main(argv=None):
     parser.add_argument('--evaluation-run',action='append',default=[])
     parser.add_argument('--mu',type=int,choices=[0,1,2],default=1)
     parser.add_argument('--worker-threads',type=int,default=1)
+    parser.add_argument('--force',action='store_true',
+                        help='Debug only: bypass source protocol consistency checks; outputs are non-authoritative')
     args=parser.parse_args(argv)
     root=Path(__file__).resolve().parents[2]/'runs'
     try:
@@ -28,20 +30,23 @@ def main(argv=None):
         torch.set_num_threads(args.worker_threads)
         if args.stage=='register':
             if not args.source_root or not args.prepared_run: raise ResearchError('register needs --source-root and --prepared-run')
-            result=workflow.register(args.source_root,args.prepared_run,p,args.run_dir,root,args.t1_validation)
+            result=workflow.register(args.source_root,args.prepared_run,p,args.run_dir,root,args.t1_validation,
+                                     force=args.force)
         else:
             if not args.registration_run: raise ResearchError('--registration-run required')
             if args.stage!='nominal' and not args.template_run: raise ResearchError('--template-run required')
             if args.stage not in {'nominal','freeze'} and not args.freeze_run: raise ResearchError('--freeze-run required')
             if args.stage=='report' and not args.result_run: raise ResearchError('--result-run required')
-            if args.stage=='nominal': result=workflow.nominal(args.registration_run,p,args.run_dir,root)
-            elif args.stage=='freeze': result=workflow.freeze(args.registration_run,args.template_run,p,args.run_dir,root)
+            if args.stage=='nominal': result=workflow.nominal(args.registration_run,p,args.run_dir,root,force=args.force)
+            elif args.stage=='freeze': result=workflow.freeze(args.registration_run,args.template_run,p,args.run_dir,root,force=args.force)
             else:
                 common=(args.registration_run,args.template_run,args.freeze_run,p,args.run_dir,root)
-                if args.stage=='asimov': result=workflow.asimov(*common)
-                elif args.stage=='report': result=workflow.report(*common,result_path=args.result_run,evaluation_paths=args.evaluation_run)
+                if args.stage=='asimov': result=workflow.asimov(*common,force=args.force)
+                elif args.stage=='report': result=workflow.report(*common,result_path=args.result_run,
+                                                                  evaluation_paths=args.evaluation_run,force=args.force)
                 else: result=workflow.evaluate(*common,stage=args.stage,mu=args.mu,access_review=args.access_review,
-                                               evaluation_plan_path=args.evaluation_plan,result_path=args.result_run)
+                                               evaluation_plan_path=args.evaluation_plan,result_path=args.result_run,
+                                               force=args.force)
         print(json.dumps(result,allow_nan=False))
         return 0 if result['status']=='complete' else 3
     except (ResearchError,RunPathError) as error:

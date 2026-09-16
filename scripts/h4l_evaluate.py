@@ -12,6 +12,7 @@ import sys
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
+from tqdm.auto import tqdm
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +50,10 @@ def _parser():
     parser.add_argument("--result-run", type=Path)
     parser.add_argument("--access-review", type=Path)
     parser.add_argument("--reuse-stage", action='append', default=[], metavar='STAGE:MU=RUN')
+    parser.add_argument('--force', action='store_true',
+                        help='Debug only: allow a forced-protocol off-only registration')
+    parser.add_argument('--no-progress', action='store_true',
+                        help='Disable stage progress bars.')
     return parser
 
 
@@ -59,6 +64,19 @@ def _resolve(path):
 
 def _display(command):
     return subprocess.list2cmdline(command) if os.name == "nt" else shlex.join(command)
+
+
+def _invoke_with_progress(command, *, label, progress):
+    progress.set_postfix_str(label, refresh=True)
+    process = subprocess.Popen(command, cwd=PROJECT_ROOT)
+    while True:
+        try:
+            return_code = process.wait(timeout=1)
+            break
+        except subprocess.TimeoutExpired:
+            progress.refresh()
+    if return_code:
+        raise EvaluationError(f'Off-only stage {label} failed; dependent stages stopped', return_code)
 
 
 def _load_plan(path, protocol, plan=None):
@@ -188,7 +206,7 @@ def _run_mass_off(args, protocol, plan):
     from higgsml.inference.attribution import FAMILY, BUDGETS, candidate_keys
     from higgsml.artifacts import read_run, read_json
     from higgsml.errors import ResearchError
-    from higgsml.inference.attribution_workflow import validate_evaluation_manifest
+    from higgsml.inference.attribution_workflow import validate_evaluation_manifest, _load_reusable
     schema_path=PROJECT_ROOT/'config/schemas/h4l_mass_off_evaluation_plan.schema.json'
     try:
         Draft202012Validator(read_json(schema_path)).validate(plan)
@@ -205,7 +223,11 @@ def _run_mass_off(args, protocol, plan):
     for key,path in paths.items():
         try:
             if path is None or plan['inputs'][key]=='0'*64: raise ResearchError('missing or placeholder identity')
-            item=read_run(_resolve(path),dataset=protocol['dataset'],protocol=protocol,stages=(stages[key],))
+            if key == 'prepared_artifact_id' and args.force:
+                item,_ = _load_reusable(
+                    _resolve(path),protocol,stages[key],force=True)
+            else:
+                item=read_run(_resolve(path),dataset=protocol['dataset'],protocol=protocol,stages=(stages[key],))
             if item.manifest['artifact_id']!=plan['inputs'][key]: raise ResearchError('manifest ID mismatch')
             loaded[key]=item
         except ResearchError as error:
@@ -248,24 +270,30 @@ def _run_mass_off(args, protocol, plan):
     if unresolved: raise EvaluationError('Off-only plan has unresolved upstream identities')
     common=['--protocol',str(_resolve(args.protocol)),'--registration-run',str(_resolve(args.registration_run)),
             '--template-run',str(_resolve(args.template_run)),'--freeze-run',str(_resolve(args.freeze_run))]
+    if args.force: common.append('--force')
     outputs=[]
-    for stage,mu in matrix:
-        if (stage,mu) in reused:
-            outputs.append(reused[(stage,mu)])
-            continue
-        target=output/f'{stage}-mu{mu}'
-        command=[sys.executable,'-m','higgsml.cli','attribution',stage,*common,'--mu',str(mu),'--run-dir',str(target),
-                 '--evaluation-plan',str(_resolve(args.plan)),'--result-run',str(_resolve(args.result_run))]
-        if stage in {'assessment','t2'} and args.access_review:
-            command+=['--access-review',str(_resolve(args.access_review))]
-        completed=subprocess.run(command,cwd=PROJECT_ROOT,check=False)
-        if completed.returncode: raise EvaluationError(f'Off-only stage {stage} failed; dependent stages stopped',completed.returncode)
-        outputs.append(target)
-    command=[sys.executable,'-m','higgsml.cli','attribution','report',*common,'--result-run',str(_resolve(args.result_run)),
-             '--run-dir',str(output/'report')]
-    for path in outputs: command+=['--evaluation-run',str(path)]
-    completed=subprocess.run(command,cwd=PROJECT_ROOT,check=False)
-    if completed.returncode: raise EvaluationError('Off-only report failed',completed.returncode)
+    with tqdm(total=len(matrix)+1, desc='H4l off evaluation', unit='stage',
+              disable=args.no_progress) as progress:
+        for stage,mu in matrix:
+            label=f'{stage} mu={mu}'
+            if (stage,mu) in reused:
+                outputs.append(reused[(stage,mu)])
+                progress.set_postfix_str(label+' reused',refresh=True)
+                progress.update()
+                continue
+            target=output/f'{stage}-mu{mu}'
+            command=[sys.executable,'-m','higgsml.cli','attribution',stage,*common,'--mu',str(mu),'--run-dir',str(target),
+                     '--evaluation-plan',str(_resolve(args.plan)),'--result-run',str(_resolve(args.result_run))]
+            if stage in {'assessment','t2'} and args.access_review:
+                command+=['--access-review',str(_resolve(args.access_review))]
+            _invoke_with_progress(command,label=label,progress=progress)
+            outputs.append(target)
+            progress.update()
+        command=[sys.executable,'-m','higgsml.cli','attribution','report',*common,'--result-run',str(_resolve(args.result_run)),
+                 '--run-dir',str(output/'report')]
+        for path in outputs: command+=['--evaluation-run',str(path)]
+        _invoke_with_progress(command,label='final report',progress=progress)
+        progress.update()
 
 
 def main():

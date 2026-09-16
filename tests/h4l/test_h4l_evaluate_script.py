@@ -1,4 +1,5 @@
 import json
+import importlib.util
 from pathlib import Path
 import subprocess
 import sys
@@ -73,3 +74,43 @@ def test_malformed_missing_and_nonobject_plans_have_controlled_errors(tmp_path):
         result=invoke(path)
         assert result.returncode==3 and 'Invalid evaluation plan' in result.stderr
         assert 'Traceback' not in result.stderr
+
+
+def test_evaluator_supports_disabling_progress():
+    completed = subprocess.run(
+        [sys.executable, str(SCRIPT), "--help"], cwd=PROJECT_ROOT,
+        text=True, capture_output=True, check=False,
+    )
+    assert completed.returncode == 0
+    assert "--no-progress" in completed.stdout
+
+
+def test_long_off_stage_refreshes_progress_while_child_is_running(monkeypatch):
+    spec = importlib.util.spec_from_file_location("h4l_evaluate_progress_test", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    class Process:
+        waits = 0
+        def wait(self, timeout):
+            self.waits += 1
+            if self.waits < 3:
+                raise subprocess.TimeoutExpired(cmd="stage", timeout=timeout)
+            return 0
+
+    class Progress:
+        def __init__(self):
+            self.label = None
+            self.refreshes = 0
+        def set_postfix_str(self, label, refresh):
+            self.label = label
+            self.refreshes += int(refresh)
+        def refresh(self):
+            self.refreshes += 1
+
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *_a, **_k: Process())
+    progress = Progress()
+    module._invoke_with_progress(["research"], label="assessment mu=1", progress=progress)
+    assert progress.label == "assessment mu=1"
+    assert progress.refreshes == 3
