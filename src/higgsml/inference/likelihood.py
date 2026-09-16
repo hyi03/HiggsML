@@ -148,7 +148,8 @@ def run_asimov(template, *, protocol=None, layer="T0", t1_validation=None, injec
 
 def run_toys(template, *, mu=1., count=500, seed=42, layer="T0", t1_validation=None,
              auxiliary_generation="regenerated", expectation_kind="model_self", mother_rates=None,
-             mother_id=None, mu_max=20., signed_diagnostic=None, workers=1, worker_threads=1, _built_model=None):
+             mother_id=None, mu_max=20., signed_diagnostic=None, workers=1, worker_threads=1,
+             _built_model=None, progress=None):
     reject_sample_efficiency_assessment(template)
     if expectation_kind not in {"model_self", "assessment", "mismatch"} or auxiliary_generation not in {"fixed", "regenerated"}:
         raise ResearchError("Explicit supported toy source and auxiliary policy required")
@@ -180,7 +181,11 @@ def run_toys(template, *, mu=1., count=500, seed=42, layer="T0", t1_validation=N
         if signed_diagnostic is not None and mu == 0:
             row['signed_mu_diagnostic'] = signed_mu_fit(template, data[:model.config.nmaindata], signed_diagnostic)
         return row
-    results = list(ordered_map(fit, tasks(), workers=workers, worker_threads=worker_threads))
+    results = []
+    for result in ordered_map(fit, tasks(), workers=workers, worker_threads=worker_threads):
+        results.append(result)
+        if progress is not None:
+            progress()
     output = {**metadata,"status": "valid" if all(i["status"] == "valid" for r in results for i in r["intervals"]) else "inference_incomplete", "mu": mu,"seed": seed,"count":count,"expectation_kind":expectation_kind,"mother_id":mother_id,"auxiliary_generation":auxiliary_generation,"paired":False,"results":results}
     if signed_diagnostic is not None and mu == 0:
         output['signed_mu_diagnostic'] = signed_mu_summary([r['signed_mu_diagnostic'] for r in results])

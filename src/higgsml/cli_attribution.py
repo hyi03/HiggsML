@@ -2,6 +2,7 @@
 import argparse
 import json
 from pathlib import Path
+from tqdm.auto import tqdm
 
 from higgsml.errors import ResearchError
 from higgsml._transaction import RunPathError
@@ -21,8 +22,10 @@ def main(argv=None):
     parser.add_argument('--worker-threads',type=int,default=1)
     parser.add_argument('--force',action='store_true',
                         help='Debug only: bypass source protocol consistency checks; outputs are non-authoritative')
+    parser.add_argument('--no-progress',action='store_true',help='Disable internal evaluation progress bars')
     args=parser.parse_args(argv)
     root=Path(__file__).resolve().parents[2]/'runs'
+    progress_bar=None
     try:
         p=load_protocol(args.protocol).to_dict()
         if args.worker_threads<1: raise ResearchError('worker threads must be positive')
@@ -44,14 +47,27 @@ def main(argv=None):
                 if args.stage=='asimov': result=workflow.asimov(*common,force=args.force)
                 elif args.stage=='report': result=workflow.report(*common,result_path=args.result_run,
                                                                   evaluation_paths=args.evaluation_run,force=args.force)
-                else: result=workflow.evaluate(*common,stage=args.stage,mu=args.mu,access_review=args.access_review,
-                                               evaluation_plan_path=args.evaluation_plan,result_path=args.result_run,
-                                               force=args.force)
+                else:
+                    from higgsml.inference.attribution import BUDGETS, candidate_keys
+                    candidates=len(candidate_keys())
+                    total=({'mc-bootstrap':BUDGETS['mc_bootstrap']['replicas']*candidates,
+                            'model-self':BUDGETS['toys']['count']*candidates,
+                            'assessment':BUDGETS['toys']['count']*candidates,
+                            't2':BUDGETS['t2']['outer_replicas']*BUDGETS['t2']['inner_toys']*candidates}
+                           [args.stage])
+                    progress_bar=tqdm(total=total,desc=f'{args.stage} mu={args.mu}',unit='candidate',
+                                      position=1,leave=False,disable=args.no_progress)
+                    result=workflow.evaluate(*common,stage=args.stage,mu=args.mu,access_review=args.access_review,
+                                             evaluation_plan_path=args.evaluation_plan,result_path=args.result_run,
+                                             force=args.force,progress=progress_bar.update)
         print(json.dumps(result,allow_nan=False))
         return 0 if result['status']=='complete' else 3
     except (ResearchError,RunPathError) as error:
         print(json.dumps({'status':getattr(error,'status','invalid_run_path'),'reason':str(error)}))
         return error.exit_code
+    finally:
+        if progress_bar is not None:
+            progress_bar.close()
 
 
 if __name__=='__main__': raise SystemExit(main())

@@ -517,7 +517,7 @@ def validate_evaluation_manifest(item, plan):
 
 
 def evaluate(registration_path,nominal_path,freeze_path,protocol,output,allowed_root,*,stage,mu=1,access_review=None,
-             evaluation_plan_path=None,result_path=None,force=False):
+             evaluation_plan_path=None,result_path=None,force=False,progress=None):
     from higgsml.inference.bootstrap import mass_off_mc_bootstrap
     from higgsml.inference.assessment import infer_assessment,run_assessment_t2,_joint_mother
     from higgsml.inference.likelihood import run_toys
@@ -556,11 +556,13 @@ def evaluate(registration_path,nominal_path,freeze_path,protocol,output,allowed_
         calibration=frame.loc[frame.role=='calibration'].copy()
         template=frame.loc[frame.role=='template'].copy()
         if stage=='mc-bootstrap':
-            result=mass_off_mc_bootstrap(grid,bundles,calibration,template,protocol,t1_validation=t1)
+            result=mass_off_mc_bootstrap(grid,bundles,calibration,template,protocol,t1_validation=t1,
+                                         progress=progress)
         elif stage=='t2':
             result=run_assessment_t2(grid,bundles,calibration,template,frame.loc[frame.role=='assessment'].copy(),protocol,
                                     layer='T1',t1_validation=t1,mu=1,seed=BUDGETS['t2']['seed'],
-                                    prepared_id=prepared.manifest['artifact_id'],freeze_id=frozen_run.manifest['artifact_id'])
+                                    prepared_id=prepared.manifest['artifact_id'],freeze_id=frozen_run.manifest['artifact_id'],
+                                    progress=progress)
             result['independent_unit']='20_outer_calibration_replicas_not_2000_unconditional_toys'
         else:
             role='template' if stage=='model-self' else 'assessment'
@@ -574,13 +576,15 @@ def evaluate(registration_path,nominal_path,freeze_path,protocol,output,allowed_
             if fallback is None:
                 candidates=infer_assessment(grid,bundles,mother,protocol,layer='T1',t1_validation=t1,mu=mu,
                                             count=BUDGETS['toys']['count'],seed=BUDGETS['toys']['seed'],
-                                            prepared_id=prepared.manifest['artifact_id'],freeze_id=frozen_run.manifest['artifact_id'],parent_role=role)
+                                            prepared_id=prepared.manifest['artifact_id'],freeze_id=frozen_run.manifest['artifact_id'],
+                                            parent_role=role,progress=progress)
             else:
                 candidates={}
                 for index,(key,artifact) in enumerate(sorted(grid['templates'].items())):
                     try:
                         toys=run_toys(artifact,mu=mu,count=BUDGETS['toys']['count'],seed=BUDGETS['toys']['seed']+index,
-                                      layer='T1',t1_validation=t1,auxiliary_generation=protocol['inference']['auxiliary_generation'])
+                                      layer='T1',t1_validation=t1,auxiliary_generation=protocol['inference']['auxiliary_generation'],
+                                      progress=progress)
                         candidates[key]={'status':toys['status'],'toys':toys,'coverage':{},'diagnostics':{}}
                         for i,level in enumerate((.68,.95)):
                             intervals=[r['intervals'][i] for r in toys['results']]

@@ -119,7 +119,7 @@ def _joint_mother(grid, bundles, mother, protocol, categorize, *, parent_role='a
 
 def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, mu, count,
                      seed, prepared_id, freeze_id, categorize=None, stress_responses=None,stress_direction=0, workers=1, worker_threads=1,
-                     parent_role='assessment'):
+                     parent_role='assessment', progress=None):
     """Return per-candidate results using one shared joint-cell Poisson draw.
 
     Root verifies the immutable freeze artifact before granting mother access.
@@ -189,7 +189,11 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
                         {'status':'not_supported_modeled_stress', 'muhat':None,
                          'reason':'Signed diagnostic fixes nominal templates; no stress/T1 nuisance profiling'})
                 return row
-            toys = list(ordered_map(fit, tasks(), workers=workers, worker_threads=worker_threads))
+            toys = []
+            for toy in ordered_map(fit, tasks(), workers=workers, worker_threads=worker_threads):
+                toys.append(toy)
+                if progress is not None:
+                    progress()
             if stress_responses is None:
                 asimov = run_asimov(template, protocol=p, layer=layer, t1_validation=t1_validation, injections=[mu], _built_model=(model,metadata))
             else:
@@ -253,7 +257,8 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
 
 
 def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *, layer,
-                      t1_validation, mu, seed, prepared_id, freeze_id, workers=1, worker_threads=1):
+                      t1_validation, mu, seed, prepared_id, freeze_id, workers=1, worker_threads=1,
+                      progress=None):
     """Refit mappings/thresholds jointly; transform both populations on frozen bins."""
     reject_sample_efficiency_assessment(grid, bundles)
     p = protocol_dict(protocol)
@@ -336,7 +341,7 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
             return frame.assign(category=frame[category_lookup[key]])
         result = infer_assessment({"status": "valid", "mass_edges": grid["mass_edges"], "templates": templates, 'family_id':grid.get('family_id')}, fitted,
             mapped_mother, p, layer=layer, t1_validation=t1_validation, mu=mu, count=inner_toys, seed=inner_seed,
-            prepared_id=prepared_id, freeze_id=freeze_id, categorize=categorize)
+            prepared_id=prepared_id, freeze_id=freeze_id, categorize=categorize, progress=progress)
         return {"status": "valid" if all(r["status"] == "valid" for r in result.values()) else "inference_incomplete", "candidates": result}
 
     return run_t2_procedure(calibration, template, mother, fit_mapping=fit_mapping, apply_mapping=apply_mapping,

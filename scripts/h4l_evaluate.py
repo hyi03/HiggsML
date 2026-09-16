@@ -271,6 +271,7 @@ def _run_mass_off(args, protocol, plan):
     common=['--protocol',str(_resolve(args.protocol)),'--registration-run',str(_resolve(args.registration_run)),
             '--template-run',str(_resolve(args.template_run)),'--freeze-run',str(_resolve(args.freeze_run))]
     if args.force: common.append('--force')
+    if args.no_progress: common.append('--no-progress')
     outputs=[]
     with tqdm(total=len(matrix)+1, desc='H4l off evaluation', unit='stage',
               disable=args.no_progress) as progress:

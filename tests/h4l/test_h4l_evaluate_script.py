@@ -85,6 +85,15 @@ def test_evaluator_supports_disabling_progress():
     assert "--no-progress" in completed.stdout
 
 
+def test_attribution_cli_supports_disabling_internal_progress():
+    completed = subprocess.run(
+        [sys.executable, "-m", "higgsml.cli", "attribution", "--help"],
+        cwd=PROJECT_ROOT, text=True, capture_output=True, check=False,
+    )
+    assert completed.returncode == 0
+    assert "--no-progress" in completed.stdout
+
+
 def test_long_off_stage_refreshes_progress_while_child_is_running(monkeypatch):
     spec = importlib.util.spec_from_file_location("h4l_evaluate_progress_test", SCRIPT)
     module = importlib.util.module_from_spec(spec)

@@ -14,7 +14,7 @@ from higgsml.modeling.calibration import apply_calibration, assign_categories, f
 from higgsml.modeling.discriminants import predict_discriminant
 
 
-def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_validation):
+def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_validation, progress=None):
     """Full registered event-group reconstruction; failed replicas are not replaced."""
     from higgsml.inference.attribution import BUDGETS, FAMILY, candidate_keys, structural_evidence, summarize
     from higgsml.inference.attribution_workflow import asimov_records
@@ -53,6 +53,8 @@ def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_
                     if artifact['status']=='valid': fitted[key],built[key] = value,artifact
                 except ResearchError as error:
                     row['candidate_states'][key] = {'status':error.status,'reason':str(error)}
+                if progress is not None:
+                    progress()
             if set(built)==set(candidate_keys()):
                 records,results = asimov_records({'templates':built},fitted,protocol,t1_validation,f'replica:{index}')
                 summary = summarize(records,require_auc=False)
