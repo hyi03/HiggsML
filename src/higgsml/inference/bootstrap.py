@@ -12,9 +12,11 @@ from higgsml.inference.likelihood import build_model, run_asimov
 from higgsml.inference.templates import build_templates
 from higgsml.modeling.calibration import apply_calibration, assign_categories, fit_calibration, fit_thresholds
 from higgsml.modeling.discriminants import predict_discriminant
+from higgsml.resources import ordered_map
 
 
-def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_validation, progress=None):
+def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_validation,
+                          workers=1, worker_threads=1, progress=None):
     """Full registered event-group reconstruction; failed replicas are not replaced."""
     from higgsml.inference.attribution import BUDGETS, FAMILY, candidate_keys, structural_evidence, summarize
     from higgsml.inference.attribution_workflow import asimov_records
@@ -26,12 +28,24 @@ def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_
         raise ResearchError('MC bootstrap role/group isolation failed')
     budget = BUDGETS['mc_bootstrap']
     rng = np.random.default_rng(budget['seed'])
-    replicas = []
-    for index in range(budget['replicas']):
+    calibration_groups = np.asarray(sorted(calibration.event_group_id.astype(str).unique()))
+    template_groups = np.asarray(sorted(template.event_group_id.astype(str).unique()))
+    if not len(calibration_groups) or not len(template_groups):
+        raise ResearchError('bootstrap role has no physical event groups')
+
+    def tasks():
+        for index in range(budget['replicas']):
+            yield (index,
+                   rng.multinomial(len(calibration_groups), np.full(len(calibration_groups), 1 / len(calibration_groups))),
+                   rng.multinomial(len(template_groups), np.full(len(template_groups), 1 / len(template_groups))))
+
+    def finish(task):
+        index, calibration_counts, template_counts = task
         row = {'replica':index,'status':'bootstrap_incomplete','candidate_states':{}}
+        completed_candidates = 0
         try:
-            c,cm = _resample_groups(calibration,rng,f'c{index}')
-            t,tm = _resample_groups(template,rng,f't{index}')
+            c,cm = _resample_groups_from_counts(calibration,calibration_groups,calibration_counts,f'c{index}')
+            t,tm = _resample_groups_from_counts(template,template_groups,template_counts,f't{index}')
             row.update(calibration_group_multiplicities=cm,template_group_multiplicities=tm,mappings={})
             fitted,built = {},{}
             for key,bundle in bundles.items():
@@ -53,15 +67,22 @@ def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_
                     if artifact['status']=='valid': fitted[key],built[key] = value,artifact
                 except ResearchError as error:
                     row['candidate_states'][key] = {'status':error.status,'reason':str(error)}
-                if progress is not None:
-                    progress()
+                completed_candidates += 1
             if set(built)==set(candidate_keys()):
                 records,results = asimov_records({'templates':built},fitted,protocol,t1_validation,f'replica:{index}')
                 summary = summarize(records,require_auc=False)
                 row.update(status=summary['status'],summary=summary,inference=results)
         except ResearchError as error:
             row.update(status=error.status,reason=str(error))
+        return row, completed_candidates
+
+    replicas = []
+    for row, completed_candidates in ordered_map(
+            finish, tasks(), workers=workers, worker_threads=worker_threads):
         replicas.append(row)
+        if progress is not None:
+            for _ in range(completed_candidates):
+                progress()
     valid = [r for r in replicas if r['status']=='valid']
     complete = len(valid)==budget['replicas']
     def intervals(values):
@@ -92,6 +113,10 @@ def _resample_groups(frame, rng, label):
     if not len(groups):
         raise ResearchError("bootstrap role has no physical event groups")
     counts = rng.multinomial(len(groups), np.full(len(groups), 1 / len(groups)))
+    return _resample_groups_from_counts(frame, groups, counts, label)
+
+
+def _resample_groups_from_counts(frame, groups, counts, label):
     parts = []
     by_group = {str(key): value for key, value in frame.groupby(frame.event_group_id.astype(str), sort=False)}
     for group, count in zip(groups, counts):

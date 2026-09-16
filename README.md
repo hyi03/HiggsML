@@ -185,8 +185,6 @@ runs/h4l-off-study-001/access-review/
 
 ## 6. 使用项目工具开展研究
 
-### 6.1 组合使用核心 CLI 阶段
-
 `higgsml` 暴露十二个可组合阶段：
 
 ```text
@@ -226,17 +224,6 @@ python scripts/h4l_evaluate.py --plan config/examples/h4l_evaluation_plan.json \
 计划模式只审计矩阵，不打开 assessment。外部 signed-MC/T1、物理系统变化和 MELA
 材料通过 `evidence-import` 只读接入；缺失材料必须保持 `external_pending`。
 
-### 6.2 运行样本效率研究
-
-样本效率不是 `higgsml` 的子命令，而由三个独立脚本承载：
-
-```bash
-python scripts/h4l_learning_curve.py --help
-python scripts/h4l_sample_efficiency_report.py --help
-python scripts/h4l_sample_efficiency_controls.py --help
-```
-
-正式批次绑定 `config/protocols/sample_efficiency_v1.json`、compact candidate freeze、训练子集、G1 和 T1 证据。协议中的 `null` 是待注册占位，不能直接当作正式研究值。方法与确认边界见[样本效率方法](docs/sample-efficiency.md)。
 
 ## 7. 遵守科学与运行约束
 
@@ -252,9 +239,9 @@ python scripts/h4l_sample_efficiency_controls.py --help
 在仓库根目录运行：
 
 ```powershell
-& 'D:\apps\anaconda3\Scripts\conda.exe' run -n pytorch python -m compileall -q src scripts tests
-& 'D:\apps\anaconda3\Scripts\conda.exe' run -n pytorch python -m pytest -q
-& 'D:\apps\anaconda3\Scripts\conda.exe' run -n pytorch python -m pip check
+python -m compileall -q src scripts tests
+python -m pytest -q
+python -m pip check
 ```
 
 当前测试数量、警告和未完成的科学验证以[状态页](docs/results-and-limitations.md#software-and-validation-status)的日期化记录为准，不在 README 中复制易过期的数字。
