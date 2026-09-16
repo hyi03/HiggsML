@@ -71,6 +71,8 @@ python scripts/init_data.py --dataset atlas2020_4lep
 
 ## 5. 运行 H4l 工作流
 
+### 5.1 默认模式
+
 用一个命令完成 prepare、G1、五随机种子批次、off-only Stage B、评估访问包、C–E evaluation 和最终报告：
 
 ```bash
@@ -85,11 +87,23 @@ python scripts/h4l_all.py
 
 重复执行同一命令会自动核对进度。绑定一致且 manifest 完整的阶段直接跳过；缺失阶段继续执行；损坏、不完整或绑定不匹配的最终目录会保留为 `.名称.<uuid>.invalid` 后再尝试当前阶段，已有 `.failed` 证据不会删除。若评估预算已经被失败或中断的 assessment/T2 占用，脚本仍按冻结协议拒绝自动重跑。
 
-封装命令为 `h4l_off_run.py` 固定传入 `--workers 4 --worker-threads 1`，并行执行可并行的完整 bootstrap、Toy 和 T2 工作单元，Stage B 的注册、模板、freeze 与 Asimov 仍按依赖顺序执行。
+默认模式下，封装命令为 `h4l_off_run.py` 固定传入 `--workers 4 --worker-threads 1`，并行执行可并行的完整 bootstrap、Toy 和 T2 工作单元，Stage B 的注册、模板、freeze 与 Asimov 仍按依赖顺序执行。
 
 如果 `runs/h4l-off-<run-name>/access-review/validated-off-assessment-access.json` 已存在，命令直接复用它；否则使用本机 `git user.name`（回退到登录账户名）生成明确标记为 `single_researcher_self_review`、`independent: false` 的单研究者自审包。该包只允许探索性自审结论，不代表独立科学验证。
 
 最终报告位于 `runs/h4l-off-<run-name>/evaluation/report/report.md`。`m4l=off` 仅表示分类器不输入显式四轻子质量，似然仍保留质量坐标。完整阶段契约、人工独立审核方式及恢复限制见[复现实验手册](docs/implementation-and-reproduction.md)。
+
+### 5.2 HPC 超算节点模式
+
+在已分配的单节点 CPU 作业内可开启高性能模式：
+
+```bash
+python scripts/h4l_all.py --run-name test01 --HPC
+```
+
+HPC 模式按 SLURM、CPU affinity、cgroup 和内存约束配置并发，默认每 worker 单线程、估算内存 8 GiB（含 1 GiB 原始评分缓存）。40 核、180 GiB 分配初始约使用 20 workers；T2 最多并行 20 个 outer replicas。完整入口同时并行训练/校准，评估使用有界完成事件调度与调用内缓存，不减少任何科学预算。不传 `--HPC` 时保持原有默认行为。已有 evaluation 目录必须显式加 `--continue`，且不能重试已消耗的 assessment/T2 预算。
+
+仅在计算节点做 HPC 性能实测。本机功能回归限定为 2 workers × 1 thread 和极小合成数据，不运行正式评估。SLURM 示例为 [`scripts/h4l_hpc.slurm`](scripts/h4l_hpc.slurm)，调优与恢复约束见[单节点 HPC](docs/implementation-and-reproduction.md#single-node-hpc)。
 
 ## 6. 分阶段运行 H4l 工作流
 

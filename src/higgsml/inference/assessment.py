@@ -1,6 +1,7 @@
 """Frozen assessment with paired physical pseudo-observations across methods."""
 from copy import deepcopy
 import hashlib
+import time
 
 import numpy as np
 import pandas as pd
@@ -13,12 +14,15 @@ from higgsml.inference.likelihood import (build_model, paired_event_toys, profil
                         reject_sample_efficiency_assessment, run_asimov, run_t2_procedure, stress_weights)
 from higgsml.protocol import protocol_dict
 from higgsml.resources import ordered_map
+from higgsml.hpc import settings
+from higgsml.performance import measured, add
 from higgsml.inference.diagnostics import signed_mu_fit, signed_mu_summary
 from higgsml.inference.reporting import coverage_summary, fit_diagnostics, paired_coverage_error
 from higgsml.inference.templates import build_templates
 from higgsml.inference.stress import build_stress_templates,build_stress_model,sample_auxiliary,auxiliary_sampler,validate_stress_contract
 
 
+@measured('raw_scoring')
 def _scores(bundle, frame):
     reject_sample_efficiency_assessment(bundle)
     if bundle.get("model") is not None:
@@ -272,16 +276,23 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
     reject_sample_efficiency_assessment(grid, bundles)
     p = protocol_dict(protocol)
     cfg = p["inference"]
+    parent_progress = progress
+    if workers > 1:
+        # Terminal objects must remain in the parent, not serialized into workers.
+        progress = None
     if grid.get("status") != "valid" or not prepared_id or not freeze_id:
         raise ResearchError("T2 requires a frozen valid G1 grid and artifact identities")
 
     # Only raw model/ME scores are invariant to bootstrap weights. Cache these
     # for the exact three populations in this call, never mappings/thresholds.
+    policy = settings()
+    cache_limit = policy['score_cache_bytes'] if policy else 64*1024*1024
     score_cache = {}
     cache_bytes = 0
+    cache_started = time.perf_counter()
     for key, bundle in sorted(bundles.items()):
         size = sum(8*len(f)+f.event_id.memory_usage(index=False,deep=True) for f in (calibration,template,mother))
-        if cache_bytes + size > 64*1024*1024:
+        if cache_bytes + size > cache_limit:
             break
         tables = []
         try:
@@ -292,14 +303,23 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
         except ResearchError:
             # Preserve the original per-replica error timing and seed consumption.
             continue
-        score_cache[key] = pd.concat(tables)
-        if score_cache[key].index.duplicated().any():
+        combined = pd.concat(tables)
+        if combined.index.duplicated().any():
             raise ResearchError('T2 event identities cross populations')
-        cache_bytes += score_cache[key].memory_usage(index=True,deep=True)
+        if policy:
+            combined.index.get_indexer(combined.index)
+        actual = combined.memory_usage(index=True,deep=True)
+        if policy and cache_bytes + actual > cache_limit:
+            continue
+        score_cache[key] = combined
+        cache_bytes += actual
+    add('t2_score_cache_build_seconds', time.perf_counter() - cache_started)
+    add('t2_score_cache_bytes', cache_bytes)
 
     def raw_scores(key, bundle, frame):
         if key not in score_cache:
             return _scores(bundle,frame)
+        add('raw_score_cache_hits')
         return score_cache[key].loc[frame.event_id].to_numpy()
 
     def fit_mapping(bootstrap):
@@ -353,9 +373,17 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
             prepared_id=prepared_id, freeze_id=freeze_id, categorize=categorize, progress=progress)
         return {"status": "valid" if all(r["status"] == "valid" for r in result.values()) else "inference_incomplete", "candidates": result}
 
+    def completed_replica(row):
+        if parent_progress is not None:
+            count = sum(len(value.get('toys', {}).get('results', []))
+                        for value in row.get('result', {}).get('candidates', {}).values())
+            for _ in range(count):
+                parent_progress()
+
     return run_t2_procedure(calibration, template, mother, fit_mapping=fit_mapping, apply_mapping=apply_mapping,
         evaluate=evaluate, outer_replicas=cfg["outer_replicas"], inner_toys=cfg["inner_toys"], seed=seed,
         workers=workers, worker_threads=worker_threads,
+        on_replica=completed_replica if workers > 1 else None,
         record_mappings=grid.get('family_id')=='engineered19_raw_T1_m4l_off_attribution_v1',
         model_id=digest_json({k: b["model_id"] for k,b in bundles.items()}), mother_id=digest_json({"prepared_id":prepared_id,"freeze_id":freeze_id}))
 

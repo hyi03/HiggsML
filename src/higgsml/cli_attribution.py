@@ -28,6 +28,8 @@ def main(argv=None):
     root=Path(__file__).resolve().parents[2]/'runs'
     progress_bar=None
     try:
+        from higgsml.hpc import limit_threads
+        thread_limit = limit_threads()
         p=load_protocol(args.protocol).to_dict()
         if args.workers<1 or args.worker_threads<1:
             raise ResearchError('workers and worker threads must be positive')

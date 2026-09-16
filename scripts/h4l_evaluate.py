@@ -24,6 +24,8 @@ if str(SOURCE_ROOT) not in sys.path:
 from higgsml.artifacts import digest_json  # noqa: E402
 from higgsml.protocol import load_protocol  # noqa: E402
 from higgsml.workflow_resume import classify_stage  # noqa: E402
+from higgsml.hpc import single_writer, settings
+from higgsml.errors import ResearchError
 
 
 DEFAULT_PROTOCOL = PROJECT_ROOT / "config" / "protocols" / "h4l_protocol.json"
@@ -75,6 +77,12 @@ def _display(command):
 
 def _invoke_with_progress(command, *, label, progress):
     progress.set_postfix_str(label, refresh=True)
+    if settings():
+        from higgsml.hpc_execution import supervised_run
+        code = supervised_run(command, cwd=PROJECT_ROOT)
+        if code:
+            raise EvaluationError(f'{label} failed with exit code {code}', code)
+        return
     process = subprocess.Popen(command, cwd=PROJECT_ROOT)
     while True:
         try:
@@ -343,8 +351,13 @@ def _run_mass_off(args, protocol, plan):
 
 def main():
     try:
-        _run(_parser().parse_args())
-    except EvaluationError as error:
+        args = _parser().parse_args()
+        if args.plan_only:
+            _run(args)
+        else:
+            with single_writer(_resolve(args.output_root), allowed_root=RUNS_ROOT):
+                _run(args)
+    except (EvaluationError, ResearchError) as error:
         print(error, file=sys.stderr)
         return error.exit_code
     return 0

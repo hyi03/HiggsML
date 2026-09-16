@@ -240,6 +240,8 @@ def expected_candidates():
 
 
 def execute(args, *, allowed_root=None):
+    from higgsml.hpc import limit_threads
+    thread_limit = limit_threads()
     resources = load_resources(getattr(args,'resources',None))
     parallel = {k:resources[k] for k in ('workers','worker_threads')}
     protocol = load_protocol(args.protocol, dataset=args.dataset).to_dict()

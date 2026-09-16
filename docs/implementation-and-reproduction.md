@@ -73,7 +73,7 @@ Controlled preparation additionally requires P0 evidence binding `status=validat
 
 ## Main workflow
 
-The normal end-to-end path first initializes the controlled dataset and then accepts only one optional workflow argument, `--run-name`:
+The normal end-to-end path first initializes the controlled dataset and uses the optional `--run-name`. Resource tuning is separately opt-in through `--HPC`:
 
 ```powershell
 python scripts/init_data.py --dataset atlas2020_4lep
@@ -81,6 +81,89 @@ python scripts/h4l_all.py --run-name test01
 ```
 
 Omitting `--run-name` uses the stable name `default`. Re-running the same command validates published manifests and skips complete stages before continuing at the next missing stage. Invalid final stage directories are quarantined without deleting `.failed` evidence. The wrapper passes `--workers 4 --worker-threads 1` to `h4l_off_run.py`, so complete bootstrap, Toy, and T2 work units can run in parallel without nested thread expansion. A pre-existing bound access review is reused; otherwise the command records a local named-user single-researcher self-review, which remains explicitly non-independent and exploratory. Frozen assessment/T2 budget claims are never bypassed by resume. The commands below remain available for diagnosis, explicit planning, independent access-review replacement, and individual-stage recovery.
+
+<a id="single-node-hpc"></a>
+
+### Single-node HPC
+
+The opt-in `--HPC` flag is available on both `h4l_all.py` and `h4l_off_run.py`.
+Run production workloads inside a compute-node allocation, never as a local performance test.
+Install the existing `.[parallel]` extra in the Python 3.12 environment before
+submitting. No scheduler jobs are submitted automatically, and no scratch or
+node-local disk is assumed.
+
+```bash
+sbatch scripts/h4l_hpc.slurm
+# Only when an existing evaluation directory has resumable stages:
+sbatch scripts/h4l_hpc.slurm --continue
+```
+
+The sample requests one node, one coordinator, 40 CPUs and 180G for 12 hours;
+adjust account/partition/time to the site's limits. `H4L_SOURCE_RUN` and
+`H4L_OFF_RUN` select the existing source and Stage B run names. The script
+inherits the activated environment. It does not create an access review.
+
+The policy takes the minimum of CPU affinity, Slurm allocation and cgroup quota,
+and of available memory, Slurm memory and remaining cgroup memory. Reserve 10%
+of memory (at least 4 GiB). The initial concurrency is bounded by remaining
+memory divided by 8 GiB per worker, and by allocated CPUs divided by worker
+threads. This estimate includes each worker's cache but is not a hard RSS limit.
+Memory allocation of 180 GiB yields 20 single-threaded workers. Override with
+`--hpc-workers N`, `--hpc-worker-memory-gb N` and `--hpc-score-cache-gb N` (default
+1 GiB). The off-only entry also accepts explicit `--workers` and
+`--worker-threads`; use only one worker-count option. Exceeding calculated
+capacity fails before stages start. Slurm requires explicit `--ntasks=1` and
+`--cpus-per-task`; multi-node/multi-task allocations are rejected.
+
+HPC execution sets BLAS/OpenMP/NumExpr limits before launching children and caps
+PyTorch in the child. Training and calibration use a dependency scheduler;
+aggregates wait for their complete upstream set. Evaluation stages remain
+sequential; bootstrap replicas, candidate Toy collections (including model-self
+fallback), and T2 outer evaluations run in bounded pools. T2 has 20 independent
+outer replicas and retains parent-side mapping/seed generation. Completed
+results are buffered in submission order with at most twice the worker count
+in flight or awaiting ordered delivery. Progress reports computed and ordered
+task counts separately.
+
+The likelihood cache is scoped to one observation and stores successful finite
+fixed-POI evaluations at exact `mu` values, shared by 68% and 95% intervals.
+It preserves the optimizer, float64 precision, bounds and root tolerance.
+Raw-score caches are call-local and role/event/model bound; mappings and
+thresholds are still recomputed on each replica. Missing capacity, duplicate
+identities or scientific scoring errors fall back to the original calculation.
+Assessment scores are never persisted or computed before the access/claim gate.
+
+Operational JSON and per-training-task logs are written to unique paths under
+`runs/.hpc-executions/`, outside immutable scientific artifacts. Evaluation
+records include resource settings, wall time, loading, context serialization,
+scoring, profile fitting, publication, task duration histograms, fixed-fit cache
+hits and Linux RSS. Worker RSS is the maximum sampled process high-water mark,
+not an aggregate memory measurement; timing counters can overlap. Prepare keeps
+its existing `root_prepare_metrics` and chunk size, caps ROOT threads at four,
+and displays its metrics automatically under HPC.
+
+Prepare/evaluation coordinators use OS-held locks under `runs/.locks/`.
+HPC training coordinators are locked too. Stable lock files are not stale-lock
+indicators: the OS releases ownership when the process exits. Never delete lock
+files to defeat an active owner. Existing assessment/T2 claims, failed replicas,
+denominators, ordering and resume validation are unchanged. A task failure stops
+new training submissions; running tasks finish and their evidence is retained.
+Termination propagates to CLI process groups on Linux. No mid-stage assessment
+restart capability is introduced.
+
+`h4l_all.py --plan-only` prints commands/dependencies without creating artifacts;
+`h4l_off_run.py --plan` remains the detailed off-stage planning interface.
+Without `--HPC`, the complete wrapper retains four evaluation workers, while a
+direct off-only invocation retains its single-worker default.
+
+Local verification uses policy/scheduler simulations, non-HPC regressions and
+`tests/h4l/test_hpc_smoke.py`, limited to two workers with one thread each and
+tiny synthetic fixtures (entry checks only print plans). On SciNet, benchmark isolated synthetic evaluations at 1/4/8/16/20
+workers, and 40 only after measured memory permits it. Use distinct output
+directories, fixed inputs and matched scientific budgets. Record wall time,
+CPU time, peak memory and I/O with Slurm accounting alongside the operational
+records; do not reopen frozen assessment for tuning. The 15-hour to 2–4-hour
+evaluation goal is unverified until measured on the cluster.
 
 ### Prepare reusable inputs
 

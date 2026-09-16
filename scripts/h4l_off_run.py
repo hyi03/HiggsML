@@ -23,6 +23,7 @@ from higgsml.errors import ResearchError  # noqa: E402
 from higgsml.protocol import DEFAULT_PATH, load_protocol  # noqa: E402
 from higgsml.run_names import workflow_directory_name  # noqa: E402
 from higgsml.workflow_resume import classify_stage  # noqa: E402
+from higgsml.hpc import add_arguments, activation, settings
 
 
 class WorkflowError(Exception):
@@ -75,9 +76,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--show-command", action="store_true")
     parser.add_argument("--no-progress", action="store_true",
                         help="Disable stage progress bars.")
-    parser.add_argument("--workers", type=int, default=1,
+    parser.add_argument("--workers", type=int, default=None,
                         help="Process workers for evaluation stages (default: 1).")
-    parser.add_argument("--worker-threads", type=int, default=1)
+    parser.add_argument("--worker-threads", type=int, default=None)
+    add_arguments(parser)
     return parser
 
 
@@ -99,6 +101,14 @@ def _display(command: list[str]) -> str:
 
 
 def _invoke(command: list[str], *, show_command: bool, progress=None) -> None:
+    if settings():
+        from higgsml.hpc_execution import supervised_run
+        if show_command:
+            print(_display(command), flush=True)
+        code = supervised_run(command, cwd=PROJECT_ROOT)
+        if code:
+            raise WorkflowError(f'Off-only workflow stage failed with exit code {code}', code)
+        return
     if show_command:
         print(_display(command), flush=True)
     process = subprocess.Popen(command, cwd=PROJECT_ROOT)
@@ -117,6 +127,11 @@ def _invoke(command: list[str], *, show_command: bool, progress=None) -> None:
 
 
 def _run(args: argparse.Namespace) -> None:
+    policy = settings()
+    if args.workers is None:
+        args.workers = policy['workers'] if policy else 1
+    if args.worker_threads is None:
+        args.worker_threads = policy['worker_threads'] if policy else 1
     if args.workers < 1:
         raise WorkflowError("--workers must be positive", 2)
     if args.worker_threads < 1:
@@ -258,8 +273,10 @@ def _run(args: argparse.Namespace) -> None:
 
 def main() -> int:
     try:
-        _run(_parser().parse_args())
-    except WorkflowError as error:
+        args = _parser().parse_args()
+        with activation(args):
+            _run(args)
+    except (WorkflowError, ResearchError) as error:
         print(str(error), file=sys.stderr)
         return error.exit_code
     return 0

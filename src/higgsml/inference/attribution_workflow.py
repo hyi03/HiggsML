@@ -15,6 +15,9 @@ from higgsml.inference.attribution import (FAMILY, SEEDS, SUBSETS, BUDGETS, cand
 from higgsml.inference.assessment import categorize_bundle
 from higgsml.inference.templates import common_mass_grid, gate_g1, build_templates
 from higgsml.inference.likelihood import run_asimov, build_model
+from higgsml.performance import evaluation_metrics, timer, add
+from higgsml.hpc import settings
+from higgsml.resources import ordered_map
 
 
 def analysis_definition():
@@ -516,14 +519,45 @@ def validate_evaluation_manifest(item, plan):
     return stage,mu
 
 
+def _model_self_fallback(templates, *, mu, count, seed, t1, auxiliary_generation,
+                         workers=1, worker_threads=1, progress=None):
+    """One candidate per work unit, preserving the original seed+index rule."""
+    from higgsml.inference.likelihood import run_toys
+    from higgsml.inference.reporting import coverage_summary, fit_diagnostics
+    parallel = bool(settings())
+    child_progress = None if parallel else progress
+    def finish(task):
+        index, (key, artifact) = task
+        try:
+            toys = run_toys(artifact, mu=mu, count=count, seed=seed+index, layer='T1',
+                            t1_validation=t1, auxiliary_generation=auxiliary_generation,
+                            progress=child_progress)
+            value = {'status':toys['status'], 'toys':toys, 'coverage':{}, 'diagnostics':{}}
+            for i, level in enumerate((.68, .95)):
+                intervals = [row['intervals'][i] for row in toys['results']]
+                value['coverage'][str(level)] = coverage_summary(intervals, mu=mu)
+                value['diagnostics'][str(level)] = fit_diagnostics(intervals, mu=mu)
+            return key, value, len(toys['results'])
+        except ResearchError as error:
+            return key, {'status':error.status, 'reason':str(error), 'planned_toys':count}, 0
+    results = {}
+    for key, value, completed in ordered_map(finish, enumerate(sorted(templates.items())),
+            workers=workers if parallel else 1, worker_threads=worker_threads):
+        results[key] = value
+        if parallel and progress is not None:
+            for _ in range(completed):
+                progress()
+    return results
+
+
+@evaluation_metrics
 def evaluate(registration_path,nominal_path,freeze_path,protocol,output,allowed_root,*,stage,mu=1,access_review=None,
              evaluation_plan_path=None,result_path=None,force=False,workers=1,worker_threads=1,progress=None):
     from higgsml.inference.bootstrap import mass_off_mc_bootstrap
     from higgsml.inference.assessment import infer_assessment,run_assessment_t2,_joint_mother
-    from higgsml.inference.likelihood import run_toys
-    from higgsml.inference.reporting import coverage_summary,fit_diagnostics
-    registered,overlay,prepared,nominal_run,grid,bundles,frozen_run=load_frozen(
-        registration_path,nominal_path,freeze_path,protocol,force=force)
+    with timer('load_frozen'):
+        registered,overlay,prepared,nominal_run,grid,bundles,frozen_run=load_frozen(
+            registration_path,nominal_path,freeze_path,protocol,force=force)
     if not evaluation_plan_path or not result_path:
         raise ResearchError('evaluation requires bound --evaluation-plan and --result-run')
     result_run=_load(result_path,protocol,'attribution-asimov')
@@ -543,16 +577,20 @@ def evaluate(registration_path,nominal_path,freeze_path,protocol,output,allowed_
                               'evaluation_plan_id':digest_json(plan),'evaluation_inputs':plan['inputs'],
                               'forced_protocol_mismatch_debug':force,
                               'assessment_access_mode':access_mode}) as run:
+        if settings():
+            run.manifest['resources'] = dict(settings())
         run.write_json('evaluation-plan.json',plan)
         if stage in {'assessment','t2'}:
-            frame=_assessment_frame(
-                prepared,overlay,frozen_run,protocol,access_review,f'{stage}-mu{mu}',force=force)
+            with timer('data_loading_and_access'):
+                frame=_assessment_frame(
+                    prepared,overlay,frozen_run,protocol,access_review,f'{stage}-mu{mu}',force=force)
             run.write_json('access-review.json',read_json(Path(access_review)))
         else:
-            frame=load_research_data(
-                prepared.file('events.jsonl'), protocol['dataset'], protocol,
-                provenance_protocol=prepared.read_json('protocol.json'),
-                force_protocol_mismatch=force)
+            with timer('data_loading'):
+                frame=load_research_data(
+                    prepared.file('events.jsonl'), protocol['dataset'], protocol,
+                    provenance_protocol=prepared.read_json('protocol.json'),
+                    force_protocol_mismatch=force)
         calibration=frame.loc[frame.role=='calibration'].copy()
         template=frame.loc[frame.role=='template'].copy()
         if stage=='mc-bootstrap':
@@ -579,19 +617,10 @@ def evaluate(registration_path,nominal_path,freeze_path,protocol,output,allowed_
                                             prepared_id=prepared.manifest['artifact_id'],freeze_id=frozen_run.manifest['artifact_id'],
                                             parent_role=role,workers=workers,worker_threads=worker_threads,progress=progress)
             else:
-                candidates={}
-                for index,(key,artifact) in enumerate(sorted(grid['templates'].items())):
-                    try:
-                        toys=run_toys(artifact,mu=mu,count=BUDGETS['toys']['count'],seed=BUDGETS['toys']['seed']+index,
-                                      layer='T1',t1_validation=t1,auxiliary_generation=protocol['inference']['auxiliary_generation'],
-                                      progress=progress)
-                        candidates[key]={'status':toys['status'],'toys':toys,'coverage':{},'diagnostics':{}}
-                        for i,level in enumerate((.68,.95)):
-                            intervals=[r['intervals'][i] for r in toys['results']]
-                            candidates[key]['coverage'][str(level)]=coverage_summary(intervals,mu=mu)
-                            candidates[key]['diagnostics'][str(level)]=fit_diagnostics(intervals,mu=mu)
-                    except ResearchError as error:
-                        candidates[key]={'status':error.status,'reason':str(error),'planned_toys':BUDGETS['toys']['count']}
+                candidates = _model_self_fallback(grid['templates'], mu=mu,
+                    count=BUDGETS['toys']['count'], seed=BUDGETS['toys']['seed'], t1=t1,
+                    auxiliary_generation=protocol['inference']['auxiliary_generation'],
+                    workers=workers, worker_threads=worker_threads, progress=progress)
             for value in candidates.values():
                 value['parent_role']=role
                 value['expectation_kind']='model_self_closure' if role=='template' else 'frozen_assessment_parent'
@@ -603,9 +632,11 @@ def evaluate(registration_path,nominal_path,freeze_path,protocol,output,allowed_
                     'pairing':'unavailable' if fallback else 'shared_joint_physical_cells','pairing_reason':fallback,
                     'parent_role':role,'interpretation':'pilot_no_unregistered_pass_threshold'}
         result.update(evaluation_plan_id=digest_json(plan),evaluation_inputs=plan['inputs'],family_id=FAMILY)
-        run.write_json('evaluation.json',result)
+        with timer('evaluation_serialization'):
+            run.write_json('evaluation.json',result)
         run.write_json('qualification.json',overlay['qualification'])
         # Individual fit/replica failures are completed budget accounting, not fatal orchestration errors.
+    add('publication_seconds', getattr(run, 'publication_seconds', None) or 0)
     return _result(run,output)
 
 

@@ -40,6 +40,7 @@ from higgsml.data import source_access_record  # noqa: E402
 from higgsml.protocol import load_protocol  # noqa: E402
 from higgsml.errors import ResearchError  # noqa: E402
 from higgsml.workflow_resume import classify_stage  # noqa: E402
+from higgsml.hpc import single_writer, settings
 
 
 class WorkflowError(Exception):
@@ -457,8 +458,15 @@ def _run(args: argparse.Namespace) -> None:
 
 def main() -> int:
     try:
-        _run(_parser().parse_args())
-    except WorkflowError as error:
+        args = _parser().parse_args()
+        if settings():
+            args.show_prepare_metrics = True
+        if args.plan_only:
+            _run(args)
+        else:
+            with single_writer(_run_root(args), allowed_root=RUNS_ROOT):
+                _run(args)
+    except (WorkflowError, ResearchError) as error:
         print(str(error), file=sys.stderr)
         return error.exit_code
     return 0

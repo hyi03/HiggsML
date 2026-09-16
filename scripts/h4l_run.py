@@ -37,6 +37,8 @@ from higgsml.cleanup import remove_run_directories  # noqa: E402
 from higgsml.errors import ResearchError  # noqa: E402
 from higgsml.protocol import load_protocol  # noqa: E402
 from higgsml.run_names import workflow_directory_name  # noqa: E402
+from higgsml.hpc import settings, single_writer
+from higgsml.hpc_execution import training_steps
 
 
 class WorkflowError(Exception):
@@ -468,6 +470,10 @@ def _run(args: argparse.Namespace) -> None:
     steps.append(("report conclusions", report_arguments))
 
     description = "H4l complete seeds 42-46" if complete else f"H4l diagnostic seed {seeds[0]}"
+    if settings() and not args.plan_only:
+        steps = training_steps(steps, project_root=PROJECT_ROOT, output_root=batch_root,
+            dataset=config['dataset'], protocol=load_protocol(protocol, dataset=config['dataset']).to_dict(),
+            resume=continue_run)
     with tqdm(steps, desc=description, unit="stage",
               disable=args.plan_only or args.no_progress) as progress:
         for label, arguments in progress:
@@ -522,8 +528,20 @@ def _run(args: argparse.Namespace) -> None:
 
 def main() -> int:
     try:
-        _run(_parser().parse_args())
-    except WorkflowError as error:
+        args = _parser().parse_args()
+        if settings() and not args.plan_only and not args.clean:
+            if args.run_name is not None:
+                target = _clean_batch_root(args)
+            else:
+                config = _load_config(_resolve(args.config))
+                target = _resolve(args.output_root or config['output_root'])
+                if args.output_root is None and args.seed is not None:
+                    target = target / f'seed{args.seed}'
+            with single_writer(target, allowed_root=RUNS_ROOT):
+                _run(args)
+        else:
+            _run(args)
+    except (WorkflowError, ResearchError) as error:
         print(str(error), file=sys.stderr)
         return error.exit_code
     return 0

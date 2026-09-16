@@ -17,6 +17,10 @@ DEFAULT_RUN_NAME = "default"
 OFF_WORKERS = "4"
 OFF_WORKER_THREADS = "1"
 
+sys.path.insert(0, str(PROJECT_ROOT / 'src'))
+from higgsml.hpc import add_arguments, activation, settings
+from higgsml.errors import ResearchError
+
 
 class WorkflowError(Exception):
     def __init__(self, message: str, exit_code: int = 3) -> None:
@@ -32,6 +36,8 @@ def _parser() -> argparse.ArgumentParser:
         "--run-name", default=DEFAULT_RUN_NAME,
         help=f"Shared standard/off-only run name (default: {DEFAULT_RUN_NAME}).",
     )
+    add_arguments(parser)
+    parser.add_argument('--plan-only', action='store_true', help='Print stages without running or creating artifacts.')
     return parser
 
 
@@ -52,11 +58,14 @@ def _reviewer_name() -> str:
 
 def _invoke(command: list[str]) -> None:
     print(f"RUN: {Path(command[1]).name}", flush=True)
-    completed = subprocess.run(command, cwd=PROJECT_ROOT, check=False)
-    if completed.returncode:
+    if settings():
+        from higgsml.hpc_execution import supervised_run
+        code = supervised_run(command, cwd=PROJECT_ROOT)
+    else:
+        code = subprocess.run(command, cwd=PROJECT_ROOT, check=False).returncode
+    if code:
         raise WorkflowError(
-            f"Workflow command failed with exit code {completed.returncode}: {command[1]}",
-            completed.returncode,
+            f"Workflow command failed with exit code {code}: {command[1]}", code,
         )
 
 
@@ -70,6 +79,9 @@ def _run(args: argparse.Namespace) -> None:
     python = sys.executable
     train_root = RUNS_ROOT / f"h4l-train-{name}"
     off_root = RUNS_ROOT / f"h4l-off-{name}"
+    policy = settings()
+    workers = str(policy['workers']) if policy else OFF_WORKERS
+    threads = str(policy['worker_threads']) if policy else OFF_WORKER_THREADS
     commands = [
         [python, str(SCRIPTS_ROOT / "h4l_prepare.py"),
          *_resume_flag(RUNS_ROOT / "h4l-prepare")],
@@ -80,8 +92,16 @@ def _run(args: argparse.Namespace) -> None:
         [python, str(SCRIPTS_ROOT / "h4l_off_run.py"),
          "--source-run-name", name, "--run-name", name,
          "--stage-b", *_resume_flag(off_root),
-         "--workers", OFF_WORKERS, "--worker-threads", OFF_WORKER_THREADS],
+         "--workers", workers, "--worker-threads", threads],
     ]
+    if args.plan_only:
+        import shlex
+        for command in commands:
+            print(shlex.join(command))
+        print('Then reuse or create the named self-review; run evaluation and final report.')
+        print('Training/calibration dependencies: train -> its calibrations; all calibrations -> templates -> inference -> report.')
+        print(f'Evaluation: mc-bootstrap; model-self mu=0,1,2; assessment mu=0,1,2; t2; report. workers={workers}, threads={threads}')
+        return
     for command in commands:
         _invoke(command)
 
@@ -99,7 +119,7 @@ def _run(args: argparse.Namespace) -> None:
         python, str(SCRIPTS_ROOT / "h4l_off_run.py"),
         "--source-run-name", name, "--run-name", name,
         "--evaluation", *_resume_flag(off_root / "evaluation"),
-        "--workers", OFF_WORKERS, "--worker-threads", OFF_WORKER_THREADS,
+        "--workers", workers, "--worker-threads", threads,
     ])
     print(
         "H4l workflow complete. Final report: "
@@ -109,8 +129,10 @@ def _run(args: argparse.Namespace) -> None:
 
 def main() -> int:
     try:
-        _run(_parser().parse_args())
-    except WorkflowError as error:
+        args = _parser().parse_args()
+        with activation(args):
+            _run(args)
+    except (WorkflowError, ResearchError) as error:
         print(str(error), file=sys.stderr)
         return error.exit_code
     return 0

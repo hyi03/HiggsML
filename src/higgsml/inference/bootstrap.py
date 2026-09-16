@@ -13,6 +13,7 @@ from higgsml.inference.templates import build_templates
 from higgsml.modeling.calibration import apply_calibration, assign_categories, fit_calibration, fit_thresholds
 from higgsml.modeling.discriminants import predict_discriminant
 from higgsml.resources import ordered_map
+from higgsml.hpc import settings
 
 
 def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_validation,
@@ -32,6 +33,18 @@ def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_
     template_groups = np.asarray(sorted(template.event_group_id.astype(str).unique()))
     if not len(calibration_groups) or not len(template_groups):
         raise ResearchError('bootstrap role has no physical event groups')
+
+    cache = None
+    policy = settings()
+    if policy:
+        from higgsml.inference.score_cache import RawScoreCache
+        from higgsml.inference.assessment import _scores
+        cache = RawScoreCache(bundles, {'calibration': calibration, 'template': template},
+                              _scores, policy['score_cache_bytes'])
+
+    def raw_scores(key, bundle, frame, role):
+        scores = cache.get(key, role, frame) if cache is not None else None
+        return predict_discriminant(bundle['model'], frame) if scores is None else scores
 
     def tasks():
         for index in range(budget['replicas']):
@@ -54,9 +67,15 @@ def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_
                     if value['transform'] != 'raw' or value['mapping'] is not None:
                         raise ResearchError('off bootstrap must retain raw mapping')
                     if value['candidate_id'] != 'M0off':
-                        value['thresholds'] = fit_thresholds(c,predict_discriminant(value['model'],c),protocol,
+                        value['thresholds'] = fit_thresholds(c,raw_scores(key,value,c,'calibration'),protocol,
                                                             model_id=value['model_id'],mapping_id=value['mapping_id'])
-                    frame = categorize_bundle(value,t)
+                    cached = cache.get(key, 'template', t) if cache is not None else None
+                    if cached is None:
+                        frame = categorize_bundle(value,t)
+                    else:
+                        frame = t.copy()
+                        frame['category'] = assign_categories(value['thresholds'], cached,
+                            model_id=value['model_id'], mapping_id=value['mapping_id'])
                     structural = structural_evidence(value,frame,grid['mass_edges']) if value['candidate_id']=='M0off' else None
                     artifact = build_templates(frame,mass_edges=grid['mass_edges'],mapping_id=value['mapping_id'],
                                                candidate_id=value['candidate_id'],thresholds=protocol['templates'],

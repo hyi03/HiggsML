@@ -34,6 +34,8 @@ from higgsml.errors import ResearchError  # noqa: E402
 from higgsml.protocol import load_protocol  # noqa: E402
 from higgsml.run_names import workflow_directory_name  # noqa: E402
 from higgsml.workflow_resume import classify_stage  # noqa: E402
+from higgsml.hpc import settings, single_writer
+from higgsml.hpc_execution import training_steps
 
 
 class WorkflowError(Exception):
@@ -293,6 +295,9 @@ def _run(args: argparse.Namespace) -> None:
     steps.append(("templates", template_arguments))
 
     protocol = load_protocol(protocol_path, dataset=DATASET).to_dict()
+    if settings() and not args.plan_only:
+        steps = training_steps(steps, project_root=PROJECT_ROOT, output_root=output_root,
+            dataset=DATASET, protocol=protocol, resume=continue_run)
     with tqdm(
         steps,
         desc="H4l G1",
@@ -345,8 +350,13 @@ def _run(args: argparse.Namespace) -> None:
 
 def main() -> int:
     try:
-        _run(_parser().parse_args())
-    except WorkflowError as error:
+        args = _parser().parse_args()
+        if settings() and not args.plan_only and not args.clean:
+            with single_writer(_workflow_paths(args)[2], allowed_root=RUNS_ROOT):
+                _run(args)
+        else:
+            _run(args)
+    except (WorkflowError, ResearchError) as error:
         print(str(error), file=sys.stderr)
         return error.exit_code
     return 0

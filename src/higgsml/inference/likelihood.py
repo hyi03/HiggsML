@@ -9,6 +9,8 @@ from scipy.stats import chi2
 from higgsml.errors import ResearchError, ResearchStateError
 from higgsml.inference.diagnostics import signed_mu_fit, signed_mu_summary
 from higgsml.resources import ordered_map
+from higgsml.hpc import settings
+from higgsml.performance import add, measured
 
 
 def _is_sample_efficiency_payload(value):
@@ -75,6 +77,7 @@ def profile_interval(model, data, confidence=.68):
     return profile_intervals(model, data, [confidence])[0]
 
 
+@measured('profile_intervals')
 def profile_intervals(model, data, levels=(.68, .95)):
     """One unconditional fit per observation; independent interval failures."""
     pyhf = require_pyhf()
@@ -99,17 +102,26 @@ def profile_intervals(model, data, levels=(.68, .95)):
         lo, hi = model.config.suggested_bounds()[model.config.poi_index]
     except Exception as exc:
         return [{"status": "fit_failed", "confidence": level, "error": str(exc)} for level in levels]
-    return [_profile_from_fit(pyhf, model, data, level, muhat, minimum, lo, hi) for level in levels]
+    cache = {} if settings() else None
+    return [_profile_from_fit(pyhf, model, data, level, muhat, minimum, lo, hi, cache=cache) for level in levels]
 
 
-def _profile_from_fit(pyhf, model, data, confidence, muhat, minimum, lo, hi):
+def _profile_from_fit(pyhf, model, data, confidence, muhat, minimum, lo, hi, *, cache=None):
     try:
         target = float(chi2.ppf(confidence, 1))
         def residual(mu):
-            _, nll = pyhf.infer.mle.fixed_poi_fit(float(mu), data, model, return_fitted_val=True)
-            q = float(np.asarray(nll).reshape(-1)[0]) - minimum
+            mu = float(mu)
+            if cache is not None and mu in cache:
+                add('fixed_poi_cache_hits')
+                q = cache[mu]
+            else:
+                add('fixed_poi_calls')
+                _, nll = pyhf.infer.mle.fixed_poi_fit(mu, data, model, return_fitted_val=True)
+                q = float(np.asarray(nll).reshape(-1)[0]) - minimum
             if not np.isfinite(q):
                 raise ValueError("Nonfinite profile objective")
+            if cache is not None:
+                cache[mu] = q
             return q - target
         lower = float(lo) if residual(lo) <= 0 else float(brentq(residual, lo, muhat, xtol=1e-7))
         upper = float(brentq(residual, muhat, hi, xtol=1e-7)) if residual(hi) >= 0 else None
@@ -258,7 +270,7 @@ def stress_weights(frame, *, kind, direction, reference_score_column="reference_
 
 def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mapping, evaluate,
                      outer_replicas, inner_toys, seed, model_id, mother_id, workers=1, worker_threads=1,
-                     record_mappings=False):
+                     record_mappings=False, on_replica=None):
     """Bounded paired group-bootstrap; callbacks retain scientific binding checks."""
     if not model_id or not mother_id or min(outer_replicas,inner_toys)<1:
         raise ResearchError("T2 requires frozen identities and positive budgets")
@@ -310,5 +322,9 @@ def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mappin
         except ResearchError as exc:
             row.update(status=exc.status,error=str(exc))
         return row
-    replicas = list(ordered_map(finish, tasks(), workers=workers, worker_threads=worker_threads))
+    replicas = []
+    for row in ordered_map(finish, tasks(), workers=min(workers, outer_replicas), worker_threads=worker_threads):
+        replicas.append(row)
+        if on_replica is not None:
+            on_replica(row)
     return {"status":"valid" if all(r["status"]=="valid" for r in replicas) else "inference_incomplete","layer":"T2-procedure","model_id":model_id,"mother_id":mother_id,"randomization":"calibration_physical_group_bootstrap_and_inner_pseudodata","fixed":"trained_model_template_and_assessment_mother_events","outer_replicas":outer_replicas,"inner_toys":inner_toys,"seed":seed,"replicas":replicas}
