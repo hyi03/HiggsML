@@ -23,6 +23,7 @@ if str(SOURCE_ROOT) not in sys.path:
 
 from higgsml.artifacts import digest_json  # noqa: E402
 from higgsml.protocol import load_protocol  # noqa: E402
+from higgsml.workflow_resume import classify_stage  # noqa: E402
 
 
 DEFAULT_PROTOCOL = PROJECT_ROOT / "config" / "protocols" / "h4l_protocol.json"
@@ -50,6 +51,8 @@ def _parser():
     parser.add_argument("--result-run", type=Path)
     parser.add_argument("--access-review", type=Path)
     parser.add_argument("--reuse-stage", action='append', default=[], metavar='STAGE:MU=RUN')
+    parser.add_argument('--continue', dest='continue_run', action='store_true',
+                        help='Resume an existing evaluation and skip valid complete cells.')
     parser.add_argument('--force', action='store_true',
                         help='Debug only: allow a forced-protocol off-only registration')
     parser.add_argument('--no-progress', action='store_true',
@@ -249,7 +252,11 @@ def _run_mass_off(args, protocol, plan):
                 unresolved.append({'input':key,'reason':'upstream manifest binding mismatch'})
     output=_resolve(args.output_root)
     if output==RUNS_ROOT or not output.is_relative_to(RUNS_ROOT): raise EvaluationError('Output must be a fresh child of runs')
-    if output.exists(): raise EvaluationError('Output already exists')
+    if output.exists() and not args.continue_run: raise EvaluationError('Output already exists')
+    if output.exists() and (output.is_symlink() or not output.is_dir()):
+        raise EvaluationError('Output is not a reusable directory')
+    if args.continue_run and args.reuse_stage and not args.plan_only:
+        raise EvaluationError('--continue cannot be combined with --reuse-stage', 2)
     matrix=[('mc-bootstrap',1)]+[(stage,mu) for stage in ('model-self','assessment') for mu in (0,1,2)]+[('t2',1)]
     reused={}
     for declaration in args.reuse_stage:
@@ -290,6 +297,24 @@ def _run_mass_off(args, protocol, plan):
                 progress.update()
                 continue
             target=output/f'{stage}-mu{mu}'
+            if args.continue_run:
+                def validate_cell(item, expected=(stage,mu)):
+                    if validate_evaluation_manifest(item,plan)!=expected:
+                        raise ResearchError('continued evaluation cell cohort/budget mismatch')
+                    item.read_json('evaluation.json')
+                try:
+                    action = classify_stage(
+                        target, allowed_root=output, dataset=protocol['dataset'],
+                        protocol=protocol, stages=('attribution-'+stage,),
+                        validator=validate_cell,
+                    )
+                except ResearchError as error:
+                    raise EvaluationError(str(error), 4) from error
+                if action == 'skip':
+                    outputs.append(target)
+                    progress.set_postfix_str(label+' skipped',refresh=True)
+                    progress.update()
+                    continue
             command=[sys.executable,'-m','higgsml.cli','attribution',stage,*common,'--mu',str(mu),'--run-dir',str(target),
                      '--evaluation-plan',str(_resolve(args.plan)),'--result-run',str(_resolve(args.result_run))]
             if stage in {'assessment','t2'} and args.access_review:
@@ -297,10 +322,22 @@ def _run_mass_off(args, protocol, plan):
             _invoke_with_progress(command,label=label,progress=progress)
             outputs.append(target)
             progress.update()
+        report_target=output/'report'
         command=[sys.executable,'-m','higgsml.cli','attribution','report',*common,'--result-run',str(_resolve(args.result_run)),
-                 '--run-dir',str(output/'report')]
+                 '--run-dir',str(report_target)]
         for path in outputs: command+=['--evaluation-run',str(path)]
-        _invoke_with_progress(command,label='final report',progress=progress)
+        report_action='run'
+        if args.continue_run:
+            try:
+                report_action=classify_stage(
+                    report_target, allowed_root=output, dataset=protocol['dataset'],
+                    protocol=protocol, stages=('attribution-report',),
+                    validator=lambda item:item.file('report.md'),
+                )
+            except ResearchError as error:
+                raise EvaluationError(str(error),4) from error
+        if report_action!='skip':
+            _invoke_with_progress(command,label='final report',progress=progress)
         progress.update()
 
 

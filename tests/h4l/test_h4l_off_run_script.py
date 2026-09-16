@@ -101,3 +101,21 @@ def test_run_names_reject_path_traversal():
     )
     assert completed.returncode == 2
     assert "run name must contain" in completed.stderr
+
+
+def test_off_wrapper_exposes_resumable_execution():
+    completed = invoke("--help")
+
+    assert completed.returncode == 0
+    assert "--continue" in completed.stdout
+
+
+def test_off_wrapper_forwards_continue_to_evaluation():
+    completed = invoke(
+        "--source-run-name", "02", "--run-name", "paper-001",
+        "--evaluation", "--continue", "--plan",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    evaluator = next(line for line in completed.stdout.splitlines() if "h4l_evaluate.py" in line)
+    assert "--continue" in evaluator

@@ -33,6 +33,7 @@ from higgsml.cleanup import remove_run_directories  # noqa: E402
 from higgsml.errors import ResearchError  # noqa: E402
 from higgsml.protocol import load_protocol  # noqa: E402
 from higgsml.run_names import workflow_directory_name  # noqa: E402
+from higgsml.workflow_resume import classify_stage  # noqa: E402
 
 
 class WorkflowError(Exception):
@@ -55,6 +56,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", type=Path)
     parser.add_argument("--protocol", type=Path, default=DEFAULT_PROTOCOL)
     parser.add_argument("--plan-only", action="store_true")
+    parser.add_argument(
+        "--continue", dest="continue_run", action="store_true",
+        help="Resume G1, skipping valid complete stages.",
+    )
     parser.add_argument("--show-command", action="store_true",
                         help="Print each stage command before it is run.")
     parser.add_argument(
@@ -164,7 +169,7 @@ def _invoke(arguments: list[str], *, plan_only: bool, show_command: bool = False
 
 
 def _validate_paths(prepared: Path, t1_validation: Path, output_root: Path,
-                    protocol_path: Path, *, plan_only: bool) -> None:
+                    protocol_path: Path, *, plan_only: bool, continue_run: bool) -> None:
     try:
         relative = output_root.relative_to(RUNS_ROOT)
     except ValueError as error:
@@ -182,8 +187,10 @@ def _validate_paths(prepared: Path, t1_validation: Path, output_root: Path,
         raise WorkflowError(f"Prepared run does not exist: {prepared}", 3)
     if not t1_validation.is_file():
         raise WorkflowError(f"T1 validation evidence does not exist: {t1_validation}", 3)
-    if output_root.exists():
+    if output_root.exists() and not continue_run:
         raise WorkflowError(f"OutputRoot already exists and cannot be reused: {output_root}", 4)
+    if output_root.exists() and (output_root.is_symlink() or not output_root.is_dir()):
+        raise WorkflowError(f"OutputRoot is not a reusable directory: {output_root}", 4)
     _validate_t1(t1_validation, protocol_path)
 
 
@@ -229,10 +236,13 @@ def _run(args: argparse.Namespace) -> None:
     if getattr(args, "clean", False):
         _clean(args)
         return
+    continue_run = getattr(args, "continue_run", False)
+    if continue_run and args.plan_only:
+        raise WorkflowError("--continue cannot be combined with --plan-only", 2)
     prepared, t1_validation, output_root = _workflow_paths(args)
     protocol_path = _resolve(args.protocol or DEFAULT_PROTOCOL)
     _validate_paths(prepared, t1_validation, output_root, protocol_path,
-                    plan_only=args.plan_only)
+                    plan_only=args.plan_only, continue_run=continue_run)
 
     train_root = output_root / "train"
     calibration_root = output_root / "calibrate"
@@ -282,6 +292,7 @@ def _run(args: argparse.Namespace) -> None:
     )
     steps.append(("templates", template_arguments))
 
+    protocol = load_protocol(protocol_path, dataset=DATASET).to_dict()
     with tqdm(
         steps,
         desc="H4l G1",
@@ -290,6 +301,17 @@ def _run(args: argparse.Namespace) -> None:
     ) as progress:
         for label, arguments in progress:
             progress.set_postfix_str(label, refresh=True)
+            if continue_run:
+                run_dir = Path(arguments[arguments.index("--run-dir") + 1])
+                try:
+                    action = classify_stage(
+                        run_dir, allowed_root=output_root, dataset=DATASET,
+                        protocol=protocol, stages=(arguments[0],),
+                    )
+                except ResearchError as error:
+                    raise WorkflowError(str(error), 4) from error
+                if action == "skip":
+                    continue
             _invoke(arguments, plan_only=args.plan_only, show_command=args.show_command)
 
     if not args.plan_only:

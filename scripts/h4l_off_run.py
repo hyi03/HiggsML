@@ -19,8 +19,10 @@ SOURCE_ROOT = PROJECT_ROOT / "src"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
-from higgsml.protocol import DEFAULT_PATH  # noqa: E402
+from higgsml.errors import ResearchError  # noqa: E402
+from higgsml.protocol import DEFAULT_PATH, load_protocol  # noqa: E402
 from higgsml.run_names import workflow_directory_name  # noqa: E402
+from higgsml.workflow_resume import classify_stage  # noqa: E402
 
 
 class WorkflowError(Exception):
@@ -61,6 +63,10 @@ def _parser() -> argparse.ArgumentParser:
         help="Reuse this run name's completed Stage B and execute C-E.",
     )
     parser.add_argument("--plan", action="store_true")
+    parser.add_argument(
+        "--continue", dest="continue_run", action="store_true",
+        help="Resume Stage B/evaluation and skip valid complete stages.",
+    )
     parser.add_argument(
         "--force", action="store_true",
         help=("Debug only: bypass source protocol consistency checks. "
@@ -146,8 +152,10 @@ def _run(args: argparse.Namespace) -> None:
             raise WorkflowError(f"Assessment access review does not exist: {access_review}")
         if args.evaluation and not output.is_dir():
             raise WorkflowError(f"Stage B output root does not exist: {output}", 4)
-        if not args.evaluation and output.exists():
+        if not args.evaluation and output.exists() and not args.continue_run:
             raise WorkflowError(f"Output root already exists and cannot be reused: {output}", 4)
+        if output.exists() and (output.is_symlink() or not output.is_dir()):
+            raise WorkflowError(f"Output root is not a reusable directory: {output}", 4)
 
     register = output / "register"
     nominal = output / "nominal"
@@ -192,6 +200,8 @@ def _run(args: argparse.Namespace) -> None:
             evaluation_command.append("--force")
         if args.no_progress:
             evaluation_command.append("--no-progress")
+        if args.continue_run:
+            evaluation_command.append("--continue")
         commands.append(evaluation_command)
 
     if not args.plan and args.evaluation:
@@ -202,7 +212,7 @@ def _run(args: argparse.Namespace) -> None:
         ):
             if not path.exists():
                 raise WorkflowError(f"Required completed Stage B {label} does not exist: {path}")
-        if evaluation.exists():
+        if evaluation.exists() and not args.continue_run:
             raise WorkflowError(f"Evaluation output already exists and cannot be reused: {evaluation}", 4)
 
     if args.plan:
@@ -221,12 +231,24 @@ def _run(args: argparse.Namespace) -> None:
         print("WARNING: --force bypasses source protocol consistency checks; "
               "all generated outputs are debug-only and non-authoritative.", file=sys.stderr)
     visible_commands = commands if args.stage_b else ([] if args.evaluation else commands[:-1])
+    protocol_value = load_protocol(protocol).to_dict()
     with tqdm(visible_commands, desc="H4l off Stage B", unit="stage",
               disable=args.no_progress) as progress:
         for command in progress:
             label = (command[command.index("attribution") + 1]
                      if "attribution" in command else "evaluation C-E")
             progress.set_postfix_str(label, refresh=True)
+            if args.continue_run:
+                target = Path(command[command.index("--run-dir") + 1])
+                try:
+                    action = classify_stage(
+                        target, allowed_root=output, dataset=protocol_value["dataset"],
+                        protocol=protocol_value, stages=(f"attribution-{label}",),
+                    )
+                except ResearchError as error:
+                    raise WorkflowError(str(error), 4) from error
+                if action == "skip":
+                    continue
             _invoke(command, show_command=args.show_command, progress=progress)
     if not args.stage_b:
         _invoke(commands[-1], show_command=args.show_command)
