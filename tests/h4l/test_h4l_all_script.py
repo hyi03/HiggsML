@@ -36,19 +36,19 @@ def test_default_run_name_executes_the_complete_resumable_h4l_workflow(
         "h4l_off_self_review.py",
         "h4l_off_run.py",
     ]
-    assert commands[0][2:] == ["--continue"]
-    assert commands[1][2:] == ["--run-name", "default", "--continue"]
-    assert commands[2][2:] == ["--run-name", "default", "--continue"]
+    assert commands[0][2:] == []
+    assert commands[1][2:] == ["--run-name", "default"]
+    assert commands[2][2:] == ["--run-name", "default"]
     assert commands[3][2:] == [
         "--source-run-name", "default", "--run-name", "default",
-        "--stage-b", "--continue", "--workers", "4", "--worker-threads", "1",
+        "--stage-b", "--workers", "4", "--worker-threads", "1",
     ]
     assert commands[4][2:] == [
         "--run-name", "default", "--reviewer", "Test Researcher",
     ]
     assert commands[5][2:] == [
         "--source-run-name", "default", "--run-name", "default",
-        "--evaluation", "--continue", "--workers", "4", "--worker-threads", "1",
+        "--evaluation", "--workers", "4", "--worker-threads", "1",
     ]
 
 
@@ -72,5 +72,5 @@ def test_explicit_run_name_reuses_an_existing_access_review(
     assert all(Path(command[1]).name != "h4l_off_self_review.py" for command in commands)
     assert commands[-1][2:] == [
         "--source-run-name", "study-001", "--run-name", "study-001",
-        "--evaluation", "--continue", "--workers", "4", "--worker-threads", "1",
+        "--evaluation", "--workers", "4", "--worker-threads", "1",
     ]

@@ -60,18 +60,26 @@ def _invoke(command: list[str]) -> None:
         )
 
 
+def _resume_flag(path: Path) -> list[str]:
+    """Use continuation only when the stage's aggregate root already exists."""
+    return ["--continue"] if path.is_dir() else []
+
+
 def _run(args: argparse.Namespace) -> None:
     name = args.run_name
     python = sys.executable
+    train_root = RUNS_ROOT / f"h4l-train-{name}"
+    off_root = RUNS_ROOT / f"h4l-off-{name}"
     commands = [
-        [python, str(SCRIPTS_ROOT / "h4l_prepare.py"), "--continue"],
+        [python, str(SCRIPTS_ROOT / "h4l_prepare.py"),
+         *_resume_flag(RUNS_ROOT / "h4l-prepare")],
         [python, str(SCRIPTS_ROOT / "h4l_check.py"),
-         "--run-name", name, "--continue"],
+         "--run-name", name, *_resume_flag(train_root / "g1")],
         [python, str(SCRIPTS_ROOT / "h4l_run.py"),
-         "--run-name", name, "--continue"],
+         "--run-name", name, *_resume_flag(train_root / "batch" / "all-seeds")],
         [python, str(SCRIPTS_ROOT / "h4l_off_run.py"),
          "--source-run-name", name, "--run-name", name,
-         "--stage-b", "--continue",
+         "--stage-b", *_resume_flag(off_root),
          "--workers", OFF_WORKERS, "--worker-threads", OFF_WORKER_THREADS],
     ]
     for command in commands:
@@ -90,7 +98,7 @@ def _run(args: argparse.Namespace) -> None:
     _invoke([
         python, str(SCRIPTS_ROOT / "h4l_off_run.py"),
         "--source-run-name", name, "--run-name", name,
-        "--evaluation", "--continue",
+        "--evaluation", *_resume_flag(off_root / "evaluation"),
         "--workers", OFF_WORKERS, "--worker-threads", OFF_WORKER_THREADS,
     ])
     print(
