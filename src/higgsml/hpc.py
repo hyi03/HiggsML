@@ -120,9 +120,15 @@ def resolve(*, cpus, memory_bytes, workers=None, threads=1, worker_gb=8., cache_
             not math.isfinite(cache_gb) or cache_gb < 0 or cache_gb >= worker_gb):
         raise ResearchError('Invalid HPC resources; cache must fit inside worker memory estimate')
     usable = memory_bytes - max(4 * GIB, int(memory_bytes * .1))
-    maximum = min(cpus // threads, int(usable // (worker_gb * GIB)))
-    if maximum < 1 or workers is not None and workers > maximum:
-        raise ResearchError(f'HPC resources cannot accommodate requested workers (maximum {max(0, maximum)})')
+    cpu_maximum = cpus // threads
+    if cpu_maximum < 1:
+        raise ResearchError('HPC resources cannot accommodate one worker with the requested threads')
+    # A low or conservatively reported memory limit must still permit the
+    # coordinator to make progress in single-worker mode.
+    memory_maximum = max(1, int(usable // (worker_gb * GIB)))
+    maximum = min(cpu_maximum, memory_maximum)
+    if workers is not None and workers > maximum:
+        raise ResearchError(f'HPC resources cannot accommodate requested workers (maximum {maximum})')
     return dict(workers=workers or maximum, worker_threads=threads, cpu_budget=cpus,
                 memory_bytes=memory_bytes, worker_memory_bytes=int(worker_gb * GIB),
                 score_cache_bytes=int(cache_gb * GIB), root_threads=min(4, cpus))

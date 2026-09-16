@@ -23,8 +23,9 @@ def test_single_node_memory_and_cpu_bounds():
     assert resolve(cpus=1, memory_bytes=16 * GIB)['workers'] == 1
     with pytest.raises(ResearchError, match='maximum 20'):
         resolve(cpus=40, memory_bytes=180 * GIB, workers=40)
-    with pytest.raises(ResearchError):
-        resolve(cpus=40, memory_bytes=6 * GIB)
+    assert resolve(cpus=40, memory_bytes=6 * GIB)['workers'] == 1
+    with pytest.raises(ResearchError, match='maximum 1'):
+        resolve(cpus=40, memory_bytes=6 * GIB, workers=2)
 
 
 @pytest.mark.parametrize('options', [dict(workers=0), dict(threads=0), dict(worker_gb=float('nan')),
