@@ -38,6 +38,8 @@ from higgsml.artifacts import digest_json  # noqa: E402
 from higgsml.cleanup import remove_run_directories  # noqa: E402
 from higgsml.data import source_access_record  # noqa: E402
 from higgsml.protocol import load_protocol  # noqa: E402
+from higgsml.errors import ResearchError  # noqa: E402
+from higgsml.workflow_resume import classify_stage  # noqa: E402
 
 
 class WorkflowError(Exception):
@@ -71,6 +73,10 @@ def _parser() -> argparse.ArgumentParser:
         "--plan-only",
         action="store_true",
         help="Validate inputs and print commands without creating runs.",
+    )
+    parser.add_argument(
+        "--continue", dest="continue_run", action="store_true",
+        help="Resume preparation, skipping valid complete audit/prepare stages.",
     )
     parser.add_argument(
         "--clean", action="store_true",
@@ -299,7 +305,7 @@ def _invoke(arguments: list[str], *, plan_only: bool) -> None:
         )
 
 
-def _validate_run_root(run_root: Path) -> None:
+def _validate_run_root(run_root: Path, *, continue_run: bool) -> None:
     try:
         relative = run_root.relative_to(RUNS_ROOT)
     except ValueError as error:
@@ -308,14 +314,26 @@ def _validate_run_root(run_root: Path) -> None:
         ) from error
     if not relative.parts:
         raise WorkflowError("RunRoot cannot be the runs directory itself", 4)
-    if run_root.exists():
+    if run_root.exists() and not continue_run:
         raise WorkflowError(f"RunRoot already exists and cannot be reused: {run_root}", 4)
+    if run_root.exists() and (run_root.is_symlink() or not run_root.is_dir()):
+        raise WorkflowError(f"RunRoot is not a reusable directory: {run_root}", 4)
+
+
+def _write_or_validate_json(path: Path, value: dict, *, continue_run: bool) -> None:
+    if path.exists():
+        if not continue_run or _load_json(path) != value:
+            raise WorkflowError(f"Existing bound input does not match this workflow: {path}", 4)
+        print(f"SKIP complete input: {path}")
+        return
+    _write_json_new(path, value)
 
 
 def _run_workflow(args: argparse.Namespace, receipt: Path) -> None:
     run_root = _run_root(args)
     protocol_path = _resolve(args.protocol or DEFAULT_PROTOCOL)
-    _validate_run_root(run_root)
+    continue_run = getattr(args, "continue_run", False)
+    _validate_run_root(run_root, continue_run=continue_run)
     for required in (protocol_path, PROFILE, G1_SCRIPT):
         if not required.is_file():
             raise WorkflowError(f"Required project file does not exist: {required}", 3)
@@ -329,10 +347,10 @@ def _run_workflow(args: argparse.Namespace, receipt: Path) -> None:
     p0_validation = inputs_root / P0_VALIDATION_NAME
     t1_validation = inputs_root / T1_VALIDATION_NAME
     if not args.plan_only:
-        inputs_root.mkdir(parents=True)
-        _write_json_new(root_manifest, manifest)
-        _write_json_new(p0_validation, p0)
-        _write_json_new(t1_validation, t1)
+        inputs_root.mkdir(parents=True, exist_ok=continue_run)
+        _write_or_validate_json(root_manifest, manifest, continue_run=continue_run)
+        _write_or_validate_json(p0_validation, p0, continue_run=continue_run)
+        _write_or_validate_json(t1_validation, t1, continue_run=continue_run)
         print(f"Wrote automatically bound inputs: {inputs_root}")
 
     audit_run = run_root / "audit"
@@ -366,7 +384,19 @@ def _run_workflow(args: argparse.Namespace, receipt: Path) -> None:
         steps[1][1].append("--show-prepare-metrics")
     if not args.no_progress:
         steps[1][1].append("--show-prepare-progress")
+    protocol = load_protocol(protocol_path, dataset=DATASET).to_dict()
     for _label, arguments in steps:
+        if continue_run:
+            run_dir = Path(arguments[arguments.index("--run-dir") + 1])
+            try:
+                action = classify_stage(
+                    run_dir, allowed_root=run_root, dataset=DATASET,
+                    protocol=protocol, stages=(arguments[0],),
+                )
+            except ResearchError as error:
+                raise WorkflowError(str(error), 4) from error
+            if action == "skip":
+                continue
         _invoke(arguments, plan_only=args.plan_only)
 
     if diagnostic_limit is not None:
@@ -419,6 +449,8 @@ def _run(args: argparse.Namespace) -> None:
     if getattr(args, "clean", False):
         _clean(args)
         return
+    if getattr(args, "continue_run", False) and getattr(args, "plan_only", False):
+        raise WorkflowError("--continue cannot be combined with --plan-only", 2)
     receipt = _resolve(args.dataset_receipt)
     _run_workflow(args, receipt)
 

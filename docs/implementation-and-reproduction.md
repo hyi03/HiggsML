@@ -73,6 +73,15 @@ Controlled preparation additionally requires P0 evidence binding `status=validat
 
 ## Main workflow
 
+The normal end-to-end path first initializes the controlled dataset and then accepts only one optional workflow argument, `--run-name`:
+
+```powershell
+python scripts/init_data.py --dataset atlas2020_4lep
+python scripts/h4l_all.py --run-name test01
+```
+
+Omitting `--run-name` uses the stable name `default`. Re-running the same command validates published manifests and skips complete stages before continuing at the next missing stage. Invalid final stage directories are quarantined without deleting `.failed` evidence. The wrapper passes `--workers 4 --worker-threads 1` to `h4l_off_run.py`, so complete bootstrap, Toy, and T2 work units can run in parallel without nested thread expansion. A pre-existing bound access review is reused; otherwise the command records a local named-user single-researcher self-review, which remains explicitly non-independent and exploratory. Frozen assessment/T2 budget claims are never bypassed by resume. The commands below remain available for diagnosis, explicit planning, independent access-review replacement, and individual-stage recovery.
+
 ### Prepare reusable inputs
 
 ```powershell

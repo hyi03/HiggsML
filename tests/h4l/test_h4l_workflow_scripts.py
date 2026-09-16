@@ -324,6 +324,79 @@ def test_prepare_writes_automatic_inputs_before_running_prerequisites(
     assert "H4l prepare" not in capsys.readouterr().err
 
 
+def test_prepare_continue_skips_valid_completed_stages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepare = _load_prepare_module()
+    from higgsml.artifacts import ResearchRun
+
+    receipt, _ = _dataset_receipt(tmp_path)
+    monkeypatch.setattr(prepare, "RUNS_ROOT", tmp_path.resolve())
+    run_root = tmp_path / "run"
+    protocol = prepare.load_protocol(
+        prepare.DEFAULT_PROTOCOL, dataset="atlas2020_4lep"
+    ).to_dict()
+
+    def publish_stage(arguments: list[str], *, plan_only: bool) -> None:
+        target = Path(arguments[arguments.index("--run-dir") + 1])
+        with ResearchRun(
+            target, allowed_root=run_root, stage=arguments[0],
+            dataset="atlas2020_4lep", protocol=protocol,
+        ):
+            pass
+
+    monkeypatch.setattr(prepare, "_invoke", publish_stage)
+    common = dict(
+        dataset_receipt=receipt, run_root=run_root, protocol=None,
+        plan_only=False, no_progress=True, continue_run=False,
+        diagnostic_entries_per_file=None, show_prepare_metrics=False,
+        clean=False,
+    )
+    prepare._run(argparse.Namespace(**common))
+
+    monkeypatch.setattr(
+        prepare, "_invoke",
+        lambda *_args, **_kwargs: pytest.fail("completed stage was invoked"),
+    )
+    prepare._run(argparse.Namespace(**{**common, "continue_run": True}))
+
+
+def test_g1_continue_skips_a_valid_completed_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    g1 = _load_g1_module()
+    from higgsml.artifacts import ResearchRun
+
+    prepared = tmp_path / "prepared"; prepared.mkdir()
+    t1_validation = tmp_path / "t1-validation.json"; t1_validation.write_text("{}")
+    output_root = tmp_path / "g1"; output_root.mkdir()
+    protocol = g1.load_protocol(g1.DEFAULT_PROTOCOL, dataset="atlas2020_4lep").to_dict()
+    first = output_root / "train" / "m0c"
+    with ResearchRun(
+        first, allowed_root=output_root, stage="train",
+        dataset="atlas2020_4lep", protocol=protocol,
+    ):
+        pass
+    monkeypatch.setattr(g1, "RUNS_ROOT", tmp_path.resolve())
+    monkeypatch.setattr(g1, "_validate_t1", lambda *_args: None)
+
+    class NextStageObserved(Exception):
+        pass
+
+    def observe_next(arguments: list[str], **_kwargs) -> None:
+        assert Path(arguments[arguments.index("--run-dir") + 1]).name == "m2"
+        raise NextStageObserved
+
+    monkeypatch.setattr(g1, "_invoke", observe_next)
+    with pytest.raises(NextStageObserved):
+        g1._run(argparse.Namespace(
+            run_name=None, prepared_run=prepared, t1_validation=t1_validation,
+            output_root=output_root, protocol=None, plan_only=False,
+            show_command=False, clean=False, no_progress=True, continue_run=True,
+        ))
+    assert first.is_dir()
+
+
 def test_g1_plan_reuses_prepared_run_without_preparing_root_again() -> None:
     prepared = _new_run_root("pytest-g1-prepared")
     t1_validation = prepared.parent / f"{prepared.name}-t1.json"

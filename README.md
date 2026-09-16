@@ -71,13 +71,35 @@ python scripts/init_data.py --dataset atlas2020_4lep
 
 ## 5. 运行 H4l 工作流
 
+用一个命令完成 prepare、G1、五随机种子批次、off-only Stage B、评估访问包、C–E evaluation 和最终报告：
+
+```bash
+python scripts/h4l_all.py --run-name test01
+```
+
+`--run-name` 是唯一需要输入的参数，同时用于 `runs/h4l-train-test01/` 和 `runs/h4l-off-test01/`。不传时默认使用 `default`：
+
+```bash
+python scripts/h4l_all.py
+```
+
+重复执行同一命令会自动核对进度。绑定一致且 manifest 完整的阶段直接跳过；缺失阶段继续执行；损坏、不完整或绑定不匹配的最终目录会保留为 `.名称.<uuid>.invalid` 后再尝试当前阶段，已有 `.failed` 证据不会删除。若评估预算已经被失败或中断的 assessment/T2 占用，脚本仍按冻结协议拒绝自动重跑。
+
+封装命令为 `h4l_off_run.py` 固定传入 `--workers 4 --worker-threads 1`，并行执行可并行的完整 bootstrap、Toy 和 T2 工作单元，Stage B 的注册、模板、freeze 与 Asimov 仍按依赖顺序执行。
+
+如果 `runs/h4l-off-<run-name>/access-review/validated-off-assessment-access.json` 已存在，命令直接复用它；否则使用本机 `git user.name`（回退到登录账户名）生成明确标记为 `single_researcher_self_review`、`independent: false` 的单研究者自审包。该包只允许探索性自审结论，不代表独立科学验证。
+
+最终报告位于 `runs/h4l-off-<run-name>/evaluation/report/report.md`。`m4l=off` 仅表示分类器不输入显式四轻子质量，似然仍保留质量坐标。完整阶段契约、人工独立审核方式及恢复限制见[复现实验手册](docs/implementation-and-reproduction.md)。
+
+## 6. 分阶段运行 H4l 工作流
+
 新增 off-only 分析入口为 `python -m higgsml.cli attribution --help`。它复用现有 75 个 off 模型，新增五个确定性 M0off 身份，并依次发布注册、共同模板、freeze、Asimov、事件 bootstrap、Toys、T2 和独立报告。完整命令见[off-only 复现步骤](docs/implementation-and-reproduction.md#off-only-attribution-execution)。已有标准训练链路保留兼容，不需要为这项分析重训模型。
 
 `m4l=off` 仅指分类器不输入显式四轻子质量；似然仍保留质量坐标。自动 P0/T1 材料不能授予独立科学资格；事件 bootstrap、Toys、T2 和外部参考状态分别保存。
 
 所有命令从仓库根目录运行。完整规则、门槛与恢复方式以[复现实验手册](docs/implementation-and-reproduction.md)为准。
 
-### 5.1 准备并固化可复用输入
+### 6.1 准备并固化可复用输入
 
 ```bash
 python scripts/h4l_prepare.py
@@ -103,7 +125,7 @@ runs/h4l-prepare/
 
 `h4l_prepare.py` 不接受 `--run-name`。只有在诊断或需要独立新目录时才传入 `--run-root`；正式全局目录已存在时，脚本会拒绝覆盖。
 
-### 5.2 运行门控检查
+### 6.2 运行门控检查
 
 ```bash
 python scripts/h4l_check.py --run-name test01
@@ -112,7 +134,7 @@ python scripts/h4l_check.py --run-name test01
 Gate 从全局 prepared artifact 运行 M0c、M2、M3、五个校准和共同模板。只有 Gate 通过后，才允许展开受门控的候选。失败目录仍是不可变证据；修复后必须使用新的 `--run-name` 或 `--output-root`。
 `--run-name test01` 的实验输出根目录为 `runs/h4l-train-test01/`。
 
-### 5.3 运行五随机种子正式批次
+### 6.3 运行五随机种子正式批次
 
 ```bash
 python scripts/h4l_run.py --run-name test01
@@ -128,15 +150,15 @@ python scripts/h4l_run.py --run-name test01 --continue
 
 三个脚本均支持 `--help`、`--plan-only` 和 `--no-progress`。它们也提供严格限于所选 `runs/` 子目录的 `--clean`；`--clean` 不能与 `--plan-only` 同时使用，执行前应先用 `--help` 或单独的计划命令核对路径。清理会删除不可恢复的本地运行产物；完成、失败、诊断或已发布的 run 均不得原地覆盖。
 
-### 5.4 运行 Stage B 生成 freeze
+### 6.4 运行 Stage B 生成 freeze
 
 ```bash
 python scripts/h4l_off_run.py --source-run-name test01 --run-name study-001 --stage-b
 ```
+
 先运行 Stage B，产生 freeze 和自动绑定的 evaluation plan。
 
 `scripts/h4l_off_run.py` 直接复用已有的完整五随机种子批次及 `runs/h4l-prepare/prepare`，不重新 prepare 或训练。它自动核对 prepared artifact、population、核心协议，以及 75 个 `m4l=off` 训练/校准产物的候选、seed、checkpoint 和上游绑定；任一身份不一致时拒绝复用。
-
 
 调试协议或流程代码时，可以复用协议摘要不一致的既有 prepare/train/calibrate 产物：
 
@@ -146,7 +168,7 @@ python scripts/h4l_off_run.py --source-run-name test01 --run-name debug-001 --st
 
 `--force` 只绕过来源产物的协议一致性检查，仍校验 dataset、artifact digest、候选身份、checkpoint、population 和上游关系。输出会标记为 `forced_protocol_mismatch_debug`，仅用于调试，不能作为论文或科学结论证据。调试完成后必须去掉 `--force`，使用新的 run name 正常运行。
 
-### 5.5 评估访问审核
+### 6.5 评估访问审核
 
 Stage B 完成后，assessment/T2 只能使用与实际 freeze、population、protocol 和 P0/T1 文件绑定的 access-review。独立审核者应依据
 `config/examples/h4l_off_assessment_access.pending.json` 生成并审核一份完整的
@@ -160,7 +182,7 @@ python scripts/h4l_off_self_review.py --run-name study-001 --reviewer "Researche
 
 该命令只生成标记为 `single_researcher_self_review` 的 access-review，不代表独立验证；`--reviewer` 必须填写实际姓名。它不会执行最终评估。
 
-### 5.6 生成最终报告
+### 6.6 生成最终报告
 
 完成独立审核，或生成单人自审包后，执行：
 
@@ -183,7 +205,7 @@ runs/h4l-off-study-001/access-review/
 
 脚本依次完成 registration、共同 nominal 模板、freeze、Asimov、事件 bootstrap、三组 model-self Toys、三组受控 assessment Toys、T2 和最终报告。Stage B 使用新目录；`--evaluation` 复用该 Stage B 并拒绝覆盖已有 evaluation。若来源批次尚不存在或不完整，先使用 `scripts/h4l_run.py` 生成新的完整五随机种子批次。详细阶段契约与恢复规则见[off-only 复现步骤](docs/implementation-and-reproduction.md#off-only-attribution-execution)。
 
-## 6. 使用项目工具开展研究
+## 7. 使用项目工具开展研究
 
 `higgsml` 暴露十二个可组合阶段：
 
@@ -225,7 +247,7 @@ python scripts/h4l_evaluate.py --plan config/examples/h4l_evaluation_plan.json \
 材料通过 `evidence-import` 只读接入；缺失材料必须保持 `external_pending`。
 
 
-## 7. 遵守科学与运行约束
+## 8. 遵守科学与运行约束
 
 - 只处理受控 MC 或显式标记的合成事件，绝不读取、散列、预处理、评分或绘制真实数据。
 - `m4l` 只能按版本化 H4l 协议使用；signed `physical_weight` 用于物理产额，优化器权重按协议定义。
@@ -234,7 +256,7 @@ python scripts/h4l_evaluate.py --plan config/examples/h4l_evaluation_plan.json \
 - 数据身份、SHA-256、协议 seal、checkpoint、上游绑定与 lineage 必须保留。
 - 软件测试通过只证明对应软件行为；不能据此声称获得 `mu` 精度改善、覆盖可靠性或完整 MC 科学结论。
 
-## 8. 验证代码、依赖与运行环境
+## 9. 验证代码、依赖与运行环境
 
 在仓库根目录运行：
 
@@ -246,7 +268,7 @@ python -m pip check
 
 当前测试数量、警告和未完成的科学验证以[状态页](docs/results-and-limitations.md#software-and-validation-status)的日期化记录为准，不在 README 中复制易过期的数字。
 
-## 9. 查阅项目文档
+## 10. 查阅项目文档
 
 - [文档索引](docs/README.md)
 - [研究方案](docs/research-design.md)
@@ -257,6 +279,6 @@ python -m pip check
 - [当前科研与软件状态](docs/results-and-limitations.md#software-and-validation-status)
 - [论文稿件](paper/manuscript.md)
 
-## 10. 许可证与第三方条款
+## 11. 许可证与第三方条款
 
 见 [`LICENSE`](LICENSE)。第三方数据、软件与实验资料仍受其各自许可和使用条款约束。
