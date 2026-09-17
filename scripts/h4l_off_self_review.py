@@ -20,13 +20,14 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Generate a single-researcher off-only assessment review")
     parser.add_argument("--run-name", required=True)
     parser.add_argument("--reviewer", required=True, help="Human researcher name recorded in the review")
+    parser.add_argument('--evaluation-version', choices=['v1','v2'], default='v1')
     parser.add_argument("--prepared-run", type=Path, default=Path("runs/h4l-prepare/prepare"))
     args = parser.parse_args(argv)
     try:
         leaf = workflow_directory_name(args.run_name).removeprefix("h4l-train-")
         run_root = PROJECT_ROOT / "runs" / ("h4l-off-" + leaf)
         prepared = args.prepared_run if args.prepared_run.is_absolute() else PROJECT_ROOT / args.prepared_run
-        path = generate_self_review(run_root, prepared, reviewer=args.reviewer)
+        path = generate_self_review(run_root, prepared, reviewer=args.reviewer, evaluation_version=args.evaluation_version)
         print(f"Single-researcher review created: {path}")
         print("Evidence status: exploratory self-reviewed; not independently validated.")
         return 0

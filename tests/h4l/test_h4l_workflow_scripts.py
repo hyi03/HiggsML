@@ -193,14 +193,18 @@ def test_run_name_derives_global_prepare_and_scoped_output_paths() -> None:
     run_root = PROJECT_ROOT / "runs" / f"h4l-train-{run_name}"
     global_root = PROJECT_ROOT / "runs" / "h4l-prepare"
 
-    g1 = _run(G1_SCRIPT, "--run-name", run_name, "--plan-only")
+    hidden = _run(G1_SCRIPT, "--run-name", run_name, "--plan-only")
+    assert hidden.returncode == 0, hidden.stderr
+    assert "higgsml.cli" not in hidden.stdout
+
+    g1 = _run(G1_SCRIPT, "--run-name", run_name, "--plan-only", "--show-command")
     assert g1.returncode == 0, g1.stderr
     assert g1.stdout.count(f"--input-run {global_root / 'prepare'}") == 9
     assert str(global_root / "inputs" / "t1-validation.json") in g1.stdout
     assert str(run_root / "g1" / "templates") in g1.stdout
     assert f"--run-name {run_name}" in g1.stdout
 
-    batch = _run(RUN_SCRIPT, "--run-name", run_name, "--plan-only")
+    batch = _run(RUN_SCRIPT, "--run-name", run_name, "--plan-only", "--show-command")
     assert batch.returncode == 0, batch.stderr
     assert str(global_root / "prepare") in batch.stdout
     assert str(run_root / "g1" / "templates") in batch.stdout
@@ -213,7 +217,7 @@ def test_run_name_derives_global_prepare_and_scoped_output_paths() -> None:
 def test_multiple_run_names_share_the_global_prepared_input() -> None:
     global_prepared = PROJECT_ROOT / "runs" / "h4l-prepare" / "prepare"
     for run_name in ("reuse-001", "reuse-002"):
-        completed = _run(G1_SCRIPT, "--run-name", run_name, "--plan-only")
+        completed = _run(G1_SCRIPT, "--run-name", run_name, "--plan-only", "--show-command")
         assert completed.returncode == 0, completed.stderr
         assert completed.stdout.count(f"--input-run {global_prepared}") == 9
 
@@ -407,7 +411,7 @@ def test_g1_plan_reuses_prepared_run_without_preparing_root_again() -> None:
         "--prepared-run", str(prepared),
         "--t1-validation", str(t1_validation),
         "--output-root", str(output_root),
-        "--plan-only",
+        "--plan-only", "--show-command",
     )
 
     assert completed.returncode == 0, completed.stderr
@@ -432,7 +436,7 @@ def test_named_protocol_propagates_prepare_to_g1_to_batch(tmp_path: Path) -> Non
 
     g1 = _run(G1_SCRIPT, "--prepared-run", str(run_root / "prepare"),
               "--t1-validation", str(run_root / "inputs" / "t1-validation.json"),
-              "--output-root", str(run_root / "g1"), "--protocol", str(protocol), "--plan-only")
+              "--output-root", str(run_root / "g1"), "--protocol", str(protocol), "--plan-only", "--show-command")
     assert g1.returncode == 0, g1.stderr
     assert g1.stdout.count(f"--protocol {protocol}") == 10
 
@@ -440,7 +444,7 @@ def test_named_protocol_propagates_prepare_to_g1_to_batch(tmp_path: Path) -> Non
                  "--gate-run", str(run_root / "g1" / "templates"),
                  "--t1-validation", str(run_root / "inputs" / "t1-validation.json"),
                  "--output-root", str(run_root / "batch" / "seed42"),
-                 "--protocol", str(protocol), "--plan-only")
+                 "--protocol", str(protocol), "--plan-only", "--show-command")
     assert batch.returncode == 0, batch.stderr
     assert batch.stdout.count(f"--protocol {protocol}") == 71
 
@@ -451,7 +455,7 @@ def test_run_plan_covers_all_combinations_without_creating_run() -> None:
     completed = _run(
         RUN_SCRIPT,
         "--output-root", str(output_root),
-        "--plan-only",
+        "--plan-only", "--show-command",
     )
 
     assert completed.returncode == 0, completed.stderr
@@ -472,7 +476,7 @@ def test_run_plan_covers_all_combinations_without_creating_run() -> None:
 def test_run_explicit_seed_keeps_single_seed_diagnostic_plan() -> None:
     output_root = _new_run_root("pytest-run-single-plan")
     completed = _run(RUN_SCRIPT, "--seed", "42", "--output-root", str(output_root),
-                     "--plan-only")
+                     "--plan-only", "--show-command")
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.count("higgsml.cli train") == 33
     assert completed.stdout.count("higgsml.cli calibrate") == 35

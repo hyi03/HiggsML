@@ -205,6 +205,44 @@ runs/h4l-off-study-001/access-review/
 
 脚本依次完成 registration、共同 nominal 模板、freeze、Asimov、事件 bootstrap、三组 model-self Toys、三组受控 assessment Toys、T2 和最终报告。Stage B 使用新目录；`--evaluation` 复用该 Stage B 并拒绝覆盖已有 evaluation。若来源批次尚不存在或不完整，先使用 `scripts/h4l_run.py` 生成新的完整五随机种子批次。详细阶段契约与恢复规则见[off-only 复现步骤](docs/implementation-and-reproduction.md#off-only-attribution-execution)。
 
+### 6.7 按 seed 配对的 v2 评估（显式启用）
+
+默认评估合同仍是 v1。v2 只在显式传入 `--evaluation-version v2` 时启用，并把每个 training seed 的 `M0off + 15` 个 coalition 作为一个 16-way joint block；Toy seed 由冻结预算派生，不能用 `--training-seed` 代替。以下 Linux Bash 命令从仓库根目录运行：
+
+```bash
+python scripts/h4l_off_run.py \
+  --evaluation-version v2 \
+  --source-run-name test01 \
+  --run-name within-seed-001 \
+  --stage-b \
+  --show-command
+
+python -m higgsml.cli attribution access-review \
+  --evaluation-version v2 \
+  --protocol config/protocols/h4l_protocol.json \
+  --registration-run runs/h4l-off-within-seed-001/register \
+  --template-run runs/h4l-off-within-seed-001/nominal \
+  --freeze-run runs/h4l-off-within-seed-001/freeze \
+  --result-run runs/h4l-off-within-seed-001/asimov \
+  --evaluation-plan runs/h4l-off-within-seed-001/evaluation-plan/evaluation-plan.json \
+  --access-review path/to/validated-off-assessment-access.json \
+  --run-dir runs/h4l-off-within-seed-001/access-review-v2
+
+python scripts/h4l_off_run.py \
+  --evaluation-version v2 \
+  --source-run-name test01 \
+  --run-name within-seed-001 \
+  --evaluation \
+  --access-review runs/h4l-off-within-seed-001/access-review-v2/validated-off-assessment-access.json \
+  --show-command
+```
+
+Stage B publishes `source-register`, `register`, `source-nominal`, `nominal`, J0, J1, `evaluation-spec`, `freeze`, `asimov`, and `evaluation-plan` in dependency order. The first two `source-*` directories retain the original v1 identities; `register` and `nominal` are audited v2 adapters and do not relabel those artifacts. J0 and J1 use development/template material and record `assessment_payload_read=false`; a failed gate blocks freeze.
+
+The evaluation contains 36 scientific units (one 200-replica MC bootstrap, 15 model-self cells, 15 assessment cells, and five T2 cells) plus the report, for 37 terminal units. Each model-self/assessment cell has 500 Toys for one training seed and one `mu` in `{0,1,2}`; each T2 seed has 20 outer replicas and 100 inner Toys. Scientific failures remain terminal evidence and do not authorize replacement draws. A consumed claim with missing or damaged output is `blocked_consumed_budget` and is never replayed automatically.
+
+An already opened historical assessment population can support only `posthoc_support_diagnostic`; it cannot become a new eligible prospective source. Without an unused, reviewed assessment source, prospective assessment remains `blocked_missing_eligible_assessment_source`. Independent P0/T1 applicability evidence and the original controlled-MC evaluation remain pending.
+
 ## 7. 使用项目工具开展研究
 
 `higgsml` 暴露十二个可组合阶段：

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "h4l-mass-off-seed-blocks-v1",
+  "type": "object",
+  "required": ["contract_id", "contract_digest", "pairing_scope", "cross_seed_pairing", "blocks"],
+  "properties": {
+    "contract_id": {"const": "h4l-mass-off-within-seed-joint-v1"},
+    "contract_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "pairing_scope": {"const": "within_seed"},
+    "cross_seed_pairing": {"const": "none"},
+    "blocks": {
+      "type": "array", "minItems": 5, "maxItems": 5,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["seed", "candidate_keys", "block_id", "pairing_contract_digest"],
+        "properties": {
+          "seed": {"enum": [42, 43, 44, 45, 46]},
+          "candidate_keys": {"type": "array", "minItems": 16, "maxItems": 16,
+                             "uniqueItems": true, "items": {"type": "string"}},
+          "block_id": {"type": "string", "pattern": "^seed-block:[0-9a-f]{64}$"},
+          "pairing_contract_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  }
+}

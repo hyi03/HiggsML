@@ -1,7 +1,7 @@
 {
   "schema_version": "h4l-evaluation-plan-v1",
   "dataset": "atlas2020_4lep",
-  "protocol_sha256": "4954e2ec4c4ef8d4b35e24e456940a5485996d607f0a0083f607cf0e2fee5955",
+  "protocol_sha256": "e8747ca77188732bac1d1c72e9e0ce4c86056a580cd45db9be33975837ed515e",
   "registration_status": "exploratory_posthoc",
   "inputs": {
     "prepared_artifact_id": "0000000000000000000000000000000000000000000000000000000000000000",
