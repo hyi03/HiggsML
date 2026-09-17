@@ -179,6 +179,16 @@ A CDF family must run its own mass-only empty set through the same calibration. 
 
 Second differences, `v(S+i+j)-v(S+i)-v(S+j)+v(S)`, measure complementarity in the chosen metric, not mutual information or causal synergy. Pair group resampling across combinations and propagate the declared upstream randomness; resampling only the final contribution table is insufficient. Raw and decorrelated families cannot be pooled.
 
+### Within-seed joint evaluation v2
+
+The v1 evaluation remains the default. The explicitly selected v2 contract partitions the same 80 identities into five complete 16-candidate blocks, one for each training seed 42--46. Within a seed and evaluation cell, all candidates share physical pseudo-observations; equal Toy indexes across different training seeds have no physical pairing interpretation. The five seeds also share the underlying MC, so they are not five independent data sets.
+
+J0 checks the nominal template parent. J1 is a fixed 200-replica, group-level Bernoulli-thinning engineering screen with zero allowed failures per seed; it is not an independent physics validation or a guarantee that a prospective assessment parent will pass. Both gates run before freeze and must not decode assessment payload. The common nominal mass grid remains fixed across all five blocks. Signed process rates are never clipped, absolutized, or repaired with epsilon; unsupported negative rates produce a scientific terminal failure.
+
+The v2 matrix has 36 scientific units: one 200-replica MC bootstrap; model-self and assessment at `mu=0,1,2` for each of five training seeds, using 500 Toys per candidate in each cell; and T2 at `mu=1` for each seed with 20 outer calibration replicas and 100 inner Toys. The report is the 37th unit. `training_seed` selects a frozen 16-candidate model block. Toy streams are separately derived from the contract, stage, injection, training seed, outer index, and stream kind.
+
+Exact Shapley, 24 conditional interactions, and 105 nonempty-subset comparisons still require each seed's complete canonical value vector. Five-seed summaries require 5/5 valid seeds; missing or failed seeds remain visible and are never replaced. Nominal Asimov, MC bootstrap, and paired-Toy diagnostics retain separate `value_source` labels. A failed Toy layer does not invalidate an already valid Asimov layer.
+
 ## Stress tests and sourced variations
 
 The pilot registers artificial plus/minus 10% normalization, mass, score, and mass-score correlation perturbations. A mass coordinate can be `x=(m-122.5)/17.5`; score/correlation stress uses the bound common `M3:42` reference rather than a different pseudo-truth for each model. Shape normalization is separate from yield variation.

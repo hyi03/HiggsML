@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "ledger_key", "cell_id", "binding", "initial_output", "claim_id"],
+  "properties": {
+    "schema_version": {"const": "h4l-mass-off-seed-block-claim-v1"},
+    "ledger_key": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "cell_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "binding": {"$ref": "#/$defs/binding"},
+    "initial_output": {"type": "string", "minLength": 1},
+    "claim_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "$defs": {
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["population_id", "freeze_artifact_id", "specification_id", "evaluation_plan_id", "pairing_contract", "stage", "mu", "training_seed", "candidate_ids", "access_receipt", "budget", "rng"],
+      "properties": {
+        "population_id": {"type": "string", "minLength": 1},
+        "freeze_artifact_id": {"type": "string", "minLength": 1},
+        "specification_id": {"type": "string", "minLength": 1},
+        "evaluation_plan_id": {"type": "string", "minLength": 1},
+        "pairing_contract": {"const": "within_seed"},
+        "stage": {"type": "string", "minLength": 1},
+        "mu": {"type": ["number", "null"]},
+        "training_seed": {"type": "integer"},
+        "candidate_ids": {"type": "array", "minItems": 16, "maxItems": 16, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "access_receipt": {"type": "object", "minProperties": 1},
+        "budget": {"type": "object", "minProperties": 1},
+        "rng": {"type": "object", "minProperties": 1}
+      }
+    }
+  }
+}

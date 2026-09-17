@@ -12,7 +12,14 @@ from higgsml.inference import attribution_workflow as workflow
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description='Immutable registered mass-off attribution stages')
-    parser.add_argument('stage',choices=['register','nominal','freeze','asimov','mc-bootstrap','model-self','assessment','t2','report'])
+    parser.add_argument('stage',choices=['register','nominal','support-check','evaluation-spec','evaluation-plan','access-review','freeze','asimov','mc-bootstrap','model-self','assessment','t2','report'])
+    parser.add_argument('--evaluation-version', choices=['v1','v2'], default='v1')
+    parser.add_argument('--training-seed', type=int, choices=range(42,47))
+    parser.add_argument('--plan-only', action='store_true')
+    parser.add_argument('--gate', choices=['J0','J1'], default='J0')
+    parser.add_argument('--purpose', choices=['pre_freeze_support','posthoc_support_diagnostic'], default='pre_freeze_support')
+    for flag in ('j0-run','j1-run','specification-run','source-registration','source-nominal','historical-freeze'):
+        parser.add_argument('--'+flag)
     parser.add_argument('--protocol',default=str(DEFAULT_PATH))
     parser.add_argument('--run-dir',required=True,type=Path)
     for flag in ('source-root','prepared-run','registration-run','template-run','freeze-run','result-run','t1-validation','access-review','evaluation-plan'):
@@ -29,6 +36,13 @@ def main(argv=None):
     progress_bar=None
     try:
         p=load_protocol(args.protocol).to_dict()
+        if args.evaluation_version == 'v2':
+            from higgsml.inference.seed_workflow_cli import dispatch
+            result=dispatch(args,p,root)
+            print(json.dumps(result,allow_nan=False))
+            return 0
+        if args.training_seed is not None or args.plan_only or args.stage not in {'register','nominal','freeze','asimov','mc-bootstrap','model-self','assessment','t2','report'}:
+            raise ResearchError('this option/stage requires explicit --evaluation-version v2')
         if args.workers<1 or args.worker_threads<1:
             raise ResearchError('workers and worker threads must be positive')
         import torch

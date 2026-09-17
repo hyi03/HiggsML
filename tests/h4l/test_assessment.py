@@ -152,3 +152,14 @@ def test_t1_auxiliary_policy_and_artificial_stress():
         seed=42,prepared_id="p",freeze_id="f",kind="normalization",direction=1)
     assert result["A"]["toys"]["expectation_kind"]=="mismatch"
     assert result["A"]["stress"]["source"]=="artificial_pressure_not_physics_systematic"
+
+
+def test_legacy_t1_keeps_shared_normal_auxiliary_stream_across_candidates():
+    pytest.importorskip('pyhf')
+    p,grid,bundles=fixture()
+    p["inference"]["auxiliary_generation"]="fixed"
+    evidence=dict(status="validated",evidence_id="synthetic-only",correlation="independent_process_bins",
+                  auxiliary="poisson_tau_gamma",modifier="shapesys",pyhf_version="0.7.6")
+    result=infer_assessment(grid,bundles,population("assessment"),p,layer="T1",t1_validation=evidence,
+        mu=1.,count=1,seed=42,prepared_id="p",freeze_id="f",categorize=categorize)
+    assert result["A"]["toys"]["results"][0]["auxiliary"] == result["B"]["toys"]["results"][0]["auxiliary"]
