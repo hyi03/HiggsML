@@ -85,7 +85,7 @@ python scripts/h4l_all.py
 
 重复执行同一命令会自动核对进度。绑定一致且 manifest 完整的阶段直接跳过；缺失阶段继续执行；损坏、不完整或绑定不匹配的最终目录会保留为 `.名称.<uuid>.invalid` 后再尝试当前阶段，已有 `.failed` 证据不会删除。若评估预算已经被失败或中断的 assessment/T2 占用，脚本仍按冻结协议拒绝自动重跑。
 
-封装命令为 `h4l_off_run.py` 固定传入 `--workers 4 --worker-threads 1`，并行执行可并行的完整 bootstrap、Toy 和 T2 工作单元，Stage B 的注册、模板、freeze 与 Asimov 仍按依赖顺序执行。
+封装命令为 `h4l_off_run.py` 传入 `--worker-threads 1`，并按启动时可用物理内存为每个 worker 预留 6 GiB、在 1--4 个进程之间选择 `--workers`；内存探测失败时使用 1 个进程。可并行的完整 bootstrap、Toy 和 T2 工作单元并行执行，Stage B 的注册、模板、freeze 与 Asimov 仍按依赖顺序执行。
 
 如果 `runs/h4l-off-<run-name>/access-review/validated-off-assessment-access.json` 已存在，命令直接复用它；否则使用本机 `git user.name`（回退到登录账户名）生成明确标记为 `single_researcher_self_review`、`independent: false` 的单研究者自审包。该包只允许探索性自审结论，不代表独立科学验证。
 
