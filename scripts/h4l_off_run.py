@@ -46,6 +46,7 @@ def _parser() -> argparse.ArgumentParser:
         help="New short name; writes runs/h4l-off-<name>.",
     )
     parser.add_argument("--protocol", type=Path, default=DEFAULT_PATH)
+    parser.add_argument('--evaluation-version', choices=['v1','v2'], default='v1')
     parser.add_argument(
         "--prepared-run", type=Path, default=Path("runs/h4l-prepare/prepare"),
     )
@@ -132,6 +133,8 @@ def _run(args: argparse.Namespace) -> None:
         args.workers = policy['workers'] if policy else 1
     if args.worker_threads is None:
         args.worker_threads = policy['worker_threads'] if policy else 1
+    if args.evaluation_version == 'v2':
+        return _run_v2(args)
     if args.workers < 1:
         raise WorkflowError("--workers must be positive", 2)
     if args.worker_threads < 1:
@@ -269,6 +272,86 @@ def _run(args: argparse.Namespace) -> None:
         _invoke(commands[-1], show_command=args.show_command)
     final_report = evaluation / "report" / "report.md" if not args.stage_b else report_b / "report.md"
     print(f"Off-only workflow complete. Report: {final_report}")
+
+
+def _run_v2(args):
+    from higgsml.inference import seed_workflow as workflow
+    from higgsml.artifacts import read_json, read_run
+    policy = settings()
+    if args.workers is None:
+        args.workers = policy['workers'] if policy else 1
+    if args.worker_threads is None:
+        args.worker_threads = policy['worker_threads'] if policy else 1
+    output=RUNS_ROOT / _safe_run_leaf('h4l-off-',args.run_name)
+    source=RUNS_ROOT / _safe_run_leaf('h4l-train-',args.source_run_name) / 'batch' / 'all-seeds'
+    protocol_path=_resolve(args.protocol)
+    protocol=load_protocol(protocol_path).to_dict()
+    if args.force or args.workers<1 or args.worker_threads<1 or (args.stage_b and args.evaluation):
+        raise WorkflowError('Invalid v2 mode/resource options; --force cannot establish compatibility',2)
+    if output.exists() and not args.continue_run and not args.evaluation and not args.plan:
+        raise WorkflowError('Output exists; use --continue to validate and resume',4)
+    common=['--evaluation-version','v2','--protocol',str(protocol_path),'--worker-threads',str(args.worker_threads)]
+    reg=['--registration-run',str(output/'register')]
+    nominal=reg+['--template-run',str(output/'nominal')]
+    frozen=nominal+['--freeze-run',str(output/'freeze')]
+    result=frozen+['--result-run',str(output/'asimov')]
+    planned=result+['--evaluation-plan',str(output/'evaluation-plan'/'evaluation-plan.json')]
+    steps=[('register',['--source-root',str(source),'--prepared-run',str(_resolve(args.prepared_run)),
+                        '--t1-validation',str(_resolve(args.t1_validation or source/'templates'/'t1-validation.json'))]),
+           ('nominal',reg),('support-j0',[*nominal,'--gate','J0']),
+           ('support-j1',[*nominal,'--gate','J1','--j0-run',str(output/'support-j0')]),
+           ('evaluation-spec',[*nominal,'--j0-run',str(output/'support-j0'),'--j1-run',str(output/'support-j1')]),
+           ('freeze',[*nominal,'--specification-run',str(output/'evaluation-spec')]),
+           ('asimov',frozen),('evaluation-plan',result)]
+    if args.evaluation:
+        steps=[]
+    for name,flags in steps:
+        stage='support-check' if name.startswith('support-') else name
+        command=[sys.executable,'-m','higgsml.cli','attribution',stage,*common,*flags,'--run-dir',str(output/name)]
+        if args.plan:
+            print(_display(command)); continue
+        target=output/name
+        if args.continue_run and target.exists():
+            read_run(target,dataset=protocol['dataset'],protocol=protocol,stages=('attribution-v2-'+name,))
+        else:
+            _invoke(command,show_command=args.show_command)
+        if name.startswith('support-') and read_json(target/'joint-support-summary.json')['status']!='passed':
+            if (output/'gate-failure-report').exists():
+                stored=workflow._load(output/'gate-failure-report',protocol,'report').read_json('report.json')
+                gates=[read_json(output/gate/'joint-support-summary.json') for gate in ('support-j0','support-j1')
+                       if (output/gate).exists()]
+                registered,_,_,adapter,*_=workflow.load_nominal(output/'register',output/'nominal',protocol)
+                for gate in gates:
+                    workflow._validate_gate(gate,registered,adapter,protocol,gate['gate'])
+                if stored['support'] != gates or stored['evaluation_plan'] is not None:
+                    raise WorkflowError('Existing gate report does not bind the current failed gates',4)
+            else:
+                workflow.report(output/'register',output/'nominal',protocol,output/'gate-failure-report',RUNS_ROOT,
+                                j0_path=output/'support-j0',j1_path=output/'support-j1')
+            print(f'Support qualification failed; freeze blocked. Report: {output / "gate-failure-report" / "report.md"}')
+            return
+    if not args.evaluation:
+        command=[sys.executable,'-m','higgsml.cli','attribution','report',*common,*planned,
+                 '--j0-run',str(output/'support-j0'),'--j1-run',str(output/'support-j1'),
+                 '--run-dir',str(output/'report-B')]
+        if args.plan: print(_display(command))
+        elif not (args.continue_run and (output/'report-B').exists()): _invoke(command,show_command=args.show_command)
+    if not args.stage_b:
+        command=[sys.executable,str(PROJECT_ROOT/'scripts'/'h4l_evaluate.py'),'--evaluation-version','v2',
+            '--plan',str(output/'evaluation-plan'/'evaluation-plan.json'),'--registration-run',str(output/'register'),
+            '--prepared-run',str(_resolve(args.prepared_run)),'--template-run',str(output/'nominal'),
+            '--freeze-run',str(output/'freeze'),'--result-run',str(output/'asimov'),
+            '--output-root',str(output/'evaluation'),'--protocol',str(protocol_path),
+            '--workers',str(args.workers),'--worker-threads',str(args.worker_threads)]
+        if args.access_review: command += ['--access-review',str(_resolve(args.access_review))]
+        if args.continue_run: command.append('--continue')
+        if args.show_command: command.append('--show-command')
+        if args.no_progress: command.append('--no-progress')
+        if args.plan: print(_display(command))
+        else:
+            _invoke(command,show_command=args.show_command)
+            # The child prints its actual immutable snapshot path; do not replace it with report/report.md.
+    if args.plan: print('V2 metadata plan: 36 scientific units plus report; no payload decoded or claim consumed.')
 
 
 def main() -> int:

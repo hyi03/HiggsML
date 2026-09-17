@@ -7,6 +7,7 @@ from scipy.optimize import brentq
 from scipy.stats import chi2
 
 from higgsml.errors import ResearchError, ResearchStateError
+from higgsml.artifacts import digest_json
 from higgsml.inference.diagnostics import signed_mu_fit, signed_mu_summary
 from higgsml.resources import ordered_map
 from higgsml.hpc import settings
@@ -270,7 +271,8 @@ def stress_weights(frame, *, kind, direction, reference_score_column="reference_
 
 def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mapping, evaluate,
                      outer_replicas, inner_toys, seed, model_id, mother_id, workers=1, worker_threads=1,
-                     record_mappings=False, on_replica=None):
+                     record_mappings=False, on_replica=None, outer_multiplicities=None,
+                     inner_seed_factory=None):
     """Bounded paired group-bootstrap; callbacks retain scientific binding checks."""
     if not model_id or not mother_id or min(outer_replicas,inner_toys)<1:
         raise ResearchError("T2 requires frozen identities and positive budgets")
@@ -279,15 +281,29 @@ def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mappin
     identity_sets=[set(f.event_group_id) for f in (calibration,template,mother)]
     if any(identity_sets[i] & identity_sets[j] for i in range(3) for j in range(i+1,3)):
         raise ResearchError("Physical event groups overlap between T2 roles")
-    groups = sorted(calibration.event_group_id.unique()); rng=np.random.default_rng(seed); replicas=[]
+    groups = sorted(calibration.event_group_id.unique(), key=str); rng=np.random.default_rng(seed); replicas=[]
     if not groups:
         raise ResearchStateError("Empty calibration",status="insufficient_statistics")
+    if len(set(map(str, groups))) != len(groups):
+        raise ResearchError("ambiguous T2 calibration group identities")
     group_index = {group: i for i,group in enumerate(groups)}
     codes = calibration.event_group_id.map(group_index).to_numpy(int)
     probabilities = np.full(len(groups),1/len(groups))
+    shared_multiplicities = None
+    if outer_multiplicities is not None:
+        if (type(outer_multiplicities) is not dict
+                or outer_multiplicities.get("groups") != list(map(str, groups))
+                or outer_multiplicities.get("multiplicity_plan_digest") != digest_json(outer_multiplicities.get("multiplicities"))
+                or len(outer_multiplicities.get("multiplicities", [])) != outer_replicas):
+            raise ResearchError("shared T2 outer group identity or digest mismatch")
+        shared_multiplicities = outer_multiplicities["multiplicities"]
     def tasks():
         for replica in range(outer_replicas):
-            multiplicity = rng.multinomial(len(groups), probabilities)
+            multiplicity = (rng.multinomial(len(groups), probabilities)
+                            if shared_multiplicities is None
+                            else np.asarray(shared_multiplicities[replica], dtype=int))
+            if multiplicity.shape != (len(groups),) or (multiplicity < 0).any() or multiplicity.sum() != len(groups):
+                raise ResearchError("invalid shared T2 outer multiplicities")
             bootstrap = calibration.copy(); factor = multiplicity[codes]
             bootstrap["bootstrap_multiplicity"] = factor
             for column in ("physical_weight","yield_weight"):
@@ -305,10 +321,15 @@ def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mappin
                                      for k,v in mapping['bundles'].items()}
                 mapped_template = apply_mapping(mapping,template.copy())
                 mapped_mother = apply_mapping(mapping,mother.copy())
-                # Failures above MUST NOT consume this draw (legacy random stream).
-                inner_seed = int(rng.integers(0,2**31))
+                # v2 derives each inner stream independently, so failures cannot shift later streams.
+                inner_seed = (int(rng.integers(0,2**31)) if inner_seed_factory is None
+                              else int(inner_seed_factory(replica)))
                 yield row, (mapped_template,mapped_mother,mapping,inner_toys,inner_seed)
             except ResearchError as exc:
+                if inner_seed_factory is not None and (not isinstance(exc, ResearchStateError)
+                        or exc.status not in {"insufficient_statistics", "unsupported_assessment_support",
+                                             "template_stat_model_unvalidated", "inference_incomplete"}):
+                    raise
                 row.update(status=exc.status,error=str(exc))
                 yield row, None
     def finish(task):
@@ -320,6 +341,10 @@ def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mappin
             row.update(mapping_id=arguments[2]['mapping_id'],result=result,
                        status=result.get('status','unknown'),inner_seed=arguments[-1])
         except ResearchError as exc:
+            if inner_seed_factory is not None and (not isinstance(exc, ResearchStateError)
+                    or exc.status not in {"insufficient_statistics", "unsupported_assessment_support",
+                                         "template_stat_model_unvalidated", "inference_incomplete"}):
+                raise
             row.update(status=exc.status,error=str(exc))
         return row
     replicas = []

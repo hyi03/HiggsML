@@ -44,11 +44,17 @@ def categorize_bundle(bundle, frame):
     return result
 
 
-def _joint_mother(grid, bundles, mother, protocol, categorize, *, parent_role='assessment'):
+def _joint_mother(grid, bundles, mother, protocol, categorize, *, parent_role='assessment', seed_block=None):
     reject_sample_efficiency_assessment(grid, bundles)
-    if parent_role not in {'assessment','template'} or mother.empty or set(mother.role) != {parent_role} or set(mother.dataset) != {protocol["dataset"]}:
+    required = {'role','dataset','label','m4l','yield_weight','event_group_id'}
+    if not required <= set(mother):
+        raise ResearchError('assessment parent lacks identity/numeric columns')
+    if (parent_role not in {'assessment','template'}
+            or (not mother.empty and (set(mother.role) != {parent_role} or set(mother.dataset) != {protocol['dataset']}))
+            or (seed_block is None and mother.empty)):
         raise ResearchError("identified nonempty assessment mother required")
-    if set(mother.label) != {0, 1} or not np.isfinite(mother[["m4l", "yield_weight"]].to_numpy(float)).all():
+    if (not set(mother.label) <= {0, 1} or (seed_block is None and set(mother.label) != {0,1})
+            or not np.isfinite(mother[["m4l", "yield_weight"]].to_numpy(float)).all()):
         raise ResearchError("invalid assessment label/rates")
     process_column = 'process' if 'process' in mother else 'label'
     if mother[process_column].isna().any() or mother.event_group_id.isna().any() or (mother.groupby("event_group_id")[process_column].nunique() > 1).any():
@@ -58,15 +64,32 @@ def _joint_mother(grid, bundles, mother, protocol, categorize, *, parent_role='a
         raise ResearchError("invalid frozen assessment mass grid")
     if (mother.m4l < edges[0]).any() or (mother.m4l >= edges[-1]).any():
         raise ResearchError("assessment outside frozen half-open support")
-    keys = sorted(grid["templates"])
+    keys = sorted(grid["templates"]) if seed_block is None else list(seed_block.candidate_keys)
     from higgsml.inference.attribution import FAMILY, candidate_keys
     off_family = grid.get('family_id') == FAMILY
     if parent_role!='assessment' and not off_family:
         raise ResearchError('template-parent joint generation requires the registered off family')
-    if off_family and (set(keys)!=set(candidate_keys()) or set(bundles)!=set(keys)):
+    if off_family and seed_block is None and (set(keys)!=set(candidate_keys()) or set(bundles)!=set(keys)):
         raise ResearchError('joint off family requires all 80 identities')
+    if off_family and seed_block is not None and (set(keys) != set(seed_block.candidate_keys)
+            or set(bundles) != set(keys) or set(grid["templates"]) != set(keys)):
+        raise ResearchError('seed block inputs must contain its exact 16 identities')
     if not off_family and ("M0" not in keys or set(bundles) != set(keys) - {"M0"}):
         raise ResearchError("all frozen methods plus M0 are required for joint pairing")
+    if seed_block is not None:
+        expected_sets = [{str(sample['name']) for sample in grid['templates'][key]['samples']} for key in keys]
+        if any(processes != expected_sets[0] for processes in expected_sets):
+            raise ResearchError('nominal candidate process identities differ')
+        observed = set(mother[process_column].astype(str))
+        if observed - expected_sets[0]:
+            raise ResearchError('assessment has unregistered process identities')
+        if mother.empty or set(mother.label) != {0,1} or expected_sets[0] - observed:
+            error = ResearchStateError('assessment parent lacks expected process support', status='insufficient_statistics')
+            error.joint_support = {'summary': {'seed':seed_block.seed,'block_id':seed_block.block_id,
+                'qualification':'insufficient_statistics','failures':['missing_positive_process_support'],
+                'expected_processes':sorted(expected_sets[0]),'observed_processes':sorted(observed),
+                'missing_processes':sorted(expected_sets[0]-observed),'row_count':len(mother)},'cells':[]}
+            raise error
     n = len(edges) - 1
     mass_bin = np.searchsorted(edges, mother.m4l, side="right") - 1
     work = mother.copy()
@@ -92,6 +115,17 @@ def _joint_mother(grid, bundles, mother, protocol, categorize, *, parent_role='a
     cells, inverse = np.unique(np.column_stack(joint), axis=0, return_inverse=True)
     if pd.DataFrame({"group": work.event_group_id.to_numpy(), "cell": inverse}).groupby("group").cell.nunique().max() > 1:
         raise ResearchStateError("one physical event spans joint observation cells; event covariance is unvalidated", status="template_stat_model_unvalidated")
+    support = None
+    if seed_block is not None:
+        from higgsml.inference.joint_support import diagnose_joint_support
+        support = diagnose_joint_support(
+            work.assign(physical_weight=work.yield_weight), block=seed_block,
+            category_columns=columns, mass_edges=edges, process_column=process_column)
+        if support["summary"]["qualification"] != "valid":
+            error = ResearchStateError("seed block joint support is insufficient",
+                                       status="insufficient_statistics")
+            error.joint_support = support
+            raise error
     # A positive S+B cancellation cannot repair an invalid negative process rate.
     rates = {}
     for process, indices in work.groupby(process_column, sort=True).indices.items():
@@ -112,18 +146,22 @@ def _joint_mother(grid, bundles, mother, protocol, categorize, *, parent_role='a
         if parent_role == 'template':
             samples = {sample['name']: sample for sample in grid['templates'][key]['samples']}
             if set(samples) != set(rates):
-                raise ResearchStateError('joint process identities differ from nominal marginals', status='insufficient_statistics')
+                raise ResearchError('joint process identities differ from nominal marginals')
             for process, values in rates.items():
                 marginal = np.bincount(cells[:, j], weights=values, minlength=2*n)
                 signal = bool(work.loc[work[process_column].astype(str)==process,'label'].iloc[0])
                 if samples[process]['is_signal']!=signal or not np.allclose(marginal, samples[process]['yield'], rtol=1e-10, atol=1e-10):
-                    raise ResearchStateError('joint process marginal differs from nominal template', status='insufficient_statistics')
-    return work, columns, (cells,inverse)
+                    if seed_block is None:
+                        raise ResearchStateError('joint process marginal differs from nominal template',status='insufficient_statistics')
+                    raise ResearchError('joint process marginal differs from nominal template')
+    result = (work, columns, (cells,inverse))
+    return (*result, support) if seed_block is not None else result
 
 
 def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, mu, count,
                      seed, prepared_id, freeze_id, categorize=None, stress_responses=None,stress_direction=0, workers=1, worker_threads=1,
-                     parent_role='assessment', progress=None):
+                     parent_role='assessment', progress=None, seed_block=None,
+                     physical_stream_id=None, auxiliary_streams=None):
     """Return per-candidate results using one shared joint-cell Poisson draw.
 
     Root verifies the immutable freeze artifact before granting mother access.
@@ -142,7 +180,10 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
     levels = cfg["confidence_levels"]
     if levels != [.68, .95]:
         raise ResearchError("unsupported frozen confidence levels")
-    work, columns, joint_cells = _joint_mother(grid, bundles, mother, p, categorize or categorize_bundle,parent_role=parent_role)
+    joint = _joint_mother(grid, bundles, mother, p, categorize or categorize_bundle,
+                          parent_role=parent_role, seed_block=seed_block)
+    work, columns, joint_cells = joint[:3]
+    joint_support = joint[3] if seed_block is not None else None
     mother_id = digest_json({"prepared_id": prepared_id, "freeze_id": freeze_id,
                             "rows": mother[["event_group_id", "label", "m4l", "yield_weight"]].to_dict("records")})
     paired = paired_event_toys(work, category_columns=columns, mass_edges=grid["mass_edges"],
@@ -150,9 +191,11 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
                               parent_role=parent_role)
     pairing_id = digest_json({"mother": mother_id, "grid": grid["mass_edges"], "seed": seed,
                              "mu": mu, "count": count, "observations": paired["observations"]})
+    expected_states = {"insufficient_statistics", "unsupported_assessment_support",
+                       "template_stat_model_unvalidated", "inference_incomplete", "fit_failed"}
     def evaluate_candidate(task):
         key, template = task
-        completed_toys = 0
+        attempted_toys = completed_toys = 0
         try:
             model, metadata = (build_stress_model(template,stress_responses[key],protocol=p,layer=layer,t1_validation=t1_validation,mu_max=cfg['mu_bounds'][1])
                                if stress_responses is not None else
@@ -164,7 +207,9 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
                     raise ResearchError('modeled stress needs a registered nuisance endpoint')
                 pars[model.config.par_map[metadata['stress_nuisance']]['slice']]=[float(stress_direction)]
             # Candidate-specific streams leave the shared physical observations intact.
-            stream = int.from_bytes(hashlib.sha256(f"aux:{seed}:{key}".encode()).digest()[:8], "big")
+            auxiliary_stream = None if auxiliary_streams is None else auxiliary_streams[key]
+            stream = (int.from_bytes(hashlib.sha256(f"aux:{seed}:{key}".encode()).digest()[:8], "big")
+                      if auxiliary_stream is None else auxiliary_stream["seed"])
             rng = np.random.default_rng(stream)
             observations = np.asarray(paired["observations"][key], int)
             active = template["active_bins"]
@@ -178,15 +223,24 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
                 for i, observation in enumerate(observations):
                     shared={}
                     for name,n_parameters in normal_layout:
-                        common_seed=int.from_bytes(hashlib.sha256(f'shared-normal:{seed}:{name}:{i}'.encode()).digest()[:8],'big')
+                        normal_root = seed if seed_block is None else stream
+                        common_seed=int.from_bytes(hashlib.sha256(f'shared-normal:{normal_root}:{name}:{i}'.encode()).digest()[:8],'big')
                         shared[name]=np.random.default_rng(common_seed).normal(size=n_parameters)
                     aux = draw_auxiliary(rng,policy=policy,shared_normals=shared)
                     data = np.r_[observation[active], aux]
                     yield i, observation, aux, data
             def fit(task):
+                nonlocal attempted_toys, completed_toys
                 i, observation, aux, data = task
-                row = {"toy": i, "observations": observation.tolist(), "auxiliary": aux.tolist(),
-                       "intervals": profile_intervals(model, data, levels)}
+                row = {"toy": i, "observations": observation.tolist(), "auxiliary": aux.tolist()}
+                attempted_toys += 1
+                try:
+                    row["intervals"] = profile_intervals(model, data, levels)
+                    completed_toys += 1
+                except ResearchStateError as exc:
+                    if seed_block is None or exc.status not in expected_states:
+                        raise
+                    row.update(status=exc.status, reason=str(exc), intervals=[])
                 if mu == 0 and 'diagnostics' in p:
                     row['signed_mu_diagnostic'] = (
                         signed_mu_fit(template, observation[active], p['diagnostics']['signed_mu'])
@@ -197,7 +251,6 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
             toys = []
             for toy_task in tasks():
                 toys.append(fit(toy_task))
-                completed_toys += 1
             if stress_responses is None:
                 asimov = run_asimov(template, protocol=p, layer=layer, t1_validation=t1_validation, injections=[mu], _built_model=(model,metadata))
             else:
@@ -213,30 +266,40 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
                     'nominal_nuisance_asimov':{'nuisance_truth':0.,'mu':float(mu),
                         'status':'valid' if all(v['status']=='valid' for v in nominal_intervals) else 'inference_incomplete',
                         'intervals':nominal_intervals}}
-            valid = all(r["status"] == "valid" for toy in toys for r in toy["intervals"])
+            valid = all(len(toy["intervals"]) == len(levels)
+                        and all(r["status"] == "valid" for r in toy["intervals"]) for toy in toys)
             result = {"status": "valid" if valid and asimov["status"] == "valid" else "inference_incomplete",
                       "seed": template.get("seed"), "asimov": asimov,
                       "toys": {**metadata, "status": "valid" if valid else "inference_incomplete", "results": toys,
-                               "mu": mu, "count": count, "seed": seed, "expectation_kind": "assessment", "mother_id": mother_id,
+                               "mu": mu, "count": count, "seed": seed,
+                               "expectation_kind": "model_self" if parent_role == "template" else "assessment", "mother_id": mother_id,
                                "freeze_id": freeze_id, "paired": True, "pairing_id": pairing_id,
                                "pairing": paired["pairing"], "auxiliary_generation": policy,
+                               "physical_stream_id": physical_stream_id,
+                               "auxiliary_stream_id": None if auxiliary_stream is None else auxiliary_stream["stream_id"],
                                'nuisance_truth':float(stress_direction) if stress_responses is not None else None},
                       "coverage": {}, "diagnostics": {}}
             for index, level in enumerate(levels):
-                intervals = [r["intervals"][index] for r in toys]
+                intervals = [r["intervals"][index] if len(r["intervals"]) > index
+                             else {"status": r.get("status", "fit_failed"), "lower": None, "upper": None}
+                             for r in toys]
                 result["coverage"][str(level)] = coverage_summary(intervals, mu=mu)
                 result["diagnostics"][str(level)] = fit_diagnostics(intervals, mu=mu)
             if mu == 0 and 'diagnostics' in p:
                 result['diagnostics']['signed_mu'] = signed_mu_summary([t['signed_mu_diagnostic'] for t in toys])
-            return key, result, completed_toys
+            return key, result, attempted_toys, completed_toys
         except ResearchStateError as exc:
-            return key, {"status": exc.status, "reason": str(exc)}, completed_toys
+            if seed_block is not None and exc.status not in expected_states:
+                raise
+            return key, {"status": exc.status, "reason": str(exc)}, attempted_toys, completed_toys
 
     results = {}
     candidate_tasks = sorted(grid["templates"].items())
-    for key, result, completed_toys in ordered_map(
+    attempts = {}
+    for key, result, attempted_toys, completed_toys in ordered_map(
             evaluate_candidate, candidate_tasks, workers=workers, worker_threads=worker_threads):
         results[key] = result
+        attempts[key] = (attempted_toys, completed_toys)
         if progress is not None:
             for _ in range(completed_toys):
                 progress()
@@ -260,18 +323,30 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
         for network_seed in SEEDS:
             for left,right in itertools.combinations(SUBSETS[1:],2):
                 lk,rk=candidate_key(network_seed,left),candidate_key(network_seed,right)
-                if all('toys' in results.get(key,{}) for key in (lk,rk)):
+                if all('toys' in results.get(key,{}) and
+                       all(len(row.get('intervals', [])) == len(levels)
+                           for row in results[key]['toys']['results']) for key in (lk,rk)):
                     results[lk].setdefault('paired_coverage',{})[rk] = {
                         str(level):paired_coverage_error(
                             [r['intervals'][i] for r in results[lk]['toys']['results']],
                             [r['intervals'][i] for r in results[rk]['toys']['results']],mu=mu,pairing_id=pairing_id)
                         for i,level in enumerate(levels)}
+    if seed_block is not None:
+        for key, result in results.items():
+            toys = result.get("toys", {}).get("results", [])
+            result["attempted_fits"], result["completed_fits"] = attempts[key]
+            result["valid_fits"] = sum(len(row.get("intervals", [])) == len(levels)
+                                       and all(v.get("status") == "valid" for v in row["intervals"])
+                                       for row in toys)
+            result["missing_fit_indexes"] = sorted(set(range(count)) - {
+                r.get("toy") for r in toys if len(r.get("intervals", [])) == len(levels)})
+            result["joint_support"] = joint_support["summary"]
     return results
 
 
 def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *, layer,
                       t1_validation, mu, seed, prepared_id, freeze_id, workers=1, worker_threads=1,
-                      progress=None):
+                      progress=None, seed_block=None, outer_multiplicities=None):
     """Refit mappings/thresholds jointly; transform both populations on frozen bins."""
     reject_sample_efficiency_assessment(grid, bundles)
     p = protocol_dict(protocol)
@@ -352,13 +427,14 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
         fitted, templates = mapping["bundles"], {}
         category_lookup = {key: f"_t2_category_{i}" for i, key in enumerate(sorted(fitted))}
         for key, original in grid["templates"].items():
-            source = mapped_template.assign(category=0 if key == "M0" else mapped_template[category_lookup[key]])
+            legacy_m0 = key == "M0" and key not in fitted
+            source = mapped_template.assign(category=0 if legacy_m0 else mapped_template[category_lookup[key]])
             structural = None
             if original['candidate_id']=='M0off':
                 from higgsml.inference.attribution import structural_evidence
                 structural=structural_evidence(fitted[key],source,grid['mass_edges'])
-            built = build_templates(source, mass_edges=grid["mass_edges"], mapping_id=fitted[key]["mapping_id"] if key != "M0" else original["mapping_id"],
-                                    candidate_id=original["candidate_id"], thresholds=p["templates"], categories=(0,) if key == "M0" else (0, 1),
+            built = build_templates(source, mass_edges=grid["mass_edges"], mapping_id=original["mapping_id"] if legacy_m0 else fitted[key]["mapping_id"],
+                                    candidate_id=original["candidate_id"], thresholds=p["templates"], categories=(0,) if legacy_m0 else tuple(original["categories"]),
                                     structural_zero_evidence=structural)
             built["seed"] = original.get("seed")
             if built["status"] != "valid":
@@ -368,9 +444,21 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
         def categorize(bundle, frame):
             key = bundle_keys[id(bundle)]
             return frame.assign(category=frame[category_lookup[key]])
+        stream = inner_streams_by_seed.get(inner_seed)
+        auxiliary_streams = None
+        if seed_block is not None:
+            from higgsml.inference.seed_blocks import stream_identity
+            auxiliary_streams = {
+                key: stream_identity(contract_digest=seed_block.pairing_contract_digest,
+                    stage="t2", mu=mu, training_seed=seed_block.seed,
+                    outer_index=stream["outer_index"], stream_kind="candidate_auxiliary",
+                    candidate_if_auxiliary=key, toy_base_seed=seed)
+                for key in seed_block.candidate_keys}
         result = infer_assessment({"status": "valid", "mass_edges": grid["mass_edges"], "templates": templates, 'family_id':grid.get('family_id')}, fitted,
             mapped_mother, p, layer=layer, t1_validation=t1_validation, mu=mu, count=inner_toys, seed=inner_seed,
-            prepared_id=prepared_id, freeze_id=freeze_id, categorize=categorize, progress=progress)
+            prepared_id=prepared_id, freeze_id=freeze_id, categorize=categorize, progress=progress,
+            seed_block=seed_block, physical_stream_id=None if stream is None else stream["stream_id"],
+            auxiliary_streams=auxiliary_streams)
         return {"status": "valid" if all(r["status"] == "valid" for r in result.values()) else "inference_incomplete", "candidates": result}
 
     def completed_replica(row):
@@ -380,11 +468,22 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
             for _ in range(count):
                 parent_progress()
 
+    inner_seed_factory = None
+    inner_streams_by_seed = {}
+    if seed_block is not None:
+        from higgsml.inference.seed_blocks import stream_identity
+        def inner_seed_factory(outer):
+            stream = stream_identity(contract_digest=seed_block.pairing_contract_digest,
+                stage="t2", mu=mu, training_seed=seed_block.seed, outer_index=outer,
+                stream_kind="inner_physical_poisson", toy_base_seed=seed)
+            inner_streams_by_seed[stream["seed"]] = stream
+            return stream["seed"]
     return run_t2_procedure(calibration, template, mother, fit_mapping=fit_mapping, apply_mapping=apply_mapping,
         evaluate=evaluate, outer_replicas=cfg["outer_replicas"], inner_toys=cfg["inner_toys"], seed=seed,
         workers=workers, worker_threads=worker_threads,
         on_replica=completed_replica if workers > 1 else None,
         record_mappings=grid.get('family_id')=='engineered19_raw_T1_m4l_off_attribution_v1',
+        outer_multiplicities=outer_multiplicities, inner_seed_factory=inner_seed_factory,
         model_id=digest_json({k: b["model_id"] for k,b in bundles.items()}), mother_id=digest_json({"prepared_id":prepared_id,"freeze_id":freeze_id}))
 
 

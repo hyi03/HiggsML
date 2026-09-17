@@ -22,6 +22,7 @@ def test_default_run_name_executes_the_complete_resumable_h4l_workflow(
 ) -> None:
     workflow = _load_module()
     monkeypatch.setattr(workflow, "RUNS_ROOT", tmp_path)
+    monkeypatch.setattr(workflow, "_available_memory_bytes", lambda: 12 * 1024**3)
     monkeypatch.setattr(workflow, "_reviewer_name", lambda: "Test Researcher")
     commands: list[list[str]] = []
     monkeypatch.setattr(workflow, "_invoke", lambda command: commands.append(command))
@@ -41,14 +42,14 @@ def test_default_run_name_executes_the_complete_resumable_h4l_workflow(
     assert commands[2][2:] == ["--run-name", "default"]
     assert commands[3][2:] == [
         "--source-run-name", "default", "--run-name", "default",
-        "--stage-b", "--workers", "4", "--worker-threads", "1",
+        "--stage-b", "--workers", "2", "--worker-threads", "1",
     ]
     assert commands[4][2:] == [
         "--run-name", "default", "--reviewer", "Test Researcher",
     ]
     assert commands[5][2:] == [
         "--source-run-name", "default", "--run-name", "default",
-        "--evaluation", "--workers", "4", "--worker-threads", "1",
+        "--evaluation", "--workers", "2", "--worker-threads", "1",
     ]
 
 
@@ -57,6 +58,7 @@ def test_explicit_run_name_reuses_an_existing_access_review(
 ) -> None:
     workflow = _load_module()
     monkeypatch.setattr(workflow, "RUNS_ROOT", tmp_path)
+    monkeypatch.setattr(workflow, "_available_memory_bytes", lambda: 48 * 1024**3)
     review = (
         tmp_path / "h4l-off-study-001" / "access-review"
         / "validated-off-assessment-access.json"
@@ -74,3 +76,16 @@ def test_explicit_run_name_reuses_an_existing_access_review(
         "--source-run-name", "study-001", "--run-name", "study-001",
         "--evaluation", "--workers", "4", "--worker-threads", "1",
     ]
+
+
+def test_worker_count_is_bounded_by_available_memory(monkeypatch) -> None:
+    workflow = _load_module()
+    for available, expected in (
+        (None, 1),
+        (4 * 1024**3, 1),
+        (12 * 1024**3, 2),
+        (24 * 1024**3, 4),
+        (96 * 1024**3, 4),
+    ):
+        monkeypatch.setattr(workflow, "_available_memory_bytes", lambda value=available: value)
+        assert workflow._off_workers() == expected

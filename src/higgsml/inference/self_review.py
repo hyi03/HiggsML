@@ -32,13 +32,15 @@ def _receipt(path: Path) -> dict:
     return {"path": path.name, "sha256": sha256_file(path), "size_bytes": path.stat().st_size}
 
 
-def generate_self_review(run_root, prepared_root, *, reviewer: str) -> Path:
+def generate_self_review(run_root, prepared_root, *, reviewer: str, evaluation_version='v1') -> Path:
     """Publish a self-review package without representing it as independent evidence."""
     run_root, prepared_root = Path(run_root).resolve(), Path(prepared_root).resolve()
     reviewer = reviewer.strip()
     if not reviewer or "automat" in reviewer.lower():
         raise ResearchError("a named human single researcher is required")
-    output = run_root / "access-review"
+    if evaluation_version not in {'v1','v2'}:
+        raise ResearchError('unsupported self-review evaluation version')
+    output = run_root / ('source-access-review' if evaluation_version == 'v2' else 'access-review')
     if output.exists():
         raise ResearchError(f"access-review already exists and will not be overwritten: {output}")
 
@@ -47,7 +49,7 @@ def generate_self_review(run_root, prepared_root, *, reviewer: str) -> Path:
     nominal = _manifest(run_root / "nominal")
     frozen_manifest = _manifest(run_root / "freeze")
     frozen = read_json(run_root / "freeze" / "freeze.json")
-    plan = read_json(run_root / "report-B" / "evaluation-plan.json")
+    plan = read_json(run_root / ('evaluation-plan' if evaluation_version == 'v2' else 'report-B') / "evaluation-plan.json")
     # Stage B owns the evaluation protocol. A forced debug run may reuse a
     # prepared artifact whose historical protocol snapshot intentionally differs.
     protocol = read_json(run_root / "freeze" / "protocol.json")
@@ -70,6 +72,16 @@ def generate_self_review(run_root, prepared_root, *, reviewer: str) -> Path:
 
     p0_source = prepared_root / "p0-validation.json"
     t1_source = run_root / "nominal" / "t1-validation.json"
+    if evaluation_version == 'v2':
+        from higgsml.inference import seed_workflow
+        values = seed_workflow.load_frozen(run_root/'register',run_root/'nominal',run_root/'freeze',protocol)
+        bound_prepared, source_nominal = values[2], values[4]
+        if bound_prepared.path != prepared_root:
+            raise ResearchError('v2 self-review prepared source mismatch')
+        if seed_workflow.source_history(bound_prepared):
+            raise ResearchError('historically opened population cannot receive new v2 self-review access')
+        seed_workflow.validate_plan(plan,protocol)
+        t1_source = source_nominal.file('t1-validation.json')
     if not p0_source.is_file() or not t1_source.is_file():
         raise ResearchError("bound automated P0/T1 material is missing")
 
@@ -103,7 +115,13 @@ def generate_self_review(run_root, prepared_root, *, reviewer: str) -> Path:
         if staging.exists():
             shutil.rmtree(staging)
         raise
-    return output / "validated-off-assessment-access.json"
+    source_access = output / 'validated-off-assessment-access.json'
+    if evaluation_version == 'v2':
+        seed_workflow.access_adapter(run_root/'register',run_root/'nominal',run_root/'freeze',protocol,
+            run_root/'access-review',run_root.parent,evaluation_plan_path=run_root/'evaluation-plan'/'evaluation-plan.json',
+            result_path=run_root/'asimov',access_review=source_access)
+        return run_root/'access-review'/'validated-off-assessment-access.json'
+    return source_access
 
 
 def validate_self_review_access(review: dict, package_root) -> dict:

@@ -80,7 +80,7 @@ python scripts/init_data.py --dataset atlas2020_4lep
 python scripts/h4l_all.py --run-name test01
 ```
 
-Omitting `--run-name` uses the stable name `default`. Re-running the same command validates published manifests and skips complete stages before continuing at the next missing stage. Invalid final stage directories are quarantined without deleting `.failed` evidence. The wrapper passes `--workers 4 --worker-threads 1` to `h4l_off_run.py`, so complete bootstrap, Toy, and T2 work units can run in parallel without nested thread expansion. A pre-existing bound access review is reused; otherwise the command records a local named-user single-researcher self-review, which remains explicitly non-independent and exploratory. Frozen assessment/T2 budget claims are never bypassed by resume. The commands below remain available for diagnosis, explicit planning, independent access-review replacement, and individual-stage recovery.
+Omitting `--run-name` uses the stable name `default`. Re-running the same command validates published manifests and skips complete stages before continuing at the next missing stage. Invalid final stage directories are quarantined without deleting `.failed` evidence. The wrapper passes `--worker-threads 1` to `h4l_off_run.py` and selects `--workers` from 1--4 using 6 GiB of currently available physical memory per worker, falling back to one worker when memory cannot be detected. Complete bootstrap, Toy, and T2 work units can therefore run in bounded parallelism without nested thread expansion. A pre-existing bound access review is reused; otherwise the command records a local named-user single-researcher self-review, which remains explicitly non-independent and exploratory. Frozen assessment/T2 budget claims are never bypassed by resume. The commands below remain available for diagnosis, explicit planning, independent access-review replacement, and individual-stage recovery.
 
 <a id="single-node-hpc"></a>
 
@@ -426,6 +426,50 @@ python scripts/h4l_evaluate.py --plan runs/off-study-001/report-B/evaluation-pla
 `--workers` parallelizes complete bootstrap/T2 replicas and complete model-self or assessment candidates while preserving registered draw order. Start with two workers on a 16 GB host and keep `--worker-threads 1`; increase the process count only after measuring peak memory without another prepare or training job running concurrently. The default remains one worker.
 
 Individual `mc-bootstrap`, `model-self --mu 0|1|2`, `assessment --mu 0|1|2` and `t2` stages use the same registration/template/freeze arguments plus `--evaluation-plan runs/off-study-001/report-B/evaluation-plan.json --result-run runs/off-study-001/asimov`. Assessment/T2 additionally require `--access-review` with schema `h4l-off-assessment-access-v1`, exact population/protocol/freeze binding, independent P0/T1 file receipts, explicit historical-use and group-isolation review. P0 must satisfy [the applicability schema](../config/schemas/h4l_off_p0_applicability.schema.json): its recomputed `package_id` hashes the package without that field; dataset, prepared, protocol, freeze, template and original P0 source-file hash must match. Each physical definition has nonempty referenced content and a typed, finite expected/actual numerical comparison within declared tolerances. Source files have verified receipts and an independent producer/reference/basis. The schema checks evidence structure and bindings; independent human review must establish physical validity and acceptable tolerances. T1 uses the existing independent evidence package contract. Missing evidence is `assessment_qualification_pending`; an automatic reference or a new freeze name cannot restore independence. The original prepared run's `.research-claims` root owns exclusive per-cell budget claims; a failed or interrupted claimed cell is not rerun automatically.
+
+### Within-seed v2 sequence
+
+The commands below are supported Linux Bash commands from the repository root. v1 remains the default, so every v2 entry point includes `--evaluation-version v2`.
+
+```bash
+python scripts/h4l_off_run.py \
+  --evaluation-version v2 \
+  --source-run-name test01 \
+  --run-name within-seed-001 \
+  --stage-b \
+  --show-command
+
+python -m higgsml.cli attribution access-review \
+  --evaluation-version v2 \
+  --protocol config/protocols/h4l_protocol.json \
+  --registration-run runs/h4l-off-within-seed-001/register \
+  --template-run runs/h4l-off-within-seed-001/nominal \
+  --freeze-run runs/h4l-off-within-seed-001/freeze \
+  --result-run runs/h4l-off-within-seed-001/asimov \
+  --evaluation-plan runs/h4l-off-within-seed-001/evaluation-plan/evaluation-plan.json \
+  --access-review path/to/validated-off-assessment-access.json \
+  --run-dir runs/h4l-off-within-seed-001/access-review-v2
+
+python scripts/h4l_off_run.py \
+  --evaluation-version v2 \
+  --source-run-name test01 \
+  --run-name within-seed-001 \
+  --evaluation \
+  --access-review runs/h4l-off-within-seed-001/access-review-v2/validated-off-assessment-access.json \
+  --show-command
+```
+
+The Stage B wrapper executes these dependencies: `source-register` -> `register`; `source-nominal` -> `nominal`; J0 -> J1 -> `evaluation-spec` -> `freeze` -> `asimov` -> `evaluation-plan`. The `source-*` artifacts preserve the v1 registration and nominal identities. Their v2 children are compatibility adapters that record the audit and original IDs. Neither gate reads assessment payload. Use `--plan` for the wrapper's metadata-only plan; it does not consume a claim or validate deferred payload/access bindings.
+
+The evaluation driver runs 36 scientific units and then one report. Unit names distinguish `training_seed` from the Toy seed: model-self and assessment each run five seed blocks at each `mu=0,1,2`; T2 runs five seed blocks at `mu=1`; MC bootstrap spans the complete 80-identity family. Budgets are fixed at 500 Toys per candidate for model-self/assessment, 200 MC bootstrap replicas, and 20 outer by 100 inner T2 Toys. `--show-command` is opt-in; normal output remains concise.
+
+Resume accepts complete scientific terminal artifacts, including `insufficient_statistics`, as `skip_terminal`. It may recover publication only from a fully verified staging receipt. Once the durable claim exists, missing or damaged output becomes `blocked_consumed_budget`; neither `--continue` nor a new output path authorizes recomputation. Reports remain partial when units fail or have not run, retain planned denominators, and never substitute another seed.
+
+The v2 access adapter accepts a reviewed source only after binding it to the specification, plan, freeze, blocks, and source-history receipt. A previously opened population is restricted to a J0 `posthoc_support_diagnostic`; it cannot be presented as a fresh prospective assessment source. If no unused eligible source exists, assessment/T2 stay `blocked_missing_eligible_assessment_source`. These commands implement the software contract; synthetic tests are not controlled-MC evidence, and independent P0/T1 review plus the original scientific budgets remain pending.
+
+### Legacy v1 recovery and debug options
+
+The following options apply only to the default v1 workflow. V2 rejects `--reuse-stage` and `--force`; use claim-aware `--continue` and the immutable report snapshot path printed by the v2 evaluator.
 
 For evaluator recovery use `--reuse-stage STAGE:MU=RUN`, for example `--reuse-stage model-self:1=runs/off-evaluation-001/model-self-mu1`, with a fresh output root. The tool verifies successful manifests, original registration/template/freeze bindings and budgets before skipping a cell. Failed scientific fits inside a completed budget remain recorded; fatal stage errors stop dependent commands. To publish intermediate evidence, pass each completed stage using repeated `--evaluation-run` to a fresh `attribution report`.
 

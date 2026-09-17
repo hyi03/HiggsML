@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "h4l-joint-support-v1",
+  "type": "object",
+  "required": ["gate", "status", "seeds"],
+  "additionalProperties": true,
+  "properties": {
+    "gate": {"enum": ["J0", "J1"]},
+    "status": {"enum": ["passed", "failed"]},
+    "seeds": {
+      "type": "object",
+      "required": ["42", "43", "44", "45", "46"],
+      "additionalProperties": false,
+      "properties": {
+        "42": {"type": "object"}, "43": {"type": "object"},
+        "44": {"type": "object"}, "45": {"type": "object"},
+        "46": {"type": "object"}
+      }
+    },
+    "replicas": {"const": 200},
+    "policy": {"const": "engineering_screen_not_scientific_validation"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"gate": {"const": "J0"}}},
+      "then": {"required": ["projection_tolerance"]}
+    },
+    {
+      "if": {"properties": {"gate": {"const": "J1"}}},
+      "then": {"required": ["replicas", "policy", "toy_base_seed", "failures_by_seed", "records"]}
+    }
+  ]
+}

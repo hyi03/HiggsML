@@ -1,0 +1,20 @@
+{
+  "contract_id": "h4l-mass-off-within-seed-joint-v1",
+  "candidate_family_id": "engineered19_raw_T1_m4l_off_attribution_v1",
+  "pairing_scope": "within_seed",
+  "cross_seed_pairing": "none",
+  "seeds": [42, 43, 44, 45, 46],
+  "block_size": 16,
+  "common_nominal_mass_grid": true,
+  "process_rates": "signed_nonnegative_no_repair",
+  "process_identity": "explicit_process_else_label_legacy",
+  "group_covariance": "reject_group_spanning_observation_cells",
+  "projection_tolerance": {"rtol": 1e-10, "atol": 1e-10},
+  "rng": {"version": "h4l-stream-v1", "algorithm": "sha256-first-64-big-endian"},
+  "j1": {
+    "method": "group_bernoulli_thinning",
+    "replicas": 200,
+    "required_failures_per_seed": 0,
+    "qualification": "engineering_screen_not_scientific_validation"
+  }
+}
