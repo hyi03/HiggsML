@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -14,7 +15,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_ROOT = PROJECT_ROOT / "scripts"
 RUNS_ROOT = PROJECT_ROOT / "runs"
 DEFAULT_RUN_NAME = "default"
-OFF_WORKERS = "4"
+MAX_OFF_WORKERS = 4
+AVAILABLE_MEMORY_PER_WORKER = 6 * 1024**3
 OFF_WORKER_THREADS = "1"
 
 
@@ -65,9 +67,45 @@ def _resume_flag(path: Path) -> list[str]:
     return ["--continue"] if path.is_dir() else []
 
 
+def _available_memory_bytes() -> int | None:
+    if sys.platform == "win32":
+        import ctypes
+
+        class MemoryStatus(ctypes.Structure):
+            _fields_ = [
+                ("length", ctypes.c_ulong),
+                ("memory_load", ctypes.c_ulong),
+                ("total_physical", ctypes.c_ulonglong),
+                ("available_physical", ctypes.c_ulonglong),
+                ("total_page_file", ctypes.c_ulonglong),
+                ("available_page_file", ctypes.c_ulonglong),
+                ("total_virtual", ctypes.c_ulonglong),
+                ("available_virtual", ctypes.c_ulonglong),
+                ("available_extended_virtual", ctypes.c_ulonglong),
+            ]
+
+        status = MemoryStatus()
+        status.length = ctypes.sizeof(status)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+            return int(status.available_physical)
+        return None
+    try:
+        return int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_AVPHYS_PAGES"))
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
+def _off_workers() -> int:
+    available = _available_memory_bytes()
+    if available is None or available < 0:
+        return 1
+    return max(1, min(MAX_OFF_WORKERS, available // AVAILABLE_MEMORY_PER_WORKER))
+
+
 def _run(args: argparse.Namespace) -> None:
     name = args.run_name
     python = sys.executable
+    off_workers = str(_off_workers())
     train_root = RUNS_ROOT / f"h4l-train-{name}"
     off_root = RUNS_ROOT / f"h4l-off-{name}"
     commands = [
@@ -80,7 +118,7 @@ def _run(args: argparse.Namespace) -> None:
         [python, str(SCRIPTS_ROOT / "h4l_off_run.py"),
          "--source-run-name", name, "--run-name", name,
          "--stage-b", *_resume_flag(off_root),
-         "--workers", OFF_WORKERS, "--worker-threads", OFF_WORKER_THREADS],
+         "--workers", off_workers, "--worker-threads", OFF_WORKER_THREADS],
     ]
     for command in commands:
         _invoke(command)
@@ -99,7 +137,7 @@ def _run(args: argparse.Namespace) -> None:
         python, str(SCRIPTS_ROOT / "h4l_off_run.py"),
         "--source-run-name", name, "--run-name", name,
         "--evaluation", *_resume_flag(off_root / "evaluation"),
-        "--workers", OFF_WORKERS, "--worker-threads", OFF_WORKER_THREADS,
+        "--workers", off_workers, "--worker-threads", OFF_WORKER_THREADS,
     ])
     print(
         "H4l workflow complete. Final report: "

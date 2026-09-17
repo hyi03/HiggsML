@@ -15,6 +15,15 @@ from higgsml.modeling.discriminants import predict_discriminant
 from higgsml.resources import ordered_map
 
 
+def _replica_bundle(bundle):
+    """Detach replica-local calibration state without copying the trained model."""
+    value = dict(bundle)
+    for field in ("mapping", "thresholds"):
+        if field in value:
+            value[field] = deepcopy(value[field])
+    return value
+
+
 def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_validation,
                           workers=1, worker_threads=1, progress=None):
     """Full registered event-group reconstruction; failed replicas are not replaced."""
@@ -50,7 +59,7 @@ def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_
             fitted,built = {},{}
             for key,bundle in bundles.items():
                 try:
-                    value = deepcopy(bundle)
+                    value = _replica_bundle(bundle)
                     if value['transform'] != 'raw' or value['mapping'] is not None:
                         raise ResearchError('off bootstrap must retain raw mapping')
                     if value['candidate_id'] != 'M0off':
@@ -152,7 +161,7 @@ def primary_mc_bootstrap(grid, bundles, calibration, template, protocol, *, repl
                 original = bundles[key]
                 if original.get("transform") != "physical" or original.get("model") is None:
                     raise ResearchError("M4/M5 bootstrap requires physical-CDF neural bundles")
-                bundle = deepcopy(original)
+                bundle = _replica_bundle(original)
                 raw_calibration_scores = predict_discriminant(bundle["model"], calibration_draw)
                 mapping = fit_calibration(calibration_draw, raw_calibration_scores, protocol,
                                           target="physical", model_id=bundle["model_id"])

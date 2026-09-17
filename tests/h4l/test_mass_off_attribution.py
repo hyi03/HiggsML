@@ -157,6 +157,24 @@ def test_full_mc_budget_failures_preserve_draws_and_raw_family(monkeypatch):
     assert result['uncertainty']['contributions']==[]
 
 
+def test_replica_bundle_copies_only_mutable_calibration_state():
+    from higgsml.inference.bootstrap import _replica_bundle
+
+    model = object()
+    source = {'model':model,'mapping':{'slices':[{'probabilities':[.25]}]},
+              'thresholds':{'thresholds':[.5]},'metadata':{'shared':True}}
+    replica = _replica_bundle(source)
+    replica['mapping']['slices'][0]['probabilities'][0] = .75
+    replica['thresholds']['thresholds'][0] = .6
+
+    assert replica['model'] is model
+    assert replica['metadata'] is source['metadata']
+    assert replica['mapping'] is not source['mapping']
+    assert replica['thresholds'] is not source['thresholds']
+    assert source['mapping']['slices'][0]['probabilities'] == [.25]
+    assert source['thresholds']['thresholds'] == [.5]
+
+
 def test_mc_bootstrap_workers_preserve_draws_order_and_failures(monkeypatch):
     from higgsml.inference import bootstrap
     from higgsml.inference.attribution import BUDGETS, candidate_keys
