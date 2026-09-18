@@ -75,8 +75,6 @@ python scripts/init_data.py --dataset atlas2020_4lep
 
 ```bash
 python scripts/h4l_all.py --run-name test01
-python scripts/h4l_all.py --run-name fresh01 \
-  --access-review path/to/validated-off-assessment-access.json
 ```
 
 `--run-name` 是唯一需要输入的参数，同时用于 `runs/h4l-train-test01/` 和 `runs/h4l-off-test01/`。`--access-review` 是可选的独立审核覆盖项。不传运行名时默认使用 `default`：
