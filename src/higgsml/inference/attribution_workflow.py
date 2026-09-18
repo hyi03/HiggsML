@@ -429,12 +429,20 @@ def _assessment_frame(prepared,overlay,frozen_run,protocol,access_review,cell,*,
     # Shared original root prevents a new output directory from clearing history.
     from higgsml.workflow import _claim_assessment
     root=prepared.path.parents[1]
-    old_claim=root/'.research-claims'
-    if old_claim.exists():
-        for file in old_claim.glob('*.json'):
-            previous=read_json(file)
-            if previous.get('population_id')==overlay['population_id'] and previous.get('freeze_artifact_id')!=frozen_run.manifest['artifact_id']:
-                raise ResearchStateError('population previously used under another freeze',status='assessment_already_started')
+    for dirname in ('.research-claims','.h4l-mass-off-v2-claims','.h4l-mass-off-v3-claims','.h4l-population-access'):
+        old_claim=root/dirname
+        if old_claim.is_symlink():
+            raise ResearchError('unsafe historical claim directory')
+        if old_claim.exists():
+            for file in old_claim.glob('*.json'):
+                if file.is_symlink():
+                    raise ResearchError('unsafe historical claim receipt')
+                receipt=read_json(file)
+                previous=receipt.get('binding',receipt)
+                if previous.get('stage')=='model-self':
+                    continue
+                if previous.get('population_id')==overlay['population_id'] and previous.get('freeze_artifact_id')!=frozen_run.manifest['artifact_id']:
+                    raise ResearchStateError('population previously used under another freeze',status='assessment_already_started')
     _claim_assessment(root,prepared.manifest['artifact_id'],protocol,frozen_run.manifest['artifact_id'],
                       population_id=overlay['population_id'],repeat=True)
     cells=root/'.research-claims'/('off-cells-'+frozen_run.manifest['artifact_id'])

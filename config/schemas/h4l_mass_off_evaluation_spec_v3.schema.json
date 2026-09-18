@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "h4l-mass-off-evaluation-spec-v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "registration_artifact_id",
+    "nominal_artifact_id",
+    "prepared_artifact_id",
+    "population_id",
+    "protocol_sha256",
+    "candidate_keys",
+    "blocks",
+    "pairing_contract",
+    "budgets",
+    "matrix",
+    "screening_policy",
+    "gate_artifact_ids",
+    "source_history",
+    "rng",
+    "semantics",
+    "evidence_scope",
+    "specification_id",
+    "support_qualification"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "h4l-mass-off-evaluation-spec-v3"
+    },
+    "registration_artifact_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "nominal_artifact_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "prepared_artifact_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "population_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "protocol_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "candidate_keys": {
+      "type": "array",
+      "minItems": 80,
+      "maxItems": 80,
+      "uniqueItems": true
+    },
+    "blocks": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": [
+          "seed",
+          "candidate_keys",
+          "block_id",
+          "pairing_contract_digest"
+        ]
+      }
+    },
+    "pairing_contract": {
+      "const": {
+        "contract_id": "h4l-mass-off-marginal-crn-v1",
+        "pairing_scope": "within_seed",
+        "cross_seed_pairing": "none",
+        "pairing_kind": "marginal_common_total_monotone_crn",
+        "physical_event_pairing": false,
+        "uncertainty_scope": "conditional_on_registered_crn_coupling",
+        "primary_claim_eligible": false,
+        "sensitivity_status": "pending",
+        "sensitivity_reason": "Independent-allocation fit diagnostic requires a bound execution budget.",
+        "seeds": [
+          42,
+          43,
+          44,
+          45,
+          46
+        ],
+        "block_size": 16,
+        "candidate_family_size": 80,
+        "numeric": {
+          "version": "h4l-marginal-f64-fsum-v1",
+          "rtol": 1e-10,
+          "atol": 1e-10,
+          "accumulation": "group_first_math_fsum",
+          "serialization": "canonical_json_binary64"
+        },
+        "legacy_role_map": {
+          "0": "background",
+          "1": "signal"
+        },
+        "rng": "sha256-full-256-PCG64-v1",
+        "sensitivity": {
+          "allocation": "independent_category_uniform",
+          "totals": "reuse_primary",
+          "toy_indexes": "same_as_primary",
+          "summaries": [
+            "paired_coverage",
+            "paired_width",
+            "paired_bias"
+          ]
+        },
+        "contract_digest": "701f0e16ebce6c8425cff9f5da40b0583d4632d0601652e84f96f345ece95d1b"
+      }
+    },
+    "budgets": {
+      "$ref": "#/$defs/budgets"
+    },
+    "matrix": {
+      "$ref": "#/$defs/matrix"
+    },
+    "screening_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "replicas",
+        "required_failures_per_seed",
+        "sampling",
+        "q_thin",
+        "seed",
+        "projection_rtol",
+        "projection_atol"
+      ],
+      "properties": {
+        "policy": {
+          "const": "engineering_screen_not_scientific_validation"
+        },
+        "replicas": {
+          "const": 200
+        },
+        "required_failures_per_seed": {
+          "const": 0
+        },
+        "sampling": {
+          "const": "group_bernoulli_thinning"
+        },
+        "q_thin": {
+          "type": "number"
+        },
+        "seed": {
+          "const": 42001
+        },
+        "projection_rtol": {
+          "const": 1e-10
+        },
+        "projection_atol": {
+          "const": 1e-10
+        }
+      }
+    },
+    "gate_artifact_ids": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "$ref": "#/$defs/digest"
+      }
+    },
+    "source_history": {
+      "type": "array"
+    },
+    "rng": {
+      "const": {
+        "algorithm": "sha256-full-256-PCG64",
+        "version": "h4l-marginal-stream-v1"
+      }
+    },
+    "semantics": {
+      "type": "object",
+      "required": [
+        "protocol_sha256",
+        "source_nominal_id",
+        "prepared_artifact_id",
+        "population_id",
+        "mass_edges",
+        "templates_digest",
+        "bundles_digest",
+        "candidate_keys",
+        "model_ids",
+        "mapping_digests",
+        "weight_semantics",
+        "development_probability",
+        "roles",
+        "value_function",
+        "estimator"
+      ]
+    },
+    "evidence_scope": {
+      "const": "MC_only_exploratory_within_seed"
+    },
+    "specification_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "support_qualification": {
+      "enum": [
+        "physical_process",
+        "label_level_legacy"
+      ]
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "budgets": {
+      "type": "object",
+      "const": {
+        "mc_bootstrap": {
+          "replicas": 200,
+          "seed": 42001
+        },
+        "toys": {
+          "injections": [
+            0,
+            1,
+            2
+          ],
+          "count": 500,
+          "seed": 42
+        },
+        "t2": {
+          "mu": 1,
+          "outer_replicas": 20,
+          "inner_toys": 100,
+          "seed": 42
+        }
+      }
+    },
+    "unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage",
+        "mu",
+        "training_seed"
+      ],
+      "properties": {
+        "stage": {
+          "enum": [
+            "mc-bootstrap",
+            "model-self",
+            "assessment",
+            "t2"
+          ]
+        },
+        "mu": {
+          "enum": [
+            0,
+            1,
+            2
+          ]
+        },
+        "training_seed": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "enum": [
+            null,
+            42,
+            43,
+            44,
+            45,
+            46
+          ]
+        }
+      }
+    },
+    "matrix": {
+      "type": "array",
+      "minItems": 36,
+      "maxItems": 36,
+      "items": {
+        "$ref": "#/$defs/unit"
+      }
+    }
+  }
+}

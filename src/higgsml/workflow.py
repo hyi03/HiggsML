@@ -180,10 +180,12 @@ def _require_unopened(root, prepared_id, protocol):
 
 def _claim_assessment(root, prepared_id, protocol, freeze_id, *, repeat=False, population_id=None):
     """An exclusive durable claim precedes even the first assessment payload decode."""
+    from higgsml.inference.population_history import claim_population
     path = _claim_path(root, population_id or prepared_id, protocol)
     if path.parent.is_symlink():
         raise ResearchError('Assessment claim directory cannot be a symlink')
     path.parent.mkdir(parents=True, exist_ok=True)
+    claim_population(root,population_id or prepared_id,freeze_id)
     value = {'prepared_artifact_id':prepared_id,'protocol_sha256':digest_json(protocol),
              'population_id':population_id or prepared_id,'freeze_artifact_id':freeze_id,'budgets':protocol['inference']}
     try:

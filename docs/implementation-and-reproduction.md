@@ -346,7 +346,7 @@ Individual `mc-bootstrap`, `model-self --mu 0|1|2`, `assessment --mu 0|1|2` and 
 
 ### Within-seed v2 sequence
 
-The commands below are supported Linux Bash commands from the repository root. v1 remains the default, so every v2 entry point includes `--evaluation-version v2`.
+The commands below are supported Linux Bash commands from the repository root. The off-only, evaluation and attribution CLIs retain v1 defaults and require explicit `--evaluation-version v2` for the commands below. `h4l_all.py` selects v2 when the version is omitted.
 
 ```bash
 python scripts/h4l_off_run.py \
@@ -403,3 +403,29 @@ python scripts/h4l_off_run.py --source-run-name T2 --run-name study-001 --evalua
 For protocol/debug development only, append `--force` and use a fresh debug run name. This bypasses source protocol consistency checks while retaining dataset, artifact digest, candidate, checkpoint, population, and upstream checks. Every generated stage is marked `forced_protocol_mismatch_debug`; these outputs are non-authoritative and must not be used as paper or scientific evidence. Remove `--force` for the final run.
 
 This writes Stage A--E under `runs/h4l-off-study-001/`. `--evaluation` requires the completed Stage B directories, reads `runs/h4l-off-study-001/access-review/validated-off-assessment-access.json` by default, and refuses an existing evaluation output. Use `--access-review` only to override that deterministic path. The pending structure in `config/examples/h4l_off_assessment_access.pending.json` is not valid access evidence until an independent reviewer replaces every placeholder with bound IDs and verified P0/T1 file receipts. The wrapper delegates every scientific operation and registered budget to the existing attribution CLI and `h4l_evaluate.py`.
+
+### Marginal CRN evaluation v3 (explicit opt-in)
+
+`--evaluation-version v3` uses the registered common-total monotone CRN
+coupling. Each candidate keeps its two-category Poisson marginal law; paired
+errors are conditional diagnostics under an artificial coupling, with
+`physical_event_pairing=false`. Legacy labels qualify only aggregate
+signal/background support, not separate physical-process support. Independent
+allocation sensitivity is reported as pending until authorized and executed.
+
+J0 and all 200 J1 group-thinning replicas per seed must pass before freeze.
+T2 preflights every outer mapping/support record before any inner generation.
+Failed preflight preserves the planned denominator and generates zero inner
+Toys for that seed. Existing assessment history remains binding across v1/v2/v3.
+
+Use a fresh run name and existing compatible training/prepared artifacts:
+
+```bash
+python scripts/h4l_off_run.py --evaluation-version v3 \
+  --source-run-name test01 --run-name marginal-v3-001 --stage-b --show-command
+```
+
+No default cutover or prospective assessment is authorized by enabling v3.
+The local one-command wrapper defaults to v2; the off-only, evaluation and
+attribution CLIs retain v1 defaults. Explicit v1/v2 behavior remains supported.
+Software/synthetic tests do not establish controlled-MC qualification.

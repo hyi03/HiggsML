@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "h4l-mass-off-evaluation-plan-v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "specification",
+    "specification_id",
+    "pairing_scope",
+    "cross_seed_pairing",
+    "inputs",
+    "matrix",
+    "scientific_unit_count",
+    "unit_count_including_report",
+    "evaluation_plan_id"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "h4l-mass-off-evaluation-plan-v3"
+    },
+    "specification": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "specification_id",
+        "candidate_keys",
+        "blocks",
+        "pairing_contract",
+        "budgets",
+        "matrix",
+        "rng",
+        "evidence_scope"
+      ]
+    },
+    "specification_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "pairing_scope": {
+      "const": "within_seed"
+    },
+    "cross_seed_pairing": {
+      "const": "none"
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "registration_artifact_id",
+        "prepared_artifact_id",
+        "template_artifact_id",
+        "freeze_artifact_id",
+        "asimov_artifact_id"
+      ],
+      "properties": {
+        "registration_artifact_id": {
+          "$ref": "#/$defs/digest"
+        },
+        "prepared_artifact_id": {
+          "$ref": "#/$defs/digest"
+        },
+        "template_artifact_id": {
+          "$ref": "#/$defs/digest"
+        },
+        "freeze_artifact_id": {
+          "$ref": "#/$defs/digest"
+        },
+        "asimov_artifact_id": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "matrix": {
+      "type": "array",
+      "minItems": 36,
+      "maxItems": 36,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stage",
+          "mu",
+          "training_seed"
+        ],
+        "properties": {
+          "stage": {
+            "enum": [
+              "mc-bootstrap",
+              "model-self",
+              "assessment",
+              "t2"
+            ]
+          },
+          "mu": {
+            "enum": [
+              0,
+              1,
+              2
+            ]
+          },
+          "training_seed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "enum": [
+              null,
+              42,
+              43,
+              44,
+              45,
+              46
+            ]
+          }
+        }
+      }
+    },
+    "scientific_unit_count": {
+      "const": 36
+    },
+    "unit_count_including_report": {
+      "const": 37
+    },
+    "evaluation_plan_id": {
+      "$ref": "#/$defs/digest"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

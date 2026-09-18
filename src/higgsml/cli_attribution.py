@@ -13,7 +13,7 @@ from higgsml.inference import attribution_workflow as workflow
 def main(argv=None):
     parser=argparse.ArgumentParser(description='Immutable registered mass-off attribution stages')
     parser.add_argument('stage',choices=['register','nominal','support-check','evaluation-spec','evaluation-plan','access-review','freeze','asimov','mc-bootstrap','model-self','assessment','t2','report'])
-    parser.add_argument('--evaluation-version', choices=['v1','v2'], default='v1')
+    parser.add_argument('--evaluation-version', choices=['v1','v2','v3'], default='v1')
     parser.add_argument('--training-seed', type=int, choices=range(42,47))
     parser.add_argument('--plan-only', action='store_true')
     parser.add_argument('--gate', choices=['J0','J1'], default='J0')
@@ -36,7 +36,7 @@ def main(argv=None):
     progress_bar=None
     try:
         p=load_protocol(args.protocol).to_dict()
-        if args.evaluation_version == 'v2':
+        if args.evaluation_version in {'v2','v3'}:
             from higgsml.inference.seed_workflow_cli import dispatch
             result=dispatch(args,p,root)
             print(json.dumps(result,allow_nan=False))

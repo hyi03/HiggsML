@@ -1,15 +1,16 @@
-"""Argument routing for the explicit v2 workflow."""
+"""Argument routing for the explicit v2/v3 workflows."""
 from higgsml.errors import ResearchError
-from higgsml.inference import seed_workflow as workflow
 
 
 def dispatch(args, protocol, root):
+    from higgsml.inference import seed_workflow, marginal_workflow
+    workflow = marginal_workflow if args.evaluation_version == 'v3' else seed_workflow
     if args.force:
-        raise ResearchError('v2 requires audited compatibility; --force is unavailable')
+        raise ResearchError('within-seed evaluation requires audited compatibility; --force is unavailable')
     if args.workers < 1 or args.worker_threads < 1:
         raise ResearchError('workers and worker threads must be positive')
     if args.training_seed is not None and args.stage not in {'model-self','assessment','t2'}:
-        raise ResearchError('--training-seed only applies to v2 block evaluation')
+        raise ResearchError('--training-seed only applies to within-seed block evaluation')
     if args.plan_only:
         return workflow.metadata_plan(protocol,stage=args.stage,registration_path=args.registration_run,
             nominal_path=args.template_run,specification_path=args.specification_run,freeze_path=args.freeze_run,

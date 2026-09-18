@@ -259,7 +259,7 @@ def stress_weights(frame, *, kind, direction, reference_score_column="reference_
 
 def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mapping, evaluate,
                      outer_replicas, inner_toys, seed, model_id, mother_id, workers=1, worker_threads=1,
-                     record_mappings=False, outer_multiplicities=None, inner_seed_factory=None):
+                     record_mappings=False, outer_multiplicities=None, inner_seed_factory=None, preflight=None):
     """Bounded paired group-bootstrap; callbacks retain scientific binding checks."""
     if not model_id or not mother_id or min(outer_replicas,inner_toys)<1:
         raise ResearchError("T2 requires frozen identities and positive budgets")
@@ -334,5 +334,32 @@ def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mappin
                 raise
             row.update(status=exc.status,error=str(exc))
         return row
-    replicas = list(ordered_map(finish, tasks(), workers=workers, worker_threads=worker_threads))
+    prepared_tasks = tasks()
+    if preflight is not None:
+        prepared_tasks = list(prepared_tasks)
+        failed = False
+        for row, arguments in prepared_tasks:
+            if arguments is None:
+                failed = True
+                row['preflight_status'] = row['status']
+                continue
+            try:
+                row['preflight'] = preflight(*arguments)
+                row['preflight_status'] = 'valid'
+            except ResearchStateError as exc:
+                if exc.status not in {'insufficient_statistics','unsupported_assessment_support','template_stat_model_unvalidated','inference_incomplete'}:
+                    raise
+                failed = True
+                row.update(status=exc.status, preflight_status=exc.status, error=str(exc),
+                           support=getattr(exc,'joint_support',{}))
+        if failed:
+            for row, _ in prepared_tasks:
+                row.setdefault('status','not_run')
+                row['generated_inner_toys'] = 0
+            statuses=sorted({r['preflight_status'] for r,_ in prepared_tasks if r['preflight_status']!='valid'})
+            return {'status':statuses[0] if len(statuses)==1 else 'inference_incomplete',
+                    'preflight_failure_statuses':statuses,'replicas':[r for r,_ in prepared_tasks],
+                    'planned_outer':outer_replicas,'planned_inner_per_outer':inner_toys,
+                    'generated_physical_toys':0}
+    replicas = list(ordered_map(finish, prepared_tasks, workers=workers, worker_threads=worker_threads))
     return {"status":"valid" if all(r["status"]=="valid" for r in replicas) else "inference_incomplete","layer":"T2-procedure","model_id":model_id,"mother_id":mother_id,"randomization":"calibration_physical_group_bootstrap_and_inner_pseudodata","fixed":"trained_model_template_and_assessment_mother_events","outer_replicas":outer_replicas,"inner_toys":inner_toys,"seed":seed,"replicas":replicas}
