@@ -85,7 +85,7 @@ python scripts/h4l_all.py
 
 重复执行同一命令会自动核对进度。绑定一致且 manifest 完整的阶段直接跳过；缺失阶段继续执行；损坏、不完整或绑定不匹配的最终目录会保留为 `.名称.<uuid>.invalid` 后再尝试当前阶段，已有 `.failed` 证据不会删除。若评估预算已经被失败或中断的 assessment/T2 占用，脚本仍按冻结协议拒绝自动重跑。
 
-封装命令为 `h4l_off_run.py` 传入 `--worker-threads 1`，并按启动时可用物理内存为每个 worker 预留 6 GiB、在 1--4 个进程之间选择 `--workers`；内存探测失败时使用 1 个进程。可并行的完整 bootstrap、Toy 和 T2 工作单元并行执行，Stage B 的注册、模板、freeze 与 Asimov 仍按依赖顺序执行。
+封装命令为 `h4l_off_run.py` 传入 `--worker-threads 1`，并按启动时可用物理内存先保留 2 GiB 本机调度/系统余量，再按每个 worker 1 GiB、在 1--4 个进程之间选择 `--workers`；内存探测失败时使用 1 个进程。该预算基于本机 worker 峰值约 0.25 GiB 的运行证据，并保留约 4 倍余量。可并行的完整 bootstrap、Toy 和 T2 工作单元并行执行，Stage B 的注册、模板、freeze 与 Asimov 仍按依赖顺序执行。
 
 没有 `--access-review` 时，命令会自动生成本地单人 self-review、转换为与当前 specification/evaluation-plan 精确绑定的 access receipt，并继续 assessment/T2。该自动路径始终记录 `independent=false`，只允许探索性结论。需要独立审核状态时，应显式传入与未打开 eligible population、当前 freeze 和 P0/T1 材料绑定的外部审核文件。
 

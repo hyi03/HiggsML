@@ -23,7 +23,7 @@ def test_default_run_uses_marginal_workflow_without_version_flag(
 ) -> None:
     workflow = _load_module()
     monkeypatch.setattr(workflow, "RUNS_ROOT", tmp_path)
-    monkeypatch.setattr(workflow, "_available_memory_bytes", lambda: 12 * 1024**3)
+    monkeypatch.setattr(workflow, "_available_memory_bytes", lambda: 4 * 1024**3)
     plan = tmp_path / "h4l-off-default" / "evaluation-plan" / "evaluation-plan.json"
     plan.parent.mkdir(parents=True)
     plan.write_text("{}", encoding="utf-8")
@@ -99,9 +99,13 @@ def test_worker_count_is_bounded_by_available_memory(monkeypatch) -> None:
     workflow = _load_module()
     for available, expected in (
         (None, 1),
-        (4 * 1024**3, 1),
-        (12 * 1024**3, 2),
-        (24 * 1024**3, 4),
+        (-1, 1),
+        (0, 1),
+        (3 * 1024**3, 1),
+        (4 * 1024**3 - 1, 1),
+        (4 * 1024**3, 2),
+        (5 * 1024**3, 3),
+        (6 * 1024**3, 4),
         (96 * 1024**3, 4),
     ):
         monkeypatch.setattr(workflow, "_available_memory_bytes", lambda value=available: value)
