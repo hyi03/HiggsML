@@ -17,7 +17,7 @@ def _load_module():
     return module
 
 
-def test_default_run_name_executes_the_complete_resumable_h4l_workflow(
+def test_default_run_uses_v2_for_the_off_only_workflow(
     tmp_path: Path, monkeypatch,
 ) -> None:
     workflow = _load_module()
@@ -34,8 +34,6 @@ def test_default_run_name_executes_the_complete_resumable_h4l_workflow(
         "h4l_check.py",
         "h4l_run.py",
         "h4l_off_run.py",
-        "h4l_off_self_review.py",
-        "h4l_off_run.py",
     ]
     assert commands[0][2:] == []
     assert commands[1][2:] == ["--run-name", "default"]
@@ -43,13 +41,7 @@ def test_default_run_name_executes_the_complete_resumable_h4l_workflow(
     assert commands[3][2:] == [
         "--source-run-name", "default", "--run-name", "default",
         "--stage-b", "--workers", "2", "--worker-threads", "1",
-    ]
-    assert commands[4][2:] == [
-        "--run-name", "default", "--reviewer", "Test Researcher",
-    ]
-    assert commands[5][2:] == [
-        "--source-run-name", "default", "--run-name", "default",
-        "--evaluation", "--workers", "2", "--worker-threads", "1",
+        "--evaluation-version", "v2",
     ]
 
 
@@ -68,7 +60,9 @@ def test_explicit_run_name_reuses_an_existing_access_review(
     commands: list[list[str]] = []
     monkeypatch.setattr(workflow, "_invoke", lambda command: commands.append(command))
 
-    workflow._run(workflow._parser().parse_args(["--run-name", "study-001"]))
+    workflow._run(workflow._parser().parse_args([
+        "--run-name", "study-001", "--evaluation-version", "v1",
+    ]))
 
     assert len(commands) == 5
     assert all(Path(command[1]).name != "h4l_off_self_review.py" for command in commands)

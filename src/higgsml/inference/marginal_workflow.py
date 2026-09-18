@@ -1,4 +1,4 @@
-"""Explicit v2 orchestration; original candidate artifacts retain their identities."""
+"""Explicit v3 orchestration; original candidate artifacts retain their identities."""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -10,7 +10,8 @@ from higgsml.errors import ResearchError, ResearchStateError
 from higgsml.data import load_research_data
 from higgsml.inference import attribution_workflow as legacy
 from higgsml.inference.attribution import FAMILY, BUDGETS, candidate_keys, summarize
-from higgsml.inference.seed_blocks import canonical_seed_blocks, pairing_contract, stream_identity
+from higgsml.inference.marginal_coupling import canonical_seed_blocks, pairing_contract, METADATA
+from higgsml.inference.seed_blocks import stream_identity
 from higgsml.inference.seed_schema import validate_workflow_document, _SCHEMAS
 
 
@@ -30,7 +31,7 @@ def unit_name(unit):
 def screening_policy(protocol):
     return {'policy': 'engineering_screen_not_scientific_validation', 'replicas': 200,
             'required_failures_per_seed': 0, 'sampling': 'group_bernoulli_thinning',
-            'q': protocol['roles']['assessment'] / protocol['roles']['template'],
+            'q_thin': protocol['roles']['assessment'] / protocol['roles']['template'],
             'seed': 42001, 'projection_rtol': 1e-10, 'projection_atol': 1e-10}
 
 
@@ -50,11 +51,11 @@ def _check_seal(value, field):
     if field != 'artifact_id':
         validate_workflow_document(value)
     if value.get(field) != digest_json({k: v for k, v in value.items() if k != field}):
-        raise ResearchError(f'v2 {field} digest mismatch')
+        raise ResearchError(f'v3 {field} digest mismatch')
 
 
 def _publish(output, allowed_root, protocol, stage, files, upstreams=()):
-    with ResearchRun(output, allowed_root=allowed_root, stage='attribution-v2-' + stage,
+    with ResearchRun(output, allowed_root=allowed_root, stage='attribution-v3-' + stage,
                      dataset=protocol['dataset'], protocol=protocol, upstreams=list(upstreams)) as run:
         for name, value in files.items():
             if isinstance(value,dict) and value.get('schema_version') in _SCHEMAS:
@@ -65,7 +66,7 @@ def _publish(output, allowed_root, protocol, stage, files, upstreams=()):
 
 def _load(path, protocol, stage):
     return read_run(path, dataset=protocol['dataset'], protocol=protocol,
-                    stages=('attribution-v2-' + stage,))
+                    stages=('attribution-v3-' + stage,))
 
 
 def metadata_plan(protocol, *, stage=None, registration_path=None, nominal_path=None,
@@ -93,14 +94,14 @@ def metadata_plan(protocol, *, stage=None, registration_path=None, nominal_path=
             unresolved.append({'input': key, 'reason': 'manifest_missing'})
             continue
         manifest = read_json(manifest_path)
-        expected = 'prepare' if expected_stage == 'prepare' else 'attribution-v2-' + expected_stage
+        expected = 'prepare' if expected_stage == 'prepare' else 'attribution-v3-' + expected_stage
         _check_seal(manifest, 'artifact_id')
         if (manifest.get('stage') != expected or manifest.get('status') != 'complete'
                 or manifest.get('protocol_sha256') != digest_json(protocol)
                 or manifest.get('dataset') != protocol['dataset']):
-            raise ResearchError('v2 plan metadata stage/protocol/status mismatch: ' + key)
+            raise ResearchError('v3 plan metadata stage/protocol/status mismatch: ' + key)
         if plan and key in plan['inputs'] and manifest['artifact_id'] != plan['inputs'][key]:
-            raise ResearchError('v2 plan metadata identity mismatch: ' + key)
+            raise ResearchError('v3 plan metadata identity mismatch: ' + key)
         manifests[key] = manifest
     dependencies = {'template_artifact_id': ['registration_artifact_id'],
                     'specification_artifact_id': ['registration_artifact_id', 'template_artifact_id', 'j0_artifact_id', 'j1_artifact_id'],
@@ -111,17 +112,17 @@ def metadata_plan(protocol, *, stage=None, registration_path=None, nominal_path=
         if key in manifests:
             actual = {item['artifact_id'] for item in manifests[key]['upstreams']}
             if any(manifests[parent]['artifact_id'] not in actual for parent in parents if parent in manifests):
-                raise ResearchError('v2 plan metadata upstream mismatch: ' + key)
+                raise ResearchError('v3 plan metadata upstream mismatch: ' + key)
     if specification_path and 'specification_artifact_id' in manifests:
         spec = read_json(Path(specification_path) / 'evaluation-spec.json')
         validate_specification(spec, protocol)
         if plan and plan['specification'] != spec:
-            raise ResearchError('v2 plan/specification mismatch')
+            raise ResearchError('v3 plan/specification mismatch')
     if freeze_path and 'freeze_artifact_id' in manifests:
         frozen = read_json(Path(freeze_path) / 'freeze.json')
         _check_seal(frozen, 'evidence_id')
         if plan and frozen['specification_id'] != plan['specification_id']:
-            raise ResearchError('v2 plan/freeze specification mismatch')
+            raise ResearchError('v3 plan/freeze specification mismatch')
     if not manifests and not unresolved:
         unresolved.append({'input': stage or 'workflow', 'reason': 'no_bound_inputs_supplied'})
     return {'status': 'unresolved' if unresolved else 'metadata_bound_payload_and_access_checks_pending',
@@ -158,24 +159,24 @@ def source_history(prepared):
 def register(source_root, prepared_path, protocol, output, allowed_root, t1_path=None, *,
              source_registration=None, force=False):
     if force:
-        raise ResearchError('v2 compatibility requires exact audited semantics; --force is not an adapter')
+        raise ResearchError('v3 compatibility requires exact audited semantics; --force is not an adapter')
     # Reuse the existing complete 75-model audit and deterministic empty definitions.
     source = Path(source_registration) if source_registration else Path(output).parent / 'source-register'
     if not source_registration and not source.exists():
         legacy.register(source_root, prepared_path, protocol, source, allowed_root, t1_path)
     original, overlay, prepared = legacy.load_registration(source, protocol)
     if Path(prepared_path).resolve() != prepared.path.resolve():
-        raise ResearchError('v2 source registration prepared binding mismatch')
+        raise ResearchError('v3 source registration prepared binding mismatch')
     if source_root and Path(source_root).resolve() != Path(overlay['source_root']).resolve():
-        raise ResearchError('v2 source registration model root mismatch')
-    value = _seal({'schema_version': 'h4l-mass-off-registration-v2', 'family_id': FAMILY,
+        raise ResearchError('v3 source registration model root mismatch')
+    value = _seal({'schema_version': 'h4l-mass-off-registration-v3', 'family_id': FAMILY,
         **_definition_digests(protocol),
         'source_registration_path': str(original.path), 'source_registration_id': _id(original),
         'prepared_artifact_id': _id(prepared), 'population_id': overlay['population_id'],
         'protocol_sha256': digest_json(protocol), 'candidate_keys': candidate_keys(),
         'pairing_contract': pairing_contract(), 'blocks': [b.as_dict() for b in canonical_seed_blocks()],
         'budgets': deepcopy(BUDGETS), 'source_history': source_history(prepared),
-        'qualification': overlay['qualification'], 'registration_status': 'exploratory_v2',
+        'qualification': overlay['qualification'], 'registration_status': 'exploratory_v3',
         'assessment_payload_read': False}, 'registration_id')
     return _publish(output, allowed_root, protocol, 'register', {'registration.json': value}, [original, prepared])
 
@@ -185,7 +186,7 @@ def load_registration(path, protocol):
     value = registered.read_json('registration.json')
     _check_seal(value, 'registration_id')
     original, overlay, prepared = legacy.load_registration(value['source_registration_path'], protocol)
-    if (value.get('schema_version') != 'h4l-mass-off-registration-v2'
+    if (value.get('schema_version') != 'h4l-mass-off-registration-v3'
             or value['source_registration_id'] != _id(original)
             or value['prepared_artifact_id'] != _id(prepared)
             or value['population_id'] != overlay['population_id']
@@ -194,7 +195,7 @@ def load_registration(path, protocol):
             or value['pairing_contract'] != pairing_contract()
             or any(value.get(k) != v for k,v in _definition_digests(protocol).items())
             or value['blocks'] != [b.as_dict() for b in canonical_seed_blocks()]):
-        raise ResearchError('v2 registration binding mismatch')
+        raise ResearchError('v3 registration binding mismatch')
     return registered, value, original, overlay, prepared
 
 
@@ -216,7 +217,7 @@ def nominal(registration_path, protocol, output, allowed_root, *, source_nominal
     if not source_nominal and not source.exists():
         legacy.nominal(original.path, protocol, source, allowed_root)
     source_run, grid, bundles = legacy.load_nominal(source, original, overlay, protocol)
-    adapter = _seal({'schema_version': 'h4l-mass-off-compatibility-audit-v1',
+    adapter = _seal({'schema_version': 'h4l-mass-off-compatibility-audit-v3',
         'status': 'compatible', 'registration_id': _id(registered), 'source_path': str(source_run.path),
         'semantics': _semantics(source_run, grid, bundles, prepared, protocol),
         'source_history': source_history(prepared), 'original_artifacts_relabelled': False}, 'adapter_id')
@@ -232,7 +233,7 @@ def load_nominal(registration_path, nominal_path, protocol):
     nominal_run, grid, bundles = legacy.load_nominal(adapter['source_path'], original, overlay, protocol)
     if (adapter['registration_id'] != _id(registered) or adapter['status'] != 'compatible'
             or adapter['semantics'] != _semantics(nominal_run, grid, bundles, prepared, protocol)):
-        raise ResearchError('v2 nominal compatibility semantics changed')
+        raise ResearchError('v3 nominal compatibility semantics changed')
     return registered, value, prepared, adapter_run, nominal_run, grid, bundles
 
 
@@ -261,6 +262,13 @@ def _support_inputs(parent, grid, bundles, *, nominal_parent):
                             expected[(key, process, mass_bin, category)] = sample['yield'][
                                 category_index * (len(grid['mass_edges']) - 1) + mass_bin]
         inputs[block.seed] = {'block': block, 'category_columns': columns, 'mass_edges': grid['mass_edges']}
+        samples=grid['templates'][block.candidate_keys[0]]['samples']
+        roles={str(v['name']):'signal' if v['is_signal'] else 'background' for v in samples}
+        if len(roles)!=len(samples) or any(
+                {str(v['name']):'signal' if v['is_signal'] else 'background' for v in grid['templates'][key]['samples']} != roles
+                for key in block.candidate_keys):
+            raise ResearchError('candidate process role maps disagree')
+        inputs[block.seed]['role_map']=roles
         if nominal_parent:
             inputs[block.seed]['expected_marginals'] = expected
     return parent, inputs
@@ -294,7 +302,7 @@ def _historical_access(prepared, protocol, freeze_path, access_path):
 
 def support_check(registration_path, nominal_path, protocol, output, allowed_root, *, gate='J0',
                   j0_path=None, purpose='pre_freeze_support', historical_freeze=None, access_review=None):
-    from higgsml.inference.joint_support import run_j0, run_j1
+    from higgsml.inference.marginal_support import run_j0, run_j1
     registered, value, prepared, adapter, nominal_run, grid, bundles = load_nominal(registration_path, nominal_path, protocol)
     upstreams = [registered, adapter]
     frozen = None
@@ -312,7 +320,7 @@ def support_check(registration_path, nominal_path, protocol, output, allowed_roo
         if not j0_path:
             raise ResearchError('J1 requires completed J0')
         j0_run = _load(j0_path, protocol, 'support-j0')
-        j0 = j0_run.read_json('joint-support-summary.json')
+        j0 = j0_run.read_json('marginal-support-summary.json')
         _validate_gate(j0, registered, adapter, protocol, 'J0')
         if j0['status'] != 'passed':
             raise ResearchStateError('J0 failed; J1 is not permitted', status='insufficient_statistics')
@@ -326,32 +334,32 @@ def support_check(registration_path, nominal_path, protocol, output, allowed_roo
         for arguments in inputs.values():
             arguments.pop('expected_marginals', None)
         policy = screening_policy(protocol)
-        if not 0 < policy['q'] <= 1:
+        if not 0 < policy['q_thin'] <= 1:
             result = {'gate': 'J1', 'status': 'screening_design_unavailable', 'seeds': {}, 'records': []}
         else:
-            result = run_j1(parent, block_inputs=inputs, q=policy['q'],
+            result = run_j1(parent, block_inputs=inputs, q_thin=policy['q_thin'],
                             contract_digest=pairing_contract()['contract_digest'])
     else:
         raise ResearchError('support gate must be J0 or J1')
     if any(s.get('summary', s).get('qualification') == 'binding_error' for s in result['seeds'].values()):
         raise ResearchError('joint projection differs from frozen nominal template')
-    result.update(schema_version='h4l-joint-support-workflow-v1', registration_artifact_id=_id(registered),
+    result.update(schema_version='h4l-marginal-support-workflow-v1', registration_artifact_id=_id(registered),
         nominal_artifact_id=_id(adapter), policy=screening_policy(protocol), purpose=purpose,
         screening_policy_digest=digest_json(screening_policy(protocol)),
         parent_source={'prepared_artifact_id': _id(prepared), 'population_id': prepared.manifest['population_id'],
                        'role': role, 'source_path': str(prepared.path), 'source_nominal_artifact_id': _id(nominal_run)},
         assessment_payload_read=frozen is not None,
         evidence_scope='posthoc_diagnostic_after_assessment_failure' if frozen else 'engineering_screen_not_scientific_validation')
-    with ResearchRun(output, allowed_root=allowed_root, stage='attribution-v2-support-' + gate.lower(),
+    with ResearchRun(output, allowed_root=allowed_root, stage='attribution-v3-support-' + gate.lower(),
                      dataset=protocol['dataset'], protocol=protocol, upstreams=upstreams) as run:
         validate_workflow_document(result)
-        run.write_json('joint-support-summary.json', result)
+        run.write_json('marginal-support-summary.json', result)
         if gate == 'J0':
-            with (run.path / 'joint-cells.jsonl').open('x', encoding='utf-8') as stream:
+            with (run.path / 'marginal-rates.jsonl').open('x', encoding='utf-8') as stream:
                 for seed, diagnostic in result['seeds'].items():
                     for cell in diagnostic['cells']:
                         stream.write(json.dumps({'seed': int(seed), **cell}, allow_nan=False) + '\n')
-            run.register_file('joint-cells.jsonl')
+            run.register_file('marginal-rates.jsonl')
     return legacy._result(run, output)
 
 
@@ -379,20 +387,22 @@ def specification(registration_path, nominal_path, protocol, output, allowed_roo
     registered, value, prepared, adapter, nominal_run, grid, bundles = load_nominal(registration_path, nominal_path, protocol)
     gates = [_load(j0_path, protocol, 'support-j0'), _load(j1_path, protocol, 'support-j1')]
     for name, gate in zip(('J0', 'J1'), gates):
-        checked = gate.read_json('joint-support-summary.json')
+        checked = gate.read_json('marginal-support-summary.json')
         _validate_gate(checked, registered, adapter, protocol, name)
         if checked['status'] != 'passed':
             raise ResearchStateError('support qualification failed; freeze blocked', status='insufficient_statistics')
     if _id(gates[0]) not in {u['artifact_id'] for u in gates[1].manifest['upstreams']}:
         raise ResearchError('J1 does not bind the qualified J0')
-    spec = _seal({'schema_version': 'h4l-mass-off-evaluation-spec-v2',
+    spec = _seal({'schema_version': 'h4l-mass-off-evaluation-spec-v3',
         'registration_artifact_id': _id(registered), 'nominal_artifact_id': _id(adapter),
         'prepared_artifact_id': _id(prepared), 'population_id': value['population_id'],
         'protocol_sha256': digest_json(protocol), 'candidate_keys': candidate_keys(),
         'blocks': [b.as_dict() for b in canonical_seed_blocks()], 'pairing_contract': pairing_contract(),
         'budgets': deepcopy(BUDGETS), 'matrix': matrix(), 'screening_policy': screening_policy(protocol),
-        'gate_artifact_ids': list(map(_id, gates)), 'source_history': source_history(prepared),
-        'rng': {'algorithm': 'sha256-first-64-big-endian', 'version': 'h4l-stream-v1'},
+        'gate_artifact_ids': list(map(_id, gates)),
+        'support_qualification': gates[0].read_json('marginal-support-summary.json')['seeds']['42']['summary']['identity_qualification'],
+        'source_history': source_history(prepared),
+        'rng': {'algorithm': 'sha256-full-256-PCG64', 'version': 'h4l-marginal-stream-v1'},
         'semantics': _semantics(nominal_run, grid, bundles, prepared, protocol),
         'evidence_scope': 'MC_only_exploratory_within_seed'}, 'specification_id')
     return _publish(output, allowed_root, protocol, 'evaluation-spec', {'evaluation-spec.json': spec},
@@ -401,14 +411,14 @@ def specification(registration_path, nominal_path, protocol, output, allowed_roo
 
 def validate_specification(spec, protocol):
     _check_seal(spec, 'specification_id')
-    if (spec.get('schema_version') != 'h4l-mass-off-evaluation-spec-v2'
+    if (spec.get('schema_version') != 'h4l-mass-off-evaluation-spec-v3'
             or any(key in spec for key in ('freeze_artifact_id', 'evaluation_plan_id', 'asimov_artifact_id'))
             or spec.get('protocol_sha256') != digest_json(protocol) or spec.get('matrix') != matrix()
             or spec.get('candidate_keys') != candidate_keys() or spec.get('budgets') != BUDGETS
             or spec.get('pairing_contract') != pairing_contract()
             or spec.get('blocks') != [b.as_dict() for b in canonical_seed_blocks()]
             or spec.get('screening_policy') != screening_policy(protocol)):
-        raise ResearchError('invalid v2 specification or cyclic dependency')
+        raise ResearchError('invalid v3 specification or cyclic dependency')
 
 
 def freeze(registration_path, nominal_path, protocol, output, allowed_root, *, specification_path):
@@ -419,7 +429,7 @@ def freeze(registration_path, nominal_path, protocol, output, allowed_root, *, s
     if (spec['registration_artifact_id'] != _id(registered) or spec['nominal_artifact_id'] != _id(adapter)
             or spec['semantics'] != _semantics(nominal_run, grid, bundles, prepared, protocol)):
         raise ResearchError('freeze specification source mismatch')
-    frozen = _seal({'schema_version': 'h4l-mass-off-freeze-v2', 'status': 'frozen',
+    frozen = _seal({'schema_version': 'h4l-mass-off-freeze-v3', 'status': 'frozen',
         'protocol_sha256': digest_json(protocol), 'specification_id': spec['specification_id'],
         'specification_path': str(spec_run.path), 'specification_artifact_id': _id(spec_run),
         'registration_artifact_id': _id(registered), 'template_artifact_id': _id(adapter),
@@ -442,7 +452,7 @@ def load_frozen(registration_path, nominal_path, freeze_path, protocol):
             or frozen['prepared_artifact_id'] != _id(prepared) or frozen['protocol_sha256'] != digest_json(protocol)
             or frozen['mass_edges'] != grid['mass_edges'] or frozen['status'] != 'frozen'
             or spec['semantics'] != _semantics(nominal_run, grid, bundles, prepared, protocol)):
-        raise ResearchError('v2 frozen cohort mismatch')
+        raise ResearchError('v3 frozen cohort mismatch')
     return (*values, frozen_run, spec)
 
 
@@ -466,7 +476,7 @@ def evaluation_plan(registration_path, nominal_path, freeze_path, result_path, p
     binding = result.read_json('binding.json')
     if binding['specification_id'] != spec['specification_id'] or binding['freeze_artifact_id'] != _id(frozen_run):
         raise ResearchError('Asimov/specification binding mismatch')
-    plan = _seal({'schema_version': 'h4l-mass-off-evaluation-plan-v2', 'specification': spec,
+    plan = _seal({'schema_version': 'h4l-mass-off-evaluation-plan-v3', 'specification': spec,
         'specification_id': spec['specification_id'], 'pairing_scope': 'within_seed', 'cross_seed_pairing': 'none',
         'inputs': {'registration_artifact_id': _id(registered), 'prepared_artifact_id': _id(prepared),
                    'template_artifact_id': _id(adapter), 'freeze_artifact_id': _id(frozen_run), 'asimov_artifact_id': _id(result)},
@@ -478,11 +488,11 @@ def evaluation_plan(registration_path, nominal_path, freeze_path, result_path, p
 def validate_plan(plan, protocol):
     _check_seal(plan, 'evaluation_plan_id')
     validate_specification(plan['specification'], protocol)
-    if (plan.get('schema_version') != 'h4l-mass-off-evaluation-plan-v2'
+    if (plan.get('schema_version') != 'h4l-mass-off-evaluation-plan-v3'
             or plan['specification_id'] != plan['specification']['specification_id']
             or plan.get('matrix') != matrix() or plan.get('unit_count_including_report') != 37
             or plan.get('pairing_scope') != 'within_seed' or plan.get('cross_seed_pairing') != 'none'):
-        raise ResearchError('invalid v2 evaluation plan')
+        raise ResearchError('invalid v3 evaluation plan')
 
 
 def _bound_plan(path, protocol, registered, prepared, adapter, frozen_run, spec, result_path):
@@ -492,47 +502,47 @@ def _bound_plan(path, protocol, registered, prepared, adapter, frozen_run, spec,
     expected = {'registration_artifact_id': _id(registered), 'prepared_artifact_id': _id(prepared),
                 'template_artifact_id': _id(adapter), 'freeze_artifact_id': _id(frozen_run), 'asimov_artifact_id': _id(result)}
     if plan['inputs'] != expected or plan['specification'] != spec:
-        raise ResearchError('v2 evaluation plan differs from bound inputs')
+        raise ResearchError('v3 evaluation plan differs from bound inputs')
     result_binding = result.read_json('binding.json')
     if result_binding.get('specification_id') != spec['specification_id'] or result_binding.get('freeze_artifact_id') != _id(frozen_run):
-        raise ResearchError('v2 Asimov binding differs from frozen specification')
+        raise ResearchError('v3 Asimov binding differs from frozen specification')
     return plan, result
 
 
 def _access(prepared, frozen_run, spec, plan, protocol, access_path):
     if not access_path:
-        raise ResearchStateError('v2 assessment requires reviewed eligible source',
+        raise ResearchStateError('v3 assessment requires reviewed eligible source',
                                  status='blocked_missing_eligible_assessment_source')
     path = Path(access_path).resolve()
     receipt = read_json(path)
     _check_seal(receipt, 'access_id')
-    if (receipt.get('schema_version') != 'h4l-off-assessment-access-v2'
+    if (receipt.get('schema_version') != 'h4l-off-assessment-access-v3'
             or receipt.get('specification_id') != spec['specification_id']
             or receipt.get('evaluation_plan_id') != plan['evaluation_plan_id']
             or receipt.get('blocks') != spec['blocks']):
-        raise ResearchError('v2 access receipt binding mismatch')
+        raise ResearchError('v3 access receipt binding mismatch')
     original_path = Path(receipt['source_review']['path'])
     if sha256_file(original_path) != receipt['source_review']['sha256']:
-        raise ResearchError('v2 source review changed')
+        raise ResearchError('v3 source review changed')
     original = read_json(original_path)
     expected_mode = original.get('review_mode', 'independent_validated')
     expected_independence = original.get('independent') is True and expected_mode != 'single_researcher_self_review'
     if receipt.get('review_mode') != expected_mode or receipt.get('independent') is not expected_independence:
-        raise ResearchError('v2 access receipt cannot upgrade source review qualification')
+        raise ResearchError('v3 access receipt cannot upgrade source review qualification')
     if original.get('review_mode') == 'single_researcher_self_review':
         from higgsml.inference.self_review import validate_self_review_access
         validate_self_review_access(original, original_path.parent)
         for key, expected in {'prepared_artifact_id': _id(prepared), 'population_id': prepared.manifest['population_id'],
                               'protocol_sha256': digest_json(protocol), 'freeze_artifact_id': _id(frozen_run)}.items():
             if original.get(key) != expected:
-                raise ResearchError('v2 self-review source binding mismatch')
+                raise ResearchError('v3 self-review source binding mismatch')
     else:
         legacy._validate_independent_access_review(original, original_path, prepared,
             {'population_id': prepared.manifest['population_id']}, frozen_run, protocol)
     for history in source_history(prepared):
         previous = history['claim'].get('binding', history['claim'])
         if previous.get('freeze_artifact_id') != _id(frozen_run):
-            raise ResearchStateError('historically opened population cannot become fresh v2 source',
+            raise ResearchStateError('historically opened population cannot become fresh v3 source',
                                      status='blocked_missing_eligible_assessment_source')
     return receipt
 
@@ -544,7 +554,7 @@ def access_adapter(registration_path, nominal_path, freeze_path, protocol, outpu
     plan, result = _bound_plan(evaluation_plan_path, protocol, registered, prepared, adapter, frozen_run, spec, result_path)
     original = Path(access_review).resolve()
     review = read_json(original)
-    receipt = _seal({'schema_version': 'h4l-off-assessment-access-v2',
+    receipt = _seal({'schema_version': 'h4l-off-assessment-access-v3',
         'specification_id': spec['specification_id'], 'evaluation_plan_id': plan['evaluation_plan_id'],
         'blocks': spec['blocks'], 'source_review': {'path': str(original), 'sha256': sha256_file(original)},
         'review_mode': review.get('review_mode', 'independent_validated'),
@@ -565,7 +575,7 @@ def _validate_access_source(receipt, original, prepared, frozen_run, spec, plan,
         if (review.get('freeze_artifact_id') != _id(frozen_run) or review.get('prepared_artifact_id') != _id(prepared)
                 or review.get('population_id') != prepared.manifest['population_id']
                 or review.get('protocol_sha256') != digest_json(protocol)):
-            raise ResearchError('v2 self-review source binding mismatch')
+            raise ResearchError('v3 self-review source binding mismatch')
     else:
         legacy._validate_independent_access_review(review, original, prepared,
             {'population_id': prepared.manifest['population_id']}, frozen_run, protocol)
@@ -574,16 +584,16 @@ def _validate_access_source(receipt, original, prepared, frozen_run, spec, plan,
 
 
 def evaluation_binding(prepared, frozen_run, spec, plan, *, stage, mu, training_seed, access_receipt):
-    from higgsml.inference.seed_evaluation_state import SeedEvaluationBinding
+    from higgsml.inference.marginal_evaluation_state import SeedEvaluationBinding
     block = next((b for b in canonical_seed_blocks() if b.seed == training_seed), None)
     if block is None or {'stage': stage, 'mu': mu, 'training_seed': training_seed} not in matrix():
-        raise ResearchError('unregistered v2 block evaluation')
+        raise ResearchError('unregistered v3 block evaluation')
     budget = ({'planned_outer': BUDGETS['t2']['outer_replicas'], 'planned_inner_per_outer': BUDGETS['t2']['inner_toys']}
               if stage == 't2' else {'planned_toys_per_candidate': BUDGETS['toys']['count']})
     rng = stream_identity(contract_digest=block.pairing_contract_digest, stage=stage, mu=mu,
         training_seed=training_seed, outer_index=None, stream_kind='physical_poisson', toy_base_seed=BUDGETS['toys']['seed'])
     return block, SeedEvaluationBinding(prepared.manifest['population_id'], _id(frozen_run),
-        spec['specification_id'], plan['evaluation_plan_id'], 'within_seed',
+        spec['specification_id'], plan['evaluation_plan_id'], pairing_contract()['contract_digest'],
         stage, mu, training_seed, block.candidate_keys, access_receipt, budget, rng)
 
 
@@ -591,7 +601,7 @@ def evaluate(registration_path, nominal_path, freeze_path, protocol, output, all
              training_seed=None, access_review=None, evaluation_plan_path=None, result_path=None,
              workers=1, worker_threads=1, progress=None):
     from higgsml.inference.seed_evaluation import evaluate_seed_block, evaluate_seed_t2, make_t2_outer_multiplicities
-    from higgsml.inference.seed_evaluation_state import (resolve_seed_evaluation, claim_seed_evaluation,
+    from higgsml.inference.marginal_evaluation_state import (resolve_seed_evaluation, claim_seed_evaluation,
         publish_seed_evaluation_terminal, recover_seed_evaluation_publication)
     registered, value, prepared, adapter, nominal_run, grid, bundles, frozen_run, spec = load_frozen(
         registration_path, nominal_path, freeze_path, protocol)
@@ -690,7 +700,7 @@ def descriptive_seed_diagnostics(entries):
                 row = {'stage':stage,'mu':mu,'subset':subset,'training_seed':seed,'confidence_level':float(level),
                        'status':status,**{metric:coverage.get(metric) for metric in metrics},
                        'value_source':'paired_toy_descriptive_diagnostic',
-                       'experimental_unit':'20_outer_calibration_replicas' if stage=='t2' else 'within_seed_physical_toy',
+                       'experimental_unit':'20_outer_calibration_replicas' if stage=='t2' else 'within_seed_crn_toy',
                        'outer_records':outer_values}
                 rows.append(row); vector.append(row)
             for metric in metrics:
@@ -700,7 +710,7 @@ def descriptive_seed_diagnostics(entries):
                     'median':float(median(r[metric] for r in vector)) if valid else None,
                     'per_seed':[{'seed':r['training_seed'],'status':r['status'],'value':r[metric]} for r in vector],
                     'scope':'descriptive_training_seed_stability_conditional_on_shared_MC',
-                    'experimental_unit':'20_outer_calibration_replicas' if stage=='t2' else 'within_seed_physical_toy'})
+                    'experimental_unit':'20_outer_calibration_replicas' if stage=='t2' else 'within_seed_crn_toy'})
     return rows, aggregates
 
 
@@ -734,8 +744,8 @@ def report(registration_path, nominal_path, protocol, output, allowed_root, *, f
                     raise ResearchError('bootstrap report binding mismatch')
                 status = answer['status']
             else:
-                from higgsml.inference.seed_evaluation_state import SeedEvaluationBinding, read_seed_evaluation_terminal
-                provisional = read_run(path, dataset=protocol['dataset'], protocol=protocol, stages=('seed-block-evaluation',))
+                from higgsml.inference.marginal_evaluation_state import SeedEvaluationBinding, read_seed_evaluation_terminal
+                provisional = read_run(path, dataset=protocol['dataset'], protocol=protocol, stages=('marginal-block-evaluation',))
                 answer = provisional.read_json('seed-evaluation.json')
                 bound = answer['binding']
                 bound['candidate_ids'] = tuple(bound['candidate_ids'])
@@ -751,7 +761,7 @@ def report(registration_path, nominal_path, protocol, output, allowed_root, *, f
         except ResearchError as error:
             unit.update(status='invalid_or_consumed_output', reason=str(error))
     # A consumed but unpublished cell stays visible even when no output exists.
-    claims = prepared.path.parents[1] / '.h4l-mass-off-v2-claims'
+    claims = prepared.path.parents[1] / '.h4l-mass-off-v3-claims'
     if plan and claims.exists():
         for claim_path in claims.glob('cell-*.json'):
             claim = read_json(claim_path)
@@ -796,7 +806,7 @@ def report(registration_path, nominal_path, protocol, output, allowed_root, *, f
     for gate_path, gate_name in ((j0_path, 'J0'), (j1_path, 'J1')):
         if gate_path and Path(gate_path).exists():
             gate_run = _load(gate_path, protocol, 'support-' + gate_name.lower())
-            gate = gate_run.read_json('joint-support-summary.json')
+            gate = gate_run.read_json('marginal-support-summary.json')
             _validate_gate(gate, registered, adapter, protocol, gate_name)
             supports.append(gate)
             upstreams.append(gate_run)
@@ -804,23 +814,29 @@ def report(registration_path, nominal_path, protocol, output, allowed_root, *, f
     historical_other_freeze = any(
         h['claim'].get('binding',h['claim']).get('freeze_artifact_id') != (_id(frozen_run) if plan else None)
         for h in source_history(prepared))
-    answer = {'schema_version': 'h4l-mass-off-report-v2', 'family_id': FAMILY,
+    answer = {'schema_version': 'h4l-mass-off-report-v3', **METADATA, 'family_id': FAMILY,
         'aggregate_status': 'valid' if complete else 'incomplete', 'pairing_scope': 'within_seed', 'cross_seed_pairing': 'none',
         'nominal_asimov': summary, 'value_source': 'nominal_asimov', 'seed_layers': layers,
         'seed_descriptive_diagnostics':diagnostic_rows,'five_seed_descriptive_diagnostics':diagnostic_aggregates,
         'evaluation_units': entries, 'support': supports, 'evaluation_plan': plan,
         'qualification': value['qualification'], 'independent_validation': False,
+        'identity_qualification': spec['support_qualification'] if plan else ('physical_process' if any(
+            s.get('summary',s).get('identity_qualification')=='physical_process'
+            for g in supports for s in g['seeds'].values()) else 'label_level_legacy'),
         'assessment_source_status': 'blocked_missing_eligible_assessment_source' if historical_other_freeze else 'pending_access_review',
         'seed_interval_scope': 'training_seed_stability_conditional_on_shared_MC_not_independence',
         'missing_semantics': 'missing seed never replaced; all 5 required; no cross-seed Toy-index pairing'}
-    with ResearchRun(output, allowed_root=allowed_root, stage='attribution-v2-report', dataset=protocol['dataset'],
+    with ResearchRun(output, allowed_root=allowed_root, stage='attribution-v3-report', dataset=protocol['dataset'],
                      protocol=protocol, upstreams=upstreams) as run:
+        for table in (rows,candidate_rows,diagnostic_rows,diagnostic_aggregates):
+            for row in table:
+                row.update(METADATA)
         run.write_json('report.json', answer)
         tables = {'seed_block_status.csv': rows, 'evaluation_completeness.csv': rows,
             'seed_descriptive_diagnostics.csv':diagnostic_rows,
             'five_seed_descriptive_diagnostics.csv':diagnostic_aggregates,
             'candidate_fit_status.csv': candidate_rows,
-            'joint_support.csv': [{'gate': gate['gate'], 'seed': seed, **record.get('summary', record)}
+            'marginal_support.csv': [{'gate': gate['gate'], 'seed': seed, **record.get('summary', record)}
                                   for gate in supports for seed, record in gate['seeds'].items()]}
         if summary:
             for name, key in [('mass_off_feature_metrics.csv', 'records'), ('mass_off_feature_attribution.csv', 'contributions'),
@@ -841,7 +857,7 @@ def report(registration_path, nominal_path, protocol, output, allowed_root, *, f
         run.write_json('provenance.json', {'upstreams': run.manifest['upstreams'], 'plan': plan,
             'source_nominal_artifact_id': _id(nominal_run), 'source_history': source_history(prepared), 'budgets': BUDGETS})
         lines = ['# Within-seed MC-only evaluation', '', 'Aggregate status: ' + answer['aggregate_status'], '',
-                 'Five seeds share MC; Toy indexes are paired only within a seed. Independent validation remains pending.', '',
+                 'Artificial marginal CRN coupling: physical_event_pairing=false. Paired errors are conditional diagnostics only; sensitivity is pending. Five seeds share MC. Independent validation remains pending.', '',
                  '| Stage | mu | Training seed | Scientific status |', '|---|---:|---:|---|']
         lines += [f"| {r['stage']} | {r['mu']} | {r['training_seed']} | {r['status']} |" for r in rows]
         (run.path / 'report.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')

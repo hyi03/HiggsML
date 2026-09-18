@@ -1,0 +1,242 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "h4l-marginal-support-workflow-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "gate",
+    "status",
+    "seeds",
+    "registration_artifact_id",
+    "nominal_artifact_id",
+    "policy",
+    "purpose",
+    "screening_policy_digest",
+    "parent_source",
+    "assessment_payload_read",
+    "evidence_scope"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "h4l-marginal-support-workflow-v1"
+    },
+    "gate": {
+      "enum": [
+        "J0",
+        "J1"
+      ]
+    },
+    "status": {
+      "enum": [
+        "passed",
+        "failed",
+        "screening_design_unavailable"
+      ]
+    },
+    "seeds": {
+      "type": "object",
+      "properties": {
+        "42": {
+          "type": "object"
+        },
+        "43": {
+          "type": "object"
+        },
+        "44": {
+          "type": "object"
+        },
+        "45": {
+          "type": "object"
+        },
+        "46": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "registration_artifact_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "nominal_artifact_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "replicas",
+        "required_failures_per_seed",
+        "sampling",
+        "q_thin",
+        "seed",
+        "projection_rtol",
+        "projection_atol"
+      ],
+      "properties": {
+        "policy": {
+          "const": "engineering_screen_not_scientific_validation"
+        },
+        "replicas": {
+          "const": 200
+        },
+        "required_failures_per_seed": {
+          "const": 0
+        },
+        "sampling": {
+          "const": "group_bernoulli_thinning"
+        },
+        "q_thin": {
+          "type": "number"
+        },
+        "seed": {
+          "const": 42001
+        },
+        "projection_rtol": {
+          "const": 1e-10
+        },
+        "projection_atol": {
+          "const": 1e-10
+        }
+      }
+    },
+    "purpose": {
+      "enum": [
+        "pre_freeze_support",
+        "posthoc_support_diagnostic"
+      ]
+    },
+    "screening_policy_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "parent_source": {
+      "type": "object",
+      "required": [
+        "prepared_artifact_id",
+        "population_id",
+        "role",
+        "source_path",
+        "source_nominal_artifact_id"
+      ]
+    },
+    "assessment_payload_read": {
+      "type": "boolean"
+    },
+    "evidence_scope": {
+      "enum": [
+        "engineering_screen_not_scientific_validation",
+        "posthoc_diagnostic_after_assessment_failure"
+      ]
+    },
+    "projection_tolerance": {
+      "type": "object"
+    },
+    "replicas": {
+      "const": 200
+    },
+    "required_failures_per_seed": {
+      "const": 0
+    },
+    "toy_base_seed": {
+      "const": 42001
+    },
+    "failures_by_seed": {
+      "type": "object"
+    },
+    "records": {
+      "type": "array"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "J0"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "projection_tolerance"
+        ],
+        "properties": {
+          "seeds": {
+            "required": [
+              "42",
+              "43",
+              "44",
+              "45",
+              "46"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "J1"
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "failed"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "replicas",
+          "required_failures_per_seed",
+          "toy_base_seed",
+          "failures_by_seed",
+          "records"
+        ],
+        "properties": {
+          "seeds": {
+            "required": [
+              "42",
+              "43",
+              "44",
+              "45",
+              "46"
+            ]
+          },
+          "records": {
+            "minItems": 200,
+            "maxItems": 200
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "screening_design_unavailable"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "seeds": {
+            "maxProperties": 0
+          },
+          "records": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ]
+}

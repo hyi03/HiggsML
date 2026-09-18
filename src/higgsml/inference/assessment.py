@@ -108,6 +108,30 @@ def _joint_mother(grid, bundles, mother, protocol, categorize, *, parent_role='a
         columns[key] = column
         work[column] = mapped.category.to_numpy(int)
         joint.append(mass_bin + n * work[column].to_numpy())
+    from higgsml.inference.marginal_coupling import is_marginal, diagnose_marginal_support
+    if is_marginal(seed_block):
+        roles = {str(sample['name']): 'signal' if sample['is_signal'] else 'background'
+                 for sample in grid['templates'][keys[0]]['samples']}
+        expected = {} if parent_role == 'template' else None
+        for key in keys:
+            samples = grid['templates'][key]['samples']
+            if {str(v['name']): 'signal' if v['is_signal'] else 'background' for v in samples} != roles:
+                raise ResearchError('candidate process role maps disagree')
+            if expected is not None:
+                for sample in samples:
+                    for k in (0,1):
+                        for b in range(n):
+                            expected[(key,str(sample['name']),b,k)] = sample['yield'][k*n+b]
+        support = diagnose_marginal_support(work,block=seed_block,category_columns=columns,
+            mass_edges=edges,role_map=roles,expected_marginals=expected)
+        if support['summary']['qualification'] != 'valid':
+            error=ResearchStateError('marginal support insufficient',status='insufficient_statistics')
+            error.joint_support=support
+            raise error
+        for cell in support['cells']:
+            if cell['signed_sum']>0 and cell['mass_bin']+n*cell['category'] not in grid['templates'][cell['candidate_id']]['active_bins']:
+                raise ResearchStateError('positive marginal outside template support',status='unsupported_assessment_support')
+        return work, columns, None, support
     cells, inverse = np.unique(np.column_stack(joint), axis=0, return_inverse=True)
     if pd.DataFrame({"group": work.event_group_id.to_numpy(), "cell": inverse}).groupby("group").cell.nunique().max() > 1:
         raise ResearchStateError("one physical event spans joint observation cells; event covariance is unvalidated", status="template_stat_model_unvalidated")
@@ -157,7 +181,7 @@ def _joint_mother(grid, bundles, mother, protocol, categorize, *, parent_role='a
 def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, mu, count,
                      seed, prepared_id, freeze_id, categorize=None, stress_responses=None,stress_direction=0, workers=1, worker_threads=1,
                      parent_role='assessment', progress=None, seed_block=None,
-                     physical_stream_id=None, auxiliary_streams=None):
+                     physical_stream_id=None, auxiliary_streams=None, coupling_context=None, preflight_support=None):
     """Return per-candidate results using one shared joint-cell Poisson draw.
 
     Root verifies the immutable freeze artifact before granting mother access.
@@ -176,15 +200,23 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
     levels = cfg["confidence_levels"]
     if levels != [.68, .95]:
         raise ResearchError("unsupported frozen confidence levels")
-    joint = _joint_mother(grid, bundles, mother, p, categorize or categorize_bundle,
+    joint = preflight_support or _joint_mother(grid, bundles, mother, p, categorize or categorize_bundle,
                           parent_role=parent_role, seed_block=seed_block)
     work, columns, joint_cells = joint[:3]
     joint_support = joint[3] if seed_block is not None else None
     mother_id = digest_json({"prepared_id": prepared_id, "freeze_id": freeze_id,
                             "rows": mother[["event_group_id", "label", "m4l", "yield_weight"]].to_dict("records")})
-    paired = paired_event_toys(work, category_columns=columns, mass_edges=grid["mass_edges"],
-                              mu=mu, count=count, seed=seed, mother_id=mother_id, _joint_cells=joint_cells,
-                              parent_role=parent_role)
+    from higgsml.inference.marginal_coupling import is_marginal, marginal_toys, METADATA
+    marginal = is_marginal(seed_block)
+    if marginal:
+        if coupling_context is None:
+            raise ResearchError('v3 coupling requires bound stream context')
+        paired = marginal_toys(joint_support,block=seed_block,mass_edges=grid['mass_edges'],
+            mu=mu,count=count,**coupling_context)
+    else:
+        paired = paired_event_toys(work, category_columns=columns, mass_edges=grid["mass_edges"],
+                                  mu=mu, count=count, seed=seed, mother_id=mother_id, _joint_cells=joint_cells,
+                                  parent_role=parent_role)
     pairing_id = digest_json({"mother": mother_id, "grid": grid["mass_edges"], "seed": seed,
                              "mu": mu, "count": count, "observations": paired["observations"]})
     expected_states = {"insufficient_statistics", "unsupported_assessment_support",
@@ -337,6 +369,12 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
             result["missing_fit_indexes"] = sorted(set(range(count)) - {
                 r.get("toy") for r in toys if len(r.get("intervals", [])) == len(levels)})
             result["joint_support"] = joint_support["summary"]
+            if marginal:
+                result.update(METADATA)
+                result['coupling_receipt'] = paired['coupling_receipt']
+                for comparisons in result.get('paired_coverage', {}).values():
+                    for value in comparisons.values():
+                        value.update(METADATA)
     return results
 
 
@@ -403,10 +441,10 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
                 model_id=bundle['model_id'],mapping_id=bundle['mapping_id'])
         return result
 
-    def evaluate(mapped_template, mapped_mother, mapping, inner_toys, inner_seed):
+    def evaluate(mapped_template, mapped_mother, mapping, inner_toys, inner_seed, *, preflight=False):
         fitted, templates = mapping["bundles"], {}
         category_lookup = {key: f"_t2_category_{i}" for i, key in enumerate(sorted(fitted))}
-        for key, original in grid["templates"].items():
+        for key, original in ({} if "_v3_preflight" in mapping else grid["templates"]).items():
             legacy_m0 = key == "M0" and key not in fitted
             source = mapped_template.assign(category=0 if legacy_m0 else mapped_template[category_lookup[key]])
             structural = None
@@ -434,11 +472,26 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
                     outer_index=stream["outer_index"], stream_kind="candidate_auxiliary",
                     candidate_if_auxiliary=key, toy_base_seed=seed)
                 for key in seed_block.candidate_keys}
+        from higgsml.inference.marginal_coupling import is_marginal
+        context = None
+        saved = None
+        if is_marginal(seed_block):
+            context = dict(stage='t2',toy_base_seed=seed,outer_index=stream['outer_index'])
+            if '_v3_preflight' in mapping:
+                templates,saved = mapping['_v3_preflight']
+            else:
+                current = {'status':'valid','mass_edges':grid['mass_edges'],'templates':templates,'family_id':grid.get('family_id')}
+                saved = _joint_mother(current,fitted,mapped_mother,p,categorize,seed_block=seed_block)
+                mapping['_v3_preflight'] = (templates,saved)
+            if preflight:
+                return {'support':saved[3]['summary'],
+                        'templates_digest':digest_json(templates),
+                        'marginals_digest':digest_json(saved[3])}
         result = infer_assessment({"status": "valid", "mass_edges": grid["mass_edges"], "templates": templates, 'family_id':grid.get('family_id')}, fitted,
             mapped_mother, p, layer=layer, t1_validation=t1_validation, mu=mu, count=inner_toys, seed=inner_seed,
             prepared_id=prepared_id, freeze_id=freeze_id, categorize=categorize, progress=progress,
             seed_block=seed_block, physical_stream_id=None if stream is None else stream["stream_id"],
-            auxiliary_streams=auxiliary_streams)
+            auxiliary_streams=auxiliary_streams,coupling_context=context,preflight_support=saved)
         return {"status": "valid" if all(r["status"] == "valid" for r in result.values()) else "inference_incomplete", "candidates": result}
 
     inner_seed_factory = None
@@ -451,7 +504,9 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
                 stream_kind="inner_physical_poisson", toy_base_seed=seed)
             inner_streams_by_seed[stream["seed"]] = stream
             return stream["seed"]
-    return run_t2_procedure(calibration, template, mother, fit_mapping=fit_mapping, apply_mapping=apply_mapping,
+    from higgsml.inference.marginal_coupling import is_marginal
+    preflight = (lambda *args: evaluate(*args, preflight=True)) if is_marginal(seed_block) else None
+    return run_t2_procedure(calibration, template, mother, preflight=preflight, fit_mapping=fit_mapping, apply_mapping=apply_mapping,
         evaluate=evaluate, outer_replicas=cfg["outer_replicas"], inner_toys=cfg["inner_toys"], seed=seed,
         workers=workers, worker_threads=worker_threads,
         record_mappings=grid.get('family_id')=='engineered19_raw_T1_m4l_off_attribution_v1',

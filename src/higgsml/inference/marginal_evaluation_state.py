@@ -1,4 +1,4 @@
-"""Durable claims and terminal artifacts for within-seed v2 evaluation cells."""
+"""Durable claims and terminal artifacts for within-seed v3 evaluation cells."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -16,9 +16,9 @@ from higgsml.artifacts import LoadedRun, ResearchRun, digest_json, read_json, re
 from higgsml.errors import ResearchError, ResearchStateError
 
 
-CLAIM_SCHEMA = "h4l-mass-off-seed-block-claim-v1"
-TERMINAL_SCHEMA = "h4l-mass-off-seed-block-evaluation-v1"
-STAGE = "seed-block-evaluation"
+CLAIM_SCHEMA = "h4l-mass-off-marginal-block-claim-v1"
+TERMINAL_SCHEMA = "h4l-mass-off-marginal-block-evaluation-v1"
+STAGE = "marginal-block-evaluation"
 VALID_SCIENTIFIC_STATUSES = frozenset({"valid"})
 TERMINAL_SCIENTIFIC_STATUSES = VALID_SCIENTIFIC_STATUSES | {
     "insufficient_statistics",
@@ -126,7 +126,9 @@ def _validate_binding(value: Any) -> None:
     }
     if value["mu"] not in allowed_mu[value["stage"]]:
         _fail("invalid seed evaluation stage/mu identity")
-    from higgsml.inference.seed_blocks import canonical_seed_blocks
+    from higgsml.inference.marginal_coupling import canonical_seed_blocks, pairing_contract
+    if value["pairing_contract"] != pairing_contract()["contract_digest"]:
+        _fail("v3 pairing contract mismatch")
     expected_candidates = next(
         block.candidate_keys for block in canonical_seed_blocks()
         if block.seed == value["training_seed"]
@@ -156,7 +158,7 @@ def _inside(path: str | Path, root: str | Path, label: str) -> tuple[Path, Path]
 
 def _claims_directory(claims_root: str | Path) -> tuple[Path, Path]:
     root = Path(claims_root).resolve(strict=True)
-    directory = root / ".h4l-mass-off-v2-claims"
+    directory = root / ".h4l-mass-off-v3-claims"
     if directory.is_symlink() or (hasattr(os.path, "isjunction") and os.path.isjunction(directory)):
         _fail("unsafe seed evaluation claim directory")
     directory.mkdir(exist_ok=True)
@@ -231,7 +233,7 @@ def _claim_value(output_dir: Path, binding: SeedEvaluationBinding) -> dict[str, 
 
 def _claim_path(claims_root: str | Path, binding: SeedEvaluationBinding) -> Path:
     root = Path(claims_root).resolve(strict=True)
-    directory = root / ".h4l-mass-off-v2-claims"
+    directory = root / ".h4l-mass-off-v3-claims"
     if directory.exists() and (
         directory.is_symlink() or not directory.is_dir() or directory.resolve().parent != root
     ):
@@ -247,7 +249,7 @@ def claim_seed_evaluation(
     lineage_root = Path(claims_root).resolve(strict=True)
     output = Path(output_dir).absolute()
     value = _claim_value(output, binding)
-    _validate_schema(value, "h4l_mass_off_seed_block_claim_v1.schema.json", "seed evaluation claim")
+    _validate_schema(value, "h4l_mass_off_marginal_block_claim_v1.schema.json", "seed evaluation claim")
     if binding.stage in ASSESSMENT_ACCESS_STAGES:
         _check_v1_population_history(lineage_root, binding)
     directory, _ = _claims_directory(lineage_root)
@@ -270,7 +272,7 @@ def _read_claim(claims_root: str | Path, binding: SeedEvaluationBinding) -> tupl
     if path.is_symlink() or not path.is_file():
         _fail("missing seed evaluation claim")
     value = read_json(path)
-    _validate_schema(value, "h4l_mass_off_seed_block_claim_v1.schema.json", "seed evaluation claim")
+    _validate_schema(value, "h4l_mass_off_marginal_block_claim_v1.schema.json", "seed evaluation claim")
     expected = dict(value)
     claim_id = expected.pop("claim_id", None)
     if (
@@ -284,7 +286,12 @@ def _read_claim(claims_root: str | Path, binding: SeedEvaluationBinding) -> tupl
 
 
 def _validate_terminal(value: Any, binding: SeedEvaluationBinding, claim: dict[str, Any]) -> None:
-    _validate_schema(value, "h4l_mass_off_seed_block_evaluation_v1.schema.json", "seed evaluation terminal")
+    _validate_schema(value, "h4l_mass_off_marginal_block_evaluation_v1.schema.json", "seed evaluation terminal")
+    from higgsml.inference.marginal_coupling import METADATA
+    if any(value.get(key)!=expected for key,expected in METADATA.items()):
+        _fail('v3 conditional coupling metadata mismatch')
+    if value.get('marginal_support') != value.get('joint_support'):
+        _fail('v3 marginal support alias mismatch')
     identity = dict(value)
     terminal_id = identity.pop("terminal_id", None)
     if (

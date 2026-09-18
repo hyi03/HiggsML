@@ -8,6 +8,7 @@ import numpy as np
 from higgsml.errors import ResearchError, ResearchStateError
 from higgsml.inference.assessment import infer_assessment, run_assessment_t2
 from higgsml.inference.seed_blocks import SeedBlockSpec, canonical_seed_blocks, stream_identity
+from higgsml.inference.marginal_coupling import is_marginal, METADATA, canonical_seed_blocks as marginal_blocks
 from higgsml.artifacts import digest_json
 from higgsml.protocol import protocol_dict
 
@@ -19,7 +20,7 @@ STAGES = {"model-self": "template", "assessment": "assessment"}
 
 
 def _validate_block(block):
-    if not isinstance(block, SeedBlockSpec) or block not in canonical_seed_blocks():
+    if not isinstance(block, SeedBlockSpec) or block not in (*canonical_seed_blocks(), *marginal_blocks()):
         raise ResearchError("noncanonical seed evaluation block")
 
 
@@ -47,12 +48,13 @@ def _candidate_rows(block, results, planned):
 
 
 def _failure_envelope(*, stage, block, planned, status, reason, stream, support=None):
-    return {"execution_status": "complete", "scientific_status": status,
+    return {**(METADATA if is_marginal(block) else {}), "execution_status": "complete", "scientific_status": status,
             "pairing_scope": "within_seed", "cross_seed_pairing": "none",
             "stage": stage, "training_seed": block.seed, "block_id": block.block_id,
             "planned_toys_per_candidate": planned, "generated_physical_toys": 0,
             "candidate_results": _candidate_rows(block, {}, planned),
             "joint_support": support or {},
+            **({"marginal_support": support or {}, "coupling_receipts": []} if is_marginal(block) else {}),
             "qualification": {"status": status, "reason": reason},
             "rng": stream}
 
@@ -78,7 +80,8 @@ def evaluate_seed_block(grid, bundles, parent, protocol, *, block, stage, mu, co
             parent_role=STAGES[stage], seed_block=block,
             physical_stream_id=physical["stream_id"], workers=workers,
             worker_threads=worker_threads, progress=progress,
-            auxiliary_streams=auxiliary, categorize=categorize)
+            auxiliary_streams=auxiliary, categorize=categorize,
+            **({'coupling_context':dict(stage=stage,toy_base_seed=toy_base_seed,outer_index=None)} if is_marginal(block) else {}))
     except ResearchStateError as exc:
         if exc.status not in EXPECTED_SCIENTIFIC_STATES:
             raise
@@ -90,11 +93,14 @@ def evaluate_seed_block(grid, bundles, parent, protocol, *, block, stage, mu, co
     scientific = "valid" if statuses == {"valid"} else "inference_incomplete"
     support = next((r["result"].get("joint_support") for r in rows
                     if r["result"].get("joint_support")), {})
-    return {"execution_status": "complete", "scientific_status": scientific,
+    return {**(METADATA if is_marginal(block) else {}), "execution_status": "complete", "scientific_status": scientific,
             "pairing_scope": "within_seed", "cross_seed_pairing": "none",
             "stage": stage, "training_seed": block.seed, "block_id": block.block_id,
             "planned_toys_per_candidate": count, "generated_physical_toys": count,
             "candidate_results": rows, "joint_support": support,
+            **({"marginal_support": support, "coupling_receipts": [next(
+                r["result"]["coupling_receipt"] for r in rows if "coupling_receipt" in r["result"])]}
+               if is_marginal(block) else {}),
             "qualification": {"status": scientific}, "rng": physical,
             "auxiliary_rng": auxiliary}
 
@@ -147,7 +153,7 @@ def evaluate_seed_t2(grid, bundles, calibration, template, mother, protocol, *, 
     joint_support = {"status": "valid" if support_valid else "incomplete",
                      "qualification": "valid" if support_valid else "incomplete",
                      "outer_records": support_records}
-    return {"execution_status": "complete", "scientific_status": result.get("status", "inference_incomplete"),
+    return {**(METADATA if is_marginal(block) else {}), "execution_status": "complete", "scientific_status": result.get("status", "inference_incomplete"),
             "pairing_scope": "within_seed", "cross_seed_pairing": "none", "stage": "t2",
             "training_seed": block.seed, "block_id": block.block_id,
             "planned_outer": len(multiplicities), "planned_inner_per_outer": inner,
@@ -155,6 +161,10 @@ def evaluate_seed_t2(grid, bundles, calibration, template, mother, protocol, *, 
             "outer_multiplicity_plan_digest": outer_multiplicities["multiplicity_plan_digest"],
             "outer_records": replicas, "candidate_results": candidates,
             "joint_support": joint_support,
+            **({"marginal_support": joint_support, "coupling_receipts": [next(
+                c["coupling_receipt"] for c in r["result"]["candidates"].values() if "coupling_receipt" in c)
+                for r in replicas if "result" in r]}
+               if is_marginal(block) else {}),
             "qualification": {"status": scientific}}
 
 

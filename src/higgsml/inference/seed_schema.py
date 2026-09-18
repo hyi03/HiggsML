@@ -18,6 +18,13 @@ _SCHEMAS = {
     "h4l-off-assessment-access-v2": "h4l_off_assessment_access_v2.schema.json",
 }
 
+_SCHEMAS.update({
+    key.replace('-v2','-v3'): value.replace('_v2','_v3')
+    for key,value in list(_SCHEMAS.items()) if key.endswith('-v2')
+})
+_SCHEMAS['h4l-mass-off-compatibility-audit-v3'] = 'h4l_mass_off_compatibility_audit_v3.schema.json'
+_SCHEMAS['h4l-marginal-support-workflow-v1'] = 'h4l_marginal_support_workflow_v1.schema.json'
+
 
 def validate_workflow_document(value):
     """Validate one owned workflow document and return it unchanged."""
@@ -27,7 +34,7 @@ def validate_workflow_document(value):
     name = _SCHEMAS.get(version)
     if name is None:
         raise ResearchError(f"unsupported workflow schema_version: {version!r}")
-    if version == "h4l-mass-off-evaluation-plan-v2":
+    if version in {"h4l-mass-off-evaluation-plan-v2", "h4l-mass-off-evaluation-plan-v3"}:
         validate_workflow_document(value.get("specification"))
     path = Path(__file__).parents[3] / "config" / "schemas" / name
     try:

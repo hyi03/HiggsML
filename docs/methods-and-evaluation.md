@@ -181,7 +181,7 @@ Second differences, `v(S+i+j)-v(S+i)-v(S+j)+v(S)`, measure complementarity in th
 
 ### Within-seed joint evaluation v2
 
-The v1 evaluation remains the default. The explicitly selected v2 contract partitions the same 80 identities into five complete 16-candidate blocks, one for each training seed 42--46. Within a seed and evaluation cell, all candidates share physical pseudo-observations; equal Toy indexes across different training seeds have no physical pairing interpretation. The five seeds also share the underlying MC, so they are not five independent data sets.
+The off-only, evaluation and attribution CLIs default to v1; h4l_all.py defaults to v2. v3 always requires explicit selection. The explicitly selected v2 contract partitions the same 80 identities into five complete 16-candidate blocks, one for each training seed 42--46. Within a seed and evaluation cell, all candidates share physical pseudo-observations; equal Toy indexes across different training seeds have no physical pairing interpretation. The five seeds also share the underlying MC, so they are not five independent data sets.
 
 J0 checks the nominal template parent. J1 is a fixed 200-replica, group-level Bernoulli-thinning engineering screen with zero allowed failures per seed; it is not an independent physics validation or a guarantee that a prospective assessment parent will pass. Both gates run before freeze and must not decode assessment payload. The common nominal mass grid remains fixed across all five blocks. Signed process rates are never clipped, absolutized, or repaired with epsilon; unsupported negative rates produce a scientific terminal failure.
 
@@ -210,3 +210,16 @@ Event-MC bootstrap uses 200 common physical-group draws for calibration and temp
 T1 Toys use mu=0,1,2 and 500 marginal Toys per candidate per expectation. Joint physical cells must have nonnegative process rates and compatible marginals. If the model-self joint construction fails, retain marginal closure and mark pairing unavailable; never claim pairing from equal seeds. Report successful-fit conditional coverage and its Wilson interval, planned-denominator success-and-coverage with its Wilson interval, and failure rates. No generic pilot pass threshold is introduced.
 
 T2 uses T1 at mu=1, 20 common calibration-group outer draws and 100 joint inner Toys per outer draw. A replica mapping transforms both template and pseudo-event classification on the fixed grid. Preserve outer mapping records, multiplicities and failed inner budgets; 20 outer replicas are the independent procedure units, not 2000 unconditional experiments. Independent assessment requires a separate reviewed access/evidence receipt and durable cell claim before payload decoding.
+
+### Versioned marginal CRN coupling v3
+
+The opt-in v3 contract replaces empirical joint-cell Poisson intensities with
+independent process/mass-bin total Poisson draws and shared monotone category
+allocation uniforms within each training seed. This preserves each candidate's
+marginal Poisson observation law but does not reproduce physical cross-model
+covariance. Reports mark paired errors as conditional CRN diagnostics and
+exclude them from physical covariance, total uncertainty and primary reliability
+claims. J0/J1 test marginal signed rates and direct-parent total consistency.
+Legacy-label evidence cannot establish separate physical-process support.
+T2 validates all outer mappings and support before generating inner Toys.
+The v1/v2 descriptions above remain their historical contracts.

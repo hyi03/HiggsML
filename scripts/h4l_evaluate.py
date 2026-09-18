@@ -40,7 +40,7 @@ class EvaluationError(Exception):
 def _parser():
     parser = argparse.ArgumentParser(description="Run a sealed MC bootstrap, Toy, assessment, T2, and stress evaluation matrix.")
     parser.add_argument("--plan", type=Path, required=True)
-    parser.add_argument('--evaluation-version', choices=['v1','v2'], default='v1')
+    parser.add_argument('--evaluation-version', choices=['v1','v2','v3'], default='v1')
     parser.add_argument('--show-command', action='store_true')
     parser.add_argument("--prepared-run", type=Path, required=True)
     parser.add_argument("--template-run", type=Path, required=True)
@@ -124,7 +124,7 @@ def _run(args):
         if not isinstance(plan,dict): raise ResearchError('evaluation plan must be an object')
     except ResearchError as error:
         raise EvaluationError('Invalid evaluation plan: '+str(error)) from error
-    if args.evaluation_version == 'v2':
+    if args.evaluation_version in {'v2','v3'}:
         return _run_mass_off_v2(args,protocol,plan)
     if plan.get('schema_version') == 'h4l-mass-off-evaluation-plan-v1':
         return _run_mass_off(args, protocol, plan)
@@ -347,11 +347,12 @@ def _run_mass_off(args, protocol, plan):
 
 
 def _run_mass_off_v2(args,protocol,plan):
-    from higgsml.inference import seed_workflow as workflow
+    from higgsml.inference import seed_workflow, marginal_workflow
+    workflow = marginal_workflow if args.evaluation_version == 'v3' else seed_workflow
     from higgsml.errors import ResearchError
     workflow.validate_plan(plan,protocol)
     if args.force or args.reuse_stage:
-        raise EvaluationError('V2 reuse requires an explicit compatibility adapter; --force/--reuse-stage are unavailable')
+        raise EvaluationError('Within-seed reuse requires an explicit compatibility adapter; --force/--reuse-stage are unavailable')
     output=_resolve(args.output_root)
     if output==RUNS_ROOT or not output.is_relative_to(RUNS_ROOT):
         raise EvaluationError('Output must be below runs')
@@ -363,9 +364,9 @@ def _run_mass_off_v2(args,protocol,plan):
     if output.exists() and not args.continue_run:
         raise EvaluationError('Output exists; explicit --continue required')
     if not args.registration_run or not args.result_run:
-        raise EvaluationError('V2 requires --registration-run and --result-run')
+        raise EvaluationError('Within-seed evaluation requires --registration-run and --result-run')
     output.mkdir(parents=True,exist_ok=True)
-    common=['--evaluation-version','v2','--protocol',str(_resolve(args.protocol)),
+    common=['--evaluation-version',args.evaluation_version,'--protocol',str(_resolve(args.protocol)),
             '--registration-run',str(_resolve(args.registration_run)),
             '--template-run',str(_resolve(args.template_run)),'--freeze-run',str(_resolve(args.freeze_run)),
             '--result-run',str(_resolve(args.result_run)),'--evaluation-plan',str(_resolve(args.plan)),

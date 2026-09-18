@@ -174,3 +174,13 @@ On 2026-09-14, the isolated off-only implementation completed a controlled-MC A/
 This replay used automatic software-contract P0/T1 materials and has exploratory model-self Asimov scope. Full-MC event bootstrap, model-self/assessment Toys and T2 were not run; independent applicability and assessment-history review remain pending. No assessment population was decoded. The implemented C–E commands and synthetic tests do not complete those scientific evidence requirements.
 
 The 2026-09-17 within-seed v2 software path does not revise that scientific result. It preserves v1 as the default and adds an explicit five-block evaluation contract, pre-freeze J0/J1 support gates, claim-aware terminal publication, and a 37-unit report sequence. Historical opened assessment data may be used only for a labelled post-hoc support diagnostic. No new eligible assessment source, original controlled-MC execution, or independent P0/T1 applicability evidence is recorded here. The final Windows/Python 3.12 repository regression completed with 595 passed and 5 skipped in 900.80 seconds, using a short temporary path to avoid the Windows path-length limit. This is software and synthetic evidence: small actual 16-way T0 likelihood checks cover shared within-seed draws and serial/two-worker equivalence; small T2 checks cover outer multiplicities and both-parent mapping. No production 500-Toy, 200-replica MC-bootstrap, or 20-by-100 T2 campaign was executed.
+
+### v3 implementation evidence boundary
+
+Explicit v3 uses marginal common-total CRN coupling. Its paired errors are
+conditional diagnostics, not physical-event covariance. Independent-allocation
+sensitivity remains pending unless the report contains completed bound evidence.
+Fresh template-only J0/J1 engineering qualification, prospective assessment and
+scientific validation are distinct gates. Historical opened assessment sources
+remain ineligible; adding v3 does not reset their usage history. Default cutover
+requires separately approved, bound J0 and J1 passes.

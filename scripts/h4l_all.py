@@ -34,7 +34,7 @@ def _parser() -> argparse.ArgumentParser:
         "--run-name", default=DEFAULT_RUN_NAME,
         help=f"Shared standard/off-only run name (default: {DEFAULT_RUN_NAME}).",
     )
-    parser.add_argument('--evaluation-version', choices=['v1','v2'], default='v1')
+    parser.add_argument('--evaluation-version', choices=['v1','v2','v3'], default='v2')
     parser.add_argument('--access-review', type=Path)
     return parser
 
@@ -123,18 +123,18 @@ def _run(args: argparse.Namespace) -> None:
          "--workers", off_workers, "--worker-threads", OFF_WORKER_THREADS],
     ]
     for command in commands:
-        if args.evaluation_version == 'v2' and Path(command[1]).name == 'h4l_off_run.py':
-            command += ['--evaluation-version','v2']
+        if args.evaluation_version in {'v2','v3'} and Path(command[1]).name == 'h4l_off_run.py':
+            command += ['--evaluation-version',args.evaluation_version]
         _invoke(command)
 
-    if args.evaluation_version == 'v2':
+    if args.evaluation_version in {'v2','v3'}:
         if not (off_root/'evaluation-plan'/'evaluation-plan.json').is_file():
-            print(f'V2 support qualification blocked freeze. Report: {off_root / "gate-failure-report" / "report.md"}')
+            print(f'{args.evaluation_version} support qualification blocked freeze. Report: {off_root / "gate-failure-report" / "report.md"}')
             return
         if not args.access_review:
-            print(f'V2 assessment requires an eligible source and v2 access receipt. Stage B report: {off_root / "report-B" / "report.md"}')
+            print(f'{args.evaluation_version} assessment requires an eligible source and matching access receipt. Stage B report: {off_root / "report-B" / "report.md"}')
             return
-        _invoke([python,str(SCRIPTS_ROOT/'h4l_off_run.py'),'--evaluation-version','v2',
+        _invoke([python,str(SCRIPTS_ROOT/'h4l_off_run.py'),'--evaluation-version',args.evaluation_version,
             '--source-run-name',name,'--run-name',name,'--evaluation',*_resume_flag(off_root/'evaluation'),
             '--access-review',str(args.access_review),'--workers',off_workers,'--worker-threads',OFF_WORKER_THREADS])
         return
