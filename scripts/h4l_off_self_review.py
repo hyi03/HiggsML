@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Generate an explicitly non-independent single-researcher assessment review."""
+"""Create the local exploratory access source used by the one-command workflow."""
 from __future__ import annotations
 
 import argparse
+import getpass
 from pathlib import Path
 import sys
 
@@ -17,19 +18,18 @@ from higgsml.run_names import workflow_directory_name  # noqa: E402
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="Generate a single-researcher off-only assessment review")
+    parser = argparse.ArgumentParser(description="Create a local exploratory off-only access review")
     parser.add_argument("--run-name", required=True)
-    parser.add_argument("--reviewer", required=True, help="Human researcher name recorded in the review")
-    parser.add_argument('--evaluation-version', choices=['v1','v2'], default='v1')
+    parser.add_argument("--reviewer", default=getpass.getuser())
     parser.add_argument("--prepared-run", type=Path, default=Path("runs/h4l-prepare/prepare"))
     args = parser.parse_args(argv)
     try:
         leaf = workflow_directory_name(args.run_name).removeprefix("h4l-train-")
         run_root = PROJECT_ROOT / "runs" / ("h4l-off-" + leaf)
         prepared = args.prepared_run if args.prepared_run.is_absolute() else PROJECT_ROOT / args.prepared_run
-        path = generate_self_review(run_root, prepared, reviewer=args.reviewer, evaluation_version=args.evaluation_version)
-        print(f"Single-researcher review created: {path}")
-        print("Evidence status: exploratory self-reviewed; not independently validated.")
+        path = generate_self_review(run_root, prepared, reviewer=args.reviewer)
+        print(f"Local exploratory access source created: {path}")
+        print("Evidence status: self-reviewed and non-independent.")
         return 0
     except (ResearchError, ValueError, OSError) as error:
         print(str(error), file=sys.stderr)

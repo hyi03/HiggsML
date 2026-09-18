@@ -1,9 +1,26 @@
-"""Pre-freeze v3 marginal engineering gates; never read assessment payload."""
+"""Pre-freeze marginal engineering gates; never read assessment payload."""
+import math
+import numpy as np
 from higgsml.errors import ResearchError
 from higgsml.inference.marginal_coupling import (
     canonical_seed_blocks, pairing_contract, diagnose_marginal_support)
-from higgsml.inference.joint_support import bernoulli_group_thinning
 from higgsml.inference.seed_blocks import stream_identity
+
+
+def _bernoulli_group_thinning(frame, *, q, stream):
+    if type(q) not in (int, float) or not math.isfinite(float(q)) or q <= 0 or q > 1:
+        raise ResearchError('screening_design_unavailable')
+    groups=sorted(frame.event_group_id.unique().tolist(),key=str)
+    if q == 1:
+        selected=set(groups); design='degenerate_q1_all_groups'
+    else:
+        rng=np.random.default_rng(stream['seed'])
+        selected={group for group,keep in zip(groups,rng.random(len(groups)) < q) if keep}
+        design='group_bernoulli_thinning'
+    thinned=frame[frame.event_group_id.isin(selected)].copy()
+    thinned['yield_weight']=thinned.yield_weight/q
+    return thinned,{'q':q,'design':design,'groups_total':len(groups),
+        'groups_selected':len(selected),'stream_id':stream['stream_id'],'stream':stream}
 
 
 def _validate(inputs):
@@ -30,7 +47,7 @@ def run_j1(parent, *, block_inputs, q_thin, contract_digest, replicas=200, toy_b
         stream=stream_identity(contract_digest=contract_digest,stage='support-j1',mu=0,
             training_seed=42,outer_index=None,stream_kind='physical_group_thinning',
             replica_index=replica,toy_base_seed=toy_base_seed)
-        sample,selection=bernoulli_group_thinning(parent,q=q_thin,stream=stream)
+        sample,selection=_bernoulli_group_thinning(parent,q=q_thin,stream=stream)
         selection['q_thin']=selection.pop('q')
         summaries={}; failed={}
         for seed,args in sorted(block_inputs.items()):

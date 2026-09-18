@@ -45,7 +45,6 @@ def _parser() -> argparse.ArgumentParser:
         help="New short name; writes runs/h4l-off-<name>.",
     )
     parser.add_argument("--protocol", type=Path, default=DEFAULT_PATH)
-    parser.add_argument('--evaluation-version', choices=['v1','v2','v3'], default='v1')
     parser.add_argument(
         "--prepared-run", type=Path, default=Path("runs/h4l-prepare/prepare"),
     )
@@ -117,163 +116,26 @@ def _invoke(command: list[str], *, show_command: bool, progress=None) -> None:
         )
 
 
-def _run(args: argparse.Namespace) -> None:
-    if args.evaluation_version in {'v2','v3'}:
-        return _run_v2(args)
-    if args.workers < 1:
-        raise WorkflowError("--workers must be positive", 2)
-    if args.worker_threads < 1:
-        raise WorkflowError("--worker-threads must be positive", 2)
-    if args.stage_b and args.evaluation:
-        raise WorkflowError("--stage-b cannot be combined with --evaluation", 2)
-    if not args.stage_b and not args.evaluation and not args.plan and args.access_review is None:
-        raise WorkflowError("Full evaluation requires --access-review; use --stage-b for Stage B", 2)
-
-    source_leaf = _safe_run_leaf("h4l-train-", args.source_run_name)
-    source = RUNS_ROOT / source_leaf / "batch" / "all-seeds"
-    output = RUNS_ROOT / _safe_run_leaf("h4l-off-", args.run_name)
-    prepared = _resolve(args.prepared_run)
-    protocol = _resolve(args.protocol)
-    t1_validation = _resolve(
-        args.t1_validation or source / "templates" / "t1-validation.json"
-    )
-    if args.access_review:
-        access_review = _resolve(args.access_review)
-    elif args.evaluation:
-        access_review = output / "access-review" / "validated-off-assessment-access.json"
-    else:
-        access_review = None
-
-    if not args.plan:
-        required = [("prepared run", prepared), ("protocol", protocol)]
-        if not args.evaluation:
-            required.extend((("source batch", source), ("T1 validation", t1_validation)))
-        for label, path in required:
-            if not path.exists():
-                raise WorkflowError(f"Required {label} does not exist: {path}")
-        if access_review is not None and not access_review.is_file():
-            raise WorkflowError(f"Assessment access review does not exist: {access_review}")
-        if args.evaluation and not output.is_dir():
-            raise WorkflowError(f"Stage B output root does not exist: {output}", 4)
-        if not args.evaluation and output.exists() and not args.continue_run:
-            raise WorkflowError(f"Output root already exists and cannot be reused: {output}", 4)
-        if output.exists() and (output.is_symlink() or not output.is_dir()):
-            raise WorkflowError(f"Output root is not a reusable directory: {output}", 4)
-
-    register = output / "register"
-    nominal = output / "nominal"
-    freeze = output / "freeze"
-    asimov = output / "asimov"
-    report_b = output / "report-B"
-    evaluation = output / "evaluation"
-    evaluation_plan = report_b / "evaluation-plan.json"
-    common = ["--protocol", str(protocol), "--worker-threads", str(args.worker_threads)]
-    if args.force:
-        common.append("--force")
-
-    cli = [sys.executable, "-m", "higgsml.cli", "attribution"]
-    stage_b_commands = [
-        [*cli, "register", *common, "--source-root", str(source),
-         "--prepared-run", str(prepared), "--t1-validation", str(t1_validation),
-         "--run-dir", str(register)],
-        [*cli, "nominal", *common, "--registration-run", str(register),
-         "--run-dir", str(nominal)],
-        [*cli, "freeze", *common, "--registration-run", str(register),
-         "--template-run", str(nominal), "--run-dir", str(freeze)],
-        [*cli, "asimov", *common, "--registration-run", str(register),
-         "--template-run", str(nominal), "--freeze-run", str(freeze),
-         "--run-dir", str(asimov)],
-        [*cli, "report", *common, "--registration-run", str(register),
-         "--template-run", str(nominal), "--freeze-run", str(freeze),
-         "--result-run", str(asimov), "--run-dir", str(report_b)],
-    ]
-    commands = [] if args.evaluation else stage_b_commands
-    if not args.stage_b:
-        evaluation_command = [
-            sys.executable, str(PROJECT_ROOT / "scripts" / "h4l_evaluate.py"),
-            "--plan", str(evaluation_plan), "--registration-run", str(register),
-            "--prepared-run", str(prepared), "--template-run", str(nominal),
-            "--freeze-run", str(freeze), "--result-run", str(asimov),
-            "--output-root", str(evaluation), "--workers", str(args.workers),
-            "--worker-threads", str(args.worker_threads),
-        ]
-        if access_review is not None:
-            evaluation_command.extend(["--access-review", str(access_review)])
-        if args.force:
-            evaluation_command.append("--force")
-        if args.no_progress:
-            evaluation_command.append("--no-progress")
-        if args.continue_run:
-            evaluation_command.append("--continue")
-        commands.append(evaluation_command)
-
-    if not args.plan and args.evaluation:
-        for label, path in (
-            ("registration run", register), ("nominal run", nominal),
-            ("freeze run", freeze), ("Asimov run", asimov),
-            ("evaluation plan", evaluation_plan),
-        ):
-            if not path.exists():
-                raise WorkflowError(f"Required completed Stage B {label} does not exist: {path}")
-        if evaluation.exists() and not args.continue_run:
-            raise WorkflowError(f"Evaluation output already exists and cannot be reused: {evaluation}", 4)
-
-    if args.plan:
-        for command in commands:
-            print(_display(command))
-        if args.evaluation:
-            scope = "C-E evaluation from completed Stage B"
-        else:
-            scope = "Stage B and complete C-E evaluation" if not args.stage_b else "Stage B"
-        print(f"Plan complete: {scope}; no run was created. Output root: {output}")
-        if not args.stage_b and access_review is None:
-            print("Execution requires --access-review.")
-        return
-
-    if args.force:
-        print("WARNING: --force bypasses source protocol consistency checks; "
-              "all generated outputs are debug-only and non-authoritative.", file=sys.stderr)
-    visible_commands = commands if args.stage_b else ([] if args.evaluation else commands[:-1])
-    protocol_value = load_protocol(protocol).to_dict()
-    with tqdm(visible_commands, desc="H4l off Stage B", unit="stage",
-              disable=args.no_progress) as progress:
-        for command in progress:
-            label = (command[command.index("attribution") + 1]
-                     if "attribution" in command else "evaluation C-E")
-            progress.set_postfix_str(label, refresh=True)
-            if args.continue_run:
-                target = Path(command[command.index("--run-dir") + 1])
-                try:
-                    action = classify_stage(
-                        target, allowed_root=output, dataset=protocol_value["dataset"],
-                        protocol=protocol_value, stages=(f"attribution-{label}",),
-                    )
-                except ResearchError as error:
-                    raise WorkflowError(str(error), 4) from error
-                if action == "skip":
-                    continue
-            _invoke(command, show_command=args.show_command, progress=progress)
-    if not args.stage_b:
-        _invoke(commands[-1], show_command=args.show_command)
-    final_report = evaluation / "report" / "report.md" if not args.stage_b else report_b / "report.md"
-    print(f"Off-only workflow complete. Report: {final_report}")
-
-
-def _run_v2(args):
-    if args.evaluation_version == 'v3' and not args.stage_b and not args.plan and args.access_review is None:
-        raise WorkflowError('Full v3 evaluation requires --access-review; use --stage-b for template-only preparation', 2)
-    from higgsml.inference import seed_workflow, marginal_workflow
-    workflow = marginal_workflow if args.evaluation_version == 'v3' else seed_workflow
+def _run(args):
+    if not args.stage_b and not args.plan and args.access_review is None:
+        raise WorkflowError('Full evaluation requires --access-review; use --stage-b for template-only preparation', 2)
+    from higgsml.inference import marginal_workflow as workflow
     from higgsml.artifacts import read_json, read_run
     output=RUNS_ROOT / _safe_run_leaf('h4l-off-',args.run_name)
     source=RUNS_ROOT / _safe_run_leaf('h4l-train-',args.source_run_name) / 'batch' / 'all-seeds'
     protocol_path=_resolve(args.protocol)
     protocol=load_protocol(protocol_path).to_dict()
-    if args.force or args.workers<1 or args.worker_threads<1 or (args.stage_b and args.evaluation):
-        raise WorkflowError('Invalid within-seed mode/resource options; --force cannot establish compatibility',2)
+    if args.force:
+        raise WorkflowError('--force cannot establish compatibility for the default marginal workflow',2)
+    if args.workers < 1:
+        raise WorkflowError('--workers must be positive',2)
+    if args.worker_threads < 1:
+        raise WorkflowError('--worker-threads must be positive',2)
+    if args.stage_b and args.evaluation:
+        raise WorkflowError('--stage-b cannot be combined with --evaluation',2)
     if output.exists() and not args.continue_run and not args.evaluation and not args.plan:
         raise WorkflowError('Output exists; use --continue to validate and resume',4)
-    common=['--evaluation-version',args.evaluation_version,'--protocol',str(protocol_path),'--worker-threads',str(args.worker_threads)]
+    common=['--protocol',str(protocol_path),'--worker-threads',str(args.worker_threads)]
     reg=['--registration-run',str(output/'register')]
     nominal=reg+['--template-run',str(output/'nominal')]
     frozen=nominal+['--freeze-run',str(output/'freeze')]
@@ -295,13 +157,13 @@ def _run_v2(args):
             print(_display(command)); continue
         target=output/name
         if args.continue_run and target.exists():
-            read_run(target,dataset=protocol['dataset'],protocol=protocol,stages=('attribution-'+args.evaluation_version+'-'+name,))
+            read_run(target,dataset=protocol['dataset'],protocol=protocol,stages=('attribution-v3-'+name,))
         else:
             _invoke(command,show_command=args.show_command)
-        if name.startswith('support-') and read_json(target/('marginal-support-summary.json' if args.evaluation_version=='v3' else 'joint-support-summary.json'))['status']!='passed':
+        if name.startswith('support-') and read_json(target/'marginal-support-summary.json')['status']!='passed':
             if (output/'gate-failure-report').exists():
                 stored=workflow._load(output/'gate-failure-report',protocol,'report').read_json('report.json')
-                gates=[read_json(output/gate/('marginal-support-summary.json' if args.evaluation_version=='v3' else 'joint-support-summary.json')) for gate in ('support-j0','support-j1')
+                gates=[read_json(output/gate/'marginal-support-summary.json') for gate in ('support-j0','support-j1')
                        if (output/gate).exists()]
                 registered,_,_,adapter,*_=workflow.load_nominal(output/'register',output/'nominal',protocol)
                 for gate in gates:
@@ -320,7 +182,7 @@ def _run_v2(args):
         if args.plan: print(_display(command))
         elif not (args.continue_run and (output/'report-B').exists()): _invoke(command,show_command=args.show_command)
     if not args.stage_b:
-        command=[sys.executable,str(PROJECT_ROOT/'scripts'/'h4l_evaluate.py'),'--evaluation-version',args.evaluation_version,
+        command=[sys.executable,str(PROJECT_ROOT/'scripts'/'h4l_evaluate.py'),
             '--plan',str(output/'evaluation-plan'/'evaluation-plan.json'),'--registration-run',str(output/'register'),
             '--prepared-run',str(_resolve(args.prepared_run)),'--template-run',str(output/'nominal'),
             '--freeze-run',str(output/'freeze'),'--result-run',str(output/'asimov'),
@@ -334,7 +196,10 @@ def _run_v2(args):
         else:
             _invoke(command,show_command=args.show_command)
             # The child prints its actual immutable snapshot path; do not replace it with report/report.md.
-    if args.plan: print('Within-seed metadata plan: 36 scientific units plus report; no payload decoded or claim consumed.')
+    if args.plan:
+        print('Within-seed metadata plan: 36 scientific units plus report; no payload decoded or claim consumed.')
+        if not args.stage_b and args.access_review is None:
+            print('Execution requires --access-review.')
 
 
 def main() -> int:

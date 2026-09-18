@@ -137,15 +137,7 @@ def _joint_mother(grid, bundles, mother, protocol, categorize, *, parent_role='a
         raise ResearchStateError("one physical event spans joint observation cells; event covariance is unvalidated", status="template_stat_model_unvalidated")
     support = None
     if seed_block is not None:
-        from higgsml.inference.joint_support import diagnose_joint_support
-        support = diagnose_joint_support(
-            work.assign(physical_weight=work.yield_weight), block=seed_block,
-            category_columns=columns, mass_edges=edges, process_column=process_column)
-        if support["summary"]["qualification"] != "valid":
-            error = ResearchStateError("seed block joint support is insufficient",
-                                       status="insufficient_statistics")
-            error.joint_support = support
-            raise error
+        raise ResearchError("only marginal seed blocks are supported")
     # A positive S+B cancellation cannot repair an invalid negative process rate.
     rates = {}
     for process, indices in work.groupby(process_column, sort=True).indices.items():

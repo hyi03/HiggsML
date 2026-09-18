@@ -6,7 +6,7 @@ The active paper objective is to quantify the contribution, complementarity and 
 
 The six result areas are all off-only: paired W68; complete subset ranking/stability; exact Shapley and 24 conditional interactions; validation-checkpoint AUC versus W68; BC/AC versus ABCD as exploration-selected comparisons pending frozen validation; and all 105 direct subset pairs. AUC is descriptive, not an inference or coverage qualification. Older physical-CDF M5/M4, explicit-mass controls, MELA and sample-efficiency workflows remain compatible background/extension studies and are not required off-family candidates.
 
-The versioned [definition](../config/protocols/feature_attribution_mass_off_v1.json) is not a completed scientific registration. A new immutable registration run binds the actual core protocol, prepared population and 75 audited model/calibration artifacts. The candidate family has its own 80-identity G1 and freeze; freezing does not grant assessment access. Automatic P0/T1 materials remain software evidence, with independent qualification pending. Actual uncertainty and coverage stages are separate evidence levels; no operating system or CPU architecture is an authority requirement.
+The default [definition](../config/protocols/feature_attribution_mass_off.json) is not a completed scientific registration. A new immutable registration run binds the actual core protocol, prepared population and 75 audited model/calibration artifacts. The candidate family has its own 80-identity G1 and freeze; freezing does not grant assessment access. Automatic P0/T1 materials remain software evidence, with independent qualification pending. Actual uncertainty and coverage stages are separate evidence levels; no operating system or CPU architecture is an authority requirement.
 
 ## Evidence summary
 
@@ -173,14 +173,13 @@ On 2026-09-14, the isolated off-only implementation completed a controlled-MC A/
 
 This replay used automatic software-contract P0/T1 materials and has exploratory model-self Asimov scope. Full-MC event bootstrap, model-self/assessment Toys and T2 were not run; independent applicability and assessment-history review remain pending. No assessment population was decoded. The implemented C–E commands and synthetic tests do not complete those scientific evidence requirements.
 
-The 2026-09-17 within-seed v2 software path does not revise that scientific result. It preserves v1 as the default and adds an explicit five-block evaluation contract, pre-freeze J0/J1 support gates, claim-aware terminal publication, and a 37-unit report sequence. Historical opened assessment data may be used only for a labelled post-hoc support diagnostic. No new eligible assessment source, original controlled-MC execution, or independent P0/T1 applicability evidence is recorded here. The final Windows/Python 3.12 repository regression completed with 595 passed and 5 skipped in 900.80 seconds, using a short temporary path to avoid the Windows path-length limit. This is software and synthetic evidence: small actual 16-way T0 likelihood checks cover shared within-seed draws and serial/two-worker equivalence; small T2 checks cover outer multiplicities and both-parent mapping. No production 500-Toy, 200-replica MC-bootstrap, or 20-by-100 T2 campaign was executed.
+The superseded v1/v2 configuration paths do not revise that scientific result. The active default is the five-block marginal CRN evaluation contract with pre-freeze J0/J1 support gates, claim-aware terminal publication, and a 37-unit report sequence. Historical opened assessment data may be used only for a labelled post-hoc support diagnostic. No new eligible assessment source, original controlled-MC execution, or independent P0/T1 applicability evidence is recorded here. Software and synthetic checks remain separate from production 500-Toy, 200-replica MC-bootstrap, or 20-by-100 T2 execution.
 
-### v3 implementation evidence boundary
+### Default marginal CRN evidence boundary
 
-Explicit v3 uses marginal common-total CRN coupling. Its paired errors are
+The default workflow uses marginal common-total CRN coupling. Its paired errors are
 conditional diagnostics, not physical-event covariance. Independent-allocation
 sensitivity remains pending unless the report contains completed bound evidence.
 Fresh template-only J0/J1 engineering qualification, prospective assessment and
 scientific validation are distinct gates. Historical opened assessment sources
-remain ineligible; adding v3 does not reset their usage history. Default cutover
-requires separately approved, bound J0 and J1 passes.
+remain ineligible; changing the default does not reset their usage history.

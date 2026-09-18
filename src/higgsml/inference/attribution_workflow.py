@@ -18,7 +18,7 @@ from higgsml.inference.likelihood import run_asimov, build_model
 
 
 def analysis_definition():
-    value=read_json(Path(__file__).resolve().parents[3]/'config/protocols/feature_attribution_mass_off_v1.json')
+    value=read_json(Path(__file__).resolve().parents[3]/'config/protocols/feature_attribution_mass_off.json')
     if value.get('family_id')!=FAMILY or value.get('candidate_keys')!=candidate_keys() or value.get('budgets')!=BUDGETS:
         raise ResearchError('analysis definition differs from implemented version')
     return value
@@ -235,7 +235,7 @@ def load_registration(path, protocol, *, force=False):
     from jsonschema import Draft202012Validator
     from jsonschema.exceptions import ValidationError
     try:
-        schema=read_json(Path(__file__).resolve().parents[3]/'config/schemas/h4l_mass_off_registration.schema.json')
+        schema=read_json(Path(__file__).resolve().parents[3]/'config/schemas/h4l_mass_off_source_registration.schema.json')
         Draft202012Validator(schema).validate(overlay)
     except ValidationError as error:
         raise ResearchError('invalid registration schema: '+error.message) from error

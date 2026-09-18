@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import getpass
 import os
 from pathlib import Path
 import subprocess
@@ -34,28 +33,13 @@ def _parser() -> argparse.ArgumentParser:
         "--run-name", default=DEFAULT_RUN_NAME,
         help=f"Shared standard/off-only run name (default: {DEFAULT_RUN_NAME}).",
     )
-    parser.add_argument('--evaluation-version', choices=['v1','v2','v3'], default='v2')
     parser.add_argument('--access-review', type=Path)
     return parser
 
 
-def _reviewer_name() -> str:
-    completed = subprocess.run(
-        ["git", "config", "user.name"], cwd=PROJECT_ROOT,
-        capture_output=True, text=True, check=False,
-    )
-    reviewer = completed.stdout.strip() if completed.returncode == 0 else ""
-    if not reviewer:
-        reviewer = getpass.getuser().strip()
-    if not reviewer or "automat" in reviewer.lower():
-        raise WorkflowError(
-            "Cannot infer a named human reviewer from git user.name or the local account.", 3
-        )
-    return reviewer
-
-
 def _invoke(command: list[str]) -> None:
-    print(f"RUN: {Path(command[1]).name}", flush=True)
+    label = command[2] if command[1] == "-m" else Path(command[1]).name
+    print(f"RUN: {label}", flush=True)
     completed = subprocess.run(command, cwd=PROJECT_ROOT, check=False)
     if completed.returncode:
         raise WorkflowError(
@@ -123,42 +107,26 @@ def _run(args: argparse.Namespace) -> None:
          "--workers", off_workers, "--worker-threads", OFF_WORKER_THREADS],
     ]
     for command in commands:
-        if args.evaluation_version in {'v2','v3'} and Path(command[1]).name == 'h4l_off_run.py':
-            command += ['--evaluation-version',args.evaluation_version]
         _invoke(command)
 
-    if args.evaluation_version in {'v2','v3'}:
-        if not (off_root/'evaluation-plan'/'evaluation-plan.json').is_file():
-            print(f'{args.evaluation_version} support qualification blocked freeze. Report: {off_root / "gate-failure-report" / "report.md"}')
-            return
-        if not args.access_review:
-            print(f'{args.evaluation_version} assessment requires an eligible source and matching access receipt. Stage B report: {off_root / "report-B" / "report.md"}')
-            return
-        _invoke([python,str(SCRIPTS_ROOT/'h4l_off_run.py'),'--evaluation-version',args.evaluation_version,
-            '--source-run-name',name,'--run-name',name,'--evaluation',*_resume_flag(off_root/'evaluation'),
-            '--access-review',str(args.access_review),'--workers',off_workers,'--worker-threads',OFF_WORKER_THREADS])
+    if not (off_root/'evaluation-plan'/'evaluation-plan.json').is_file():
+        print(f'Support qualification blocked freeze. Report: {off_root / "gate-failure-report" / "report.md"}')
         return
-
-    access_review = (
-        RUNS_ROOT / f"h4l-off-{name}" / "access-review"
-        / "validated-off-assessment-access.json"
-    )
-    if not access_review.is_file():
-        _invoke([
-            python, str(SCRIPTS_ROOT / "h4l_off_self_review.py"),
-            "--run-name", name, "--reviewer", _reviewer_name(),
-        ])
-
-    _invoke([
-        python, str(SCRIPTS_ROOT / "h4l_off_run.py"),
-        "--source-run-name", name, "--run-name", name,
-        "--evaluation", *_resume_flag(off_root / "evaluation"),
-        "--workers", off_workers, "--worker-threads", OFF_WORKER_THREADS,
-    ])
-    print(
-        "H4l workflow complete. Final report: "
-        f"{RUNS_ROOT / f'h4l-off-{name}' / 'evaluation' / 'report' / 'report.md'}"
-    )
+    access_review = args.access_review
+    if access_review is None:
+        source_review = off_root/'source-access-review'/'validated-off-assessment-access.json'
+        if not source_review.is_file():
+            _invoke([python,str(SCRIPTS_ROOT/'h4l_off_self_review.py'),'--run-name',name])
+        access_review = off_root/'access-review'/'validated-off-assessment-access.json'
+        if not access_review.is_file():
+            _invoke([python,'-m','higgsml.cli','attribution','access-review',
+                '--registration-run',str(off_root/'register'),'--template-run',str(off_root/'nominal'),
+                '--freeze-run',str(off_root/'freeze'),'--result-run',str(off_root/'asimov'),
+                '--evaluation-plan',str(off_root/'evaluation-plan'/'evaluation-plan.json'),
+                '--access-review',str(source_review),'--run-dir',str(off_root/'access-review')])
+    _invoke([python,str(SCRIPTS_ROOT/'h4l_off_run.py'),
+        '--source-run-name',name,'--run-name',name,'--evaluation',*_resume_flag(off_root/'evaluation'),
+        '--access-review',str(access_review),'--workers',off_workers,'--worker-threads',OFF_WORKER_THREADS])
 
 
 def main() -> int:

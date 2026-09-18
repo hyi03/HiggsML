@@ -249,7 +249,7 @@ def claim_seed_evaluation(
     lineage_root = Path(claims_root).resolve(strict=True)
     output = Path(output_dir).absolute()
     value = _claim_value(output, binding)
-    _validate_schema(value, "h4l_mass_off_marginal_block_claim_v1.schema.json", "seed evaluation claim")
+    _validate_schema(value, "h4l_mass_off_marginal_block_claim.schema.json", "seed evaluation claim")
     if binding.stage in ASSESSMENT_ACCESS_STAGES:
         _check_v1_population_history(lineage_root, binding)
     directory, _ = _claims_directory(lineage_root)
@@ -272,7 +272,7 @@ def _read_claim(claims_root: str | Path, binding: SeedEvaluationBinding) -> tupl
     if path.is_symlink() or not path.is_file():
         _fail("missing seed evaluation claim")
     value = read_json(path)
-    _validate_schema(value, "h4l_mass_off_marginal_block_claim_v1.schema.json", "seed evaluation claim")
+    _validate_schema(value, "h4l_mass_off_marginal_block_claim.schema.json", "seed evaluation claim")
     expected = dict(value)
     claim_id = expected.pop("claim_id", None)
     if (
@@ -286,7 +286,7 @@ def _read_claim(claims_root: str | Path, binding: SeedEvaluationBinding) -> tupl
 
 
 def _validate_terminal(value: Any, binding: SeedEvaluationBinding, claim: dict[str, Any]) -> None:
-    _validate_schema(value, "h4l_mass_off_marginal_block_evaluation_v1.schema.json", "seed evaluation terminal")
+    _validate_schema(value, "h4l_mass_off_marginal_block_evaluation.schema.json", "seed evaluation terminal")
     from higgsml.inference.marginal_coupling import METADATA
     if any(value.get(key)!=expected for key,expected in METADATA.items()):
         _fail('v3 conditional coupling metadata mismatch')

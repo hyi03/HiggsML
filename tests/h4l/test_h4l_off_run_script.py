@@ -20,7 +20,7 @@ def test_plan_prints_one_command_workflow_without_creating_output():
     output = PROJECT_ROOT / "runs" / f"h4l-off-{name}"
     completed = invoke("--source-run-name", "02", "--run-name", name, "--plan")
     assert completed.returncode == 0, completed.stderr
-    assert completed.stdout.count("higgsml.cli attribution") == 5
+    assert completed.stdout.count("higgsml.cli attribution") == 9
     assert "h4l_evaluate.py" in completed.stdout
     assert "Execution requires --access-review" in completed.stdout
     assert not output.exists()
@@ -36,13 +36,13 @@ def test_stage_b_plan_does_not_require_access_review():
     assert "runs" in completed.stdout and "h4l-off-paper-001" in completed.stdout
 
 
-def test_force_is_forwarded_to_each_debug_stage():
+def test_force_is_rejected_by_default_marginal_workflow():
     completed = invoke(
         "--source-run-name", "T2", "--run-name", "debug-001",
         "--stage-b", "--force", "--plan",
     )
-    assert completed.returncode == 0, completed.stderr
-    assert completed.stdout.count("--force") == 5
+    assert completed.returncode == 2
+    assert "--force cannot establish compatibility" in completed.stderr
 
 
 def test_full_execution_requires_access_review():
@@ -59,9 +59,9 @@ def test_evaluation_plan_reuses_stage_b_paths():
     assert completed.returncode == 0, completed.stderr
     assert "higgsml.cli attribution" not in completed.stdout
     assert completed.stdout.count("h4l_evaluate.py") == 1
-    assert "report-B" in completed.stdout and "evaluation-plan.json" in completed.stdout
-    assert "access-review" in completed.stdout
-    assert "validated-off-assessment-access.json" in completed.stdout
+    assert "evaluation-plan.json" in completed.stdout
+    assert "Execution requires --access-review" in completed.stdout
+    assert "--access-review" not in next(line for line in completed.stdout.splitlines() if "h4l_evaluate.py" in line)
 
 
 def test_no_progress_is_supported_and_forwarded_to_evaluator():

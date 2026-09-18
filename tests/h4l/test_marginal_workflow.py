@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 import pytest
+from jsonschema import Draft202012Validator
 
 from higgsml.artifacts import ResearchRun, read_run, digest_json
 from higgsml.data import assign_roles, write_research_data
@@ -14,6 +15,44 @@ from higgsml.inference import marginal_workflow as w
 from higgsml.inference.attribution import SUBSETS, SEEDS, FAMILY, candidate_key
 from higgsml.modeling.representations import ENGINEERED19
 from higgsml.protocol import load_protocol
+
+
+def test_source_registration_uses_a_distinct_schema_from_default_registration():
+    from higgsml.inference import attribution_workflow as legacy
+
+    schema_root = Path(__file__).resolve().parents[2] / 'config' / 'schemas'
+    source_schema = json.loads(
+        (schema_root / 'h4l_mass_off_source_registration.schema.json').read_text()
+    )
+    default_schema = json.loads(
+        (schema_root / 'h4l_mass_off_registration.schema.json').read_text()
+    )
+    protocol = load_protocol().to_dict()
+    source_registration = {
+        'schema_version': 'h4l-mass-off-registration-v1',
+        'protocol_id': 'feature_attribution_mass_off_v1',
+        'analysis_definition_sha256': 'a' * 64,
+        'family_id': FAMILY,
+        'protocol_sha256': 'b' * 64,
+        'dataset': protocol['dataset'],
+        'prepared_artifact_id': 'c' * 64,
+        'prepared_path': 'runs/prepare',
+        'population_id': 'd' * 64,
+        'source_root': 'runs/source',
+        'registration_status': 'exploratory_posthoc',
+        'candidate_keys': legacy.candidate_keys(),
+        'budgets': legacy.BUDGETS,
+        'value_function': '-W68',
+        'estimator': 'per_seed_then_median',
+        'seed_resampling': '3125_ordered_joint_vectors_linear_quantiles',
+        'pairing_rule': 'joint_process_cells_nonnegative_with_exact_marginals_else_unavailable',
+        'historical_claims': [],
+        'qualification': {},
+        'registration_id': 'e' * 64,
+    }
+
+    Draft202012Validator(source_schema).validate(source_registration)
+    assert source_schema != default_schema
 
 
 def _run(root, name, protocol, files, stage=None):
@@ -154,7 +193,7 @@ def test_terminal_failure_other_seeds_continue_and_no_replay(tmp_path,monkeypatc
 def test_cli_plan_only_does_not_read_payload_or_claim(tmp_path,monkeypatch,capsys):
     from higgsml.cli_attribution import main
     monkeypatch.setattr(w,'_frame',lambda *a,**k:pytest.fail('numeric decode'))
-    assert main(['support-check','--evaluation-version','v3','--plan-only','--run-dir',str(tmp_path/'unused')])==0
+    assert main(['support-check','--plan-only','--run-dir',str(tmp_path/'unused')])==0
     value=json.loads(capsys.readouterr().out)
     assert value['unit_count_including_report']==37 and value['claims_consumed'] is False
     assert not (tmp_path/'unused').exists()
@@ -253,17 +292,17 @@ def test_script_matrix_and_immutable_report_resume(tmp_path,monkeypatch,capsys):
         assert len(kw['evaluation_paths'])==36
     monkeypatch.setattr(w,'report',report)
     monkeypatch.setattr(w,'_load',lambda *a:SimpleNamespace(read_json=lambda name:{'evaluation_plan':{}}))
-    args=module._parser().parse_args(['--evaluation-version','v3','--plan',str(tmp_path/'plan'),
+    args=module._parser().parse_args(['--plan',str(tmp_path/'plan'),
         '--registration-run',str(tmp_path/'register'),'--prepared-run',str(tmp_path/'prepared'),
         '--template-run',str(tmp_path/'nominal'),'--freeze-run',str(tmp_path/'freeze'),
         '--result-run',str(tmp_path/'asimov'),'--output-root',str(tmp_path/'evaluation'),'--no-progress'])
-    module._run_mass_off_v2(args,{}, {})
+    module._run_default(args,{}, {})
     args.continue_run=True
-    module._run_mass_off_v2(args,{}, {})
+    module._run_default(args,{}, {})
     evidence=tmp_path/'evaluation'/'assessment-mu1-seed42'; evidence.mkdir()
     (evidence/'seed-evaluation.json').write_text('{"new":"evidence"}')
-    module._run_mass_off_v2(args,{}, {})
-    module._run_mass_off_v2(args,{}, {})
+    module._run_default(args,{}, {})
+    module._run_default(args,{}, {})
     assert len(commands)==144 and len(reports)==3
     assert reports[0].name=='report' and reports[1].name.startswith('report-resume-')
     assert reports[1]!=reports[2]
@@ -319,10 +358,10 @@ def test_failed_gate_continuation_reuses_only_bound_report(tmp_path,monkeypatch,
     checked=[]
     monkeypatch.setattr(w,'_validate_gate',lambda *a:checked.append(a[0]))
     monkeypatch.setattr(w,'report',lambda *a,**k:pytest.fail('existing gate report overwritten'))
-    args=module._parser().parse_args(['--evaluation-version','v3','--source-run-name','fixture',
+    args=module._parser().parse_args(['--source-run-name','fixture',
                                      '--run-name','fixture','--stage-b','--continue'])
-    module._run_v2(args); module._run_v2(args)
+    module._run(args); module._run(args)
     assert checked==[gate,gate] and 'gate-failure-report' in capsys.readouterr().out
     stored['support']=[]
     with pytest.raises(module.WorkflowError,match='bind'):
-        module._run_v2(args)
+        module._run(args)

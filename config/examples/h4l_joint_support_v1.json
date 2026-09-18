@@ -1,7 +1,0 @@
-{
-  "gate": "J0",
-  "status": "failed",
-  "seeds": {},
-  "projection_tolerance": {"rtol": 1e-10, "atol": 1e-10},
-  "evidence_scope": "synthetic_contract_example_not_scientific_validation"
-}

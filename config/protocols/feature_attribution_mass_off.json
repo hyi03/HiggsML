@@ -1,9 +1,13 @@
 {
-  "schema_version": "h4l-mass-off-evaluation-plan-v1",
-  "dataset": "atlas2020_4lep",
+  "protocol_id": "feature_attribution_mass_off_v1",
   "family_id": "engineered19_raw_T1_m4l_off_attribution_v1",
-  "protocol_sha256": "e8747ca77188732bac1d1c72e9e0ce4c86056a580cd45db9be33975837ed515e",
-  "registration_status": "exploratory_posthoc",
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
   "candidate_keys": [
     "M0off:42",
     "M3:42:groups=A:m4l=off",
@@ -107,11 +111,13 @@
       "seed": 42
     }
   },
-  "inputs": {
-    "registration_artifact_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "prepared_artifact_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "template_artifact_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "freeze_artifact_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "asimov_artifact_id": "0000000000000000000000000000000000000000000000000000000000000000"
-  }
+  "value_function": "-W68",
+  "estimator": "per_seed_then_median",
+  "quantile_method": "linear",
+  "seed_vectors": 3125,
+  "nominal_grid": "common_all_80_then_frozen",
+  "empty_set": "M0off_constant_0.5_category_1",
+  "pairing": "marginal_common_total_monotone_crn; artificial covariance, not physical event pairing",
+  "registration_status": "definition_only_requires_bound_registration_artifact",
+  "scientific_qualification": "pending_independent_reference"
 }

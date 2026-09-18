@@ -1,9 +1,9 @@
 {
-  "h4l-joint-support-workflow-v1": "h4l_joint_support_workflow_v1.schema.json",
-  "h4l-mass-off-compatibility-audit-v1": "h4l_mass_off_compatibility_audit_v1.schema.json",
-  "h4l-mass-off-evaluation-plan-v2": "h4l_mass_off_evaluation_plan_v2.schema.json",
-  "h4l-mass-off-evaluation-spec-v2": "h4l_mass_off_evaluation_spec_v2.schema.json",
-  "h4l-mass-off-freeze-v2": "h4l_mass_off_freeze_v2.schema.json",
-  "h4l-mass-off-registration-v2": "h4l_mass_off_registration_v2.schema.json",
-  "h4l-off-assessment-access-v2": "h4l_off_assessment_access_v2.schema.json"
+  "h4l-marginal-support-workflow-v1": "h4l_marginal_support_workflow.schema.json",
+  "h4l-mass-off-compatibility-audit-v3": "h4l_mass_off_compatibility_audit.schema.json",
+  "h4l-mass-off-evaluation-plan-v3": "h4l_mass_off_evaluation_plan.schema.json",
+  "h4l-mass-off-evaluation-spec-v3": "h4l_mass_off_evaluation_spec.schema.json",
+  "h4l-mass-off-freeze-v3": "h4l_mass_off_freeze.schema.json",
+  "h4l-mass-off-registration-v3": "h4l_mass_off_registration.schema.json",
+  "h4l-off-assessment-access-v3": "h4l_off_assessment_access.schema.json"
 }

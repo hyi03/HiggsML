@@ -1,195 +1,275 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "h4l-mass-off-registration-v3",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "protocol_id",
-    "analysis_definition_sha256",
-    "protocol_sha256",
-    "dataset",
-    "prepared_artifact_id",
-    "prepared_path",
-    "population_id",
-    "source_root",
-    "value_function",
-    "estimator",
-    "seed_resampling",
-    "pairing_rule",
-    "registration_id",
     "schema_version",
     "family_id",
-    "registration_status",
+    "candidate_definition_digest",
+    "original_definition_digest",
+    "evaluation_definition_digest",
+    "source_registration_path",
+    "source_registration_id",
+    "prepared_artifact_id",
+    "population_id",
+    "protocol_sha256",
     "candidate_keys",
+    "pairing_contract",
+    "blocks",
     "budgets",
-    "historical_claims",
-    "qualification"
+    "source_history",
+    "qualification",
+    "registration_status",
+    "assessment_payload_read",
+    "registration_id"
   ],
   "properties": {
-    "protocol_id": {
-      "type": "string"
-    },
-    "analysis_definition_sha256": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{64}$"
-    },
-    "protocol_sha256": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{64}$"
-    },
-    "dataset": {
-      "type": "string"
-    },
-    "prepared_artifact_id": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{64}$"
-    },
-    "prepared_path": {
-      "type": "string"
-    },
-    "population_id": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{64}$"
-    },
-    "source_root": {
-      "type": "string"
-    },
-    "value_function": {
-      "type": "string"
-    },
-    "estimator": {
-      "type": "string"
-    },
-    "seed_resampling": {
-      "type": "string"
-    },
-    "pairing_rule": {
-      "type": "string"
-    },
-    "registration_id": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{64}$"
-    },
     "schema_version": {
-      "const": "h4l-mass-off-registration-v1"
+      "const": "h4l-mass-off-registration-v3"
     },
     "family_id": {
       "const": "engineered19_raw_T1_m4l_off_attribution_v1"
     },
-    "registration_status": {
-      "const": "exploratory_posthoc"
+    "candidate_definition_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "original_definition_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "evaluation_definition_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "source_registration_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_registration_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "prepared_artifact_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "population_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "protocol_sha256": {
+      "$ref": "#/$defs/digest"
     },
     "candidate_keys": {
-      "const": [
-        "M0off:42",
-        "M3:42:groups=A:m4l=off",
-        "M3:42:groups=B:m4l=off",
-        "M3:42:groups=C:m4l=off",
-        "M3:42:groups=D:m4l=off",
-        "M3:42:groups=AB:m4l=off",
-        "M3:42:groups=AC:m4l=off",
-        "M3:42:groups=AD:m4l=off",
-        "M3:42:groups=BC:m4l=off",
-        "M3:42:groups=BD:m4l=off",
-        "M3:42:groups=CD:m4l=off",
-        "M3:42:groups=ABC:m4l=off",
-        "M3:42:groups=ABD:m4l=off",
-        "M3:42:groups=ACD:m4l=off",
-        "M3:42:groups=BCD:m4l=off",
-        "M3:42:groups=ABCD:m4l=off",
-        "M0off:43",
-        "M3:43:groups=A:m4l=off",
-        "M3:43:groups=B:m4l=off",
-        "M3:43:groups=C:m4l=off",
-        "M3:43:groups=D:m4l=off",
-        "M3:43:groups=AB:m4l=off",
-        "M3:43:groups=AC:m4l=off",
-        "M3:43:groups=AD:m4l=off",
-        "M3:43:groups=BC:m4l=off",
-        "M3:43:groups=BD:m4l=off",
-        "M3:43:groups=CD:m4l=off",
-        "M3:43:groups=ABC:m4l=off",
-        "M3:43:groups=ABD:m4l=off",
-        "M3:43:groups=ACD:m4l=off",
-        "M3:43:groups=BCD:m4l=off",
-        "M3:43:groups=ABCD:m4l=off",
-        "M0off:44",
-        "M3:44:groups=A:m4l=off",
-        "M3:44:groups=B:m4l=off",
-        "M3:44:groups=C:m4l=off",
-        "M3:44:groups=D:m4l=off",
-        "M3:44:groups=AB:m4l=off",
-        "M3:44:groups=AC:m4l=off",
-        "M3:44:groups=AD:m4l=off",
-        "M3:44:groups=BC:m4l=off",
-        "M3:44:groups=BD:m4l=off",
-        "M3:44:groups=CD:m4l=off",
-        "M3:44:groups=ABC:m4l=off",
-        "M3:44:groups=ABD:m4l=off",
-        "M3:44:groups=ACD:m4l=off",
-        "M3:44:groups=BCD:m4l=off",
-        "M3:44:groups=ABCD:m4l=off",
-        "M0off:45",
-        "M3:45:groups=A:m4l=off",
-        "M3:45:groups=B:m4l=off",
-        "M3:45:groups=C:m4l=off",
-        "M3:45:groups=D:m4l=off",
-        "M3:45:groups=AB:m4l=off",
-        "M3:45:groups=AC:m4l=off",
-        "M3:45:groups=AD:m4l=off",
-        "M3:45:groups=BC:m4l=off",
-        "M3:45:groups=BD:m4l=off",
-        "M3:45:groups=CD:m4l=off",
-        "M3:45:groups=ABC:m4l=off",
-        "M3:45:groups=ABD:m4l=off",
-        "M3:45:groups=ACD:m4l=off",
-        "M3:45:groups=BCD:m4l=off",
-        "M3:45:groups=ABCD:m4l=off",
-        "M0off:46",
-        "M3:46:groups=A:m4l=off",
-        "M3:46:groups=B:m4l=off",
-        "M3:46:groups=C:m4l=off",
-        "M3:46:groups=D:m4l=off",
-        "M3:46:groups=AB:m4l=off",
-        "M3:46:groups=AC:m4l=off",
-        "M3:46:groups=AD:m4l=off",
-        "M3:46:groups=BC:m4l=off",
-        "M3:46:groups=BD:m4l=off",
-        "M3:46:groups=CD:m4l=off",
-        "M3:46:groups=ABC:m4l=off",
-        "M3:46:groups=ABD:m4l=off",
-        "M3:46:groups=ACD:m4l=off",
-        "M3:46:groups=BCD:m4l=off",
-        "M3:46:groups=ABCD:m4l=off"
-      ]
+      "$ref": "#/$defs/candidates"
     },
-    "budgets": {
+    "pairing_contract": {
       "const": {
-        "mc_bootstrap": {
-          "replicas": 200,
-          "seed": 42001
+        "contract_id": "h4l-mass-off-marginal-crn-v1",
+        "pairing_scope": "within_seed",
+        "cross_seed_pairing": "none",
+        "pairing_kind": "marginal_common_total_monotone_crn",
+        "physical_event_pairing": false,
+        "uncertainty_scope": "conditional_on_registered_crn_coupling",
+        "primary_claim_eligible": false,
+        "sensitivity_status": "pending",
+        "sensitivity_reason": "Independent-allocation fit diagnostic requires a bound execution budget.",
+        "seeds": [
+          42,
+          43,
+          44,
+          45,
+          46
+        ],
+        "block_size": 16,
+        "candidate_family_size": 80,
+        "numeric": {
+          "version": "h4l-marginal-f64-fsum-v1",
+          "rtol": 1e-10,
+          "atol": 1e-10,
+          "accumulation": "group_first_math_fsum",
+          "serialization": "canonical_json_binary64"
         },
-        "toys": {
-          "injections": [
-            0,
-            1,
-            2
-          ],
-          "count": 500,
-          "seed": 42
+        "legacy_role_map": {
+          "0": "background",
+          "1": "signal"
         },
-        "t2": {
-          "mu": 1,
-          "outer_replicas": 20,
-          "inner_toys": 100,
-          "seed": 42
-        }
+        "rng": "sha256-full-256-PCG64-v1",
+        "sensitivity": {
+          "allocation": "independent_category_uniform",
+          "totals": "reuse_primary",
+          "toy_indexes": "same_as_primary",
+          "summaries": [
+            "paired_coverage",
+            "paired_width",
+            "paired_bias"
+          ]
+        },
+        "contract_digest": "701f0e16ebce6c8425cff9f5da40b0583d4632d0601652e84f96f345ece95d1b"
       }
     },
-    "historical_claims": {
+    "blocks": {
+      "$ref": "#/$defs/blocks"
+    },
+    "budgets": {
+      "$ref": "#/$defs/budgets"
+    },
+    "source_history": {
       "type": "array"
     },
     "qualification": {
       "type": "object"
+    },
+    "registration_status": {
+      "const": "exploratory_v3"
+    },
+    "assessment_payload_read": {
+      "const": false
+    },
+    "registration_id": {
+      "$ref": "#/$defs/digest"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "candidates": {
+      "type": "array",
+      "minItems": 80,
+      "maxItems": 80,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^(M0off|M3):"
+      }
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "seed",
+        "candidate_keys",
+        "block_id",
+        "pairing_contract_digest"
+      ],
+      "properties": {
+        "seed": {
+          "enum": [
+            42,
+            43,
+            44,
+            45,
+            46
+          ]
+        },
+        "candidate_keys": {
+          "type": "array",
+          "minItems": 16,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "block_id": {
+          "type": "string",
+          "pattern": "^seed-block:[0-9a-f]{64}$"
+        },
+        "pairing_contract_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {
+        "$ref": "#/$defs/block"
+      }
+    },
+    "contract": {
+      "const": {
+        "contract_id": "h4l-mass-off-marginal-crn-v1",
+        "pairing_scope": "within_seed",
+        "cross_seed_pairing": "none",
+        "pairing_kind": "marginal_common_total_monotone_crn",
+        "physical_event_pairing": false,
+        "uncertainty_scope": "conditional_on_registered_crn_coupling",
+        "primary_claim_eligible": false,
+        "sensitivity_status": "pending",
+        "sensitivity_reason": "Independent-allocation fit diagnostic requires a bound execution budget.",
+        "seeds": [
+          42,
+          43,
+          44,
+          45,
+          46
+        ],
+        "block_size": 16,
+        "candidate_family_size": 80,
+        "numeric": {
+          "version": "h4l-marginal-f64-fsum-v1",
+          "rtol": 1e-10,
+          "atol": 1e-10,
+          "accumulation": "group_first_math_fsum",
+          "serialization": "canonical_json_binary64"
+        },
+        "legacy_role_map": {
+          "0": "background",
+          "1": "signal"
+        },
+        "rng": "sha256-full-256-PCG64-v1",
+        "sensitivity": {
+          "allocation": "independent_category_uniform",
+          "totals": "reuse_primary",
+          "toy_indexes": "same_as_primary",
+          "summaries": [
+            "paired_coverage",
+            "paired_width",
+            "paired_bias"
+          ]
+        },
+        "contract_digest": "701f0e16ebce6c8425cff9f5da40b0583d4632d0601652e84f96f345ece95d1b"
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "required": [
+        "mc_bootstrap",
+        "toys",
+        "t2"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "mc_bootstrap": {
+          "type": "object",
+          "const": {
+            "replicas": 200,
+            "seed": 42001
+          }
+        },
+        "toys": {
+          "type": "object",
+          "const": {
+            "injections": [
+              0,
+              1,
+              2
+            ],
+            "count": 500,
+            "seed": 42
+          }
+        },
+        "t2": {
+          "type": "object",
+          "const": {
+            "mu": 1,
+            "outer_replicas": 20,
+            "inner_toys": 100,
+            "seed": 42
+          }
+        }
+      }
     }
   }
 }
