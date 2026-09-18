@@ -1,140 +1,46 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "h4l-mass-off-evaluation-plan-v3",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
-    "dataset",
-    "family_id",
-    "protocol_sha256",
-    "registration_status",
-    "candidate_keys",
-    "budgets",
-    "inputs"
+    "specification",
+    "specification_id",
+    "pairing_scope",
+    "cross_seed_pairing",
+    "inputs",
+    "matrix",
+    "scientific_unit_count",
+    "unit_count_including_report",
+    "evaluation_plan_id"
   ],
   "properties": {
     "schema_version": {
-      "const": "h4l-mass-off-evaluation-plan-v1"
+      "const": "h4l-mass-off-evaluation-plan-v3"
     },
-    "dataset": {
-      "const": "atlas2020_4lep"
-    },
-    "family_id": {
-      "const": "engineered19_raw_T1_m4l_off_attribution_v1"
-    },
-    "registration_status": {
-      "const": "exploratory_posthoc"
-    },
-    "candidate_keys": {
-      "const": [
-        "M0off:42",
-        "M3:42:groups=A:m4l=off",
-        "M3:42:groups=B:m4l=off",
-        "M3:42:groups=C:m4l=off",
-        "M3:42:groups=D:m4l=off",
-        "M3:42:groups=AB:m4l=off",
-        "M3:42:groups=AC:m4l=off",
-        "M3:42:groups=AD:m4l=off",
-        "M3:42:groups=BC:m4l=off",
-        "M3:42:groups=BD:m4l=off",
-        "M3:42:groups=CD:m4l=off",
-        "M3:42:groups=ABC:m4l=off",
-        "M3:42:groups=ABD:m4l=off",
-        "M3:42:groups=ACD:m4l=off",
-        "M3:42:groups=BCD:m4l=off",
-        "M3:42:groups=ABCD:m4l=off",
-        "M0off:43",
-        "M3:43:groups=A:m4l=off",
-        "M3:43:groups=B:m4l=off",
-        "M3:43:groups=C:m4l=off",
-        "M3:43:groups=D:m4l=off",
-        "M3:43:groups=AB:m4l=off",
-        "M3:43:groups=AC:m4l=off",
-        "M3:43:groups=AD:m4l=off",
-        "M3:43:groups=BC:m4l=off",
-        "M3:43:groups=BD:m4l=off",
-        "M3:43:groups=CD:m4l=off",
-        "M3:43:groups=ABC:m4l=off",
-        "M3:43:groups=ABD:m4l=off",
-        "M3:43:groups=ACD:m4l=off",
-        "M3:43:groups=BCD:m4l=off",
-        "M3:43:groups=ABCD:m4l=off",
-        "M0off:44",
-        "M3:44:groups=A:m4l=off",
-        "M3:44:groups=B:m4l=off",
-        "M3:44:groups=C:m4l=off",
-        "M3:44:groups=D:m4l=off",
-        "M3:44:groups=AB:m4l=off",
-        "M3:44:groups=AC:m4l=off",
-        "M3:44:groups=AD:m4l=off",
-        "M3:44:groups=BC:m4l=off",
-        "M3:44:groups=BD:m4l=off",
-        "M3:44:groups=CD:m4l=off",
-        "M3:44:groups=ABC:m4l=off",
-        "M3:44:groups=ABD:m4l=off",
-        "M3:44:groups=ACD:m4l=off",
-        "M3:44:groups=BCD:m4l=off",
-        "M3:44:groups=ABCD:m4l=off",
-        "M0off:45",
-        "M3:45:groups=A:m4l=off",
-        "M3:45:groups=B:m4l=off",
-        "M3:45:groups=C:m4l=off",
-        "M3:45:groups=D:m4l=off",
-        "M3:45:groups=AB:m4l=off",
-        "M3:45:groups=AC:m4l=off",
-        "M3:45:groups=AD:m4l=off",
-        "M3:45:groups=BC:m4l=off",
-        "M3:45:groups=BD:m4l=off",
-        "M3:45:groups=CD:m4l=off",
-        "M3:45:groups=ABC:m4l=off",
-        "M3:45:groups=ABD:m4l=off",
-        "M3:45:groups=ACD:m4l=off",
-        "M3:45:groups=BCD:m4l=off",
-        "M3:45:groups=ABCD:m4l=off",
-        "M0off:46",
-        "M3:46:groups=A:m4l=off",
-        "M3:46:groups=B:m4l=off",
-        "M3:46:groups=C:m4l=off",
-        "M3:46:groups=D:m4l=off",
-        "M3:46:groups=AB:m4l=off",
-        "M3:46:groups=AC:m4l=off",
-        "M3:46:groups=AD:m4l=off",
-        "M3:46:groups=BC:m4l=off",
-        "M3:46:groups=BD:m4l=off",
-        "M3:46:groups=CD:m4l=off",
-        "M3:46:groups=ABC:m4l=off",
-        "M3:46:groups=ABD:m4l=off",
-        "M3:46:groups=ACD:m4l=off",
-        "M3:46:groups=BCD:m4l=off",
-        "M3:46:groups=ABCD:m4l=off"
+    "specification": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "specification_id",
+        "candidate_keys",
+        "blocks",
+        "pairing_contract",
+        "budgets",
+        "matrix",
+        "rng",
+        "evidence_scope"
       ]
     },
-    "budgets": {
-      "const": {
-        "mc_bootstrap": {
-          "replicas": 200,
-          "seed": 42001
-        },
-        "toys": {
-          "injections": [
-            0,
-            1,
-            2
-          ],
-          "count": 500,
-          "seed": 42
-        },
-        "t2": {
-          "mu": 1,
-          "outer_replicas": 20,
-          "inner_toys": 100,
-          "seed": 42
-        }
-      }
+    "specification_id": {
+      "$ref": "#/$defs/digest"
     },
-    "protocol_sha256": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{64}$"
+    "pairing_scope": {
+      "const": "within_seed"
+    },
+    "cross_seed_pairing": {
+      "const": "none"
     },
     "inputs": {
       "type": "object",
@@ -148,26 +54,81 @@
       ],
       "properties": {
         "registration_artifact_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
+          "$ref": "#/$defs/digest"
         },
         "prepared_artifact_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
+          "$ref": "#/$defs/digest"
         },
         "template_artifact_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
+          "$ref": "#/$defs/digest"
         },
         "freeze_artifact_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
+          "$ref": "#/$defs/digest"
         },
         "asimov_artifact_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
+          "$ref": "#/$defs/digest"
         }
       }
+    },
+    "matrix": {
+      "type": "array",
+      "minItems": 36,
+      "maxItems": 36,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stage",
+          "mu",
+          "training_seed"
+        ],
+        "properties": {
+          "stage": {
+            "enum": [
+              "mc-bootstrap",
+              "model-self",
+              "assessment",
+              "t2"
+            ]
+          },
+          "mu": {
+            "enum": [
+              0,
+              1,
+              2
+            ]
+          },
+          "training_seed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "enum": [
+              null,
+              42,
+              43,
+              44,
+              45,
+              46
+            ]
+          }
+        }
+      }
+    },
+    "scientific_unit_count": {
+      "const": 36
+    },
+    "unit_count_including_report": {
+      "const": 37
+    },
+    "evaluation_plan_id": {
+      "$ref": "#/$defs/digest"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
     }
   }
 }

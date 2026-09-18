@@ -344,70 +344,11 @@ python scripts/h4l_evaluate.py --plan runs/off-study-001/report-B/evaluation-pla
 
 Individual `mc-bootstrap`, `model-self --mu 0|1|2`, `assessment --mu 0|1|2` and `t2` stages use the same registration/template/freeze arguments plus `--evaluation-plan runs/off-study-001/report-B/evaluation-plan.json --result-run runs/off-study-001/asimov`. Assessment/T2 additionally require `--access-review` with schema `h4l-off-assessment-access-v1`, exact population/protocol/freeze binding, independent P0/T1 file receipts, explicit historical-use and group-isolation review. P0 must satisfy [the applicability schema](../config/schemas/h4l_off_p0_applicability.schema.json): its recomputed `package_id` hashes the package without that field; dataset, prepared, protocol, freeze, template and original P0 source-file hash must match. Each physical definition has nonempty referenced content and a typed, finite expected/actual numerical comparison within declared tolerances. Source files have verified receipts and an independent producer/reference/basis. The schema checks evidence structure and bindings; independent human review must establish physical validity and acceptable tolerances. T1 uses the existing independent evidence package contract. Missing evidence is `assessment_qualification_pending`; an automatic reference or a new freeze name cannot restore independence. The original prepared run's `.research-claims` root owns exclusive per-cell budget claims; a failed or interrupted claimed cell is not rerun automatically.
 
-### Within-seed v2 sequence
+### Default marginal CRN evaluation
 
-The commands below are supported Linux Bash commands from the repository root. The off-only, evaluation and attribution CLIs retain v1 defaults and require explicit `--evaluation-version v2` for the commands below. `h4l_all.py` selects v2 when the version is omitted.
-
-```bash
-python scripts/h4l_off_run.py \
-  --evaluation-version v2 \
-  --source-run-name test01 \
-  --run-name within-seed-001 \
-  --stage-b \
-  --show-command
-
-python -m higgsml.cli attribution access-review \
-  --evaluation-version v2 \
-  --protocol config/protocols/h4l_protocol.json \
-  --registration-run runs/h4l-off-within-seed-001/register \
-  --template-run runs/h4l-off-within-seed-001/nominal \
-  --freeze-run runs/h4l-off-within-seed-001/freeze \
-  --result-run runs/h4l-off-within-seed-001/asimov \
-  --evaluation-plan runs/h4l-off-within-seed-001/evaluation-plan/evaluation-plan.json \
-  --access-review path/to/validated-off-assessment-access.json \
-  --run-dir runs/h4l-off-within-seed-001/access-review-v2
-
-python scripts/h4l_off_run.py \
-  --evaluation-version v2 \
-  --source-run-name test01 \
-  --run-name within-seed-001 \
-  --evaluation \
-  --access-review runs/h4l-off-within-seed-001/access-review-v2/validated-off-assessment-access.json \
-  --show-command
-```
-
-The Stage B wrapper executes these dependencies: `source-register` -> `register`; `source-nominal` -> `nominal`; J0 -> J1 -> `evaluation-spec` -> `freeze` -> `asimov` -> `evaluation-plan`. The `source-*` artifacts preserve the v1 registration and nominal identities. Their v2 children are compatibility adapters that record the audit and original IDs. Neither gate reads assessment payload. Use `--plan` for the wrapper's metadata-only plan; it does not consume a claim or validate deferred payload/access bindings.
-
-The evaluation driver runs 36 scientific units and then one report. Unit names distinguish `training_seed` from the Toy seed: model-self and assessment each run five seed blocks at each `mu=0,1,2`; T2 runs five seed blocks at `mu=1`; MC bootstrap spans the complete 80-identity family. Budgets are fixed at 500 Toys per candidate for model-self/assessment, 200 MC bootstrap replicas, and 20 outer by 100 inner T2 Toys. `--show-command` is opt-in; normal output remains concise.
-
-Resume accepts complete scientific terminal artifacts, including `insufficient_statistics`, as `skip_terminal`. It may recover publication only from a fully verified staging receipt. Once the durable claim exists, missing or damaged output becomes `blocked_consumed_budget`; neither `--continue` nor a new output path authorizes recomputation. Reports remain partial when units fail or have not run, retain planned denominators, and never substitute another seed.
-
-The v2 access adapter accepts a reviewed source only after binding it to the specification, plan, freeze, blocks, and source-history receipt. A previously opened population is restricted to a J0 `posthoc_support_diagnostic`; it cannot be presented as a fresh prospective assessment source. If no unused eligible source exists, assessment/T2 stay `blocked_missing_eligible_assessment_source`. These commands implement the software contract; synthetic tests are not controlled-MC evidence, and independent P0/T1 review plus the original scientific budgets remain pending.
-
-### Legacy v1 recovery and debug options
-
-The following options apply only to the default v1 workflow. V2 rejects `--reuse-stage` and `--force`; use claim-aware `--continue` and the immutable report snapshot path printed by the v2 evaluator.
-
-For evaluator recovery use `--reuse-stage STAGE:MU=RUN`, for example `--reuse-stage model-self:1=runs/off-evaluation-001/model-self-mu1`, with a fresh output root. The tool verifies successful manifests, original registration/template/freeze bindings and budgets before skipping a cell. Failed scientific fits inside a completed budget remain recorded; fatal stage errors stop dependent commands. To publish intermediate evidence, pass each completed stage using repeated `--evaluation-run` to a fresh `attribution report`.
-
-Exports include four `mass_off_*.csv` tables, complete JSON, JSONL, provenance and a data dictionary. Seed and event-MC uncertainty are separate fields; planned denominators and missing evidence remain visible. The paper-facing Markdown contains only off-family results.
-
-The direct stages above can be orchestrated in the same naming and planning style as `h4l_run.py`. Stage B must run first because the independent access review binds its actual freeze:
-
-```bash
-python scripts/h4l_off_run.py --source-run-name T2 --run-name study-001 --stage-b
-python scripts/h4l_off_run.py --source-run-name T2 --run-name study-001 --evaluation --plan
-python scripts/h4l_off_run.py --source-run-name T2 --run-name study-001 --evaluation
-```
-
-For protocol/debug development only, append `--force` and use a fresh debug run name. This bypasses source protocol consistency checks while retaining dataset, artifact digest, candidate, checkpoint, population, and upstream checks. Every generated stage is marked `forced_protocol_mismatch_debug`; these outputs are non-authoritative and must not be used as paper or scientific evidence. Remove `--force` for the final run.
-
-This writes Stage A--E under `runs/h4l-off-study-001/`. `--evaluation` requires the completed Stage B directories, reads `runs/h4l-off-study-001/access-review/validated-off-assessment-access.json` by default, and refuses an existing evaluation output. Use `--access-review` only to override that deterministic path. The pending structure in `config/examples/h4l_off_assessment_access.pending.json` is not valid access evidence until an independent reviewer replaces every placeholder with bound IDs and verified P0/T1 file receipts. The wrapper delegates every scientific operation and registered budget to the existing attribution CLI and `h4l_evaluate.py`.
-
-### Marginal CRN evaluation v3 (explicit opt-in)
-
-`--evaluation-version v3` uses the registered common-total monotone CRN
-coupling. Each candidate keeps its two-category Poisson marginal law; paired
+The off-only wrapper, evaluator and attribution CLI use the registered
+common-total monotone CRN coupling by default. The version selector has been
+removed. Each candidate keeps its two-category Poisson marginal law; paired
 errors are conditional diagnostics under an artificial coupling, with
 `physical_event_pairing=false`. Legacy labels qualify only aggregate
 signal/background support, not separate physical-process support. Independent
@@ -416,16 +357,37 @@ allocation sensitivity is reported as pending until authorized and executed.
 J0 and all 200 J1 group-thinning replicas per seed must pass before freeze.
 T2 preflights every outer mapping/support record before any inner generation.
 Failed preflight preserves the planned denominator and generates zero inner
-Toys for that seed. Existing assessment history remains binding across v1/v2/v3.
+Toys for that seed. Existing assessment history remains binding, including
+receipts written by older workflow versions.
 
 Use a fresh run name and existing compatible training/prepared artifacts:
 
 ```bash
-python scripts/h4l_off_run.py --evaluation-version v3 \
+python scripts/h4l_off_run.py \
   --source-run-name test01 --run-name marginal-v3-001 --stage-b --show-command
 ```
 
-No default cutover or prospective assessment is authorized by enabling v3.
-The local one-command wrapper defaults to v2; the off-only, evaluation and
-attribution CLIs retain v1 defaults. Explicit v1/v2 behavior remains supported.
-Software/synthetic tests do not establish controlled-MC qualification.
+Stage B publishes `source-register`, `register`, `source-nominal`, `nominal`,
+J0, J1, `evaluation-spec`, `freeze`, `asimov`, `evaluation-plan` and `report-B`.
+Neither support gate reads assessment. Full evaluation requires an unused
+eligible source. The one-command wrapper creates a bound, explicitly
+non-independent local self-review when no external receipt is supplied, then
+continues through all 36 units and the final report. Pass an independently
+reviewed receipt to replace that exploratory default:
+
+```bash
+python scripts/h4l_off_run.py \
+  --source-run-name fresh01 --run-name marginal-001 --evaluation \
+  --access-review path/to/validated-off-assessment-access.json --show-command
+```
+
+For the complete automatic path, including local self-review and access
+adaptation, run `python scripts/h4l_all.py --run-name fresh01`. Outputs from
+that default path remain `single_researcher_self_review`, `independent=false`,
+and exploratory. The wrapper never upgrades them to independent evidence.
+
+The evaluator runs 36 scientific units and one report. Use claim-aware
+`--continue` for interrupted work; consumed assessment/T2 budgets are never
+replayed. The schema filenames under `config/schemas/` are unversioned defaults,
+while schema IDs inside immutable artifacts remain versioned. Software and
+synthetic checks do not establish controlled-MC qualification.

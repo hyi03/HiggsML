@@ -1,10 +1,9 @@
-"""Argument routing for the explicit v2/v3 workflows."""
+"""Argument routing for the default marginal CRN workflow."""
 from higgsml.errors import ResearchError
 
 
 def dispatch(args, protocol, root):
-    from higgsml.inference import seed_workflow, marginal_workflow
-    workflow = marginal_workflow if args.evaluation_version == 'v3' else seed_workflow
+    from higgsml.inference import marginal_workflow as workflow
     if args.force:
         raise ResearchError('within-seed evaluation requires audited compatibility; --force is unavailable')
     if args.workers < 1 or args.worker_threads < 1:

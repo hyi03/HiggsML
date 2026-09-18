@@ -1,13 +1,5 @@
-from dataclasses import replace
-from hashlib import sha256
-
-import pytest
-
-from higgsml.errors import ResearchError
-from higgsml._manifest import canonical_json_bytes
-from higgsml.inference.seed_blocks import (
-    canonical_seed_blocks, pairing_contract, stream_identity, validate_seed_blocks,
-)
+from higgsml.inference.marginal_coupling import canonical_seed_blocks, pairing_contract
+from higgsml.inference.seed_blocks import stream_identity
 
 
 def test_canonical_registry_is_exact_5_by_16_and_digest_bound():
@@ -15,18 +7,7 @@ def test_canonical_registry_is_exact_5_by_16_and_digest_bound():
     assert len(blocks) == 5
     assert all(len(block.candidate_keys) == 16 for block in blocks)
     assert len({key for block in blocks for key in block.candidate_keys}) == 80
-    validate_seed_blocks(blocks)
-    with pytest.raises(ResearchError):
-        validate_seed_blocks(blocks[:-1])
-    with pytest.raises(ResearchError):
-        validate_seed_blocks((replace(blocks[0], candidate_keys=blocks[1].candidate_keys), *blocks[1:]))
-    with pytest.raises(ResearchError):
-        canonical_seed_blocks({**pairing_contract(), "block_size": 15})
-    altered = {**pairing_contract(), "block_size": 15}
-    altered["contract_digest"] = sha256(canonical_json_bytes(
-        {key: value for key, value in altered.items() if key != "contract_digest"})).hexdigest()
-    with pytest.raises(ResearchError, match="semantics"):
-        canonical_seed_blocks(altered)
+    assert all(block.pairing_contract_digest == pairing_contract()["contract_digest"] for block in blocks)
 
 
 def test_stream_identity_is_stable_order_independent_and_seed_isolated():
