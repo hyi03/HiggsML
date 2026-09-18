@@ -15,7 +15,8 @@ SCRIPTS_ROOT = PROJECT_ROOT / "scripts"
 RUNS_ROOT = PROJECT_ROOT / "runs"
 DEFAULT_RUN_NAME = "default"
 MAX_OFF_WORKERS = 4
-AVAILABLE_MEMORY_PER_WORKER = 6 * 1024**3
+LOCAL_MEMORY_RESERVE = 2 * 1024**3
+AVAILABLE_MEMORY_PER_WORKER = 1 * 1024**3
 OFF_WORKER_THREADS = "1"
 
 
@@ -85,7 +86,8 @@ def _off_workers() -> int:
     available = _available_memory_bytes()
     if available is None or available < 0:
         return 1
-    return max(1, min(MAX_OFF_WORKERS, available // AVAILABLE_MEMORY_PER_WORKER))
+    worker_memory = max(0, available - LOCAL_MEMORY_RESERVE)
+    return max(1, min(MAX_OFF_WORKERS, worker_memory // AVAILABLE_MEMORY_PER_WORKER))
 
 
 def _run(args: argparse.Namespace) -> None:
