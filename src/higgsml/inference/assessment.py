@@ -1,6 +1,7 @@
 """Frozen assessment with paired physical pseudo-observations across methods."""
 from copy import deepcopy
 import hashlib
+import sys
 
 import numpy as np
 import pandas as pd
@@ -317,7 +318,8 @@ def infer_assessment(grid, bundles, mother, protocol, *, layer, t1_validation, m
     candidate_tasks = sorted(grid["templates"].items())
     attempts = {}
     for key, result, attempted_toys, completed_toys in ordered_map(
-            evaluate_candidate, candidate_tasks, workers=workers, worker_threads=worker_threads):
+            evaluate_candidate, candidate_tasks, workers=workers, worker_threads=worker_threads,
+            execution="thread" if sys.platform == "win32" else "process"):
         results[key] = result
         attempts[key] = (attempted_toys, completed_toys)
         if progress is not None:

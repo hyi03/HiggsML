@@ -144,6 +144,16 @@ def test_ordered_process_execution_and_exception_cleanup():
     assert list(ordered_map(abs,[-1,-2],workers=2))==[1,2]
 
 
+def test_ordered_thread_execution_supports_local_fit_state_and_cleanup():
+    offset = 3
+    fit = lambda value: _delayed(value) + offset
+    assert list(ordered_map(fit, range(3), workers=2, execution="thread")) == [3,4,7]
+    with pytest.raises(RuntimeError, match="worker failure"):
+        list(ordered_map(_broken, range(3), workers=2, execution="thread"))
+    with pytest.raises(ResearchError, match="execution"):
+        list(ordered_map(abs, [-1], workers=2, execution="invalid"))
+
+
 def test_t2_workers_preserve_conditional_rng_and_failure_records():
     base=pd.DataFrame(dict(event_group_id=['a','b','c'],physical_weight=[1.,2.,3.],yield_weight=[1.,2.,3.]))
     def fit(frame):
