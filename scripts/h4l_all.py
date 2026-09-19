@@ -16,7 +16,10 @@ RUNS_ROOT = PROJECT_ROOT / "runs"
 DEFAULT_RUN_NAME = "default"
 MAX_OFF_WORKERS = 4
 LOCAL_MEMORY_RESERVE = 2 * 1024**3
-AVAILABLE_MEMORY_PER_WORKER = 1 * 1024**3
+# A worker's steady-state RSS can be much smaller than its transient peak while
+# pyhf/SciPy fits and result serialization overlap.  Budget the complete process
+# peak here so a 16 GiB workstation starts at most two evaluation workers.
+AVAILABLE_MEMORY_PER_WORKER = 5 * 1024**3
 OFF_WORKER_THREADS = "1"
 
 
@@ -54,7 +57,7 @@ def _resume_flag(path: Path) -> list[str]:
     return ["--continue"] if path.is_dir() else []
 
 
-def _available_memory_bytes() -> int | None:
+def _physical_memory_bytes() -> int | None:
     if sys.platform == "win32":
         import ctypes
 
@@ -74,19 +77,19 @@ def _available_memory_bytes() -> int | None:
         status = MemoryStatus()
         status.length = ctypes.sizeof(status)
         if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
-            return int(status.available_physical)
+            return int(status.total_physical)
         return None
     try:
-        return int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_AVPHYS_PAGES"))
+        return int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES"))
     except (AttributeError, OSError, ValueError):
         return None
 
 
 def _off_workers() -> int:
-    available = _available_memory_bytes()
-    if available is None or available < 0:
+    physical = _physical_memory_bytes()
+    if physical is None or physical < 0:
         return 1
-    worker_memory = max(0, available - LOCAL_MEMORY_RESERVE)
+    worker_memory = max(0, physical - LOCAL_MEMORY_RESERVE)
     return max(1, min(MAX_OFF_WORKERS, worker_memory // AVAILABLE_MEMORY_PER_WORKER))
 
 

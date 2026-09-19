@@ -23,7 +23,7 @@ def test_default_run_uses_marginal_workflow_without_version_flag(
 ) -> None:
     workflow = _load_module()
     monkeypatch.setattr(workflow, "RUNS_ROOT", tmp_path)
-    monkeypatch.setattr(workflow, "_available_memory_bytes", lambda: 4 * 1024**3)
+    monkeypatch.setattr(workflow, "_physical_memory_bytes", lambda: 16 * 1024**3)
     plan = tmp_path / "h4l-off-default" / "evaluation-plan" / "evaluation-plan.json"
     plan.parent.mkdir(parents=True)
     plan.write_text("{}", encoding="utf-8")
@@ -64,7 +64,7 @@ def test_explicit_run_name_reuses_an_existing_access_review(
 ) -> None:
     workflow = _load_module()
     monkeypatch.setattr(workflow, "RUNS_ROOT", tmp_path)
-    monkeypatch.setattr(workflow, "_available_memory_bytes", lambda: 48 * 1024**3)
+    monkeypatch.setattr(workflow, "_physical_memory_bytes", lambda: 48 * 1024**3)
     review = (
         tmp_path / "h4l-off-study-001" / "access-review"
         / "validated-off-assessment-access.json"
@@ -95,18 +95,20 @@ def test_version_selector_is_removed() -> None:
         workflow._parser().parse_args(["--evaluation-version", "v3"])
 
 
-def test_worker_count_is_bounded_by_available_memory(monkeypatch) -> None:
+def test_worker_count_is_bounded_by_physical_memory(monkeypatch) -> None:
     workflow = _load_module()
     for available, expected in (
         (None, 1),
         (-1, 1),
         (0, 1),
-        (3 * 1024**3, 1),
-        (4 * 1024**3 - 1, 1),
-        (4 * 1024**3, 2),
-        (5 * 1024**3, 3),
-        (6 * 1024**3, 4),
+        (7 * 1024**3 - 1, 1),
+        (7 * 1024**3, 1),
+        (12 * 1024**3 - 1, 1),
+        (12 * 1024**3, 2),
+        (16 * 1024**3, 2),
+        (17 * 1024**3, 3),
+        (22 * 1024**3, 4),
         (96 * 1024**3, 4),
     ):
-        monkeypatch.setattr(workflow, "_available_memory_bytes", lambda value=available: value)
+        monkeypatch.setattr(workflow, "_physical_memory_bytes", lambda value=available: value)
         assert workflow._off_workers() == expected
