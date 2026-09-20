@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib
+import sys
 import numpy as np
 from scipy.optimize import brentq
 from scipy.stats import chi2
@@ -361,5 +362,7 @@ def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mappin
                     'preflight_failure_statuses':statuses,'replicas':[r for r,_ in prepared_tasks],
                     'planned_outer':outer_replicas,'planned_inner_per_outer':inner_toys,
                     'generated_physical_toys':0}
-    replicas = list(ordered_map(finish, prepared_tasks, workers=workers, worker_threads=worker_threads))
+    replicas = list(ordered_map(
+        finish, prepared_tasks, workers=workers, worker_threads=worker_threads,
+        execution="thread" if sys.platform == "win32" else "process"))
     return {"status":"valid" if all(r["status"]=="valid" for r in replicas) else "inference_incomplete","layer":"T2-procedure","model_id":model_id,"mother_id":mother_id,"randomization":"calibration_physical_group_bootstrap_and_inner_pseudodata","fixed":"trained_model_template_and_assessment_mother_events","outer_replicas":outer_replicas,"inner_toys":inner_toys,"seed":seed,"replicas":replicas}

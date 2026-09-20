@@ -54,7 +54,7 @@ def _parser():
     parser.add_argument('--no-progress', action='store_true',
                         help='Disable stage progress bars.')
     parser.add_argument('--workers', type=int, default=1,
-                        help='Process workers for evaluation stages (default: 1).')
+                        help='Parallel workers for evaluation stages (default: 1).')
     parser.add_argument('--worker-threads', type=int, default=1,
                         help='Threads available inside each worker (default: 1).')
     return parser
