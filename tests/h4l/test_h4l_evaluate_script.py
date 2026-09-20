@@ -33,6 +33,8 @@ def test_evaluator_supports_disabling_progress():
     )
     assert completed.returncode == 0
     assert "--no-progress" in completed.stdout
+    assert "--evaluation-unit" in completed.stdout
+    assert "--retry-failed" in completed.stdout
 
 
 def test_attribution_cli_supports_disabling_internal_progress():

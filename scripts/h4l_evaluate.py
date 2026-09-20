@@ -49,6 +49,10 @@ def _parser():
     parser.add_argument("--reuse-stage", action='append', default=[], metavar='STAGE:MU=RUN')
     parser.add_argument('--continue', dest='continue_run', action='store_true',
                         help='Resume an existing evaluation and skip valid complete cells.')
+    parser.add_argument('--evaluation-unit', action='append', default=[], metavar='UNIT',
+                        help='Run only one registered unit, for example t2-mu1-seed42; repeatable.')
+    parser.add_argument('--retry-failed', action='store_true',
+                        help='Retry selected claimed units that have no recoverable terminal.')
     parser.add_argument('--force', action='store_true',
                         help='Debug only: allow a forced-protocol off-only registration')
     parser.add_argument('--no-progress', action='store_true',
@@ -89,6 +93,15 @@ def _run_default(args,protocol,plan):
     if args.force or args.reuse_stage:
         raise EvaluationError('Within-seed reuse requires an explicit compatibility adapter; --force/--reuse-stage are unavailable')
     output=_resolve(args.output_root)
+    matrix = workflow.matrix()
+    names = {workflow.unit_name(unit): unit for unit in matrix}
+    unknown = sorted(set(args.evaluation_unit) - set(names))
+    if unknown:
+        raise EvaluationError('Unknown evaluation unit: ' + ', '.join(unknown), 2)
+    if args.retry_failed and not args.evaluation_unit:
+        raise EvaluationError('--retry-failed requires at least one --evaluation-unit', 2)
+    selected = ([names[name] for name in dict.fromkeys(args.evaluation_unit)]
+                if args.evaluation_unit else matrix)
     if output==RUNS_ROOT or not output.is_relative_to(RUNS_ROOT):
         raise EvaluationError('Output must be below runs')
     if args.plan_only:
@@ -106,15 +119,16 @@ def _run_default(args,protocol,plan):
             '--template-run',str(_resolve(args.template_run)),'--freeze-run',str(_resolve(args.freeze_run)),
             '--result-run',str(_resolve(args.result_run)),'--evaluation-plan',str(_resolve(args.plan)),
             '--workers',str(args.workers),'--worker-threads',str(args.worker_threads)]
-    outputs=[output/workflow.unit_name(unit) for unit in workflow.matrix()]
+    outputs=[output/workflow.unit_name(unit) for unit in matrix]
     failure=None
-    with tqdm(total=37,desc='H4l within-seed evaluation',unit='unit',disable=args.no_progress) as progress:
-        for unit in workflow.matrix():
+    with tqdm(total=len(selected)+1,desc='H4l within-seed evaluation',unit='unit',disable=args.no_progress) as progress:
+        for unit in selected:
             target=output/workflow.unit_name(unit)
             command=[sys.executable,'-m','higgsml.cli','attribution',unit['stage'],*common,
                      '--mu',str(unit['mu']),'--run-dir',str(target)]
             if unit['training_seed'] is not None: command+=['--training-seed',str(unit['training_seed'])]
             if args.access_review: command+=['--access-review',str(_resolve(args.access_review))]
+            if args.retry_failed: command.append('--retry-failed')
             if args.show_command: print(_display(command),flush=True)
             try:
                 _invoke_with_progress(command,label=workflow.unit_name(unit),progress=progress)

@@ -599,10 +599,11 @@ def evaluation_binding(prepared, frozen_run, spec, plan, *, stage, mu, training_
 
 def evaluate(registration_path, nominal_path, freeze_path, protocol, output, allowed_root, *, stage, mu=1,
              training_seed=None, access_review=None, evaluation_plan_path=None, result_path=None,
-             workers=1, worker_threads=1, progress=None):
+             workers=1, worker_threads=1, progress=None, retry_failed=False):
     from higgsml.inference.seed_evaluation import evaluate_seed_block, evaluate_seed_t2, make_t2_outer_multiplicities
     from higgsml.inference.marginal_evaluation_state import (resolve_seed_evaluation, claim_seed_evaluation,
-        publish_seed_evaluation_terminal, recover_seed_evaluation_publication)
+        publish_seed_evaluation_terminal, recover_seed_evaluation_publication,
+        record_seed_evaluation_recomputation)
     registered, value, prepared, adapter, nominal_run, grid, bundles, frozen_run, spec = load_frozen(
         registration_path, nominal_path, freeze_path, protocol)
     plan, result = _bound_plan(evaluation_plan_path, protocol, registered, prepared, adapter, frozen_run, spec, result_path)
@@ -628,7 +629,7 @@ def evaluate(registration_path, nominal_path, freeze_path, protocol, output, all
                                         training_seed=training_seed, access_receipt=receipt)
     common = dict(output_dir=output, claims_root=prepared.path.parents[1], dataset=protocol['dataset'],
                   protocol=protocol, binding=binding)
-    action = resolve_seed_evaluation(**common)
+    action = resolve_seed_evaluation(**common, retry_failed=retry_failed)
     if action == 'blocked_consumed_budget':
         raise ResearchStateError('claimed evaluation output missing or damaged; recomputation prohibited',
                                  status='blocked_consumed_budget')
@@ -637,7 +638,12 @@ def evaluate(registration_path, nominal_path, freeze_path, protocol, output, all
         return {'status': 'complete', 'run_dir': str(output), 'artifact_id': _id(item)}
     if action == 'skip_terminal':
         return {'status': 'complete', 'run_dir': str(output), 'resolution': action}
-    claim_seed_evaluation(claims_root=common['claims_root'], output_dir=output, binding=binding)
+    recomputation = None
+    if action == 'run':
+        claim_seed_evaluation(claims_root=common['claims_root'], output_dir=output, binding=binding)
+    elif action == 'retry_failed':
+        recomputation = record_seed_evaluation_recomputation(
+            claims_root=common['claims_root'], output_dir=output, binding=binding)
     # The durable claim above precedes all assessment numeric decoding.
     frame = _frame(prepared, protocol, frozen=frozen_run.read_json('freeze.json') if stage in {'assessment', 't2'} else None)
     options = dict(block=block, mu=mu, toy_base_seed=BUDGETS['toys']['seed'], layer='T1',
@@ -656,7 +662,7 @@ def evaluate(registration_path, nominal_path, freeze_path, protocol, output, all
         terminal = evaluate_seed_block(grid, bundles, frame.loc[frame.role == role].copy(), protocol,
             stage=stage, count=BUDGETS['toys']['count'], **options)
     item = publish_seed_evaluation_terminal(**common, allowed_root=allowed_root, terminal=terminal,
-        upstreams=(registered, adapter, frozen_run, result))
+        upstreams=(registered, adapter, frozen_run, result), recomputation=recomputation)
     return {'status': 'complete', 'scientific_status': terminal['scientific_status'], 'run_dir': str(output), 'artifact_id': _id(item)}
 
 

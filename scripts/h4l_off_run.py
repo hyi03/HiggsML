@@ -78,6 +78,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--workers", type=int, default=1,
                         help="Parallel workers for evaluation stages (default: 1).")
     parser.add_argument("--worker-threads", type=int, default=1)
+    parser.add_argument("--evaluation-unit", action="append", default=[],
+                        help="Run only one registered evaluation unit; repeatable.")
+    parser.add_argument("--retry-failed", action="store_true",
+                        help="Retry selected claimed units with no recoverable terminal.")
     return parser
 
 
@@ -131,6 +135,8 @@ def _run(args):
         raise WorkflowError('--workers must be positive',2)
     if args.worker_threads < 1:
         raise WorkflowError('--worker-threads must be positive',2)
+    if args.retry_failed and not args.evaluation_unit:
+        raise WorkflowError('--retry-failed requires --evaluation-unit',2)
     if args.stage_b and args.evaluation:
         raise WorkflowError('--stage-b cannot be combined with --evaluation',2)
     if output.exists() and not args.continue_run and not args.evaluation and not args.plan:
@@ -190,6 +196,8 @@ def _run(args):
             '--workers',str(args.workers),'--worker-threads',str(args.worker_threads)]
         if args.access_review: command += ['--access-review',str(_resolve(args.access_review))]
         if args.continue_run: command.append('--continue')
+        for unit in args.evaluation_unit: command += ['--evaluation-unit',unit]
+        if args.retry_failed: command.append('--retry-failed')
         if args.show_command: command.append('--show-command')
         if args.no_progress: command.append('--no-progress')
         if args.plan: print(_display(command))

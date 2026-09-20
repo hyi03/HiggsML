@@ -63,4 +63,4 @@ def dispatch(args, protocol, root):
                                         result_path=args.result_run,access_review=args.access_review)
     return workflow.evaluate(*common,stage=args.stage,mu=args.mu,training_seed=args.training_seed,
         access_review=args.access_review,evaluation_plan_path=args.evaluation_plan,result_path=args.result_run,
-        workers=args.workers,worker_threads=args.worker_threads)
+        workers=args.workers,worker_threads=args.worker_threads,retry_failed=args.retry_failed)

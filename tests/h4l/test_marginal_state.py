@@ -34,6 +34,30 @@ def test_failure_terminal_resumes(tmp_path):
         dataset=protocol['dataset'],protocol=protocol,binding=b)=='skip_terminal'
 
 
+def test_explicit_partial_recompute_preserves_claim_and_binds_receipt(tmp_path):
+    b=binding('freeze')
+    output=tmp_path/'cell'
+    claim=state.claim_seed_evaluation(claims_root=tmp_path,output_dir=output,binding=b)
+    protocol=load_protocol().to_dict()
+    common=dict(output_dir=output,claims_root=tmp_path,dataset=protocol['dataset'],
+                protocol=protocol,binding=b)
+    assert state.resolve_seed_evaluation(**common)=='blocked_consumed_budget'
+    assert state.resolve_seed_evaluation(**common,retry_failed=True)=='retry_failed'
+    recomputation=state.record_seed_evaluation_recomputation(
+        claims_root=tmp_path,output_dir=output,binding=b)
+    terminal={**METADATA,'execution_status':'complete','scientific_status':'insufficient_statistics',
+        'qualification':{'status':'insufficient_statistics'},'joint_support':{},'marginal_support':{},
+        'coupling_receipts':[],'planned_toys_per_candidate':2,'generated_physical_toys':0,
+        'candidate_results':[{'candidate_id':c,'attempted_fits':0,'completed_fits':0,'valid_fits':0}
+                             for c in b.candidate_ids]}
+    state.publish_seed_evaluation_terminal(
+        **common,allowed_root=tmp_path,terminal=terminal,recomputation=recomputation)
+    _,value=state.read_seed_evaluation_terminal(**common)
+    assert value['claim_id']==claim['claim_id']
+    assert value['recomputation']==recomputation
+    assert state.resolve_seed_evaluation(**common,retry_failed=True)=='skip_terminal'
+
+
 def test_default_schema_owns_real_blocks_and_rejects_joint_contract():
     import json
     from pathlib import Path
