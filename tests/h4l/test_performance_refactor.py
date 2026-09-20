@@ -178,6 +178,28 @@ def test_t2_workers_preserve_conditional_rng_and_failure_records():
             assert row['inner_seed']==int(rng.integers(0,2**31))
 
 
+def test_t2_uses_thread_workers_on_windows(monkeypatch):
+    base=pd.DataFrame(dict(event_group_id=['a'],physical_weight=[1.],yield_weight=[1.]))
+    frames=[base.assign(role=role,event_group_id=[role]) for role in ('template','assessment')]
+    executions=[]
+
+    def ordered(function,tasks,*,workers,worker_threads,execution):
+        executions.append(execution)
+        return map(function,tasks)
+
+    monkeypatch.setattr(inference.sys,'platform','win32')
+    monkeypatch.setattr(inference,'ordered_map',ordered)
+    result=inference.run_t2_procedure(
+        base.assign(role='calibration'),*frames,
+        fit_mapping=lambda frame:{'mapping_id':'mapping'},
+        apply_mapping=lambda mapping,frame:frame,
+        evaluate=lambda *args:{'status':'valid'},outer_replicas=1,inner_toys=1,
+        seed=42,model_id='model',mother_id='mother',workers=2)
+
+    assert result['status']=='valid'
+    assert executions==['thread']
+
+
 def test_toy_workers_equal_serial():
     from tests.h4l.test_inference import single_bin
     a=inference.run_toys(single_bin(),count=3)
