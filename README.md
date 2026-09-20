@@ -83,7 +83,7 @@ python scripts/h4l_all.py --run-name test01
 python scripts/h4l_all.py
 ```
 
-重复执行同一命令会自动核对进度。绑定一致且 manifest 完整的阶段直接跳过；缺失阶段继续执行；损坏、不完整或绑定不匹配的最终目录会保留为 `.名称.<uuid>.invalid` 后再尝试当前阶段，已有 `.failed` 证据不会删除。若评估预算已经被失败或中断的 assessment/T2 占用，脚本仍按冻结协议拒绝自动重跑。
+重复执行同一命令会自动核对进度。绑定一致且 manifest 完整的阶段直接跳过；缺失阶段继续执行；损坏、不完整或绑定不匹配的最终目录会保留为 `.名称.<uuid>.invalid` 后再尝试当前阶段，已有 `.failed` 证据不会删除。若 assessment/T2 已有 claim 但没有完整或可恢复的终态，默认仍拒绝自动重跑；可用 `--evaluation-unit <unit> --retry-failed` 显式重算该单元。原 claim 保留，重算 receipt 和最终 artifact 会记录这次尝试，其他完整单元不会重复计算。
 
 封装命令为 `h4l_off_run.py` 传入 `--worker-threads 1`，并按已安装物理内存先保留 2 GiB 本机调度/系统余量，再按每个 worker 5 GiB、在 1--4 个 worker 之间选择 `--workers`；内存探测失败时使用 1 个 worker。因此 16 GiB 主机只启动 2 个 worker。该预算覆盖 pyhf/SciPy 拟合与结果序列化重叠时的瞬时峰值。Windows 上的 assessment 候选和 T2 replica 使用线程 worker，以避开长时间运行的 spawned Python 进程崩溃；其他平台使用进程 worker。可并行的完整 bootstrap、Toy 和 T2 工作单元保持注册顺序，Stage B 的注册、模板、freeze 与 Asimov 仍按依赖顺序执行。
 

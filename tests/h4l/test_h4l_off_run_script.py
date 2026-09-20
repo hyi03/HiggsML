@@ -119,3 +119,23 @@ def test_off_wrapper_forwards_continue_to_evaluation():
     assert completed.returncode == 0, completed.stderr
     evaluator = next(line for line in completed.stdout.splitlines() if "h4l_evaluate.py" in line)
     assert "--continue" in evaluator
+
+
+def test_off_wrapper_forwards_selected_failed_recomputation():
+    completed = invoke(
+        "--source-run-name", "02", "--run-name", "paper-001",
+        "--evaluation", "--continue", "--evaluation-unit", "t2-mu1-seed42",
+        "--retry-failed", "--plan",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    evaluator = next(line for line in completed.stdout.splitlines() if "h4l_evaluate.py" in line)
+    assert "--evaluation-unit t2-mu1-seed42" in evaluator
+    assert "--retry-failed" in evaluator
+
+    invalid = invoke(
+        "--source-run-name", "02", "--run-name", "paper-001",
+        "--evaluation", "--continue", "--retry-failed", "--plan",
+    )
+    assert invalid.returncode == 2
+    assert "--retry-failed requires --evaluation-unit" in invalid.stderr

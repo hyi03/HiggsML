@@ -29,7 +29,7 @@ TERMINAL_SCIENTIFIC_STATUSES = VALID_SCIENTIFIC_STATUSES | {
 CELL_STAGES = frozenset({"model-self", "assessment", "t2"})
 ASSESSMENT_ACCESS_STAGES = frozenset({"assessment", "t2"})
 Resolution = Literal[
-    "run", "skip_terminal", "blocked_consumed_budget", "recover_publication"
+    "run", "retry_failed", "skip_terminal", "blocked_consumed_budget", "recover_publication"
 ]
 
 
@@ -241,6 +241,81 @@ def _claim_path(claims_root: str | Path, binding: SeedEvaluationBinding) -> Path
     return directory / f"cell-{binding.ledger_key}.json"
 
 
+def _recomputations_directory(claims_root: str | Path) -> Path:
+    root = Path(claims_root).resolve(strict=True)
+    directory = root / ".h4l-mass-off-v3-recomputations"
+    if directory.is_symlink() or (hasattr(os.path, "isjunction") and os.path.isjunction(directory)):
+        _fail("unsafe seed evaluation recomputation directory")
+    directory.mkdir(exist_ok=True)
+    if directory.is_symlink() or not directory.is_dir() or directory.resolve().parent != root:
+        _fail("invalid seed evaluation recomputation directory")
+    return directory
+
+
+def record_seed_evaluation_recomputation(
+    *, claims_root: str | Path, output_dir: str | Path, binding: SeedEvaluationBinding,
+) -> dict[str, Any]:
+    """Durably record an explicit retry without deleting the original budget claim."""
+    _, claim = _read_claim(claims_root, binding)
+    directory = _recomputations_directory(claims_root)
+    prefix = f"cell-{binding.ledger_key}-attempt-"
+    indices = []
+    for path in directory.glob(prefix + "*.json"):
+        try:
+            indices.append(int(path.stem.removeprefix(prefix)))
+        except ValueError:
+            _fail("invalid seed evaluation recomputation receipt name")
+    attempt = max(indices, default=0) + 1
+    value = {
+        "schema_version": "h4l-mass-off-marginal-block-recomputation-v1",
+        "ledger_key": binding.ledger_key,
+        "cell_id": binding.cell_id,
+        "claim_id": claim["claim_id"],
+        "attempt": attempt,
+        "reason": "explicit_partial_recompute_after_unpublished_failure",
+        "output": str(Path(output_dir).absolute()),
+    }
+    value["recomputation_id"] = digest_json(value)
+    _validate_schema(value, "h4l_mass_off_marginal_block_recomputation.schema.json",
+                     "seed evaluation recomputation")
+    try:
+        _atomic_write(directory / f"{prefix}{attempt}.json", value)
+    except FileExistsError as error:
+        raise ResearchStateError(
+            "concurrent seed evaluation recomputation attempt",
+            status="assessment_already_started",
+        ) from error
+    return value
+
+
+def _validate_recomputation(
+    value: Any, *, claims_root: str | Path, binding: SeedEvaluationBinding,
+    claim: dict[str, Any],
+) -> None:
+    _validate_schema(value, "h4l_mass_off_marginal_block_recomputation.schema.json",
+                     "seed evaluation recomputation")
+    if type(value) is not dict:
+        _fail("invalid seed evaluation recomputation binding")
+    identity = dict(value)
+    recomputation_id = identity.pop("recomputation_id", None)
+    attempt = value.get("attempt")
+    expected = {
+        "schema_version": "h4l-mass-off-marginal-block-recomputation-v1",
+        "ledger_key": binding.ledger_key,
+        "cell_id": binding.cell_id,
+        "claim_id": claim["claim_id"],
+        "reason": "explicit_partial_recompute_after_unpublished_failure",
+        "output": claim["initial_output"],
+    }
+    if (type(attempt) is not int or attempt < 1 or recomputation_id != digest_json(identity)
+            or any(value.get(key) != item for key, item in expected.items())):
+        _fail("seed evaluation recomputation binding mismatch")
+    path = (_recomputations_directory(claims_root)
+            / f"cell-{binding.ledger_key}-attempt-{attempt}.json")
+    if path.is_symlink() or not path.is_file() or read_json(path) != value:
+        _fail("missing seed evaluation recomputation receipt")
+
+
 def claim_seed_evaluation(
     *, claims_root: str | Path, output_dir: str | Path, binding: SeedEvaluationBinding
 ) -> dict[str, Any]:
@@ -349,10 +424,14 @@ def publish_seed_evaluation_terminal(
     *, output_dir: str | Path, allowed_root: str | Path, claims_root: str | Path,
     dataset: str, protocol: dict[str, Any], binding: SeedEvaluationBinding,
     terminal: dict[str, Any], upstreams: tuple[LoadedRun, ...] = (),
+    recomputation: dict[str, Any] | None = None,
 ) -> LoadedRun:
     """Publish an execution-complete result, including a scientific failure terminal."""
     output, root = _inside(output_dir, allowed_root, "seed evaluation output")
     _, claim = _read_claim(claims_root, binding)
+    if recomputation is not None:
+        _validate_recomputation(recomputation, claims_root=claims_root, binding=binding,
+                                claim=claim)
     value = {
         "schema_version": TERMINAL_SCHEMA,
         "cell_id": binding.cell_id,
@@ -360,6 +439,8 @@ def publish_seed_evaluation_terminal(
         "binding": binding.value(),
         **terminal,
     }
+    if recomputation is not None:
+        value["recomputation"] = recomputation
     value["terminal_id"] = digest_json(value)
     _validate_terminal(value, binding, claim)
     with ResearchRun(
@@ -387,6 +468,9 @@ def read_seed_evaluation_terminal(
         _fail("seed evaluation manifest context mismatch")
     value = run.read_json("seed-evaluation.json")
     _validate_terminal(value, binding, claim)
+    if value.get("recomputation") is not None:
+        _validate_recomputation(value["recomputation"], claims_root=claims_root, binding=binding,
+                                claim=claim)
     if require_scientific_valid and value["scientific_status"] not in VALID_SCIENTIFIC_STATUSES:
         raise ResearchStateError(
             "seed evaluation terminal is not scientifically valid",
@@ -401,9 +485,9 @@ def _failed_staging(output: Path) -> list[Path]:
 
 def resolve_seed_evaluation(
     *, output_dir: str | Path, claims_root: str | Path, dataset: str,
-    protocol: dict[str, Any], binding: SeedEvaluationBinding,
+    protocol: dict[str, Any], binding: SeedEvaluationBinding, retry_failed: bool = False,
 ) -> Resolution:
-    """Resolve without moving, quarantining, deleting, or retrying consumed work."""
+    """Resolve a cell; explicit retry applies only when no terminal can be recovered."""
     output = Path(output_dir).absolute()
     path = _claim_path(claims_root, binding)
     claimed = os.path.lexists(path)
@@ -430,7 +514,9 @@ def resolve_seed_evaluation(
             valid += 1
         except ResearchError:
             continue
-    return "recover_publication" if valid == 1 else "blocked_consumed_budget"
+    if valid == 1:
+        return "recover_publication"
+    return "retry_failed" if retry_failed else "blocked_consumed_budget"
 
 
 def recover_seed_evaluation_publication(

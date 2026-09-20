@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "ledger_key",
+    "cell_id",
+    "claim_id",
+    "attempt",
+    "reason",
+    "output",
+    "recomputation_id"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "h4l-mass-off-marginal-block-recomputation-v1"
+    },
+    "ledger_key": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "cell_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "claim_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "reason": {
+      "const": "explicit_partial_recompute_after_unpublished_failure"
+    },
+    "output": {
+      "type": "string",
+      "minLength": 1
+    },
+    "recomputation_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

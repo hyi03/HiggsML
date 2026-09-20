@@ -342,7 +342,18 @@ python scripts/h4l_evaluate.py --plan runs/off-study-001/report-B/evaluation-pla
 
 `--workers` parallelizes complete bootstrap/T2 replicas and complete model-self or assessment candidates while preserving registered draw order. Windows uses thread workers for assessment candidates and T2 replicas because long-running spawned Python fit workers can terminate with a native access violation; other platforms use process workers for those units. Start with two workers on a 16 GB host and keep `--worker-threads 1`; increase the worker count only after measuring peak memory without another prepare or training job running concurrently. The default remains one worker.
 
-Individual `mc-bootstrap`, `model-self --mu 0|1|2`, `assessment --mu 0|1|2` and `t2` stages use the same registration/template/freeze arguments plus `--evaluation-plan runs/off-study-001/report-B/evaluation-plan.json --result-run runs/off-study-001/asimov`. Assessment/T2 additionally require `--access-review` with schema `h4l-off-assessment-access-v1`, exact population/protocol/freeze binding, independent P0/T1 file receipts, explicit historical-use and group-isolation review. P0 must satisfy [the applicability schema](../config/schemas/h4l_off_p0_applicability.schema.json): its recomputed `package_id` hashes the package without that field; dataset, prepared, protocol, freeze, template and original P0 source-file hash must match. Each physical definition has nonempty referenced content and a typed, finite expected/actual numerical comparison within declared tolerances. Source files have verified receipts and an independent producer/reference/basis. The schema checks evidence structure and bindings; independent human review must establish physical validity and acceptable tolerances. T1 uses the existing independent evidence package contract. Missing evidence is `assessment_qualification_pending`; an automatic reference or a new freeze name cannot restore independence. The original prepared run's `.research-claims` root owns exclusive per-cell budget claims; a failed or interrupted claimed cell is not rerun automatically.
+Individual `mc-bootstrap`, `model-self --mu 0|1|2`, `assessment --mu 0|1|2` and `t2` stages use the same registration/template/freeze arguments plus `--evaluation-plan runs/off-study-001/report-B/evaluation-plan.json --result-run runs/off-study-001/asimov`. Assessment/T2 additionally require `--access-review` with schema `h4l-off-assessment-access-v1`, exact population/protocol/freeze binding, independent P0/T1 file receipts, explicit historical-use and group-isolation review. P0 must satisfy [the applicability schema](../config/schemas/h4l_off_p0_applicability.schema.json): its recomputed `package_id` hashes the package without that field; dataset, prepared, protocol, freeze, template and original P0 source-file hash must match. Each physical definition has nonempty referenced content and a typed, finite expected/actual numerical comparison within declared tolerances. Source files have verified receipts and an independent producer/reference/basis. The schema checks evidence structure and bindings; independent human review must establish physical validity and acceptable tolerances. T1 uses the existing independent evidence package contract. Missing evidence is `assessment_qualification_pending`; an automatic reference or a new freeze name cannot restore independence. The prepared run's claim root owns exclusive per-cell budget claims. A failed or interrupted claimed cell is not rerun automatically; an explicit partial recomputation retains that claim and adds a durable recomputation receipt.
+
+To recompute only an unpublished failed unit after an implementation or infrastructure failure, select it explicitly:
+
+```bash
+python scripts/h4l_off_run.py --source-run-name test01 --run-name test01 \
+  --evaluation --continue --evaluation-unit t2-mu1-seed42 --retry-failed \
+  --access-review runs/h4l-off-test01/access-review/validated-off-assessment-access.json \
+  --workers 2 --worker-threads 1
+```
+
+`--retry-failed` requires at least one `--evaluation-unit`. It applies only when the original claim exists and no complete or recoverable terminal exists. Complete terminals remain immutable and are skipped. The recomputation must keep the population, freeze, evaluation plan, candidates, random stream and budget unchanged. The receipt is written under `runs/.h4l-mass-off-v3-recomputations/` before assessment values are decoded and is bound into the published terminal.
 
 ### Default marginal CRN evaluation
 
@@ -387,7 +398,8 @@ that default path remain `single_researcher_self_review`, `independent=false`,
 and exploratory. The wrapper never upgrades them to independent evidence.
 
 The evaluator runs 36 scientific units and one report. Use claim-aware
-`--continue` for interrupted work; consumed assessment/T2 budgets are never
-replayed. The schema filenames under `config/schemas/` are unversioned defaults,
+`--continue` for interrupted work. Unpublished failed units require explicit
+selection and `--retry-failed`; their original claims and every recomputation
+receipt remain durable. The schema filenames under `config/schemas/` are unversioned defaults,
 while schema IDs inside immutable artifacts remain versioned. Software and
 synthetic checks do not establish controlled-MC qualification.

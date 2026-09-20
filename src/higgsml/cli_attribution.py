@@ -27,6 +27,8 @@ def main(argv=None):
     parser.add_argument('--force',action='store_true',
                         help='Debug only: bypass source protocol consistency checks; outputs are non-authoritative')
     parser.add_argument('--no-progress',action='store_true',help='Disable internal evaluation progress bars')
+    parser.add_argument('--retry-failed',action='store_true',
+                        help='Recompute a claimed evaluation cell that has no recoverable terminal')
     args=parser.parse_args(argv)
     root=Path(__file__).resolve().parents[2]/'runs'
     try:
