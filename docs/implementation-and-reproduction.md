@@ -306,6 +306,31 @@ Relevant scientific-contract checks include all/none/alternating eligible ROOT s
 
 ## Off-only attribution execution
 
+### Retained `h4l-off-test01` evidence snapshot
+
+The latest complete report artifact in the retained local run is
+`runs/h4l-off-test01/evaluation/report-resume-6f5909a8b7f58d5e` with artifact ID
+`9c2413c8e5582e967b54f5a046883d5510143873941d6a53f320813297d47d68`.
+It was published from clean commit `e066bae9a12e5bd2d02cd199bbd09a99151ea6d7` and binds freeze artifact
+`aa8767f7f31688e8f6d501158a2e20d1ea0993abd83ae7f3f416f425045fe2ed`.
+The manifest status `complete` means report publication completed; the report's
+scientific `aggregate_status` is `incomplete`. Consumers must read both states.
+
+Authoritative values are in `report.json` and the exported CSV files. In particular,
+`mass_off_feature_metrics.csv` contains the 80 nominal candidate rows,
+`mass_off_feature_attribution.csv` the four Shapley summaries,
+`mass_off_feature_interactions.csv` the 24 conditional interactions,
+`mass_off_pairwise_comparisons.csv` the 105 subset pairs,
+`evaluation_completeness.csv` the 36 evaluation units, and
+`mc_bootstrap_uncertainty.csv` the unavailable formal intervals when bootstrap is
+incomplete. `report.md` is a compact status view and does not replace these tables.
+
+The retained access receipt is schema `h4l-off-assessment-access-v3` with
+`independent=false`. It permits the explicitly labelled exploratory execution but
+does not qualify a primary scientific claim. A resumed or explicitly retried unit
+keeps the original claim, evaluation plan, random stream and budget; the newest
+directory name alone is not evidence that the scientific gaps were resolved.
+
 Use a fresh run root. The source model run is read-only and is audited for candidate, seed, exact inputs, mass flag, selected checkpoint/AUC, core protocol, prepared population and calibrated mapping. The registration records allowed-source hashes and timestamps and inspects historical claim metadata without opening assessment payload. Historical detailed diagnostics are optional; missing histories are not fabricated.
 
 ```bash
@@ -330,7 +355,7 @@ python -m higgsml.cli attribution report \
 
 The paths must point to actual eligible artifacts. Each stage refuses an existing destination. A Stage B report may be published while later evidence is `not_run` or `pending`. Constant M0off models are embedded in the nominal calibration artifact with individual model IDs and prepared/seed binding; they have no trainable parameters. Nominal G1 requires exactly 80 identities and an active-bin likelihood equivalence certificate. The immutable freeze binds the registration, nominal artifact, mappings, mass grid and budget definition; the later evaluation plan binds the freeze, without a circular digest.
 
-The Stage B report automatically writes `evaluation-plan.json` from the five actual registration/prepared/nominal/freeze/Asimov manifests; no manual ID editing is needed. Every C–E run stores this snapshot, its canonical digest and all five input identities, which report/reuse ingestion checks again. The [off-only evaluation example](../config/examples/h4l_mass_off_evaluation_plan.json) contains unresolved zero IDs for schema illustration only. `--plan-only` reads safe manifests/protocol snapshots, displays the 80 candidates and complete budgets, and reports unresolved identities without opening assessment payload. It does not validate numerical payloads or authorize assessment. Old evaluation v1 remains compatible. The off-only default does not run the legacy stress matrix; additional stress requires separate registration outside this fixed plan.
+The Stage B report automatically writes `evaluation-plan.json` from the five actual registration/prepared/nominal/freeze/Asimov manifests; no manual ID editing is needed. Every C–E run stores this snapshot, its canonical digest and all five input identities, which report/reuse ingestion checks again. The checked-in [generic evaluation example](../config/examples/h4l_evaluation_plan.json) contains unresolved zero IDs for schema illustration only and is not the generated off-only plan. `--plan-only` reads safe manifests/protocol snapshots, displays the 80 candidates and complete budgets, and reports unresolved identities without opening assessment payload. It does not validate numerical payloads or authorize assessment. Old evaluation v1 remains compatible. The off-only default does not run the legacy stress matrix; additional stress requires separate registration outside this fixed plan.
 
 ```bash
 python scripts/h4l_evaluate.py --plan runs/off-study-001/report-B/evaluation-plan.json \

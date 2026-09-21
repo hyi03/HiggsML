@@ -2,19 +2,62 @@
 
 ## Active off-only study
 
-The active paper objective is to quantify the contribution, complementarity and training-seed stability of A/B/C/D kinematic groups when the classifier omits explicit `m4l`. The likelihood still uses the registered mass window and mass coordinate. The 15 nonempty combinations use seeds 42–46 and their existing checkpoints; five deterministic `M0off` identities supply the same-family empty set. No model is retrained for this analysis.
-
-The six result areas are all off-only: paired W68; complete subset ranking/stability; exact Shapley and 24 conditional interactions; validation-checkpoint AUC versus W68; BC/AC versus ABCD as exploration-selected comparisons pending frozen validation; and all 105 direct subset pairs. AUC is descriptive, not an inference or coverage qualification. Older physical-CDF M5/M4, explicit-mass controls, MELA and sample-efficiency workflows remain compatible background/extension studies and are not required off-family candidates.
-
-The default [definition](../config/protocols/feature_attribution_mass_off.json) is not a completed scientific registration. A new immutable registration run binds the actual core protocol, prepared population and 75 audited model/calibration artifacts. The candidate family has its own 80-identity G1 and freeze; freezing does not grant assessment access. Automatic P0/T1 materials remain software evidence, with independent qualification pending. Actual uncertainty and coverage stages are separate evidence levels; no operating system or CPU architecture is an authority requirement.
+The retained `h4l-off-test01` analysis evaluates all 15 nonempty A/B/C/D subsets for five training seeds with explicit `m4l` omitted from the classifier and retained in the likelihood. Five deterministic `M0off` identities provide the empty set. The nominal five-seed result is complete; uncertainty and qualification are incomplete.
 
 ## Evidence summary
 
-The retained status record is dated **2026-09-13**. It describes an implemented MC-only educational and technical workflow, not a completed physics analysis. This English documentation rewrite did not run training, open assessment, execute full-MC validation, or repeat the historical test campaigns below.
+This documentation records the retained result as inspected on **2026-09-21**. The latest report artifact is `9c2413c8e5582e967b54f5a046883d5510143873941d6a53f320813297d47d68`, published from clean commit `e066bae9a12e5bd2d02cd199bbd09a99151ea6d7`. Its manifest is complete, while its scientific aggregate status is `incomplete` and `primary_claim_eligible=false`.
 
-There is currently no documented publication-ready frozen full-MC run establishing improved mu precision or reliable coverage. The default protocol scope is `synthetic_software_defaults_not_physics_validation`. Software implementation, synthetic closure, controlled-MC evidence, and independent matrix elements are separate accomplishments. Platform compatibility is useful engineering evidence, not scientific authority.
+The run supports an exploratory conclusion about the fixed controlled-MC procedure. It does not support a publication-ready physics result, reliable total uncertainty, external generalization, or an ATLAS/CMS measurement. The default core protocol still declares `synthetic_software_defaults_not_physics_validation`; the actual run adds bound controlled-MC evidence without silently changing that protocol scope.
 
-## Exploratory observations
+## `h4l-off-test01` controlled-MC result
+
+`W68` is the nominal T1 Asimov 68% interval width at injected `mu=1`; smaller is better. The table reports medians over seeds 42–46. The range is the observed five-seed range, and the improvement is computed against the same-seed deterministic `M0off` before taking the median.
+
+| Subset | Median `W68` | Five-seed range | Median improvement vs `M0off` | Median validation AUC |
+|---|---:|---:|---:|---:|
+| `M0off` | 1.66372 | fixed | 0 | unavailable |
+| **BC** | **1.51162** | 1.51060–1.51960 | **9.14%** | 0.81314 |
+| **AC** | **1.51524** | 1.49720–1.51785 | **8.92%** | **0.87754** |
+| ABC | 1.52116 | 1.51531–1.53042 | 8.57% | 0.86172 |
+| BCD | 1.52446 | 1.51020–1.52838 | 8.37% | 0.82831 |
+| ABCD | 1.53593 | 1.52947–1.54805 | 7.68% | 0.84635 |
+| B | 1.56019 | 1.55510–1.56718 | 6.22% | 0.75781 |
+
+BC improves on ABCD in all five same-seed comparisons, with a median relative improvement of 1.299%. AC also wins all five, with a median improvement of 1.425%. AC versus BC is unresolved: AC wins 2/5 seeds and has a median width 0.00188 larger than BC. Per-seed winners are AC for seeds 42 and 46, BC for 43 and 44, and BCD for 45. “BC is best” therefore refers only to the median ranking.
+
+The AUC ordering differs from the inference ordering. AC has the highest median AUC, BC the narrowest median `W68`, and ABCD has higher AUC than BC but a wider interval. AUC is a validation ranking diagnostic and cannot substitute for the final likelihood metric.
+
+### Feature attribution and interactions
+
+Shapley values use `v(S)=-W68(S)` and have interval-width units. The quoted 95% ranges enumerate the five observed training seeds; they are stability ranges, not confidence intervals.
+
+| Group | Features | Median Shapley | Five-seed 95% stability range |
+|---|---|---:|---:|
+| B | `mZ1`, `mZ2`, `deltaR_Z1`, `deltaR_Z2` | **+0.06222** | [0.04852, 0.06894] |
+| C | `pt4l`, `deltaPhi_ZZ` | **+0.06094** | [0.05421, 0.06368] |
+| A | four lepton `pt` and `eta` values | +0.01502 | [0.01024, 0.01902] |
+| D | Angular5 | **−0.01110** | [−0.01600, −0.00180] |
+
+The procedure-specific ordering is `B ≈ C >> A > D`. D is negative in every seed. The unconditional AC second difference has median +0.04246 and is positive in all seeds; AB has median −0.05344 and is negative in all seeds. These quantities describe complementarity in this learner/template metric. They are not mutual information, causal synergy, or intrinsic physical information.
+
+### Coverage diagnostics and incomplete uncertainty
+
+All 15 assessment cells completed: 500 Toys × 16 candidates × 15 cells produced 120,000 completed fits with no recorded fit failures. All five T2 cells completed: 20 outer replicas × 100 inner Toys × 16 candidates × 5 seeds produced 160,000 completed fits with no recorded fit failures.
+
+| Subset | Assessment coverage 68% / 95% | T2 coverage 68% / 95% |
+|---|---:|---:|
+| BC | 0.668 / 0.960 | 0.666 / 0.9535 |
+| AC | 0.634 / 0.966 | 0.648 / 0.9645 |
+| ABCD | 0.634 / 0.970 | 0.650 / 0.9650 |
+
+These are conditional diagnostics under `marginal_common_total_monotone_crn`, with `physical_event_pairing=false`. The 68% values suggest mild undercoverage for the displayed candidates, while the 95% values are near or slightly above nominal. At `mu=0`, the physical `mu >= 0` boundary makes coverage conservative. None of these statements qualifies unconditional or externally validated coverage.
+
+The event-MC bootstrap completed only 161/200 replicas. Thirty-nine replicas failed with `insufficient_statistics`, so the report correctly leaves every formal bootstrap percentile interval empty. Forty-nine candidate failures occurred across those replicas: D-only seed 42 accounts for 37, D-only seeds 43 and 44 for five and four, and seed-46 AC/ACD for the remaining three. This makes D's finite-MC support particularly fragile.
+
+Three model-self cells are `blocked_consumed_budget`: `mu=0` for seeds 43 and 44, and `mu=1` for seed 45. Independent-allocation sensitivity is pending. The access receipt is a `single_researcher_self_review` with `independent=false`; independent P0 physical definitions, a signed-MC T1 applicability reference, and assessment-history review remain missing. These gaps determine the report's `incomplete` status.
+
+## Historical exploratory observations
 
 The earlier sample-efficiency proposal recorded a five-seed subset report in which AB had median W68 approximately 1.49184 and ABCD approximately 1.50080, with a median paired reduction near 0.60%. These numbers are retained only as an attributed historical observation from the superseded proposal, not as a newly verified result. The documentation did not identify a sufficient immutable run/receipt reference for independently replaying them here; they are excluded from the conclusions and must not set a tolerance or candidate automatically.
 
@@ -23,7 +66,8 @@ That report was described as `scientific_results_obtained=false`, with a synthet
 | Research question | Evidence status | Supported interpretation |
 |---|---|---|
 | Do engineered inputs improve M5/M4 precision? | Method and reporting available; qualified full-MC primary comparison not documented | An executable hypothesis, not a confirmed gain |
-| How much does explicit `m4l` add within each feature subset? | Paired training, mass-slice diagnostics, T1 comparison, and exports implemented; qualified five-seed full-MC run not documented | An executable control, not evidence that mass is absent from off models or that mass improves precision |
+| How do off-only subsets compare? | Complete five-seed nominal controlled-MC vectors; assessment/T2 diagnostics complete; bootstrap and independent qualification incomplete | BC/AC advantages and `B ≈ C >> A > D` are exploratory findings for this fixed procedure |
+| How much does explicit `m4l` add within each feature subset? | Paired training, mass-slice diagnostics, T1 comparison, and exports implemented | The active result is off-only; it does not by itself quantify the on/off mass increment |
 | Is a compact subset noninferior? | Historical exploratory candidate observation | Motivation for a registered independent test |
 | Does compactness reduce training-MC requirements? | Workflow exists; formal registered experiment pending | No established sample-saving factor |
 | Are intervals reliable under signed MC and variations? | Software/synthetic checks exist; independent and full-MC scope incomplete | No general coverage or physical-systematics conclusion |
@@ -35,18 +79,18 @@ The following consolidates the inherited status document. It is a dated record, 
 
 | Capability | Recorded software state | Remaining evidence boundary |
 |---|---|---|
-| Controlled acquisition and dataset contracts | Implemented | Release equivalence is not established |
-| Selection, reconstruction, Angular5, features, and weights | Implemented | Bound full-MC physical/source audit required |
-| Five-role physical-group isolation | Implemented with synthetic tests | Does not replace population/history audit or ROOT interpretation validation |
+| Controlled acquisition and dataset contracts | Implemented and bound in the retained prepared artifact | Release equivalence and independent source authority are not established |
+| Selection, reconstruction, Angular5, features, and weights | 38,990 selected controlled-MC groups recorded | Independent physical-definition and source-access audits remain incomplete |
+| Five-role physical-group isolation | Bound population and role counts recorded; G0 passed | Does not replace history audit or ROOT interpretation validation |
 | Mass-only, decay7, engineered19, lab-extension | Implemented | Interpretation depends on shared mass/input scope |
-| Grouped M3 explicit-`m4l` on/off pairs and fixed-mass AUC | Implemented with synthetic contract tests | No documented qualified five-seed full-MC comparison; off models can retain implicit mass information |
+| Grouped M3 off-only attribution | Five-seed nominal controlled-MC result, exact attribution and pair tables recorded | Bootstrap incomplete; independent qualification pending; off models can retain implicit mass information |
 | Ordinary/adversarial training and history | Implemented | Diagnostics do not prove convergence or generalization |
 | MELA export/import and adapter | Implemented interface | Actual backend and independent physical reference pending |
 | CDF, common templates, pyhf inference | Implemented | Signed-MC T1 approximation requires independent evidence |
 | G0/G1, freeze, assessment, report | Implemented | No documented publication-ready frozen full-MC result |
 | Enhanced exports | Recorded synthetic and existing-MC-artifact replay checks | AUC remains selected-checkpoint validation AUC |
-| Registered evaluation orchestration | Implemented with synthetic software tests | Formal MC bootstrap/Toy/T2/stress budgets not completed |
-| Within-seed off-only evaluation v2 | Explicit opt-in adapters, J0/J1, freeze/specification, 36-unit matrix and partial/terminal reporting implemented; targeted synthetic checks passed, with the final audit pending | No original controlled-MC v2 run; prospective assessment needs an unused eligible source and independent P0/T1 review |
+| Registered evaluation orchestration | Controlled-MC assessment and T2 cells completed | Bootstrap incomplete; three model-self cells consumed; sensitivity pending |
+| Current within-seed marginal CRN evaluation | 36-unit controlled-MC report published | Artificial CRN is not physical-event pairing; independent P0/T1/history review remains missing |
 | Independent evidence import | Receipt/type guards implemented | Missing materials remain `external_pending` |
 | Sample-efficiency subsets, batch, report, controls, confirmation | Implemented with synthetic tests | Registration values and independent/full-MC evidence pending |
 | Cross-platform compatibility | Not comprehensively run in the recorded change | The recorded platform only establishes behavior on that environment |
@@ -107,6 +151,7 @@ Record wall/CPU time, RSS, input scale, ROOT request counts/span distribution, s
 | Event/role independence | Source audit, prepared receipts, group non-overlap, historical-use review |
 | Additional discriminating power | Complete paired planned models on common inputs/populations, validation and mass-slice diagnostics |
 | Explicit-mass contribution | All 15 independently trained on/off pairs for all five seeds, valid local slice support, common-grid T1 widths, retained failures, and bound lineage |
+| Off-only subset precision ordering | Complete five-seed nominal vectors, formal finite-MC uncertainty, qualified T1 model, independent access/history review, and acceptable coverage diagnostics |
 | Controlled mass sculpting | Independent mapping, acceptance diagnostics, common templates, frozen criteria |
 | Expected mu-precision improvement | Valid T1 primary M5/M4 comparison across five paired seeds, W68 and failures |
 | Reliable intervals | Registered injections/budgets, bias and coverage with binomial/paired uncertainty, boundary/failure accounting |
@@ -121,16 +166,17 @@ An observed narrower Asimov interval alone does not establish reliable coverage.
 
 When there is no significant gain, report the difference interval and the gain range that can be excluded, not information saturation. Missing MELA, insufficient templates, unvalidated statistical models, and fit failures are legitimate recorded limitations, not completed physics arguments.
 
-Complete the scientific work in this order:
+The prepared population, G0/G1, off-only freeze, nominal five-seed vectors,
+assessment cells and T2 cells already exist and must remain immutable. Complete
+the outstanding scientific work in this order:
 
-1. Audit processes, reconstruction, normalization, support, source access, group/history independence, and protocol applicability.
-2. Execute bound MC preparation and minimum models/CDF/templates with G0/G1.
-3. Obtain independent MELA and signed-T1 numerical references; keep missing evidence pending.
-4. Freeze the applicable protocol, candidates, mappings, grids, likelihood, and evaluation budgets.
-5. Execute registered paired Asimov/Toy/bootstrap/T2/stress studies, retaining failures and preventing feedback.
-6. Complete compact discovery/controls and genuinely independent confirmation; execute size curves before claiming sample efficiency.
-7. Run sourced robustness studies and any cross-platform compatibility checks needed for the intended deployment environments.
-8. Generate manuscript figures/tables only from qualified bound artifacts.
+1. Obtain independent process, reconstruction, normalization, source-access and historical-use review for the bound population.
+2. Obtain an independent signed-MC T1 applicability reference; keep MELA separate unless a matrix-element claim is made.
+3. Resolve the failed event-MC bootstrap support through a prospectively registered analysis or population change, without tuning from the observed failures or filling missing replicas.
+4. Run the registered independent-allocation sensitivity and any sourced robustness studies required by the intended claim.
+5. Repeat the frozen assessment on a genuinely eligible independent source if a primary claim is sought; the existing self-review cannot be upgraded retrospectively.
+6. Complete compact discovery/controls and independent confirmation; execute size curves before claiming sample efficiency.
+7. Generate manuscript figures and tables with evidence labels that distinguish the current exploratory result from any later qualified result.
 
 Expected figures include the role/analysis flow, epoch diagnostics and matched control, raw/CDF acceptance versus mass, paired T1 widths, injection-wise bias/coverage/failures, and qualified sample-efficiency curves. Schematic figures must be labelled as such. Missing experiments cannot be replaced with illustrative numerical results.
 
@@ -163,23 +209,24 @@ Superseded development intentions are not presented as current missing implement
 | Kinematic attribution | Existing representations and exact Shapley/second-difference definitions; the Datta–Larkoski representation study is related motivation | Applying Shapley alone does not establish methodological novelty; no claim of a sufficient statistic or causal information decomposition |
 | Signal-strength likelihood | Existing Cowan likelihood reference and pinned pyhf shapesys model | Signed-weight cancellation, low counts and group covariance require independent numerical/applicability review |
 | Finite training variability | Five fixed checkpoints and complete joint seed-vector enumeration | Conditional on the current MC; no retraining uncertainty beyond these seeds |
-| Event-MC and calibration variability | Registered 200-replica bootstrap and 20-by-100 T2 implementation | Actual registered runs, failures and coverage must be reported before a scientific reliability claim |
+| Event-MC and calibration variability | `h4l-off-test01` attempted all 200 bootstrap replicas and completed all five 20-by-100 T2 cells | Bootstrap has only 161 valid replicas; T2 is conditional on artificial CRN and non-independent access |
 | MELA and sample efficiency | Existing optional repository studies | Neither is required for the six off-only outputs; no superiority-to-ME or training-sample-saving claim |
 | Historical access | Prepared audit metadata and original-root claim inspection | Absence of a local claim is not proof of independent historical use; reviewed access evidence remains required |
 
 These comparisons use the already documented literature references and do not represent a new literature search. Parameter choices (mass window, luminosity, minimum effective count, cancellation threshold, learner and pilot budgets) remain the bound core protocol defaults; no claim of optimization or independent physical validation is made. Current code-development verification is recorded separately from historical test counts in the Sprint review evidence.
 
-On 2026-09-14, the isolated off-only implementation completed a controlled-MC A/B replay using 75 existing off checkpoints and five deterministic M0off identities: common grid, G1, freeze, fixed-T1 Asimov and the complete off-only report. The report contains 4 contributions, 24 interactions, 105 pairs, 75 AUC observations and 3125 joint seed resamples. Source model/calibration hashes and timestamps remained unchanged. The post-review output is `runs/m4l-off-003/report-B` in the isolated worktree; its generated evaluation plan binds actual manifests. See [delivery evidence](4-Reviews/sprint-m4-01-delivery.md) and [MC replay receipts](4-Reviews/sprint-m4-01-mc-stage-b.md).
+On 2026-09-14, the isolated implementation first completed a controlled-MC A/B replay using 75 existing off checkpoints and five deterministic M0off identities. That historical `runs/m4l-off-003/report-B` artifact stopped before C–E evaluation; its delivery and replay receipts remain in [delivery evidence](4-Reviews/sprint-m4-01-delivery.md) and [MC replay receipts](4-Reviews/sprint-m4-01-mc-stage-b.md).
 
-This replay used automatic software-contract P0/T1 materials and has exploratory model-self Asimov scope. Full-MC event bootstrap, model-self/assessment Toys and T2 were not run; independent applicability and assessment-history review remain pending. No assessment population was decoded. The implemented C–E commands and synthetic tests do not complete those scientific evidence requirements.
+The later retained `h4l-off-test01` run continued the scientific matrix under the current marginal CRN contract. It completed the assessment and T2 cells, attempted the event-MC bootstrap, and published the result summarized above. This later execution supersedes the older replay's “not run” status, while retaining the older artifact as historical evidence. It does not repair missing independence or the incomplete bootstrap.
 
-The superseded v1/v2 configuration paths do not revise that scientific result. The active default is the five-block marginal CRN evaluation contract with pre-freeze J0/J1 support gates, claim-aware terminal publication, and a 37-unit report sequence. Historical opened assessment data may be used only for a labelled post-hoc support diagnostic. No new eligible assessment source, original controlled-MC execution, or independent P0/T1 applicability evidence is recorded here. Software and synthetic checks remain separate from production 500-Toy, 200-replica MC-bootstrap, or 20-by-100 T2 execution.
+The active workflow uses pre-freeze J0/J1 support gates, claim-aware terminal publication, and a 37-unit report sequence. Historical v1/v2/v3 fields remain for artifact identity and compatibility; the current command-line workflow does not expose them as scientific alternatives. Software/synthetic checks, the older A/B replay, and the current controlled-MC execution remain distinct evidence records.
 
 ### Default marginal CRN evidence boundary
 
 The default workflow uses marginal common-total CRN coupling. Its paired errors are
 conditional diagnostics, not physical-event covariance. Independent-allocation
 sensitivity remains pending unless the report contains completed bound evidence.
-Fresh template-only J0/J1 engineering qualification, prospective assessment and
-scientific validation are distinct gates. Historical opened assessment sources
-remain ineligible; changing the default does not reset their usage history.
+Template-only J0/J1 engineering qualification, assessment execution and
+independent scientific validation are distinct gates. `h4l-off-test01` completed
+assessment under a non-independent self-review, so its diagnostics remain
+exploratory. Changing the workflow or run name does not reset source usage history.

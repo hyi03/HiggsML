@@ -2,11 +2,9 @@
 
 ## Active off-only study
 
-The active paper objective is to quantify the contribution, complementarity and training-seed stability of A/B/C/D kinematic groups when the classifier omits explicit `m4l`. The likelihood still uses the registered mass window and mass coordinate. The 15 nonempty combinations use seeds 42–46 and their existing checkpoints; five deterministic `M0off` identities supply the same-family empty set. No model is retrained for this analysis.
+The active study fixes the likelihood mass coordinate while removing explicit `m4l` from every trainable classifier. It evaluates all 15 nonempty A/B/C/D subsets for seeds 42–46 and adds a deterministic same-grid `M0off` empty set per seed. The six registered result areas are nominal paired `W68`, subset ranking and seed stability, exact Shapley and 24 conditional interactions, validation AUC versus `W68`, exploration-selected BC/AC comparisons with ABCD, and all 105 direct nonempty-subset pairs.
 
-The six result areas are all off-only: paired W68; complete subset ranking/stability; exact Shapley and 24 conditional interactions; validation-checkpoint AUC versus W68; BC/AC versus ABCD as exploration-selected comparisons pending frozen validation; and all 105 direct subset pairs. AUC is descriptive, not an inference or coverage qualification. Older physical-CDF M5/M4, explicit-mass controls, MELA and sample-efficiency workflows remain compatible background/extension studies and are not required off-family candidates.
-
-The default [definition](../config/protocols/feature_attribution_mass_off.json) is not a completed scientific registration. A new immutable registration run binds the actual core protocol, prepared population and 75 audited model/calibration artifacts. The candidate family has its own 80-identity G1 and freeze; freezing does not grant assessment access. Automatic P0/T1 materials remain software evidence, with independent qualification pending. Actual uncertainty and coverage stages are separate evidence levels; no operating system or CPU architecture is an authority requirement.
+The retained `h4l-off-test01` run completed the five-seed nominal vector and the assessment/T2 diagnostic cells. Its nominal evidence supports the exploratory finding that compact BC and AC outperform ABCD in this fixed procedure, while B and C provide the largest positive Shapley contributions and D is negative. It does not establish a publication-ready primary claim because the report remains incomplete, assessment review is non-independent, formal bootstrap intervals are unavailable, and the CRN pairing is artificial rather than physical-event pairing. Numerical evidence and exact limitations are in [Results and limitations](results-and-limitations.md#h4l-off-test01-controlled-mc-result).
 
 ## Physical motivation and scope
 
@@ -41,7 +39,7 @@ AUC measures ranking on the declared nonnegative evaluation measure and remains 
 |---|---|---|
 | Controlled MC pilot | Explicit identity and closure studies before broader claims | No demonstration of agreement with real data |
 | One primary comparison | Separates hypothesis testing from selecting the best of many results | Auxiliary winners cannot replace it |
-| Common `m4l` input in the primary and attribution families, plus a registered on/off control | Compares kinematics under the same available mass condition while measuring the finite learner's dependence on explicit mass | The classifier is not automatically a conditional likelihood ratio, and the off model may reconstruct mass information from correlated kinematics |
+| Common `m4l` input in the historical M5/M4 family; explicit `m4l` removed in the active off-only family; registered on/off controls retained | Separates the current kinematic-only classifier question from the older mass-conditioned comparison | The off model may still reconstruct mass information from correlated kinematics |
 | Shared roles, seeds, and templates | Supports fair, paired comparisons | Equal seeds alone do not guarantee event pairing |
 | Fixed small MLP | Controlled learner with manageable cost | Input dimension still changes parameter count |
 | Physical CDF for the primary pair | Equal post-processing opportunity | Signed calibration and finite statistics need validation |
@@ -77,7 +75,7 @@ M4/M5/M5-abs transform existing outputs without retraining. The grouped explicit
 | Expansion | Remaining seeds, controls, weight bridge, L1, and validated MELA | G1 passed; every new failure retained |
 | Frozen evaluation | Bound models, mappings, grid, likelihood, claims, and budgets | No feedback to training, calibration, or design |
 | Interpretation | Paired estimates, uncertainty, failures, and limitations | Every claim matches its evidence |
-| Extended research | Attribution, sample efficiency, sourced variations | Separate budgets and independent confirmation |
+| Extended research | Sample efficiency and sourced variations beyond the completed exploratory off-only attribution | Separate budgets and independent confirmation |
 
 G0 cannot establish two-dimensional template validity before scores exist. G1 uses permitted calibration/template information, not assessment fit results or method rankings. A changed common grid must be registered and rebuilt consistently before assessment. After assessment, revisions are exploratory and require new independent validation; a new protocol name cannot erase feedback.
 

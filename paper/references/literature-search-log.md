@@ -1,6 +1,6 @@
 # SciSpace 文献检索记录
 
-检索日期：2026-09-14。用途：为 [参考文献与引用计划](references.md) 提供可追溯的发现记录。
+首次检索：2026-09-14；补充检索：2026-09-21（见文末）。用途：为 [参考文献与引用计划](references.md) 提供可追溯的发现记录。
 
 SciSpace 用于语义检索；下列标题和 DOI 为其返回值，**保留原样，不等于核验后的书目**。正式引用以 references.md 为准。跨查询重复条目保留以反映检索路径，会议、预印本和期刊重复版本在主文献表合并。查询结果包含不相关文献，不全部纳入参考文献。此次为定向检索，非系统综述，不能据此宣称穷尽文献或首次提出方法。
 
@@ -263,3 +263,46 @@ What is the method and publication information of Moments of Clarity by Kitouni 
 
 通过直接 HTTPS 访问 Crossref DOI 元数据、INSPIRE-HEP 文献元数据、CERN Open Data record 15005 及期刊页面；只读取公开文献及数据集描述，未读取任何 ROOT 事件。Crossref 部分请求出现 429，不能把失败请求算作核验成功。部分 SciSpace 精确题名查询仍返回不相干文献，采用 DOI / arXiv 标识消歧。正文逐条标明实际核验深度；全文公式、图号及实现一致性没有全面核验。
 
+
+
+## 2026-09-21 更新
+
+用途：根据 h4l-off-test01 与代码 e066bae9a12e5bd2d02cd199bbd09a99151ea6d7 更新论文的推断目标、有限 MC、归因与覆盖解释。调用 SciSpace search_papers 两次，均返回 10 条。下列保存返回题名及 DOI；未提供 DOI 的条目标为缺失。仅摘要级发现，不构成全文或出版信息交叉核验。
+
+### U1：推断目标与覆盖
+
+How do inference-aware objectives and finite Monte Carlo uncertainty affect classification-based signal-strength inference and confidence interval coverage in high energy physics?
+
+| 返回题名 | DOI（索引原值） |
+|---|---|
+| Uncertainty-aware machine learning for high energy physics | 10.1103/PHYSREVD.104.056026 |
+| FAIR Universe 2024: Higgs ML Uncertainty Challenge | 10.1051/epjconf/202533701200 |
+| Uncertainty Aware Learning for High Energy Physics | 未提供 |
+| Higgs Signal Strength Estimation with Machine Learning under Systematic Uncertainties | 10.48550/arxiv.2509.00672 |
+| Fair Universe Higgs Uncertainty Challenge | 10.48550/arxiv.2509.22247 |
+| INFERNO: Inference-Aware Neural Optimisation | 10.48550/arxiv.1806.04743 |
+| Learning to bin: differentiable and Bayesian optimization for multi-dimensional discriminants in high-energy physics | 10.48550/arxiv.2601.07756 |
+| An importance sampling method for Feldman-Cousins confidence intervals | 10.48550/arxiv.2303.11290 |
+| Simulation-Based Inference with Waldo: Confidence Regions by Leveraging Prediction Algorithms or Posterior Estimators for Inverse Problems | 10.48550/arxiv.2205.15680 |
+| Interpretable Uncertainty Quantification in AI for HEP | 10.2172/1886020 |
+
+采用 R14 已核验期刊引用阐明训练与推断目标不同。其他返回作为候选保留；不同 Higgs 衰变道及 benchmark 的结果不迁移到本项目。
+
+### U2：有限 MC 和特征选择
+
+What evidence shows that finite Monte Carlo templates can cause undercoverage of profile-likelihood confidence intervals, and why do Shapley feature contributions not necessarily identify the optimal feature subset?
+
+| 返回题名 | DOI（索引原值） |
+|---|---|
+| Undercoverage in high-statistics counting experiments with finite MC samples | 10.48550/arxiv.2401.10542 |
+| Confidence Intervals for Random Forest Permutation Importance with Missing Data | 10.48550/arxiv.2507.13918 |
+| An importance sampling method for Feldman-Cousins confidence intervals（作者索引 L. Berns） | 未提供 |
+| An importance sampling method for Feldman-Cousins confidence intervals（作者索引 Ainhoa Rodriguez-Muguruza） | 10.48550/arxiv.2303.11290 |
+| Feature Relevance Quantification in Explainable AI: A Causal Problem | 10.48550/arxiv.1910.13413 |
+| Interpretable feature subset selection: A Shapley value based approach（预印本） | 未提供 |
+| Comparative Analysis of Shapley Value-Based Feature Selection | 10.20944/preprints202502.1599.v1 |
+| On Feature Interactions Identified by Shapley Values of Binary Classification Games. | 未提供 |
+| Interpretable feature subset selection: A Shapley value based approach（会议） | 10.1109/BIGDATA50022.2020.9378102 |
+| Shapley Value Confidence Intervals for Attributing Variance Explained | 10.3389/FAMS.2020.587199 |
+
+采用 R29 的既有条目作覆盖检查动机，保留其限定条件。相同题名出现相互不一致的作者索引，说明检索结果需交叉核验；本次没有把这些冲突条目升级为正式引用。归因与选择继续使用既有 R22–R25，不引入不匹配的 Shapley 置信区间公式。
