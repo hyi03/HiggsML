@@ -1,5 +1,6 @@
 """Registered off-family contracts, using synthetic values only."""
 import itertools
+import sys
 
 import numpy as np
 import pandas as pd
@@ -192,6 +193,12 @@ def test_mc_bootstrap_workers_preserve_draws_order_and_failures(monkeypatch):
         raise ResearchStateError('frozen support failed',status='insufficient_statistics')
     monkeypatch.setattr(bootstrap,'predict_discriminant',lambda m,f:np.full(len(f),.5))
     monkeypatch.setattr(bootstrap,'fit_thresholds',unsupported)
+    ordered_map = bootstrap.ordered_map
+    executions=[]
+    def recording_ordered_map(*args,**kwargs):
+        executions.append(kwargs.get('execution','process'))
+        yield from ordered_map(*args,**kwargs)
+    monkeypatch.setattr(bootstrap,'ordered_map',recording_ordered_map)
     args=(grid,bundles,frame('calibration'),frame('template'),p)
     serial_progress=[]
     parallel_progress=[]
@@ -201,6 +208,8 @@ def test_mc_bootstrap_workers_preserve_draws_order_and_failures(monkeypatch):
         *args,t1_validation={},workers=2,progress=lambda:parallel_progress.append(None))
     assert parallel==serial
     assert len(serial_progress)==len(parallel_progress)==160
+    expected='thread' if sys.platform=='win32' else 'process'
+    assert executions==[expected,expected]
 
 
 def test_access_review_missing_fails_before_any_payload(monkeypatch):
