@@ -2,11 +2,9 @@
 
 ## Active off-only study
 
-The active paper objective is to quantify the contribution, complementarity and training-seed stability of A/B/C/D kinematic groups when the classifier omits explicit `m4l`. The likelihood still uses the registered mass window and mass coordinate. The 15 nonempty combinations use seeds 42–46 and their existing checkpoints; five deterministic `M0off` identities supply the same-family empty set. No model is retrained for this analysis.
+The active off-only family contains 15 nonempty A/B/C/D subsets for each seed 42–46 and a deterministic `M0off` empty set for each seed. Trainable classifiers omit explicit `m4l`; the final likelihood retains the mass coordinate. The attribution workflow audits and reuses existing checkpoints and calibrations, then binds 80 identities to a common nominal template, G1, freeze, Asimov result and evaluation plan.
 
-The six result areas are all off-only: paired W68; complete subset ranking/stability; exact Shapley and 24 conditional interactions; validation-checkpoint AUC versus W68; BC/AC versus ABCD as exploration-selected comparisons pending frozen validation; and all 105 direct subset pairs. AUC is descriptive, not an inference or coverage qualification. Older physical-CDF M5/M4, explicit-mass controls, MELA and sample-efficiency workflows remain compatible background/extension studies and are not required off-family candidates.
-
-The default [definition](../config/protocols/feature_attribution_mass_off.json) is not a completed scientific registration. A new immutable registration run binds the actual core protocol, prepared population and 75 audited model/calibration artifacts. The candidate family has its own 80-identity G1 and freeze; freezing does not grant assessment access. Automatic P0/T1 materials remain software evidence, with independent qualification pending. Actual uncertainty and coverage stages are separate evidence levels; no operating system or CPU architecture is an authority requirement.
+`h4l-off-test01` completed all five nominal coalition vectors. It also completed all 15 assessment cells and all five T2 cells under the current marginal CRN contract. These layers remain descriptive because the access review is non-independent and the coupling does not represent physical event pairing. The event-MC bootstrap is incomplete, so formal percentile intervals are absent. See [Results and limitations](results-and-limitations.md#h4l-off-test01-controlled-mc-result) for observed values; this document defines their estimands and interpretation.
 
 This document defines how the [research questions](research-design.md) are translated into models and statistical comparisons. Input definitions and weights are maintained in [Data and processing](data-and-processing.md); commands and persisted interfaces are in [Implementation and reproduction](implementation-and-reproduction.md). Exact numerical rules belong to the [versioned protocol](../config/protocols/h4l_protocol.json), whose default scope is synthetic software validation rather than full-MC scientific qualification.
 
@@ -179,13 +177,13 @@ A CDF family must run its own mass-only empty set through the same calibration. 
 
 Second differences, `v(S+i+j)-v(S+i)-v(S+j)+v(S)`, measure complementarity in the chosen metric, not mutual information or causal synergy. Pair group resampling across combinations and propagate the declared upstream randomness; resampling only the final contribution table is insufficient. Raw and decorrelated families cannot be pooled.
 
-### Within-seed joint evaluation v2
+### Within-seed marginal CRN evaluation
 
-The off-only, evaluation and attribution CLIs default to v1; h4l_all.py defaults to v2. v3 always requires explicit selection. The explicitly selected v2 contract partitions the same 80 identities into five complete 16-candidate blocks, one for each training seed 42--46. Within a seed and evaluation cell, all candidates share physical pseudo-observations; equal Toy indexes across different training seeds have no physical pairing interpretation. The five seeds also share the underlying MC, so they are not five independent data sets.
+The current off-only, evaluation and attribution entry points use one common-total monotone marginal CRN contract. The command-line version selector has been removed; version fields remain only for immutable artifact compatibility. The contract partitions the same 80 identities into five complete 16-candidate blocks, one for each training seed 42--46. Within a seed and evaluation cell, candidates share total Poisson draws and monotone category-allocation uniforms. This preserves each candidate's marginal Poisson law but does not reproduce physical cross-model covariance. Equal Toy indexes across different training seeds have no pairing interpretation. The five seeds also share the underlying MC, so they are not independent data sets.
 
 J0 checks the nominal template parent. J1 is a fixed 200-replica, group-level Bernoulli-thinning engineering screen with zero allowed failures per seed; it is not an independent physics validation or a guarantee that a prospective assessment parent will pass. Both gates run before freeze and must not decode assessment payload. The common nominal mass grid remains fixed across all five blocks. Signed process rates are never clipped, absolutized, or repaired with epsilon; unsupported negative rates produce a scientific terminal failure.
 
-The v2 matrix has 36 scientific units: one 200-replica MC bootstrap; model-self and assessment at `mu=0,1,2` for each of five training seeds, using 500 Toys per candidate in each cell; and T2 at `mu=1` for each seed with 20 outer calibration replicas and 100 inner Toys. The report is the 37th unit. `training_seed` selects a frozen 16-candidate model block. Toy streams are separately derived from the contract, stage, injection, training seed, outer index, and stream kind.
+The evaluation matrix has 36 scientific units: one 200-replica MC bootstrap; model-self and assessment at `mu=0,1,2` for each of five training seeds, using 500 Toys per candidate in each cell; and T2 at `mu=1` for each seed with 20 outer calibration replicas and 100 inner Toys. The report is the 37th unit. `training_seed` selects a frozen 16-candidate model block. Toy streams are separately derived from the contract, stage, injection, training seed, outer index, and stream kind.
 
 Exact Shapley, 24 conditional interactions, and 105 nonempty-subset comparisons still require each seed's complete canonical value vector. Five-seed summaries require 5/5 valid seeds; missing or failed seeds remain visible and are never replaced. Nominal Asimov, MC bootstrap, and paired-Toy diagnostics retain separate `value_source` labels. A failed Toy layer does not invalidate an already valid Asimov layer.
 
@@ -211,15 +209,12 @@ T1 Toys use mu=0,1,2 and 500 marginal Toys per candidate per expectation. Joint 
 
 T2 uses T1 at mu=1, 20 common calibration-group outer draws and 100 joint inner Toys per outer draw. A replica mapping transforms both template and pseudo-event classification on the fixed grid. Preserve outer mapping records, multiplicities and failed inner budgets; 20 outer replicas are the independent procedure units, not 2000 unconditional experiments. Independent assessment requires a separate reviewed access/evidence receipt and durable cell claim before payload decoding.
 
-### Versioned marginal CRN coupling v3
+### Marginal CRN coupling and evidence boundary
 
-The opt-in v3 contract replaces empirical joint-cell Poisson intensities with
-independent process/mass-bin total Poisson draws and shared monotone category
-allocation uniforms within each training seed. This preserves each candidate's
-marginal Poisson observation law but does not reproduce physical cross-model
-covariance. Reports mark paired errors as conditional CRN diagnostics and
-exclude them from physical covariance, total uncertainty and primary reliability
-claims. J0/J1 test marginal signed rates and direct-parent total consistency.
-Legacy-label evidence cannot establish separate physical-process support.
-T2 validates all outer mappings and support before generating inner Toys.
-The v1/v2 descriptions above remain their historical contracts.
+Reports mark paired errors as conditional CRN diagnostics and exclude them from
+physical covariance, total uncertainty and primary reliability claims. J0/J1 test
+marginal signed rates and direct-parent total consistency without assessment
+payload. Legacy-label evidence cannot establish separate physical-process
+support. T2 validates all outer mappings and support before generating inner
+Toys. Historical v1/v2/v3 labels remain part of old artifact identities; they are
+not selectable alternatives in the current command-line workflow.

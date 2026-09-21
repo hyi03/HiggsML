@@ -1,46 +1,40 @@
 ---
-title: H→ZZ*→4ℓ 中质量条件判别信息的可解释分解与信号强度推断
-title_en: Interpretable Decomposition of Mass-Conditional Discrimination and Signal-Strength Inference in H→ZZ*→4ℓ
-date: 2026-09-13
-version: writing-draft-v0.2
-status: methods-and-experimental-design-draft-results-pending
-documentation_source_revision: 1b4ca10ac494eb5d36aae1dce5795cc22b70b6cc
-scientific_result_baseline: unavailable-results-pending
+title: H→ZZ*→4ℓ 中无显式四轻子质量输入的运动学特征归因与信号强度推断
+title_en: Kinematic Feature Attribution and Signal-Strength Inference without Explicit Four-Lepton Mass Input in H→ZZ*→4ℓ
+date: 2026-09-21
+version: writing-draft-v0.3
+status: exploratory-MC-results-incomplete-validation
+documentation_source_revision: e066bae9a12e5bd2d02cd199bbd09a99151ea6d7
+scientific_result_baseline: h4l-off-test01/report-resume-6f5909a8b7f58d5e
 protocol_reference: h4l-on-shell-software-v1
 scope: MC-only educational and technical demonstration
 ---
 
-# H→ZZ*→4ℓ 中质量条件判别信息的可解释分解与信号强度推断
+# H→ZZ*→4ℓ 中无显式四轻子质量输入的运动学特征归因与信号强度推断
 
-**英文题目：** *Interpretable Decomposition of Mass-Conditional Discrimination and Signal-Strength Inference in H→ZZ*→4ℓ*
+**英文题目：** *Kinematic Feature Attribution and Signal-Strength Inference without Explicit Four-Lepton Mass Input in H→ZZ*→4ℓ*
 
 **作者、单位：**【待填：作者及单位】
 
-> 写作说明：本文已按新版英文 docs 文档同步研究设计、数据处理、评价方法、样本效率和证据边界。正文保留中文，英文摘要同步更新；实验数值仍以明确占位保留。元数据中的 documentation_source_revision 仅标识此次同步所依据的仓库版本，不是科学结果或已验证代码基线。当前证据不足以声称信号强度精度已经改善或覆盖已经可靠。研究限于 MC-only 教学与技术研究，不构成 ATLAS/CMS 官方结果、真实数据上的物理测量或 Higgs 发现。“稳健信号提取”仍为待验证目标。
+> 本文报告 h4l-off-test01 的探索性受控 MC 结果。数值来自已发布的冻结分析及最新恢复报告，方法核对至上述代码版本。运行整体仍为 incomplete，独立验证未完成。本文不构成 ATLAS/CMS 官方结果、Higgs 发现或真实数据物理测量。逐项来源、代码版本与文件摘要见[结果证据索引](result-evidence.md)。
 
 ## 摘要
 
-H→ZZ*→4ℓ 末态的质量峰与多维衰变运动学为信号和背景的区分提供了互补信息。然而，分类性能的提高并不必然转化为信号强度推断的改善：判别分数可能进一步利用质量信息，背景分数与质量的相关性可能增加建模难度，有限模拟统计及负事件权重则会影响校准和模板误差的可靠性。本文构建一个以信号强度 μ 推断为目标的质量条件比较框架，在共同的四轻子质量条件下比较标准七维衰变表示与十九维工程表示，并以矩阵元判别和质量分类器作为解释性参照。框架将事件按物理身份划分为训练、验证、校准、模板和评估五种角色，区分绝对权重训练分布与带符号的物理产额，使用约束条件累积分布估计处理负权重背景校准，并通过共同质量网格上的分数类别模板进行剖面似然推断。主要比较固定为 μ=1、10 fb⁻¹、包含有限模板 MC 误差的 T1 模型下，两种表示经相同物理 CDF 流程处理后的 Asimov 68% 区间宽度，以五个配对网络种子的相对改善中位数汇总。分组 Shapley、匹配轮数的对抗训练、重复校准和人为失配测试用于解释潜在增益及其限制。现阶段已具备主要软件模块及历史合成验证记录，但绑定 MC 的主比较、矩阵元独立参考和物理系统变化验证尚未形成可引用结果。因此，本文当前交付的是可复现的方法与实验设计；关于精度增益、覆盖及稳健性的结论留待冻结实验完成后给出。
+本文在受控 H→ZZ*→4ℓ 蒙特卡洛样本中研究运动学表示对信号强度 μ 推断的贡献。分类器不输入显式四轻子不变质量 m4l，采用十九个运动学变量的 A/B/C/D 分组，比较全部十五个非空组合和同流程常数空集。分析复用五个训练种子共七十五个固定网络，以共同模板和 T1 有限模板统计模型计算 μ=1、10 fb⁻¹ 下的 Asimov 68% 区间宽度 W68。冻结质量网格合并为 105–140 GeV 的单一质量箱，因此结果限定于该粗化模板分析，不能解释为对精细质量谱分析的增益。BC、AC 与完整 ABCD 的 W68 中位数分别为 1.511617、1.515244 和 1.535930；BC 和 AC 相对常数空集分别改善 9.143% 和 8.924%，相对 ABCD 的逐种子配对改善中位数分别为 1.299% 和 1.425%。Shapley 分解显示 B、C 为主要正贡献组，A 的贡献较小，D 的贡献为负。分类 AUC 与区间宽度排序不完全一致。冻结 assessment 和重复校准 T2 的数值拟合已完成，但事件组 bootstrap 仅 161/200 个副本完整有效，访问审核为非独立自审，且人工共同随机数耦合的配对误差仅具条件诊断意义。结果支持固定学习与推断流程中的紧凑表示候选和有限样本适用性结论，尚不支持独立确认的精度优势、可靠覆盖或物理稳健性声明。
 
-作为从属研究，样本效率模块先从完整特征组比较中冻结一个紧凑候选，再与 decay7 和 engineered19 进行嵌套训练事件组比较，并通过预注册非劣性容差、容量与 raw/CDF 对照及独立确认评价其适用性。该模块不替换 M5/M4 主比较，尚未建立样本节省倍数或紧凑表示已获确认的结论。
-
-**关键词：** 四轻子末态；质量条件分类；负权重蒙特卡洛；条件累积分布；信号强度；剖面似然；特征归因；样本效率
+**关键词：** 四轻子末态；蒙特卡洛；特征归因；信号强度；剖面似然；有限模拟统计
 
 ## Abstract
 
-The H→ZZ*→4ℓ final state combines a resonant mass distribution with multidimensional decay kinematics. Improved classification, however, need not imply more precise signal-strength inference: a score may exploit additional mass resolution, mass–score dependence may complicate background modeling, and finite Monte Carlo statistics with signed event weights may limit calibration and template construction. We formulate a mass-conditional comparison of a seven-variable decay representation and a nineteen-variable engineered representation, with matrix-element and mass-only discriminants serving as interpretive controls. Events are assigned by physical identity to separate training, validation, calibration, template, and assessment roles. Absolute-weight optimization is distinguished from signed physical-yield inference, and background conditional distributions are estimated through a nonnegative, yield-conserving constrained fit. Signal strength is inferred from mass templates in score categories using a common mass grid. The prespecified primary endpoint is the relative reduction in the Asimov 68% interval width at μ=1 and 10 fb⁻¹ under a validated finite-template-MC model, summarized over five paired training seeds. Group-level attribution, matched-epoch adversarial controls, repeated calibration, and artificial stress tests are designed to clarify the origin and limitations of any gain. The main software components and historical synthetic checks are available; bound-MC comparisons, independent matrix-element references, and physically sourced robustness studies remain outstanding. This draft therefore reports the methodology and experimental design without claiming demonstrated precision or coverage improvements.
-
-A subordinate sample-efficiency study freezes one compact candidate after feature-group discovery and compares it with decay7 and engineered19 on nested physical-event-group training subsets. Capacity and raw/CDF controls, a preregistered noninferiority margin, and independent confirmation distinguish compactness from selection effects and finite-sample learning. This study does not replace the primary M5/M4 comparison, and no confirmed noninferiority or simulation-saving factor is claimed.
+We study the contribution of kinematic representations to signal-strength inference in controlled H→ZZ*→4ℓ Monte Carlo samples. The classifier omits explicit four-lepton mass input. All fifteen nonempty subsets of four feature groups are compared with a constant-score baseline, using seventy-five fixed networks trained with five seeds. Expected precision is quantified by the Asimov 68% interval width W68 at μ=1 and 10 fb⁻¹ under a common T1 template-statistical model. The frozen mass grid contains a single bin spanning 105–140 GeV; the conclusions therefore apply to this coarsened analysis, rather than establish gains over a resolved mass-spectrum fit. Median widths are 1.511617, 1.515244 and 1.535930 for BC, AC and ABCD, respectively. BC and AC reduce the width relative to the constant baseline by 9.143% and 8.924%; their median paired improvements over ABCD are 1.299% and 1.425%. Exact Shapley attribution assigns the largest positive contributions to B and C, a smaller contribution to A, and a negative contribution to D. Validation AUC and interval-width rankings differ. Assessment and repeated-calibration fits have completed, but only 161 of 200 event-group bootstrap replicas are fully valid. Access was authorized through non-independent self-review, and paired uncertainties under artificial common-random-number coupling remain conditional diagnostics. These exploratory results identify compact candidates and finite-sample limitations within the fixed procedure; independently confirmed precision gains and reliable coverage remain unestablished.
 
 ## 1 引言
 
-在 H→ZZ*→4ℓ 过程中，四轻子不变质量给出共振位置，而两个 Z 候选的质量及衰变角描述了更细致的末态结构。矩阵元方法将这些观测量与特定过程假设下的动力学概率联系起来，是研究四轻子判别信息的重要参照 [1,2,8]。神经网络可以进一步组合单轻子和四轻子体系的运动学变量，但其优势既可能来自额外可用信息，也可能来自有限容量下更易学习的表示、接受度效应或所比较矩阵元的近似。因而，仅观察到更高的分类 AUC，不能确定额外物理信息已经得到识别，更不能直接证明信号强度测量更精确。
+四轻子末态同时包含共振质量与衰变运动学结构。矩阵元判别为这类分析提供了物理参照，相关背景见 [R01–R03](references/references.md)。本研究关注实际分类器、分数压缩和模板误差共同作用下，哪些运动学组合能够缩短信号强度区间。输入更多变量不保证有限样本学习更有效，分类排序改善也不必然降低最终参数不确定度。INFERNO 以推断目标训练统计量，说明分类目标与推断目标需要区分 [R14](references/references.md)；本文仍使用 BCE 训练和验证 AUC 早停，在冻结后评价 W68，并未实现 INFERNO 优化。
 
-当判别分数用于质量谱分析时，背景质量与分数的关系尤为重要。高分选择可能改变背景质量形状，增加模板估计或外推的难度。对抗训练、距离相关正则化及条件分布变换提供了控制这种关系的不同路径 [3–7]。这些方法改变的对象并不相同：对抗训练约束学习到的表示，条件 CDF 改变已有分数的坐标，而联合似然依赖所保留观察量的统计模型。一个相关性较强但描述正确的联合模型仍可给出无偏推断；一个看似去相关的分数也不能保证低计数下的区间覆盖。
+当前论文主线为 raw、m4l=off 的完整特征组归因。M5/M4 的物理 CDF 比较、矩阵元、对抗去相关和训练样本效率属于独立扩展，不作为本次结果的已完成实验。本研究的六类输出为：W68、全部子集排名及种子稳定性、精确 Shapley 与 24 个条件交互、验证 AUC 与 W68 的关系、探索选定的 BC/AC 对 ABCD 比较，以及全部 105 个非空子集直接配对比较。
 
-本文以“额外运动学能否改善 μ 推断”为主线，将问题分为判别信息、分数处理和统计推断三个层次。主要比较预先固定为：在相同质量条件、校准角色、物理 CDF 方法、共同质量网格及 T1 模板误差模型下，十九维工程表示相对于七维衰变表示是否降低预期区间宽度。质量分类器用于辨认箱内质量细化收益；匹配后处理的矩阵元用于考察近似物理基线；对抗训练和两种权重 CDF 用于区分训练目标与校准目标；分组归因则量化特定学习与推断流程中的边际贡献。
-
-这一设计不预设正结果。若收益在有限 MC 误差下消失，或关键模板不能得到统计支持，这些结果同样说明所用数据与方法的适用边界。本文的现阶段贡献是形成可执行、可追溯的比较方法，并明确支持后续科学结论所需的证据。全文的具体实现对应关系与实验补充要求见[配套证据索引](../docs/results-and-limitations.md#evidence-required-for-conclusions)。
+分析不预设精度改善，也不把不同训练种子视为独立 MC 数据集。归因描述固定流程中的边际收益，不表示因果信息量、最小充分统计量或已确认的最佳特征选择 [R22–R25](references/references.md)。
 
 ## 2 数据、物理定义与样本隔离
 
@@ -57,7 +51,7 @@ y_{4\ell}=\frac{1}{2}\log\frac{E_{4\ell}+p_{z,4\ell}}
 
 无效角或不可定义的快度不通过替代值补齐，而产生显式失败状态。所复用的质量窗预处理配置给出的降序轻子横动量阈值为 20、15、10、7 GeV，电子／μ 子的绝对赝快度阈值为 2.47／2.7，轨迹和量能器相对隔离阈值均为 0.3。电子／μ 子的横向冲击参数显著性阈值为 5／3，纵向量 z0·sinθ 的阈值为 0.5 mm；所有同味异号对的质量下限为 5 GeV，Z1 和 Z2 质量窗分别为 50–106 GeV、12–115 GeV，Z2 下限使用 fixed 模式。研究导出把该配置中的四轻子窗口替换为 105–140 GeV。这些数值是源码引用配置的事实，具体边界判据和完整选择流程仍以绑定实现为准。
 
-正式数据章节还需补入 Z1/Z2 与负电轻子方向约定、FSR 处理、独立重建参考、生成器及版本、PDF、淋浴、过滤效率和探测器链证据。当前初稿不依据通常的四轻子分析习惯补造这些信息。
+正式数据章节还需补入 Z1/Z2 与负电轻子方向约定、FSR 处理、独立重建参考、生成器及版本、PDF、淋浴、过滤效率和探测器链证据。本稿不依据通常的四轻子分析习惯补造这些信息。
 
 表 1 给出已在软件协议中明确的研究设置。它们是实验默认契约，不是已完成的样本审计结果。
 
@@ -68,7 +62,7 @@ y_{4\ell}=\frac{1}{2}\log\frac{E_{4\ell}+p_{z,4\ell}}
 | 末态与质量范围 | 2e2μ；105 ≤ m4l < 140 GeV，左闭右开 |
 | 积分亮度 | 10000 pb⁻¹，即 10 fb⁻¹ |
 | 历史 development 概率 | 0.8 |
-| 模型主比较种子 | 42、43、44、45、46 |
+| 训练种子 | 42、43、44、45、46 |
 | 软件协议 | h4l-on-shell-software-v1 |
 | 协议适用性 | 合成软件默认规则，尚非绑定 MC 的科学验证 |
 | 2e2μ 实际入选计数及物理产额 | 【待填：绑定输入审计】 |
@@ -125,432 +119,199 @@ G0 对 assessment 之外的各角色与信号／背景检查正产额、有效�
 
 G1 在最小模型、校准和模板建立后，检查条件分布、共同分箱及 T1 所要求的数值和相关性条件。实际组协方差不满足独立箱假设时，即使提供了验证标记，也不能通过 G1。通过最小链路后才扩展其余种子、对抗强度、固定轮数对照、绝对权重 CDF 及 L1。实际 MC 中若默认阈值或网格不适用，应在 assessment 之前形成新协议；不得根据结果输赢调节规则。
 
-## 3 表示与质量条件判别
+## 3 特征表示与分类器
 
-### 3.1 工程特征分组
+### 3.1 输入、空集和质量信息
 
-十九项工程特征按物理层次分为 A、B、C、D 四组，轻子编号按横动量降序排列。具体输入顺序由表示模块保存为有序契约。
+| 组 | 输入变量 | 数量 |
+|---|---|---:|
+| A | lep1_pt–lep4_pt，lep1_eta–lep4_eta | 8 |
+| B | mZ1，mZ2，deltaR_Z1，deltaR_Z2 | 4 |
+| C | pt4l，deltaPhi_ZZ | 2 |
+| D | cos_theta_star，cos_theta_1，cos_theta_2，phi_decay_planes，phi_production_plane | 5 |
 
-| 组 | 变量 | 数量 | 所描述的结构 |
-|---|---|---:|---|
-| A | lep1_pt 至 lep4_pt；lep1_eta 至 lep4_eta | 8 | 单轻子实验室系运动学 |
-| B | mZ1、mZ2、deltaR_Z1、deltaR_Z2 | 4 | 两个 Z 候选的质量与内部几何 |
-| C | pt4l、deltaPhi_ZZ | 2 | 四轻子及双 Z 整体运动学 |
-| D | cos_theta_star、cos_theta_1、cos_theta_2、phi_decay_planes、phi_production_plane | 5 | 产生方向与衰变角关联 |
+ABCD 共十九项，BC 六项，AC 十项。m4l 不属于四组，当前 off 模型不将其追加到输入。移除显式质量列并不消除相关运动学携带的质量信息；因此本文不声称获得了固定精确质量条件下的独立信息分解，也不声称分数已与质量去相关。
 
-`decay7` 包含 mZ1、mZ2 和 D 组五个角变量；`engineered19` 为四组并集。所有新研究 MLP 均额外接收同一个 \(m=m_{4\ell}\)，因此两种主表示的实际输入维数为 8 和 20。`mass-only` 只含 m，维数为 1。L1 的 `lab-extension` 为 decay7、pt4l、y4l 再加 m，共 10 维。y4l 来自式 (1)，不从十九项特征猜造。
+十五个非空组合分别使用种子 42–46 的既有独立训练 checkpoint，本次归因阶段不重训。另建立五个确定性的 M0off 身份，分数恒为 0.5，阈值为 0.5，ties 归入高类别。低类别的结构零和同网格似然等价性由专门契约处理。空集不使用 M0c 质量分类器替代；五个空集身份具有相同 W68，仅用于种子配对。
 
-\(m_{4\ell}\) 不属于 A/B/C/D 任一组，不能计为第十九项特征。显式质量输入受当前 H4l 版本化协议约束；身份、来源、角色、标签和权重字段不得进入分类器。旧十五维分类器及 XGBoost 路径已不在当前维护范围内，不作为本研究的活跃对照。
+### 3.2 学习器与校准
 
-### 3.2 条件信息的解释
+网络结构为 input→Linear(64)→LayerNorm→SiLU→Dropout(0.1)→Linear(64)→LayerNorm→SiLU→Linear(32)→SiLU→Linear(1)。训练使用 CPU float32、AdamW、学习率 0.001、weight decay 0.0001、batch size 1024；最多 200 epochs，验证绝对权重 AUC 最小改善 0.0001、patience 20。标准化和类内绝对权重归一化由 train 估计。物理产额保留权重符号，优化使用类内均值归一后的绝对权重 BCE。
 
-记 z 为标准衰变表示，r 为额外观测量，则信号与背景密度之比可写为
+AUC 为所选 checkpoint 在 validation 角色上的绝对物理权重 AUC。它不使用 assessment，不是 signed 概率 ROC，也不是 CDF 后的新 AUC。相同隐藏宽度仍随输入数改变参数量，因此当前比较没有完全排除容量差异。
 
-\[
-\log\frac{p_s(m,z,r)}{p_b(m,z,r)}
-=\log\frac{p_s(m)}{p_b(m)}
-+\log\frac{p_s(z\mid m)}{p_b(z\mid m)}
-+\log\frac{p_s(r\mid m,z)}{p_b(r\mid m,z)}. \tag{5}
-\]
+本实验族使用 raw 分数；calibration 估计分数类别阈值，全部入选事件保留并恰好分到一个类别。本文没有把物理 CDF、对抗训练或矩阵元结果混入 off-only 表格。这些实现的独立方法见[方法文档](../docs/methods-and-evaluation.md)。
 
-该链式分解并不要求各组独立，也不提供唯一的因果归因。以受控表示比较研究可利用信息的思路可参考其他粒子物理机器学习问题 [10]，但其具体结论不能直接迁移到四轻子。对近似无质量轻子，
+## 4 模板、推断与不确定度
 
-\[
-m_{ij}^2=2p_{Ti}p_{Tj}
-\left[\cosh(\eta_i-\eta_j)-\cos(\phi_i-\phi_j)\right], \tag{6}
-\]
+### 4.1 共同网格与 T1
 
-说明质量、单轻子运动学和几何变量存在确定性联系。冗余衍生量可能降低学习难度，但不能据此宣称增加了独立物理自由度。本文所称“信息增量”首先指冻结学习与推断流程中的预测收益。
+各候选使用共同质量边界、两个分数类别及 signed 物理产额。协议初始质量箱宽为 1 GeV，但本次实际冻结边界为 **[105,140] GeV**。因此非空模型的最终观察量至多为该质量窗内两个类别的计数，M0off 为一个非零计数箱；质量坐标仍存在于流程中，但质量峰的箱间形状已不再保留。这是解读全部增益的关键条件。不得将本次空集称为保留精细质量谱的基线，也不能据此证明超越质量峰的判别信息增量。
 
-向普通 BCE 分类器提供 m，并不使其分数自动成为 \(p_s(z\mid m)/p_b(z\mid m)\)。网络仍可能学习质量边际分布，而且绝对权重改变了优化对应的分布。为区分这些因素，本文联合考察质量切片诊断、M0c 质量分类器及共同网格的稳定性。
-
-## 4 判别器与背景条件校准
-
-### 4.1 方法矩阵
-
-| ID | 判别器与后处理 | 实际 MLP 维数 | 比较作用 |
-|---|---|---:|---|
-| M0 | 仅质量模板，无分数 | — | 基本推断参照 |
-| M0c | mass-only MLP，原始分数分类 | 1 | 箱内质量细化诊断 |
-| M1 | 固定质量下的 decay7 矩阵元分数 | — | 外部物理基线，需独立验证 |
-| M1c | M1 加物理条件 CDF | — | 匹配后处理的矩阵元参照 |
-| M2 | decay7＋m，普通 MLP | 8 | 七维表示原始分数 |
-| M3 | engineered19＋m，普通 MLP | 20 | 十九维表示原始分数 |
-| M4 | 冻结 M2 加物理条件 CDF | 8 | 主比较基准 |
-| M5 | 冻结 M3 加物理条件 CDF | 20 | 主比较对象 |
-| M5-abs | 同一 M3 加绝对权重条件 CDF | 20 | 权重目标桥接 |
-| M3-fixed200 | engineered19＋m，λ=0，固定第 200 轮 | 20 | 与 M6 配对的轮数控制 |
-| M6 | engineered19＋m，对抗训练 | 20 | λ=0.05、0.1、0.2、0.5 |
-| L1 | lab-extension 加物理条件 CDF | 10 | seed42 的表示解释 |
-
-M4、M5 和 M5-abs 不重新训练网络。M6 的轮数对照必须使用 M3-fixed200，普通早停 M3 不具有同等优化历程。有效主比较保持共同类别数和总接受度；CDF 空集等退化情形按第 5.6 节报告，不能人为制造非空类别。M0 使用同一物理样本的质量边际模板。
-
-### 4.2 网络结构、权重与模型选择
-
-分类网络结构为 \(d\to64\to64\to32\to1\)。三个隐藏层使用 LayerNorm 和 SiLU，前两个隐藏层的 dropout 概率为 0.1，LayerNorm 的 eps 为 \(10^{-5}\)。输出为 logit，评价时经过 sigmoid。输入逐列均值与标准差仅从 train 行计算，当前实现使用未加权总体标准差，零标准差列的缩放因子取 1。该标准化与后续损失权重的定义是两个独立步骤。
-
-设标签 \(y_i\in\{0,1\}\)，类内绝对物理权重均值为 \(\bar a_y\)，优化权重为 \(\omega_i=|w_i|/\bar a_{y_i}\)。分类目标为
+似然采用
 
 \[
-L_{\mathrm{cls}}=\frac{1}{N_{\mathrm{train}}}
-\sum_{i\in\mathrm{train}}\omega_i
-\left[-y_i\log\sigma(f_i)-(1-y_i)\log(1-\sigma(f_i))\right]. \tag{7}
+\mathcal L(\mu,\theta)=\prod_{c,j}\operatorname{Pois}(n_{cj}\mid\mu s_{cj}(\theta)+b_{cj}(\theta))\prod_a\pi_a(\theta_a).
 \]
 
-类内平均权重被归一为 1，不意味着两类的总损失权重自动相等。训练采用 CPU float32、AdamW，学习率 \(10^{-3}\)、weight decay \(10^{-4}\)、batch size 1024。普通网络最多训练 200 轮，验证 AUC 至少提高 \(10^{-4}\) 才更新最佳 checkpoint，连续 20 轮无改善则早停。AUC 使用绝对物理权重，命名为绝对权重 AUC，不解释为 signed 物理分布的概率 ROC。
+当前运行采用 pyhf 0.7.6 的 T1 shapesys 模型，对正产额 y 和方差 σ² 使用 τ=y²/σ² 的辅助 Poisson 约束；过程／箱按契约独立。模型一般背景及实现分别见 [R15–R21](references/references.md)。当前数值参考来自自动软件材料，signed-MC 的独立适用性参考仍待补齐。label_level_legacy 支持不能提升为逐物理背景过程的独立验证。
 
-模型选择不使用 assessment 的 μ 区间。因此，普通训练得到的是按预定分类准则选择的网络，并不保证在所有可能 checkpoint 中使推断区间最窄。
+剖面统计量为 q(μ)=−2 log[L(μ,θ̂̂)/L(μ̂,θ̂)]，区间使用 χ² 的一个自由度临界值，置信水平为 0.68 和 0.95，μ∈[0,20]。缺少有效上端点或拟合失败均保留失败状态；搜索上界不能直接充当有效区间上限。Asimov 宽度是期望精度指标，不是实测 μ 的误差。
 
-### 4.3 对抗训练与逐轮诊断
+### 4.2 主要比较量与精确归因
 
-背景 adversary 只接收分类器 logit，预测由 train 背景绝对权重分位数确定的 11 个质量箱；各 λ 使用同一分箱。分类器通过梯度反转接收质量分类梯度。示意地，分类器的更新对应 \(L_{\mathrm{cls}}-\lambda_e L_{\mathrm{adv}}\)，adversary 则最小化背景质量分类交叉熵。代码前向累计的复合 loss 包含相加的 CE 项，λ 作用于反传，因此该记录不应直接解释为分类器上述目标的数值。
-
-对抗强度按 one-based epoch e 定义为
+在 μ=1、10 fb⁻¹ 下定义
 
 \[
-\lambda_e=\begin{cases}
-0,&1\le e\le5,\\
-\lambda_{\mathrm{target}}(e-5)/10,&6\le e\le15,\\
-\lambda_{\mathrm{target}},&16\le e\le200.
-\end{cases} \tag{8}
+W_{68}(S,s)=\mu_{\rm upper}-\mu_{\rm lower},\quad
+\Delta_s(L,R)=W_{68}(L,s)-W_{68}(R,s),\quad
+I_s(L,R)=1-\frac{W_{68}(L,s)}{W_{68}(R,s)}.
 \]
 
-M6 与其 λ=0 对照均完成并选择第 200 轮，不恢复早期最高 AUC 模型。对照也构造 adversary，以匹配初始化和随机数消耗。固定最终轮数防止选回约束尚未生效的模型，但并不证明训练收敛。
+对每个配对量先在同种子计算，再取五种子中位数；中位数的差／比不替代配对差／比的中位数。所有 80 个身份必须完整，所有 105 对非空子集比较保留。BC、AC 为探索选择的紧凑比较，不追溯标为确认性预注册候选。
 
-软件已提供逐轮分类 BCE、背景对抗 CE、有效 λ、验证绝对权重 AUC，以及背景质量 KS 和分箱接受率的扩展记录契约。具体产物是否包含分项历史须由其 history_contract 与保存字段确认，不从总 loss 反推缺失分量。分类 BCE 按类内归一化绝对权重累计并除以训练行数；背景对抗 CE 除以背景归一化绝对权重和，二者按该轮更新前各 batch 累计。原合并 loss 的 batch 均值不解释为纯分类目标。
-
-质量箱固定由 train 确定；每轮以 eval 模式重算 train 背景绝对权重中位数作为 50% 工作点，只在 validation 评价质量诊断。诊断不参与 checkpoint 选择、不消耗训练 dropout 随机数，也不访问 assessment。对抗质量箱、CDF 质量切片和似然质量箱分别定义。逐 epoch 训练曲线不等于改变训练事件组数的样本效率曲线。
-
-### 4.4 矩阵元参照
-
-矩阵元接口定义
+对 N={A,B,C,D}，令 v_s(S)=−W68(S,s)，计算
 
 \[
-D_{\mathrm{ME}}=\frac{P_s}{P_s+P_b}, \tag{9}
+\phi_{G,s}=\sum_{S\subseteq N\setminus\{G\}}\frac{|S|!(3-|S|)!}{4!}[v_s(S\cup\{G\})-v_s(S)]
 \]
 
-其中两项必须是相同输入支持域、约定和后端设置下的非负概率量。首期要求其语义为固定 \(m_{4\ell}\) 下的 decay7 运动学判别，不包含额外质量 PDF。具体过程、归一化、SM 参数、后端版本和独立参考必须绑定到产物。
+以及全部 24 个条件二阶差分 Δ_GH v_s(S)=v_s(S∪{G,H})−v_s(S∪{G})−v_s(S∪{H})+v_s(S)。逐种子满足 Σ_G φ_G,s=v_s(N)−v_s(∅)，逐组中位数一般不满足同一求和关系。贡献的单位为 μ 区间宽度，不能称为物理信息百分比。
 
-软件提供导出、外部 adapter 和结果导入契约，但接口存在不等于 MELA 物理基线已验证。可选适配器从 decay7 与 m4l 构造零总三动量的规范无质量轻子事件，不保留原始 pt4l、y4l、单轻子质量和整体方位。源码固定为 JHUGenMELA 的 10d36ced1d71b5e4e21abb1c9834a02570bf31c0，调用 computeP(False)，不调用独立的 computePM4l 接口。构建 receipt、实际扩展和 adapter 摘要、过程设置及独立概率参考均需绑定；内部角度往返或 fake-module 测试不能替代独立参考。
+训练种子稳定性区间枚举全部 5⁵=3125 个有放回的有序联合种子向量，对每个统计量的中位数取线性 16/84 和 2.5/97.5 百分位数。它仅描述共享当前 MC 条件下的训练种子稳定性。105 对区间为逐对区间，不具同时覆盖或多重比较显著性保证。
 
-缺行、重复或未知事件、非有限或负概率、单位或配置不匹配均拒绝导入。实际后端若使用额外产生变量，就需要相应的输入匹配对照。M1c 与 M4/M5 使用相同校准角色、算法和类别规则，使矩阵元获得同等后处理机会；不同分数的具体映射数值仍各自估计。具体后端约定见[适配契约](../docs/implementation-and-reproduction.md#mela-backend-contract)。
+### 4.3 MC bootstrap、Toy 与 T2
 
-### 4.5 带符号背景的条件 CDF
+固定网络的事件 MC bootstrap 分别对 calibration/template 物理事件组执行 200 个共同有放回多项式重数抽样（每个角色保持原事件组抽样总数），seed=42001，重估 raw 阈值并重建模板、推断和归因，固定名义质量网格。全部 200 个完整副本有效才发布正式百分位区间；成功副本子集只具条件诊断意义。该层不包含重训练或 assessment 母样本不确定性，不能与训练种子区间直接相加。
 
-对原始分数 t 构造
+当前默认评估采用五个训练种子区块，每块 16 个候选。model-self 和 assessment 分别在 μ=0、1、2 生成每候选 500 个 Toy；T2 在 μ=1 使用每种子 20 个 calibration 外层副本，每个 100 个内层 Toy。T2 的独立流程单位为 20 个外层副本，不能把 2000 个内层拟合当作 2000 个独立的无条件校准实验。
 
-\[
-u=F_b(t\mid m). \tag{10}
-\]
+候选间采用共同总 Poisson 计数和单调类别分配的人工共同随机数（CRN）耦合。它保持各候选边缘 Poisson 分布，但不复现物理事件跨模型协方差。不同训练种子间也没有 Toy-index 物理配对。报告固定标注 physical_event_pairing=false、primary_claim_eligible=false；独立类别分配的敏感性仍为 pending。文件中 generated_physical_toys 为保留字段名，不构成物理事件配对的证据。
 
-对于准确、连续且严格单调的条件 CDF，背景 u 在固定 m 下均匀，且联合变量 (m,u) 可以恢复 (m,t)。实际有限样本的直方图、平台、插值和类别压缩不满足一般的严格可逆保证，因此本文不将式 (10) 的理想性质直接当作软件输出的实证结论。
+覆盖同时保留有效拟合条件下的覆盖 K/N_valid、计划分母下的成功且覆盖 K/N_planned、Wilson 区间及失败率。五种子汇总为描述性中位数，不合并成独立 MC 试验。在 500 个条件 Toy 下，名义 68% 和 95% 覆盖的二项标准误差约为 2.09 和 0.97 个百分点；这些数字不是中位覆盖率的误差。Toy 检查不会自动校准临界值。
 
-背景存在负权重时，直接累加 signed 权重可能产生非单调累计量。当前实现先在每个质量切片的固定分数网格上估计 signed 产额 \(y_k\) 与事件组方差 \(v_k\)，再求解
+### 4.4 冻结、访问与完成状态
 
-\[
-\min_{z_k\ge0}\sum_{k:v_k>0}\frac{(z_k-y_k)^2}{v_k},
-\qquad\sum_kz_k=\sum_ky_k=Y>0. \tag{11}
-\]
+J0/J1 在 freeze 前检查模板边缘支持；J1 使用 200 次事件组 Bernoulli thinning，要求每种子零失败。本次两门通过，且记录 assessment_payload_read=false。工程筛查不能替代 bootstrap、prospective assessment 或物理适用性验证。
 
-由 \(p_k=z_k/Y\) 构造分布，并记录原始产额、拟合产额、修正量及目标函数。该方法是方差加权、总量守恒的非负约束投影，区别于将负箱截成零后重新归一。零方差零产额格在该估计器中固定为零，这是有限网格的估计约定，不证明真实背景密度在该处为零；模板的结构零需要另行绑定证据。当前求解器不支持的事件组跨分数箱或最终质量切片相关性会导致拒绝。
+分析冻结模型、映射、模板、质量边界和预算后建立访问 claim。此次 access receipt 为 single_researcher_self_review，independent=false；自动 P0/T1 材料不授予独立科学资格。当前 h4l_all.py 默认可生成这种自审，独立审核需外部绑定材料。已打开总体不能靠改名、重签协议或换种子恢复独立性。
 
-软件初始质量切片为 5 GeV，分数网格为 [0,1] 上间隔 0.05 的网格。统计失败时，按从左至右找到首个失败切片、优先与右邻合并、最右失败时与左邻合并的固定次序处理。切片内部使用分数网格上的线性 CDF，质量中心之间线性插值；窗口内超出中心范围时沿用端部切片，窗口外拒绝。相同质量与相同分数获得相同映射值，分数尾部按边界处理。
+## 5 运行结果
 
-M5 使用 signed 物理背景估计；M5-abs 将校准目标替换为绝对权重背景，其余冻结模型不变，最终拟合仍使用 signed 模板。它用于辨认对抗训练与物理 CDF 所针对分布的差别，不单独排除优化、容量和分箱影响。类别阈值统一由 calibration 背景上约束估计的物理产额中位数确定，并不因为 absolute CDF 而改用绝对产额拟合。
+### 5.1 全部组合的预期宽度
 
-## 5 模板推断、覆盖与特征归因
+下表来自 nominal Asimov，而非 assessment 上重新优化后的结果。范围表示五个训练种子的最小／最大值，不是 MC 置信区间。空集相同，故此处相对空集的配对改善中位数也等于用宽度中位数计算的比值。
 
-### 5.1 分数类别与共同质量网格
+| 组合 | 输入数 | W68 中位数 | 五种子最小–最大 | 相对空集改善 | 验证 AUC 中位数 |
+|---|---:|---:|---:|---:|---:|
+| BC | 6 | 1.511617 | 1.510597–1.519604 | 9.143% | 0.813139 |
+| AC | 10 | 1.515244 | 1.497197–1.517854 | 8.924% | 0.877541 |
+| ABC | 14 | 1.521157 | 1.515306–1.530425 | 8.569% | 0.861716 |
+| BCD | 11 | 1.524459 | 1.510199–1.528379 | 8.371% | 0.828307 |
+| ABCD | 19 | 1.535930 | 1.529465–1.548047 | 7.681% | 0.846351 |
+| B | 4 | 1.560187 | 1.555102–1.567178 | 6.223% | 0.757807 |
+| BD | 9 | 1.561357 | 1.555593–1.574187 | 6.153% | 0.756259 |
+| ABD | 17 | 1.573683 | 1.564355–1.595962 | 5.412% | 0.762427 |
+| AB | 12 | 1.575967 | 1.567645–1.583937 | 5.275% | 0.755419 |
+| ACD | 15 | 1.578276 | 1.522365–1.588725 | 5.136% | 0.788580 |
+| C | 2 | 1.591920 | 1.591568–1.592885 | 4.316% | 0.690957 |
+| CD | 7 | 1.600086 | 1.586208–1.607355 | 3.825% | 0.688374 |
+| A | 8 | 1.622891 | 1.615166–1.631261 | 2.454% | 0.683600 |
+| AD | 13 | 1.628972 | 1.622602–1.635079 | 2.089% | 0.684562 |
+| D | 5 | 1.659076 | 1.653873–1.662969 | 0.279% | 0.559358 |
+| M0off（空集） | 0 | 1.663723 | 1.663723–1.663723 | 0.000% | — |
 
-首期使用两个分数类别，保留所有入选事件，每个事件恰好进入一个类别。类别旨在使 calibration 背景的估计物理产额等分；有限样本和 ties 下不保证实际计数或 template 产额严格相等。等于阈值的分数进入高类别，不用标签或事件身份拆分 ties。
+BC 的宽度中位数最低，但逐种子冠军为 42:AC、43:BC、44:BC、45:BCD、46:AC。BC 和 AC 均没有在全部种子排名第一。ACD 的宽度范围为 1.522365–1.588725，显示其训练种子波动较大。
 
-初始拟合质量箱宽为 1 GeV。所有候选共享质量边界，模板统计不足时按预声明的相邻合箱规则共同修改网格，并保留合并记录。不得给每种方法单独选择最优分箱。有限样本空箱不自动视为结构零，负产额也不能通过取绝对值或添加 epsilon 转为物理率。
+### 5.2 紧凑组合与完整表示
 
-共同边界不能排除箱内质量细化：即便 \(t=f(m)\)，分类阈值仍可能把一个质量箱内部切成两部分。M0c 相对 M0 的差异因此单列，并要求预注册的共同粗细网格诊断。当前基础模块可以处理输入网格，但完整的多网格科学比较仍需冻结实验族和实际运行，不能把一次共同合箱等同于稳定性验证。
+| 比较（左／右） | 配对 ΔW68 中位数 | 配对相对改善中位数 | 95% 种子稳定性区间（改善） | 左侧胜出种子数 |
+|---|---:|---:|---:|---:|
+| AC / BC | +0.001876 | -0.124% | [-0.361%, +0.943%] | 2/5 |
+| AC / ABCD | -0.021913 | +1.425% | [+0.930%, +3.285%] | 5/5 |
+| BC / ABCD | -0.019951 | +1.299% | [+1.031%, +2.364%] | 5/5 |
+| ABC / ABCD | -0.014159 | +0.926% | [+0.490%, +1.737%] | 5/5 |
 
-### 5.2 似然与 T0/T1
+BC、AC 均在 5/5 个种子具有比 ABCD 更窄的名义区间，但 AC 与 BC 的配对区间跨零。五种子稳定性不能补足有限 MC 误差，也不能把探索筛选后的胜出计数转成确认性显著性结论。当前数据支持两个紧凑候选，不支持唯一最优子集或正式非劣性。
 
-令 c 为分数类别，j 为质量箱，k 为背景过程，则
+AC 的验证 AUC 中位数为 0.877541，高于 BC 的 0.813139；BC 的 W68 中位数却更小。ABCD 的 AUC 也高于 BC，但宽度更大。十五个候选中位数的 AUC–W68 Pearson 相关系数为 −0.9448，Spearman 为 −0.9107：整体关联较强，局部排名仍有反转。该相关性为同一共享样本中的描述统计，没有独立显著性检验。
 
-\[
-\mathcal L(\mu,\theta)=
-\prod_{c,j}\mathrm{Pois}\!\left(n_{cj}\mid
-\mu s_{cj}(\theta)+\sum_k b_{kcj}(\theta)\right)
-\prod_a\pi_a(\theta_a). \tag{12}
-\]
+### 5.3 贡献与互补性
 
-实现将类别与质量的联合箱展平到 pyhf 通道。T0 固定映射、模板和名义形状，只考虑观测计数统计；T1 在固定映射下加入有限 template MC 误差。推断锁定 pyhf 0.7.6，使用 NumPy 64 位数值后端。
+| 组 | Shapley 中位数 | 95% 训练种子稳定性区间 |
+|---|---:|---:|
+| A | +0.015023 | [+0.010241, +0.019018] |
+| B | +0.062223 | [+0.048518, +0.068939] |
+| C | +0.060943 | [+0.054209, +0.063676] |
+| D | -0.011103 | [-0.016000, -0.001804] |
 
-T1 当前采用逐过程、逐箱的 `shapesys` 有效计数近似。对正名义产额 y 和方差 \(\sigma^2\)，引入非负乘性参数 γ，并令
+B、C 是主要正贡献组，A 较小，D 在所有五个种子为负。不能仅由 B、C 中位数的细微差异断言 B 的真实贡献大于 C；也不能由 D 为负推断衰变角没有物理信息。
 
-\[
-\tau=(y/\sigma)^2,\qquad a\sim\mathrm{Pois}(\tau\gamma). \tag{13}
-\]
+AC 在空集条件下的二阶差分中位数为 +0.042459，95% 种子稳定性区间为 [+0.028091,+0.053053]，支持当前价值函数下的互补性。AB 对应 −0.053436，区间 [−0.065367,−0.043438]。AB 在给定 C 时为 −0.082098，区间 [−0.104377,−0.080013]。负交互可能反映预测冗余、学习和压缩限制，不能归为唯一物理机制。
 
-不同过程／箱的辅助约束按当前契约独立。实际事件组协方差若存在不受支持的跨箱非对角项，则拒绝该模型。`shapesys` 的辅助 Poisson 约束不等同于 `staterror` 的结构，也不能由 `histosys` 形状变化代替。对 signed MC，式 (13) 是需要独立数值与适用性验证的近似，正产额和 sumw² 的存在并不充分。
+### 5.4 覆盖与重复校准
 
-T1 要求证据同时绑定验证身份、协议、modifier、相关性、辅助测量和 pyhf 版本；代码校验只能保证证据契约完整，不能凭一条 `validated` 字段产生外部科学事实。T1 不可用时可报告 T0 受限结果，不能将其填入 T1 主比较。
+| 母模板／层次 | 注入 μ | 组合 | 68% 覆盖率中位数 | 95% 覆盖率中位数 |
+|---|---:|---|---:|---:|
+| assessment | 0 | M0off | 0.8800 | 0.9900 |
+| assessment | 0 | BC | 0.8940 | 0.9800 |
+| assessment | 0 | AC | 0.9180 | 0.9940 |
+| assessment | 0 | ABCD | 0.9100 | 0.9920 |
+| assessment | 1 | M0off | 0.6200 | 0.9440 |
+| assessment | 1 | BC | 0.6680 | 0.9600 |
+| assessment | 1 | AC | 0.6340 | 0.9660 |
+| assessment | 1 | ABCD | 0.6340 | 0.9700 |
+| assessment | 2 | M0off | 0.6520 | 0.9360 |
+| assessment | 2 | BC | 0.6580 | 0.9300 |
+| assessment | 2 | AC | 0.6540 | 0.9300 |
+| assessment | 2 | ABCD | 0.6600 | 0.9300 |
+| t2 | 1 | M0off | 0.6420 | 0.9510 |
+| t2 | 1 | BC | 0.6660 | 0.9535 |
+| t2 | 1 | AC | 0.6480 | 0.9645 |
+| t2 | 1 | ABCD | 0.6500 | 0.9650 |
 
-### 5.3 区间构造与主要终点
+表内为五种子覆盖率的中位数，T2 先在每种子的 20 个外层副本汇总。全部 15 个 assessment 单元完成 120000 次有效拟合；5 个 T2 单元完成 160000 次有效拟合，记录的失败率均为零。拟合有效表示计算产生有效结果，不表示覆盖通过科学验证。
 
-对给定 μ 剖面化 nuisance，定义
+μ=1 时，BC 的 68% 条件覆盖较接近名义值，AC/ABCD 的数值较低；T2 同样显示名义 68% 水平下的偏低趋势。没有外层不确定度及独立科学资格，不能据此宣称欠覆盖显著、BC 已有可靠覆盖，或以覆盖再次选择候选。μ=0 的高覆盖与物理边界下的保守行为相容，但尚未通过独立对照确证原因。偏差、pull 及真实来源的系统变化不因覆盖表存在而自动获验证。
 
-\[
-q(\mu)=-2\log
-\frac{\mathcal L(\mu,\widehat{\widehat\theta}(\mu))}
-{\mathcal L(\widehat\mu,\widehat\theta)}. \tag{14}
-\]
+### 5.5 完整性与统计支持失败
 
-当前区间以 \(q(\mu)\le\chi^2_{1;C}\) 构造，\(C=0.68\) 或 0.95，渐近似然方法背景见 [9]。物理参数域为 μ≥0，软件默认搜索上限为 20。若下边界仍在区间内，下限取 0；若搜索范围内未找到上端交点，则保留 `interval_unbounded` 状态，不能把 20 当作有效置信上限。优化失败同样单列。
-
-Asimov 数据由所绑定名义模型的观测和辅助测量期望构造。对网络种子 \(s\in\{42,43,44,45,46\}\)，主要终点为 μ=1、10 fb⁻¹、T1 下的
-
-\[
-W_{68}(M,s)=\mu_{\mathrm{upper}}-\mu_{\mathrm{lower}},\qquad
-R_s=1-\frac{W_{68}(M5,s)}{W_{68}(M4,s)},\qquad
-R_{\mathrm{primary}}=\operatorname{median}_{s=42}^{46}R_s. \tag{15}
-\]
-
-正的 R 表示 M5 的预期区间较窄。必须报告全部五对结果，不能选择最佳种子；任一种子缺失、失败或分母不可定义时，主比较保持不完整，汇总值不发布。网络种子散布表示训练随机性，不是 MC 抽样置信区间。差值的 MC 不确定性需通过配对事件组重采样估计，并说明是否重建模型、校准和模板。
-
-### 5.4 伪实验与带符号伪信号诊断
-
-首期以网络 seed42 在 μ=0、1、2 各进行 500 次伪实验，分别报告模型自身生成、冻结 assessment 母模板生成和失配场景。非负物理联合单元先汇总 signed 产额，再抽取 Poisson 计数；不能把负权重事件当作负抽样概率。配对比较共享同一次联合物理单元抽样，再投影到不同方法的类别。仅给各方法相同随机数种子不保证物理配对；单模板 `run_toys` 本身也不作配对声明。
-
-评价量包括偏差、区间宽度、pull、覆盖率及失败率。当前报告辅助函数将 pull 定义为 \((\widehat\mu-\mu_{\mathrm{true}})/(W/2)\)，W 为传入区间宽度；报告时应明确所用置信水平。对于不对称区间及物理边界，该量只是区间尺度化的描述统计，不能直接要求标准正态行为。
-
-覆盖汇总保留全部计划 Toy 数 N、有效区间数、覆盖数 K 和失败数。只有全部拟合有效时才发布普通覆盖率；有失败时标为 `coverage_incomplete`，另报“成功且覆盖比例”K/N 及其 Wilson 区间。该比例不是仅在成功拟合中条件化的覆盖率，不能将二者混同。配对覆盖差遇到无效区间时同样保持不完整。
-
-对于 500 次独立条件伪实验，覆盖率的二项标准误差约为 \(\sqrt{p(1-p)/500}\)：p=0.68 时为 2.09 个百分点，p=0.95 时为 0.97 个百分点。这是预算的算术精度说明，不是观测覆盖结果。增加 Toy 次数不会补充有限母模板缺失的相空间支持。方法覆盖差还需使用配对覆盖指示量估计误差。
-
-纯背景下的 μ≥0 最大似然估计可能受边界影响而偏正。软件保留允许负 μ 的固定名义模板诊断实现，但当前默认协议不启用该扩展，不能将其作为本协议运行结果的一部分。
-
-当前 Toy 只检查式 (14) 的覆盖，不自动校准临界值。低计数及 μ=0 边界是否满足期望覆盖仍需证据；如需校准区间，必须另行预注册、实现并使用未参与校准选择的验证样本。
-
-### 5.5 重复校准与失配层次
-
-| 标签 | 随机化或模型内容 | 解释范围 |
+| 评价层 | 计划 | 本次终态 |
 |---|---|---|
-| T0 | 固定映射与固定名义模板 | 理想化固定分析的统计比较 |
-| T1 | 固定映射，加入经验证的模板 MC 误差 | 当前有限模板统计下的区间 |
-| T2-procedure | 外层重采样 calibration 并重建分析，内层执行 T1 | 指定随机化范围内的流程波动 |
-| S | 人为背景归一化或形状扰动 | 失配敏感性压力测试 |
-| P | 有来源的理论、生成器、探测器变化 | 完整研究的物理稳健性，尚待完成 |
+| Nominal Asimov | 80 个身份 | 80/80 有效 |
+| MC bootstrap | 200 个完整副本 | 161 有效、39 不完整（19.5%） |
+| Model-self，μ=0 | 5 个种子区块 | 3 有效，43/44 为 blocked_consumed_budget |
+| Model-self，μ=1 | 5 个种子区块 | 4 有效，45 为 blocked_consumed_budget |
+| Model-self，μ=2 | 5 个种子区块 | 5 有效 |
+| Assessment，μ=0、1、2 | 各 5 个区块 | 15/15 有效；非独立自审 |
+| T2，μ=1 | 5 个区块 | 5/5 有效 |
+| 独立类别分配敏感性 | 需绑定执行预算 | pending |
+| 总报告 | 36 个科学单元及报告 | incomplete |
 
-T2-procedure 按物理事件组 bootstrap calibration，保留抽样重数，重新估计 CDF 或原始分数阈值，并为每个副本生成新的映射身份。该映射同时作用于固定 template 和共同伪事件母样本，再在冻结质量网格上重建模板并执行内层推断。默认固定网络及 template/assessment 母事件；它不包含所有 MC 来源和重新训练的不确定性。当前软件预算为 20 个外层副本、每个 100 次内层 Toy，实际 MC 适用性仍待冻结确认。
+bootstrap 的 39 个失败副本共包含 49 个候选 insufficient_statistics 状态：D/seed42 为 37 次，D/seed43 为 5 次，D/seed44 为 4 次，ACD/seed46 为 2 次，AC/seed46 为 1 次。同一副本可涉及多个候选，因此 49 不能作为副本失败数。全部 148 条正式 bootstrap 不确定度导出记录均为 bootstrap_incomplete，区间为空。J1 通过并不与此矛盾：筛查抽样、支持对象和完整推断 bootstrap 的要求不同。
 
-校准的流程散布不能再作为独立 nuisance 无条件叠加到同一 T1 似然。若采用解析均匀背景代替独立模板，或用 CDF 直接预测接受率，则构成另一种统计模型，需要重新定义和传播相关误差。
+这些结果说明 D 的部分模型在重采样下支持脆弱，但不证明负权重抵消是唯一原因。不能删除 D 或失败副本后重新把同一评估称为完整确认。三处 model-self 的预算阻断也不能当作零失败或由其他种子代替。
 
-S 层使用 ±10% 的背景归一化、质量、分数及质量—分数关联扰动。质量坐标为 \(x=(m-122.5)/17.5\)，分数坐标由共同冻结的 M3:42 参考定义为 \(z=2t_{\mathrm{ref}}-1\)。背景权重乘以 \(1\pm0.1h\)，其中 h 分别为 1、x、z 或 xz；形状变化随后保持背景总 signed 产额不变。分别考察拟合包含该变化的 modeled 模式与故意遗漏变化的 omitted 模式。modeled 采用固定端点的 normsys/histosys 和 [-1,1] nuisance 域，并生成对应辅助观测，其覆盖仍需检验。人为幅度不代表实验测得的能标、PDF 或生成器误差。
+## 6 讨论与局限
 
-### 5.6 分组边际贡献与二阶差分
+当前最有依据的结论是：在固定模型、raw 类别压缩和单质量箱 T1 流程中，紧凑输入可以获得比完整输入更窄的 nominal Asimov 区间。它可能来自冗余、有限学习能力、参数量、类别划分和样本支持的共同影响，尚不能归因为独立物理自由度的增加。尤其不能把单质量箱的结果推广为精细质量谱下的额外运动学收益。
 
-完整归因实验对 A/B/C/D 的 15 个非空组合分别训练，并增加同流程空集。对每个种子定义 \(v_s(S)=-W_{68}(S,s)\)，使用与式 (15) 相同的 μ、亮度和 T1 模型。组 G 的 Shapley 贡献为
+有限 MC 和独立性是主要证据限制。五个训练种子共享样本，200 个 bootstrap 中 39 个不完整，自动 P0/T1 缺少独立物理和数值参考，assessment 使用自审；人工 CRN 也不提供物理事件协方差。有关有限 MC 可能造成区间欠覆盖的研究 [R29](references/references.md) 支持单独检查覆盖的必要性，但其特定假设不能直接证明本次偏差的成因。
 
-\[
-\phi_{G,s}=\sum_{S\subseteq N\setminus\{G\}}
-\frac{|S|!(4-|S|-1)!}{4!}
-\left[v_s(S\cup\{G\})-v_s(S)\right],\quad N=\{A,B,C,D\}. \tag{16}
-\]
+BC/AC 是探索候选；Shapley 公理不保证最优子集选择 [R24](references/references.md)。少特征不等于更省训练 MC，本次没有训练样本量曲线、容量匹配确认或独立非劣性证据。MELA、物理 CDF、对抗训练、跨 release 以及生成器／探测器变化均属于其他实验范围，不借本次结果宣称优越性或稳健性。
 
-二阶差分
+后续确认须使用具有合法历史和来源证据的独立总体，事先固定候选、质量网格、统计支持、误差与覆盖判据。不能依据已打开 assessment 调整阈值、删减组合、重定临界值或选择分箱后仍称独立验证。现有结果作为探索证据保留；拟合或支持失败同样属于研究结果。
 
-\[
-\Delta_{GH}v_s(S)=v_s(S\cup\{G,H\})-v_s(S\cup\{G\})
--v_s(S\cup\{H\})+v_s(S) \tag{17}
-\]
+## 7 结论
 
-用于描述该价值函数中的互补或替代，不称为互信息。逐种子检查效率恒等式 \(\sum_G\phi_{G,s}=v_s(N)-v_s(\varnothing)\)。逐组中位数一般不保持该恒等式，不强制中位数贡献表相加等于总收益。
+在本次受控 H→ZZ*→4ℓ MC、无显式 m4l 分类器输入和单质量箱分析中，BC 与 AC 的 W68 相对常数基线分别缩小 9.143% 和 8.924%，相对完整 ABCD 的配对改善中位数为 1.299% 和 1.425%。B、C 为主要正贡献组，D 在当前流程中为负贡献；AUC 的整体关联不能消除其与推断排名的局部差异。
 
-原始分数实验族的空集是同流程的 mass-only M0c，不是无分数 M0。CDF 族的空集也必须经过 CDF；固定质量下 \(t=f(m)\) 是条件点质量，可能无法支持两个有效类别。若空集或任一组合不可定义，精确 Shapley 暂停，不能填零或换用别的流程。AUC 的空集也不能在共有质量输入时直接设成 0.5。
+本实验提供了完整 nominal 组合归因和已执行的条件覆盖诊断，同时暴露出 bootstrap 统计支持缺口。由于整体评价不完整、独立审核和适用性参考缺失，本结论限于探索性 MC 技术研究。独立确认的精度优势、可靠覆盖、样本节省和物理稳健性仍待验证。
 
-软件已提供完整十五组合的标准批次、逐种子精确归因与增强报告；这不意味着已经获得可供本文引用的完整 MC 归因结果。主固定网络 bootstrap 仅传播所声明的 calibration/template 事件组误差，不能冒充重新训练或全流程不确定性。B_mass/B_geometry、DisCo 和四动量等进一步对照需要独立注册；不把已移除的树模型路径列为现行能力。样本效率已有独立的软件链路，其研究与确认设计见下节。
+## 参考文献与复现说明
 
-### 5.7 紧凑表示与训练样本效率
+文内采用稳定 R 键，完整书目、发表版本、核验层级与使用限制见[参考文献与引用计划](references/references.md)，本次 SciSpace 查询见[检索记录](references/literature-search-log.md)。本次补充检索为题名／摘要级定向检索，不代表全文精读或系统综述。
 
-样本效率研究回答：在固定模拟过程、选择、质量条件、学习器和推断流程下，能否用更少的非 m4l 输入保留完整表示的预期精度，以及这种表现是否依赖训练 MC 数量。这里的样本量是物理事件组数，不是表格行数；“非 m4l 输入”仍可包含 mZ1 和 mZ2。该从属问题不替换式 (15) 的 M5/M4 主比较。
+核心方法对应 R14（INFERNO）、R15（Asimov／剖面似然）、R16–R21（有限 MC 与 pyhf）、R22–R25（归因与选择）、R29（欠覆盖）。项目方法以[文档索引](../docs/README.md)和绑定协议为准；当旧 docs 中的默认版本叙述与当前实现不同，以实际运行协议、manifest 和源码为此次结果依据。
 
-发现阶段使用完整十五个非空 A/B/C/D 组合与同流程空集。候选选择须比较相对 engineered19 的配对差值，排除定义不清或不完整项，并按事前容差、输入数量、物理解释和跨种子稳定性冻结唯一主要候选；不能仅选 W68 最小的组合。冻结记录包含所查看报告、选择依据、总体使用历史和独立确认排除集。即使候选已经冻结，其发现证据仍标为 exploratory_only。
-
-训练样本量实验仅比较 decay7、engineered19 和冻结候选。初始设计建议采用 25%、50%、100% 的嵌套 train 比例，非全量比例至少五个子集抽样副本，每个使用网络种子 42–46；这些仍是待注册的设计选择。当前 sample_efficiency_v1.json 中的 fraction、draw、支持阈值和若干预算为 null，不能直接作为正式实验值。
-
-子集按 label 分层，对 event_group_id 进行固定 SHA-256 排序，按每类向下取整的共享前缀构建。相同 draw 中小子集包含于大子集，三种表示共享事件组。100% 端点使用单一 full 身份，不把不同 draw 标签的全量模型当作独立训练样本。每个子集重新拟合 scaler 和类内权重归一化；支持不足或训练失败不得补抽或填补。validation、calibration、template 和 assessment 总体保持固定，因此测量的是给定评价资源下的训练 MC 效率，而非全流程总 MC 成本。
-
-对表示 R 与实际训练事件组数 n，报告
-
-\[
-\Delta W_{68}(R,n)=W_{68}(R,n)-W_{68}(\mathrm{engineered19},n). \tag{18}
-\]
-
-同时分别报告子集抽样、网络随机性和固定模型评价误差。当前 overlay 的评价 bootstrap 对应 validation absolute-weight AUC，校准不确定性默认 not_estimated；不能将它们写成已实现完整 W68 或全流程误差传播。非劣性确认依赖另外绑定的评价包与独立证据。
-
-固定隐藏宽度也不等于参数量相等。当前网络参数量为
-
-\[
-P(d)=64d+6657, \tag{19}
-\]
-
-因此 decay7、AB 与 engineered19 在包含 m4l 后分别有 7169、7489、7937 个参数。有限容量对照按注册规则调整第一层宽度为 5568/(d+67) 的最近正整数，等距时取较小值，以接近完整表示参数量；它不是重新搜索最有利网络。raw/physical-CDF 对照只检验表示结论是否依赖后处理，使用同一质量支持、共同网格和 T1 规则。
-
-对紧凑候选 C 与完整表示 F，令 D=W68(C)−W68(F)。正式确认前冻结具有科学解释的容差 δ_W>0，采用注册置信水平下的配对事件组 percentile 双侧等尾区间，并要求
-
-\[
-\operatorname{UpperCI}(D)\leq\delta_W. \tag{20}
-\]
-
-容差根据可接受的 μ 精度损失和确认精度确定，不能来自已经观察到的候选差值。区间跨越容差只能说明非劣证据不足，不代表等效。确认总体必须排除所有参与训练、评价或候选选择的相关事件组；先验证身份和 receipt，再建立持久 claim，之后才解码 payload。更换划分不能恢复独立性，成功或失败均消耗该次确认尝试。
-
-若注册性能目标 Q* 在实际网格内达到，可按规定的单调线性插值估计所需 n；禁止向网格外推 MC 节省倍数。紧凑候选获确认只能支持指定模拟与学习器下的输入压缩，不证明最小充分统计量。没有实际训练样本量曲线时，不以“样本效率已改善”描述结果。
-
-## 6 实验组织与当前结果状态
-
-### 6.1 实施顺序与证据层级
-
-实验按输入物理定义审计、development-only 导出及 G0、seed42 最小模型与 CDF／模板、T1 验证与 G1、候选扩展、冻结评估、归因与外部验证的顺序组织。外部 MELA 就绪后补入其参考比较。这样可以在扩大模型矩阵前发现稀疏或负权重导致的推断限制。
-
-软件验证覆盖算法契约与已设计的数值案例；绑定 MC 先导验证输入来源和实际统计适用性；独立矩阵元参考验证外部物理计算；有来源的系统变化检验所声称的稳健性。上述证据相互补充，不能替代。
-
-截至文档保留的 2026-09-13 状态记录，没有可作为本文主结果引用的冻结完整 MC 运行。表 2 按新版 docs 区分已有实现和未完成的科学证据；本次稿件同步没有重新运行软件测试或科学实验。
-
-| 证据 | 仓库记录 | 可以支持的判断 |
-|---|---|---|
-| 主流程、注册评价、增强报告 | 已有实现与软件／合成检查记录 | 方法链路和产物可检查，不代表正式 MC 预算已完成 |
-| 样本效率批次、报告、controls 与确认 | 已实现契约及合成测试；正式注册值与独立材料待补 | 不支持紧凑非劣或 MC 节省的科学结论 |
-| 日期化软件记录 | docs 保留 2026-09-13 的聚焦 39 passed、全套 416 passed / 34 failed，以及 2026-09-11 的 532 passed 历史记录 | 属于不同日期与测试清单，不能合并或当作此次测试结果 |
-| 绑定 MC、独立 MELA、signed-MC T1 | 未提供可支撑本文结果的验证 | 科学结果待补充 |
-| 跨平台兼容性、外部稳健性 | 尚未完成全面验证 | 不作跨平台或稳健性通过声明 |
-
-本节引用的是 docs 保留的日期化记录，不将不同版本的测试数量合并为当前通过状态。失败原因与性能测量条件详见[证据记录](../docs/results-and-limitations.md#dated-software-checks)。软件验证、合成闭合、绑定 MC 和外部参考互不替代；操作系统或 CPU 架构不构成科研权威等级。
-
-现有先导文档曾记录 AB 与完整表示的探索性差异，但缺少足以在本稿同步中复核的不可变 run/receipt 引用，且候选来自同批组合选择。因此本文不把该数值填入主结果、确认表或非劣性容差。
-
-### 6.2 软件实现、注册评价与复现
-
-实现采用 Python 3.12、uproot/Awkward 与四动量工具处理受控事件，NumPy/SciPy 承载统计计算，PyTorch 实现固定学习器，pyhf 0.7.6 表达似然及辅助约束。选择这些工具的理由是与已有 Python 流程兼容、接口可检查和数值过程可测试；它们的可用性不证明物理最优性或统计适用性。实际 MELA 在独立 Linux/WSL 后端中计算，不能由主流程测试桩替代。
-
-默认脚本分为 prepare、G1 检查和五种子普通模型／组合批次；该批次的 Asimov 输出不等于完成冻结 assessment。独立评价编排使用显式绑定 prepared/template/freeze 身份的计划，组织固定网络 calibration/template 事件组 bootstrap、μ=0/1/2 的 model-self 与 assessment Toy、T2 及人工压力测试。示例评价计划属于 exploratory_posthoc，零 artifact ID 必须替换；事后计划不能改称预注册。样本效率由独立脚本执行，先要求候选 freeze、训练子集、G1 与 T1 证据，不能从示例配置自动推导正式科学选择。
-
-所有运行使用 runs 下的新目录、staging、原子发布与 manifest-last，保留失败终态。manifest 绑定数据集、协议快照、来源摘要、上游产物、代码及环境和随机种子。增强报告以显式 result/training/evaluation/evidence 输入生成 UTF-8 完整精度 CSV、逐表逻辑行 analysis_records.jsonl、provenance.json 和 data_dictionary.json；训练状态与推断状态分开。旧字段缺失保持 null 或 not_recorded，不填零、不从总 loss 推测分量，不把 raw AUC 改称 CDF AUC。
-
-独立证据导入只检查 receipt、类型与适用范围；external_pending 必须保持未完成，schema 检查不能产生外部科学事实。论文表格应从绑定导出生成，具体命令与字段维护在[实现与复现文档](../docs/implementation-and-reproduction.md)，不在正文复制一套易漂移的操作手册。
-
-### 6.3 样本支持与校准结果
-
-表 3 应由同一 prepared 产物及审计记录填写。train 至 template 的统计用于 G0/G1；assessment 的物理产额统计只能在允许的冻结评价范围内补入。旧方案中的全终态计数不能直接填入本表。
-
-| 角色 | 信号／背景物理事件组数 | signed 产额 | 组级方差 | 负权重比例、N_eff、ρ | 状态 |
-|---|---|---|---|---|---|
-| train | 【待填：审计】 | 【待填】 | 【待填】 | 【待填】 | 未报告绑定 MC 结果 |
-| validation | 【待填：审计】 | 【待填】 | 【待填】 | 【待填】 | 未报告绑定 MC 结果 |
-| calibration | 【待填：审计】 | 【待填】 | 【待填】 | 【待填】 | 未报告绑定 MC 结果 |
-| template | 【待填：审计】 | 【待填】 | 【待填】 | 【待填】 | 未报告绑定 MC 结果 |
-| assessment | 【待填：冻结评价】 | 【待填】 | 【待填】 | 【待填】 | 不用于回调设计 |
-
-校准结果需报告初始和最终质量切片、合并原因、约束修正幅度、平台与 ties 情况，以及独立 template 上的背景接受率和质量形状。若修正主要集中在强抵消区域，应讨论估计对有限 MC 的依赖；仅展示 calibration 上的近似均匀性不能证明泛化。最终共同质量网格与各过程／类别的有效统计应与校准结果同时给出。
-
-**拟写结果段落：** 在绑定输入与协议【待填：身份】下，G0 状态为【待填】，最小链路 G1 状态为【待填】。初始网格经【待填：合并次数】次预声明合并得到【待填：边界】；未通过的过程或类别为【待填：完整失败项，若无则明确无】。本段所有数值均需来自审计产物，而非由总体规模按比例推算。
-
-### 6.4 预指定 M5/M4 主比较
-
-表 4 是主结果表的唯一预指定汇总形式。所有单元格必须绑定同一物理总体、适用协议、T1 验证和共同网格；`expectation_kind` 为 `model_self_asimov`。
-
-| 网络种子 | M4 的 W68 | M5 的 W68 | R_s | 成对产物及状态 |
-|---:|---|---|---|---|
-| 42 | 【待填】 | 【待填】 | 【待填】 | 【待填：产物身份】 |
-| 43 | 【待填】 | 【待填】 | 【待填】 | 【待填：产物身份】 |
-| 44 | 【待填】 | 【待填】 | 【待填】 | 【待填：产物身份】 |
-| 45 | 【待填】 | 【待填】 | 【待填】 | 【待填：产物身份】 |
-| 46 | 【待填】 | 【待填】 | 【待填】 | 【待填：产物身份】 |
-| 五对汇总 | — | — | 【待填：R_s 中位数】 | 全部有效才发布 |
-
-**拟写结果段落：** 在 μ=1、10 fb⁻¹ 的名义 T1 模型下，M5 相对于 M4 的五种子成对相对改善中位数为【待填】，逐种子值见表 4。配对事件组重采样得到的差值不确定性为【待填：区间、方法及重建范围】。M0c 相对于 M0 的差异为【待填】，共同网格诊断为【待填】。只有在这些证据齐备后，才将观察到的差异解释为所冻结流程的推断性能变化；其是否来自新增产生信息还需 L1 和表示对照支持。
-
-若未完成五对结果，则将本段替换为明确的受限结果描述：主比较未完成，原因是【待填：种子／候选／统计或数值状态】，已有 T0 或局部 T1 结果只能作为辅助观察。不得删除失败种子后继续沿用预指定主汇总的名称。
-
-### 6.5 可靠性与误差来源
-
-覆盖表按每种方法、生成场景与误差模型分别填写，至少包括以下列。
-
-| μ_true | 母样本与误差层 | 计划／有效 Toy 数 | 偏差与 pull 定义 | 68%／95% 覆盖及二项区间 | 失败状态 |
-|---:|---|---|---|---|---|
-| 0 | 【待填：model-self／assessment，T0／T1】 | 500／【待填】 | 【待填】 | 【待填】 | 【待填】 |
-| 1 | 【待填：同上，单场景分别成表】 | 500／【待填】 | 【待填】 | 【待填】 | 【待填】 |
-| 2 | 【待填：同上，单场景分别成表】 | 500／【待填】 | 【待填】 | 【待填】 | 【待填】 |
-
-该表是预定预算与待填结构，不表示已经运行 1500 次 Toy。有失败时，应按第 5.4 节给出成功且覆盖比例，而不伪装成完整覆盖结果。μ=0 的带符号固定模板点估计仅在绑定协议明确启用该可选诊断时另报，默认协议下保持未运行；T2-procedure 的外层区间散布单独成表，不与 T1 内层区间宽度混排。S 层逐一列出 modeled 与 omitted 的归一化、质量、分数和关联扰动，P 层在有来源的变化样本与响应模型缺失时保留“未完成”。
-
-### 6.6 解释性结果与归因
-
-M1/M1c 与 M2/M4 的比较首先核对输入与后处理是否匹配；M5-abs 与 M5 使用同一 M3 以比较校准权重目标；M6 与同种子的 M3-fixed200 配对以控制训练轮数。L1 初始只使用 seed42，不能借该单一种子替代五种子主比较。
-
-完整归因表应逐种子记录 A/B/C/D 的贡献、效率残差、二阶差分及配对误差，并注明空集和实验族。当前没有可填入的完整组合价值函数，因此本文不发布特征贡献排序或“信息百分比”。若后续 CDF 空集无法定义，报告该族精确归因不可计算即可，这不自动否定 M5/M4 先导比较。
-
-### 6.7 样本效率与独立确认状态
-
-样本效率软件包含训练子集、batch、配对报告、容量与 CDF controls、claim-before-decode 确认守卫；正式注册与独立科学材料尚未完成。以下为待填证据结构，不是已获得的结果：
-
-| 项目 | 必需内容 | 当前论文状态 |
-|---|---|---|
-| 紧凑候选 | 组集合、输入字典、选择历史、freeze 身份、δ_W 来源 | 尚无可引用的独立确认 |
-| 训练样本量曲线 | 三表示实际 n、fraction/draw/full、网络 seed、W68 与分层误差 | 不发布 MC 节省倍数 |
-| 容量与 raw/CDF 对照 | 参数量、注册对照点、接受率与质量依赖 | 实现存在，科学结果待填 |
-| 非劣性确认 | D 的区间、δ_W、独立总体排除与 claim、有效配对分母 | external_pending，不能判为非劣 |
-| Q* | 观测网格内是否达到及允许的插值 | 未达到或未验证时不外推 |
-
-所有失败、缺项和 blocked stage 都保留在计划清单中。没有独立确认时，最多形成紧凑候选假设；没有训练样本量实验时，不以样本效率作为已完成贡献。评价 bootstrap 的统计对象和未估计的校准误差必须与实际产物一致。
-
-## 7 讨论
-
-### 7.1 分类、校准与推断改善的区别
-
-本文的设计使 AUC、质量依赖和 μ 区间承担不同职责。AUC 描述训练或评价分布下的排序性能；质量诊断描述分数处理对背景形状的影响；区间宽度则由信号与背景的联合模板、类别压缩和误差模型共同决定。全局 AUC 降低可以与推断区间变窄同时发生，背景去相关也不自动保证更高推断效率。
-
-若 M5 优于 M4，可首先表述为十九维表示在既定学习、校准和推断流程中的额外可利用收益。要进一步归于产生或反冲信息，需排除质量箱细化、有限网络的表示便利和接受度建模等解释。L1、B 组拆分、质量切片及样本量学习曲线为此提供控制，但任何单项控制都不足以证明独立物理信息的完整分解。
-
-### 7.2 负权重、有限统计与模型选择
-
-绝对权重保证优化目标可计算，却改变了训练的目标分布。物理 CDF 的约束估计恢复非负分布的可用表示，但其修正量本身受到有限样本和网格的影响。T1 有效计数近似进一步把带符号模板的估计误差映射为非负辅助模型；这一链路各环节均需要数值和适用性证据，不能由任一单元测试的通过推导整体物理可靠性。
-
-若共同合箱导致质量分辨率显著下降，主结果应说明该限制，而非改用每个候选单独最优网格。若 T1 验证不足，报告 T0 仍有助于理解算法，但 T0 的改善不能代替真实有限 MC 条件下的主终点。G0/G1 未通过也可以形成受限结论：当前样本和冻结统计模型不能支持所设计的比较，这与“额外变量没有信息”是不同判断。
-
-### 7.3 外部稳健性与结论边界
-
-名义模拟中的区间变窄并不说明模拟和探测器变化下的结果可靠。完整研究需要可追溯的生成器、淋浴、PDF／尺度、背景组成与轻子响应变化，并明确变化的相关性。轻子响应变化应重新计算选择、配对、所有表示和模型分数，还应覆盖名义选择前事件的迁入与迁出；只修改已入选的十九列不足以代表接受度不确定性。
-
-另一 release 的样本也不自动构成独立新产生链。跨 release 的过程等价性、重复事件和历史反馈需审计，才能界定验证独立性。扩展 4e/4μ 时还需处理同味配对与干涉。本研究首期不涉及真实数据、off-shell 宽度或 CP/EFT 耦合的测量。
-
-若未发现显著增益，应报告差值区间及在该实验精度下可排除的增益范围，而非宣称标准表示已经饱和全部信息。若覆盖不足，则应报告不足及边界行为；不在同一 assessment 上调临界值后再次将其作为独立成功验证。
-
-### 7.4 紧凑性与样本效率的解释
-
-较少变量的模型在当前 MLP 下表现较好，可能来自参数量差异、冗余输入的学习便利、有限训练样本或实际信息范围变化。容量匹配、变量可重建性字典和嵌套学习曲线分别约束这些解释，但不能单独证明理论最小充分性。固定评价资源下的训练效率也不能直接推广为 calibration/template 或整个实验模拟需求的同比减少。
-
-发现后才确定的候选需在未参与选择的总体上确认，容差和区间规则须事先冻结。非劣区间跨越容差表示证据不足，不能写成“两个表示等价”；网格内未达到 Q* 时不能外推节省倍数。这些边界允许报告有用的负结果，同时避免把同批探索排名当成确认性科学结论。
-
-## 8 结论
-
-本文建立了一个围绕信号强度推断组织的四轻子质量条件比较框架，将标准衰变表示与工程表示置于共同事件角色、共同质量条件、匹配校准和共同模板误差模型之下。其关键设计是把优化用的绝对权重与物理推断用的 signed 产额分开，以事件组处理方差和重采样，并通过质量分类器、配对训练对照和同流程空集约束信息归因的解释。
-
-现有代码支持主要方法链路、注册评价、增强产物导出以及样本效率批次与确认守卫，历史记录提供了不同范围的软件与合成检查。它们不能替代绑定 MC 或独立参考。当前不能断言 M5 改善 μ 精度，不能断言覆盖及物理稳健性已获验证，也不能断言紧凑表示非劣或节省了某比例训练 MC。跨平台兼容性应按实际目标环境分别记录，但不是科研权威门槛。
-
-后续结论由预指定五种子 T1 主比较、明确的偏差／覆盖预算和有来源的外部验证决定。样本效率作为从属研究，另需候选冻结、实际学习曲线、机制对照和独立确认。无增益、统计不足、未达到目标或模型失配均应作为完整结果报告，不能以重签协议、删除失败或调整确认容差获得表面上的成功。
-
-## 参考文献
-
-以下文献编号供初稿组织论述使用，来源继承自项目方案。本次未访问或核验外部原文；作者完整列表、题名、卷页、DOI 和引用内容须在正式投稿前核实。它们不是本项目已经完成外部算法验证的证据。
-
-1. Avery et al. MEKD，Physical Review D 87, 055006 (2013). [arXiv:1210.0896](https://arxiv.org/abs/1210.0896).
-2. CMS Collaboration. H→4ℓ measurements，JHEP 11 (2017) 047. [arXiv:1706.09936](https://arxiv.org/abs/1706.09936).
-3. Louppe, Kagan, Cranmer. *Learning to Pivot with Adversarial Networks*. [arXiv:1611.01046](https://arxiv.org/abs/1611.01046).
-4. Kasieczka, Shih. DisCo，Physical Review Letters 125, 122001 (2020). [arXiv:2001.05310](https://arxiv.org/abs/2001.05310).
-5. Windischhofer, Zgubic, Bortoletto. JHEP 07 (2020) 001. [arXiv:1907.02098](https://arxiv.org/abs/1907.02098).
-6. Klein, Golling. Conditional normalizing flows (2022). [arXiv:2211.02486](https://arxiv.org/abs/2211.02486).
-7. Kitouni et al. MoDe，JHEP 04 (2021) 070. [arXiv:2010.09745](https://arxiv.org/abs/2010.09745).
-8. JHU generator framework. [arXiv:2002.09888](https://arxiv.org/abs/2002.09888).
-9. Cowan et al. Asymptotic likelihood methods. [arXiv:1007.1727](https://arxiv.org/abs/1007.1727). 式 (14) 的渐近方法背景，不构成本研究低计数覆盖的证明。
-10. Datta, Larkoski. *How Much Information is in a Jet?* [arXiv:1704.08249](https://arxiv.org/abs/1704.08249). 用作表示／信息研究背景，不把 jet 结论直接迁移到四轻子。
-11. pyhf documentation, version 0.7.6. [Likelihood specification](https://pyhf.readthedocs.io/en/v0.7.6/likelihood.html). 对应实现绑定的版本；正式引用仍需核对采用的 modifier、辅助测量约定和参考范围。
-
-**仓库方法来源：** [文档索引](../docs/README.md)、[研究设计](../docs/research-design.md)、[数据与处理](../docs/data-and-processing.md)、[方法与评价](../docs/methods-and-evaluation.md)、[样本效率](../docs/sample-efficiency.md)、[实现与复现](../docs/implementation-and-reproduction.md)、[结果与局限](../docs/results-and-limitations.md)、[H4l 协议](../config/protocols/h4l_protocol.json)、[样本效率注册模板](../config/protocols/sample_efficiency_v1.json)。协议定义数值规则，docs 维护方法说明、操作与日期化证据；本文只引用相应范围，不把文档同步日期作为实验完成日期。
-
-**待补文献项：** 数据 release、受控样本元数据与预处理来源；实际 MELA 后端与独立参考；Shapley 原始定义及与当前价值函数相符的方法引用；有限 signed-MC 有效计数近似的适用性参考。须核验后增加正式条目，不能将待补项写成已经引用的支持证据。
+[结果证据索引](result-evidence.md)记录当前代码与实际运行代码的区别、所有数值来源及校验范围。此次论文更新读取已发布结果并重算汇总，没有重训模型、重新生成 Toy 或重开原始数据；没有把历史软件测试数目当作当前科学验证结果。

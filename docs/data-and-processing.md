@@ -28,6 +28,28 @@ Identity is inspected first to preserve the pre-existing development/test split.
 
 `--diagnostic-entries-per-file N` uses the first N eligible entries per file for a bounded diagnostic workload. It is not scientific selection. The resulting diagnostic artifact cannot feed training or G1.
 
+## Executed prepared population
+
+The prepared artifact reused by `h4l-off-test01` is `runs/h4l-prepare/prepare`, population ID `1059f531f6da7dd2aaae9ef4956c6f2a6465fbf1f5e1254bb0ee81b08fd42e00`. It was produced from a clean checkout at commit `06770b11dbfa1f16c5a3fa5cb8680f327af113a3` with the bound 2020 profile and protocol. These are run facts, not new protocol defaults.
+
+| Processing count | Signal | Background | Total |
+|---|---:|---:|---:|
+| Source ROOT entries | 164,716 | 554,279 | 718,995 |
+| Historical development entries eligible for payload processing | 131,776 | 443,408 | 575,184 |
+| Selected `2e2mu`, `105 <= m4l < 140` event groups | 36,068 | 2,922 | 38,990 |
+
+Every selected row has a distinct physical group in this artifact. Role assignment produced:
+
+| Role | Signal groups | Background groups | Total groups |
+|---|---:|---:|---:|
+| train | 14,377 | 1,140 | 15,517 |
+| validation | 3,503 | 312 | 3,815 |
+| calibration | 7,262 | 575 | 7,837 |
+| template | 7,221 | 590 | 7,811 |
+| assessment | 3,705 | 305 | 4,010 |
+
+G0 passed all eight non-assessment role/label cells. The smallest recorded signed effective count was 104.34 for validation background, above the protocol threshold of 20; the smallest cancellation ratio was 0.637 for train background, above 0.2. This proves the registered G0 support checks for this artifact. It does not prove two-dimensional template validity, signed-MC T1 applicability, source independence, or physical process definitions.
+
 ## Reconstruction and selection
 
 The [selection configuration](../config/protocols/h4l_selection_v1.yaml) supplies base cuts; the research protocol overrides its mass window. Branch names and units come from the profile. Reconstructed masses and momenta use GeV.
@@ -35,7 +57,7 @@ The [selection configuration](../config/protocols/h4l_selection_v1.yaml) supplie
 | Step | Rule | Failure handling |
 |---|---|---|
 | Trigger | `trigE` or `trigM` | Reject event |
-| Flavour / identification | At least four electrons or muons, then tight ID | Remove failing leptons; reject if insufficient |
+| Flavour / identification | Keep only electrons or muons, then tight ID; require at least four after each step | Remove failing leptons; reject if insufficient |
 | Track / calorimeter isolation | Each isolation divided by `lep_pt` below 0.3 | Remove failing leptons |
 | Transverse impact | Electron `abs(d0sig) < 5`, muon `< 3` | Remove failing leptons |
 | Longitudinal impact | `abs(z0 / cosh(eta)) < 0.5 mm` | Remove failing leptons |
@@ -47,7 +69,7 @@ The [selection configuration](../config/protocols/h4l_selection_v1.yaml) supplie
 | Pair masses | Every SFOS mass above 5 GeV; `50 < mZ1 < 106`, `12 < mZ2 < 115` GeV | Reject event |
 | Research population | Protocol half-open mass window and sorted absolute flavours `[11,11,13,13]` | Reject event |
 
-Z1 is the SFOS pair closest to the nominal Z mass; Z2 uses the remaining leptons. Tie-breaking follows [reconstruction](../src/higgsml/physics/reconstruction.py). These cuts define the population; their exact values are fixed choices, not a claim of universal optimality.
+After quality filtering the event must contain exactly four good leptons. They are stably sorted by descending pT before thresholds and pairing. Z1 is the SFOS pair closest to the nominal Z mass; Z2 uses the remaining leptons. Pairing ties are resolved lexicographically by the stored lepton indices, as implemented in [reconstruction](../src/higgsml/physics/reconstruction.py). These cuts define the population; their exact values are fixed choices, not a claim of universal optimality.
 
 Malformed arrays, nonfinite inputs, invalid Angular5, undefined rapidity (`E <= abs(pz)`), inconsistent bindings, duplicate source identity, and groups spanning roles/labels cause failure rather than silent event removal. An empty selected population terminates as `insufficient_statistics`.
 
@@ -85,7 +107,7 @@ Groups are not independent degrees of freedom. Derived features can help a finit
 
 ## Identity, weights, and roles
 
-`event_id = source_row_id = <file_id>:<entry>`; `event_group_id = <channelNumber>:<eventNumber>`. A physical group remains intact across roles, variants, folds, and resampling and cannot have conflicting labels.
+`event_id = source_row_id = <file_id>:<entry>`; `event_group_id = <channelNumber>:<eventNumber>`. A physical group remains intact across roles, variants, folds, and resampling and cannot have conflicting labels. In the current protocol, payload eligibility first follows the historical `event_split(eventNumber, channelNumber) != "test"` rule; the five research roles are then assigned inside that development population.
 
 \[
 w_i=L_{\rm pb}\,\sigma_{\rm pb}\,k\,\epsilon_{\rm filter}
