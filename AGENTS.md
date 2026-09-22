@@ -71,6 +71,9 @@ Update tests, schemas, examples, and documentation when a contract changes.
 Generated data, models, plots, runs, caches, build outputs, environments, and
 package metadata must not be committed.
 
+Use Unix-style LF line endings for all text files in this repository. Do not
+introduce CRLF line endings.
+
 The codebase knowledge graph database for this project is stored in
 `.codebase-memory/` at the repository root. Use the codebase knowledge graph
 for code discovery when its tools are available; otherwise use `rg`. Run

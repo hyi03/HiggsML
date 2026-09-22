@@ -1,0 +1,960 @@
+\documentclass[aps,prd,reprint,superscriptaddress,nofootinbib,longbibliography,floatfix]{revtex4-2}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{graphicx,booktabs}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+\graphicspath{{figures/}}
+\input{generated/numbers}
+\newcommand{\mfl}{m_{4\ell}}
+\newcommand{\W}{W_{68}}
+\newcommand{\GeV}{\,\mathrm{GeV}}
+\newcommand{\Pois}{\operatorname{Pois}}
+\newcommand{\med}{\operatorname{median}}
+\newcommand{\Mempty}{M_{\varnothing}}
+\begin{document}
+
+\title{Kinematic feature attribution for signal-strength inference in simulated
+\texorpdfstring{$H\to ZZ^*\to2e2\mu$}{H to ZZ* to 2e2mu} events}
+\author{[Author name to be supplied]}
+\email{[Corresponding-author email to be supplied]}
+\affiliation{[Institution and postal address to be supplied]}
+\date{September 22, 2026}
+
+\begin{abstract}
+The usefulness of a kinematic representation for a Higgs analysis depends on
+the precision of the subsequent parameter inference, as well as on its ability
+to separate signal from background. We investigate this distinction in a
+controlled Monte Carlo study of $H\to ZZ^*\to2e2\mu$. Nineteen observables are
+partitioned into four physically motivated groups, and all fifteen nonempty
+combinations are evaluated using five independently initialized classifiers
+per combination. Explicit four-lepton mass is excluded from the classifiers.
+A constant-score reference and a common, frozen likelihood define a complete
+coalition comparison based on the expected 68\% profile-likelihood interval
+width for the signal strength. The executed analysis has one mass bin spanning
+105--140 GeV and two score categories for the nonempty combinations. At an
+injected signal strength of unity and a nominal normalization of
+$10\,\mathrm{fb}^{-1}$, the six-variable BC and ten-variable AC combinations
+have median widths \WidthBC{} and \WidthAC{}, compared with \WidthABCD{} for all
+nineteen variables. Their median reductions relative to the constant reference
+are \GainBC\% and \GainAC\%. Exact Shapley decomposition assigns the largest
+positive contributions to dilepton and collective kinematics, whereas the
+angular group has a negative contribution within this procedure. Classification
+and inference rankings differ. These findings are exploratory: only 161 of 200
+event-group bootstrap replicas are valid, the assessment review is not
+independent, and pseudo-experiment comparisons use an artificial coupling.
+The results identify compact candidates for independent study, without
+establishing general precision gains or validated interval coverage.
+\end{abstract}
+\maketitle
+
+\section{Introduction}
+\label{sec:introduction}
+
+The decay of a Higgs boson into four charged leptons provides a particularly
+transparent setting in which to study the relation between event kinematics
+and statistical inference. The final state is fully reconstructible to a good
+approximation, and its invariant mass is a direct handle on the resonance.
+The two dilepton systems also encode the geometry of the decay, while their
+motion in the laboratory reflects production dynamics and acceptance.
+Experimental studies combine these ingredients to constrain the Higgs signal
+strength and other properties\cite{CMS2017}. Matrix-element discriminants
+illustrate the usefulness of the multidimensional four-lepton configuration
+for distinguishing Higgs decays from continuum production\cite{Avery2013}.
+An analysis of learned representations in this channel can therefore connect
+a concrete physical description to a well-defined inference target.
+
+That connection is not automatic. A classifier is usually trained to separate
+two event populations, whereas an analysis ultimately estimates a parameter
+through a likelihood. A better ranking of signal and background events need
+not produce a narrower confidence interval after score compression, category
+construction, and nuisance-parameter profiling. The area under the receiver
+operating characteristic curve (AUC) integrates discrimination across many
+thresholds; the final fit uses a particular partition with particular event
+yields and statistical uncertainties. Methods such as INFERNO explicitly
+address this distinction by optimizing an inference objective during
+training\cite{INFERNO2019}. Here the learner remains a conventional classifier.
+The question is instead how different physically motivated inputs perform
+when passed through the same prescribed learning and inference procedure.
+
+A second distinction concerns information and its representation. Derived
+kinematic variables can make a useful pattern easier for a finite network to
+learn without adding independent event information. Conversely, a group with
+clear physical content can degrade the performance of a particular fitted
+model when simulation is limited. Training fluctuations, overlapping
+observables, the choice of loss, and coarse score categories all intervene
+between the underlying probability distributions and the resulting interval.
+Consequently, a numerical attribution to an input group should be interpreted
+as an attribution of performance for a specified procedure. It is not a
+measurement of intrinsic physical information.
+
+We study this problem by partitioning nineteen reconstructed observables into
+four groups and evaluating all nonempty group combinations. The four-lepton
+mass is omitted as an explicit classifier input, allowing the study to focus
+on the remaining representation while keeping the selected mass window and
+the likelihood prescription common. For each of five training seeds, the
+fifteen trained models are complemented by a constant-score reference. This
+complete set permits an exact Shapley decomposition of the change in expected
+signal-strength interval width\cite{Shapley1953}. Direct subset comparisons
+are retained alongside the attribution, because an ordering of Shapley values
+does not by itself identify an optimal feature subset\cite{Fryer2021}.
+
+The present analysis uses only two simulated members of the ATLAS 2020 open
+data collection\cite{ATLAS2020}. It is a methodological study of a restricted
+population, rather than an experimental measurement or an ATLAS or CMS
+collaboration result. The analysis yields a complete nominal comparison and
+conditional pseudo-experiment diagnostics, but its finite-simulation and
+independent-validation requirements are not all satisfied. We therefore
+report the observed pattern and its limitations together. In particular,
+the common mass grid has merged to a single bin. The resulting comparison
+quantifies the value of score categories in that coarse analysis; it cannot
+establish an improvement over a fit that resolves the Higgs mass peak.
+
+\section{Simulated samples and event definition}
+\label{sec:samples}
+
+\subsection{Population and reconstruction}
+
+The input collection contains proton--proton collision simulations at
+$\sqrt{s}=13$ TeV. We use the signal member with dataset identifier 345060,
+labelled \texttt{ggH125\_ZZ4lep}, and the background member with identifier
+363490, labelled \texttt{llll}. The former defines the signal scaled by the
+parameter $\mu$ throughout this paper. The latter defines the complete
+background of this restricted model. Its sample label alone does not justify
+identifying it with a pure $q\bar q\to ZZ$ component. Other Higgs production
+modes and additional experimental backgrounds are not included. The dataset
+release and individual member identities are fixed, and no collision-data
+events are used.
+
+The selected final state contains exactly two electrons and two muons, with
+four-lepton mass $105\leq\mfl<140\GeV$. Events must satisfy the electron or
+muon trigger, contain exactly four good leptons after quality requirements,
+and have at least one good lepton matched to a trigger object. Good leptons
+pass the stored tight-identification decision. Both track and calorimeter
+isolation divided by lepton transverse momentum must be below 0.3. The
+transverse impact-parameter significance satisfies $|d_0/\sigma_{d_0}|<5$
+for electrons and $<3$ for muons; the longitudinal requirement is
+$|z_0/\cosh\eta|<0.5$ mm. Electron and muon acceptance is restricted to
+$|\eta|<2.47$ and $|\eta|<2.7$, respectively.
+
+Leptons are ordered by decreasing transverse momentum, with thresholds of
+20, 15, 10, and 7 GeV. The total charge must vanish, and two same-flavour,
+opposite-sign pairs must be available. The pair closest to the nominal
+$Z$ mass is called $Z_1$; the remaining pair is called $Z_2$. Every
+same-flavour, opposite-sign pair must have mass above 5 GeV, with the chosen
+pairs additionally satisfying $50<m_{Z_1}<106\GeV$ and
+$12<m_{Z_2}<115\GeV$. The mixed-flavour restriction reduces the ambiguity
+associated with pairing identical leptons. It also restricts the reach of the
+study: conclusions for $4e$ and $4\mu$, where exchange effects and pairing
+choices require further care, do not follow automatically.
+
+These selections define a fixed analysis population. Their thresholds are
+not optimized using the reported subset ranking. Reconstructed four-vectors
+and the stored lepton ordering determine the observables used below; masses
+and momenta are expressed in GeV, and azimuthal angles in radians. Invalid
+four-vectors, undefined angular configurations, and nonfinite feature values
+are treated as analysis failures rather than assigned artificial replacement
+values. A complete generator, shower, and detector-provenance audit remains
+necessary before using the population to support broader physical claims.
+
+\subsection{Weights and statistical roles}
+
+The nominal luminosity is $L=10\,\mathrm{fb}^{-1}$. For a generated event $i$,
+the normalization has the form
+\begin{equation}
+ w_i=L\,\sigma\,k\,\epsilon_{\mathrm f}
+          \frac{w_i^{\mathrm{gen}}}{\sum_j w_j^{\mathrm{gen}}},
+ \label{eq:weight}
+\end{equation}
+where the cross section, correction factor, and filter efficiency are those
+bound to the sample configuration. The physical sign of the generator weight
+is retained. The study does not infer the origin of negative weights from
+their presence alone: subtraction, matching, and interference are distinct
+possibilities. Their implications for the template-statistical model must be
+assessed separately\cite{Mandrik2017,Gluesenkamp2018}.
+
+An existing development/test partition is preserved. The historical
+development population has selection probability $p_{\mathrm{dev}}=0.8$.
+Within it, physical event groups are assigned deterministically to training,
+validation, calibration, template construction, and assessment, with fractions
+0.4, 0.1, 0.2, 0.2, and 0.1. A group is identified by the simulation channel
+and event number, so repeated representations of the same physical event
+cannot cross roles. For a role with conditional probability $r$, its yield
+weight is $\widetilde w_i=w_i/(p_{\mathrm{dev}}r)$. This sampling correction
+is applied to yields and squared consistently in the variance; role totals
+are not forced to agree by subsequent renormalization.
+
+The roles separate decisions with different statistical functions.
+Training determines network parameters and the feature standardization.
+Validation selects a checkpoint. Calibration fixes score thresholds, while
+the template role estimates the yields used by the likelihood. Assessment
+provides a separate parent for post-freeze diagnostics. This separation
+limits immediate feedback between fitting and evaluation, but it cannot
+erase historical access to a sample. The retained analysis has only a
+single-researcher, non-independent access review. Its assessment diagnostics
+are consequently not treated as independent confirmation.
+
+Table~\ref{tab:setup} summarizes the executed configuration. The template
+population contains 7,221 signal groups and 590 background groups. Under the
+bound normalization, their total expected yields are 2.76832 and 2.49785,
+respectively. These small expectations are relevant to the broad
+signal-strength intervals and to departures from simple large-sample
+intuition. They are predictions of the restricted normalization and selection
+used here, not an estimate of the total experimental yield in this channel.
+
+\begin{table}[tbp]
+\caption{Samples and fixed analysis configuration. Group counts refer to the
+published non-assessment audit. Expected yields include the role-sampling
+correction. The initial fine mass grid and the executed grid are distinguished.}
+\label{tab:setup}
+\begin{ruledtabular}
+\begin{tabular}{ll}
+Quantity & Configuration \\
+\hline
+Signal / background DSID & 345060 / 363490 \\
+Collision energy & 13 TeV \\
+Final state; luminosity & $2e2\mu$; $10\,\mathrm{fb}^{-1}$ \\
+Mass window & $105\leq\mfl<140\GeV$ \\
+Training groups ($s/b$) & 14,377 / 1,140 \\
+Validation groups ($s/b$) & 3,503 / 312 \\
+Calibration groups ($s/b$) & 7,262 / 575 \\
+Template groups ($s/b$) & 7,221 / 590 \\
+Template yields ($s/b$) & 2.76832 / 2.49785 \\
+Initial / executed mass bins & 35 / 1 \\
+Score categories, nonempty subsets & 2 \\
+Hidden-layer widths & 64, 64, 32 \\
+Training seeds & 42--46 \\
+Nominal inference & T1, Asimov, $\mu=1$ \\
+\end{tabular}
+\end{ruledtabular}
+\end{table}
+
+\section{Kinematic representations and learning procedure}
+\label{sec:representations}
+
+\subsection{Feature groups and the mass convention}
+
+Table~\ref{tab:features} defines the four groups. Group A contains individual
+lepton transverse momenta and pseudorapidities, ordered by transverse
+momentum. Group B describes the masses and internal angular separation of
+the dilepton pairs. Group C contains collective four-lepton transverse
+momentum and the azimuthal separation of the two dilepton systems. Group D
+contains five angular coordinates associated with the production and decay
+geometry. The scalar products and rest-frame constructions underlying these
+angles are useful descriptions of the four-lepton phase space, as illustrated
+by matrix-element studies\cite{Avery2013}. The present group definition is a
+choice of representation for a classifier, not an assertion that the four
+groups form independent components of phase space.
+
+The angular convention fixes the charge ordering and beam direction.
+In the four-lepton rest frame, $\theta^*$ is the angle between $Z_1$ and
+the boosted positive laboratory beam direction. The decay-plane normals
+are proportional to $\bm p_{\ell^-}\times\bm p_{\ell^+}$ for each pair
+in that frame. The production-plane normal is proportional to the cross
+product of the boosted beam direction with the $Z_1$ direction.
+The two azimuthal coordinates are oriented angles about $Z_1$: first from
+the $Z_1$ decay-plane normal to the $Z_2$ normal, and second from the
+production-plane normal to the $Z_1$ normal. Both lie in $[-\pi,\pi)$.
+For $\theta_1$ ($\theta_2$), the negative lepton in the $Z_1$ ($Z_2$)
+rest frame is compared with the direction opposite the other dilepton
+system. These conventions specify the implemented coordinates, without
+implying an independently validated matrix-element backend.
+
+\begin{table}[tbp]
+\caption{Classifier inputs. Here $i=1,\ldots,4$ denotes leptons ordered by
+decreasing $p_T$, and $\Delta R=\sqrt{(\Delta\eta)^2+(\Delta\phi)^2}$ is
+evaluated within a dilepton pair. Explicit $\mfl$ is absent from every group.}
+\label{tab:features}
+\begin{ruledtabular}
+\begin{tabular}{clc}
+Group & Observables & Count \\
+\hline
+A & $p_{T,i},\eta_i$ & 8 \\
+B & $m_{Z_1},m_{Z_2},\Delta R_{Z_1},\Delta R_{Z_2}$ & 4 \\
+C & $p_{T,4\ell},\Delta\phi_{ZZ}$ & 2 \\
+D & $\cos\theta^*,\cos\theta_1,\cos\theta_2,$ & \\
+  & $\phi_{\mathrm{decay}},\phi_{\mathrm{production}}$ & 5 \\
+\end{tabular}
+\end{ruledtabular}
+\end{table}
+
+Removing the explicit mass column does not imply statistical independence
+from mass. For approximately massless leptons, for example,
+\begin{equation}
+ m_{ij}^{2}=2p_{T,i}p_{T,j}
+    \bigl[\cosh(\eta_i-\eta_j)-\cos(\phi_i-\phi_j)\bigr].
+ \label{eq:pairmass}
+\end{equation}
+Correlated kinematic quantities can therefore retain information related to
+invariant masses. Some groups omit ingredients needed for an exact
+reconstruction, yet can still carry substantial mass dependence. Likewise,
+the selected mass window already conditions the population before training.
+We use the phrase ``without explicit mass input'' literally, and do not call
+the learned scores mass-decorrelated or mass-independent.
+
+The complete combination set consists of the fifteen nonempty subsets of
+$N=\{A,B,C,D\}$. Each subset is trained separately. The BC and AC inputs
+therefore contain six and ten variables, respectively, while ABCD contains
+nineteen. The attribution analysis reuses the resulting 75 fixed networks;
+it does not remove columns from a network trained on all variables. Removing
+columns from an existing network would define a different intervention,
+confounding the representation comparison with the response of a model to
+inputs outside its training configuration.
+
+\subsection{Network fitting and the empty coalition}
+
+The learner is a multilayer perceptron with hidden widths 64, 64, and 32.
+Each hidden affine transformation is followed by layer normalization and a
+SiLU activation. Dropout with probability 0.1 follows the first two hidden
+activations, and a final affine layer produces a single logit. Inputs are
+standardized using means and population standard deviations fitted only on
+the training role. A zero scale is replaced by one. The resulting
+transformation is kept fixed for validation, calibration, and inference.
+
+Training uses binary cross entropy, CPU single-precision arithmetic, and
+AdamW with learning rate $10^{-3}$, weight decay $10^{-4}$, and batch size
+1,024. The event weight entering optimization is the absolute physical weight
+divided by its training-class mean. This provides a nonnegative training
+measure while preserving the signed weights for physical yields. In
+particular, the fitted logit should not be identified without qualification
+with the likelihood ratio of the signed physical template distributions.
+The optimizer sees a surrogate measure; the downstream likelihood determines
+the reported inference performance.
+
+Ordinary training lasts at most 200 epochs. The selected checkpoint maximizes
+validation AUC under absolute physical weights, using patience 20 and minimum
+improvement $10^{-4}$. The five seed values change initialization and
+training randomness, while the event population and statistical roles remain
+fixed. Equal seed labels provide a controlled comparison convention across
+subsets, not identical optimization trajectories: changing input dimension
+also changes the first layer and its parameter count. The calculation tests
+this fixed learner and training prescription, rather than a capacity-matched
+family or a search over architectures.
+
+The empty coalition is a deterministic constant score, denoted
+$\Mempty$ and represented by the run identity \texttt{M0off}. It receives no
+kinematic inputs and has no fitted network. All events share its score and
+therefore occupy one score category; the other category is structurally
+empty. Ties are not split by class labels or event identifiers. The reference
+is evaluated with the same accepted population, mass boundaries, and
+likelihood prescription as the nonempty combinations. Five identities are
+retained to align the comparison bookkeeping, but their numerical widths
+are identical and do not represent five independent baseline fits.
+
+This empty coalition makes the meaning of attribution explicit. A positive
+contribution is a reduction in interval width relative to combinations with
+less input information under the specified retraining procedure. It is not
+an explanation of an individual event score. The coalition value includes
+learning, threshold selection, compression, and template statistics, so its
+sign need not match an interpretation based only on the discriminating power
+of an ideal continuous observable.
+
+\section{Statistical inference and attribution}
+\label{sec:inference}
+
+\subsection{Score categories and the common template}
+
+The sigmoid of the network logit defines its raw score. Scores are divided
+into two categories using a background equal-yield threshold estimated from
+the calibration role. Every accepted
+event belongs to a category: no preliminary score cut removes low-scoring
+events. The calibration and template populations are distinct, so the
+background yields in the two template categories need not be exactly equal.
+The raw-score analysis used here does not apply a conditional cumulative
+distribution transform or adversarial mass decorrelation.
+
+The signed calibration weights require a defined prescription for that
+threshold. Scores are first accumulated in twenty equal bins on $[0,1]$.
+Their signed yields are fitted to a nonnegative histogram with the same
+total yield by minimizing the variance-weighted squared adjustment. Bins
+with zero variance are treated as structural zeros. The median of the
+resulting cumulative histogram, interpolated linearly within its containing
+score bin, sets the category boundary. Equal scores are assigned together,
+with equality at the threshold assigned to the higher category. This
+constrained distribution fit determines the threshold; it is not a
+conditional transformation of the event score. In particular, the physical
+template yields used by the likelihood are not replaced by the fitted
+calibration histogram.
+
+The analysis initially specifies 1 GeV mass bins over the selected window.
+Support requirements are imposed on signed template yields, effective
+counts, and cancellation. The effective-count threshold is 20 and the
+minimum ratio $|\sum_i w_i|/\sum_i|w_i|$ is 0.2. A common deterministic merging rule is applied
+before freezing, rather than optimizing a separate grid for each candidate.
+For the executed analysis this procedure leaves the two edges
+$[105,140]\GeV$, giving one mass bin shared by all candidates and training
+seeds. Each nonempty classifier is thus evaluated through two score counts,
+while the constant reference reduces to a single accepted-event count.
+
+This coarse configuration is central to the interpretation. The likelihood
+still has a registered mass coordinate, but within the accepted window it
+does not resolve the peak shape. The observed gain over the constant
+reference consequently reflects the extra separation supplied by the score
+partition, including any residual mass dependence that its inputs encode.
+It is not the gain of kinematics after exploiting a finely resolved mass
+spectrum. A comparison with such a spectrum would require a distinct,
+adequately supported analysis with its own fixed binning and validation.
+
+The seed-42 BC template gives a concrete example of the compression.
+Its two background category expectations are approximately 1.26935 and
+1.22850 events, while the signal expectations are 0.23310 and 2.53522.
+The category totals reproduce the common yields in Table~\ref{tab:setup}.
+The score partition therefore concentrates most of the simulated signal
+in one category while leaving roughly half the background in each.
+This example explains how categorization can help the count-based inference
+even when no event is rejected. It does not establish the stability of
+the same threshold or category yields under new simulated samples.
+
+\subsection{Likelihood and interval construction}
+
+Let $s_{cj}$ and $b_{cj}$ denote signal and background expectations in score
+category $c$ and mass bin $j$. The fitted model is
+\begin{align}
+ \mathcal L(\mu,\bm\gamma)={}&
+ \prod_{c,j}\Pois\!\left(n_{cj}\mid\lambda_{cj}\right)
+ \prod_{p,c,j}\Pois\!\left(a_{p,cj}\mid
+       \tau_{p,cj}\gamma_{p,cj}\right),\nonumber\\
+ \lambda_{cj}={}&\mu s_{cj}\gamma_{s,cj}+b_{cj}\gamma_{b,cj},
+ \label{eq:likelihood}
+\end{align}
+where $p$ labels the signal and background processes. The auxiliary
+constraints describe a finite-template approximation, called T1. For a
+positive nominal yield $y$ and estimated variance $V$,
+\begin{equation}
+ \tau=\frac{y^2}{V},\qquad
+ y=\sum_g W_g,\qquad V=\sum_g W_g^2,
+ \label{eq:tau}
+\end{equation}
+with $W_g$ the total yield contribution of physical group $g$ to that bin.
+The multiplicative nuisance parameter $\gamma$ is nonnegative, and the
+nominal auxiliary expectation is $\tau$. The implementation uses the
+\texttt{shapesys} modifier of pyhf 0.7.6\cite{pyhf2021,pyhf076}, with
+independent process/bin auxiliary constraints.
+
+Finite simulation must be distinguished from fixed-template counting
+uncertainty\cite{Barlow1993}. Equation~\eqref{eq:tau} is an effective-count
+approximation for weighted templates, not an exact generative construction
+for arbitrary signed samples. Cancellation and physical-group correlations
+can invalidate a naive independent-bin treatment. Nonpositive rates are not
+repaired with absolute values or small positive offsets, and unsupported
+configurations are recorded as failures. The fixed-template limit, termed
+T0, omits the finite-template nuisance parameters. The nominal comparisons
+in this paper use T1 throughout; neither its implementation nor its numerical
+convergence establishes independent validity for the present signed sample.
+
+The simpler T0 model helps explain why classification and inference can
+rank representations differently. For fixed, known category expectations
+and one mass bin, the Fisher information for $\mu$ is
+\begin{equation}
+ \mathcal I_{\mathrm{T0}}(\mu)=\sum_c
+                 \frac{s_c^2}{\mu s_c+b_c}.
+ \label{eq:fisher}
+\end{equation}
+Categories are valuable when they separate regions with different
+signal-to-background composition. By the Cauchy--Schwarz inequality,
+the expression is at least $s_{\mathrm{tot}}^2/
+(\mu s_{\mathrm{tot}}+b_{\mathrm{tot}})$, the information in the summed
+count, with equality when their compositions provide no useful
+distinction. This is a local, ideal fixed-template statement. It provides
+physical intuition for score categorization, not an alternative numerical
+result for the finite-sample profile intervals reported here.
+
+In particular, changing feature inputs does not simply refine a fixed
+category partition: retraining moves its boundary and can produce a less
+favourable partition. T1 also profiles nuisance parameters whose constraints
+depend on the simulation populating each category. The ideal information
+inequality therefore does not require the learned ABCD partition to
+outperform BC, nor does it guarantee that the expected finite-sample
+interval follows the inverse square root of Eq.~\eqref{eq:fisher}.
+The distinction separates the statistical value of retaining exact event
+information from the performance of a learned and discretized summary.
+
+The profile-likelihood statistic is
+\begin{equation}
+ q(\mu)=-2\log
+ \frac{\mathcal L(\mu,\widehat{\widehat{\bm\gamma}}(\mu))}
+      {\mathcal L(\widehat\mu,\widehat{\bm\gamma})}.
+ \label{eq:profile}
+\end{equation}
+We invert it using the one-degree-of-freedom chi-squared quantile for the
+chosen confidence level\cite{Cowan2011}. The fitted signal strength is
+constrained to $\mu\geq0$, with a numerical search ceiling of 20. If the
+lower endpoint reaches zero it is retained as a boundary endpoint; failure
+to find an upper crossing is recorded rather than assigned a finite width.
+This is a bounded profile interval with an asymptotic threshold, not a
+pseudo-experiment-calibrated confidence belt.
+
+The primary descriptive metric is the nominal Asimov width
+\begin{equation}
+ \W(S,k)=\mu_{\mathrm{up}}(S,k)-\mu_{\mathrm{low}}(S,k),
+ \label{eq:width}
+\end{equation}
+at injected $\mu=1$ for subset $S$ and training seed $k$. Each candidate's
+Asimov observation equals its own nominal expected count vector, including
+the auxiliary expectations. Thus no Poisson fluctuations enter the nominal
+comparison. An Asimov width measures the expected resolution under that
+model; whether the corresponding interval has the advertised coverage is a
+separate question, especially at small yields or near the physical boundary.
+
+\subsection{Coalition values and paired summaries}
+
+We define the coalition value by $v_k(S)=-\W(S,k)$, so larger values mean
+narrower intervals. For group $G\in N$, its Shapley contribution is
+\begin{equation}
+ \phi_{G,k}=\sum_{S\subseteq N\setminus\{G\}}
+ \frac{|S|!\,(3-|S|)!}{4!}
+ \left[v_k(S\cup\{G\})-v_k(S)\right].
+ \label{eq:shapley}
+\end{equation}
+The complete sixteen-coalition vector is available for every seed, so the
+sum is evaluated exactly, without sampling feature orderings. It obeys
+\begin{equation}
+ \sum_{G\in N}\phi_{G,k}=v_k(N)-v_k(\varnothing).
+ \label{eq:efficiency}
+\end{equation}
+The contributions have units of signal-strength interval width. They are
+neither percentages of physical information nor coefficients of an additive
+model for the event distribution.
+
+Complementarity is examined through conditional second differences,
+\begin{align}
+ I_{GH\mid S,k}={}&v_k(S\cup\{G,H\})-v_k(S\cup\{G\})\nonumber\\
+                 &-v_k(S\cup\{H\})+v_k(S),
+ \label{eq:interaction}
+\end{align}
+where $S\subseteq N\setminus\{G,H\}$. There are six group pairs and four
+conditioning subsets for each pair, giving 24 contrasts per seed. A positive
+value means that their joint width reduction exceeds the sum of their
+separate reductions conditional on $S$. This metric-specific interaction
+does not imply causal synergy or a positive mutual-information contribution.
+
+For two nonempty subsets we also retain direct paired reductions,
+\begin{equation}
+ R_k(S,T)=1-\frac{\W(S,k)}{\W(T,k)}.
+ \label{eq:relative}
+\end{equation}
+All 105 unordered nonempty-subset pairs are available. Each contrast is
+calculated within a seed and only then summarized across seeds by its
+median. Taking a ratio of marginal medians would generally answer a different
+question. Similarly, group contributions are computed before their medians;
+the four median contributions need not satisfy Eq.~\eqref{eq:efficiency},
+which is a per-seed identity.
+
+The plots show all five seed values and their median. The broader run also
+enumerates all $5^5=3125$ ordered resamples of the complete seed vectors to
+describe stability of median summaries. Such resampling is conditional on
+the shared MC and training prescription. It does not turn five initializations
+into five independent datasets or supply a total confidence interval. BC and
+AC are highlighted because of the observed exploratory ranking; they are not
+retrospectively described as independently confirmed, prespecified winners.
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Compact inputs and expected precision}
+
+Figure~\ref{fig:widths} displays the nominal widths for every nonempty
+combination. The constant reference gives $\W=\WidthEmpty$ for each seed.
+The lowest median width is obtained by BC, $\WidthBC$, closely followed by
+AC, $\WidthAC$. Relative to the reference, the corresponding median
+reductions are \GainBC\% and \GainAC\%. The full nineteen-variable ABCD
+input has median width \WidthABCD{}, corresponding to a \GainABCD\%
+reduction. All nominal coalition vectors are complete, so these comparisons
+do not exclude unsuccessful seeds or substitute values for missing models.
+
+\begin{figure*}[tbp]
+\includegraphics[width=\textwidth]{subset_widths}
+\caption{Nominal T1 Asimov interval widths at $\mu=1$. Combinations are ordered
+by their median width. Coloured points show the five training seeds, and black
+ticks show medians. The dashed line is the constant-score reference
+$\Mempty$. Vertical offsets separate seed points only; they carry no
+statistical meaning. The common mass grid has one bin from 105 to 140 GeV.
+The seed spread is not a finite-MC or total confidence interval.}
+\label{fig:widths}
+\end{figure*}
+
+The comparison with the full input is consistent in sign across the five
+seeds. Both BC and AC yield narrower intervals than ABCD in every same-seed
+comparison, with median reductions of \PairGainBC\% and \PairGainAC\%,
+respectively [Fig.~\ref{fig:compact}]. Their compactness is substantial:
+BC uses six inputs and AC ten, compared with nineteen for ABCD. Nevertheless,
+the observed reduction in interval width relative to ABCD is modest. The
+agreement of signs across seeds is useful descriptive evidence about this
+training procedure, but cannot be assigned the evidential meaning of five
+independent MC replications.
+
+\begin{figure}[tbp]
+\includegraphics[width=\columnwidth]{compact_comparisons}
+\caption{Within-seed reductions in nominal interval width for BC and AC
+relative to ABCD, computed using Eq.~\eqref{eq:relative}. Connecting lines
+guide the eye between the discrete seeds. Both reductions are positive for
+all five seeds. These comparisons were selected for discussion after the
+complete subset ranking was examined.}
+\label{fig:compact}
+\end{figure}
+
+BC's leading median should not be interpreted as universal first place.
+AC gives the smallest width at seeds 42 and 46, BC at seeds 43 and 44, and
+BCD at seed 45. The AC and BC distributions overlap, and AC wins their
+direct comparison in two of five seeds. Thus the stable feature of the
+result is the competitiveness of several compact combinations, rather than
+a uniquely resolved ordering between the two leading choices. The complete
+per-seed values in Appendix~\ref{app:nominal} make this distinction visible
+without relying on rounded ranks.
+
+The low yield scale also places the percentage changes in perspective.
+Even the narrowest median interval has a width around 1.51 in a parameter
+whose injected value is one. A reduction of roughly nine percent relative
+to the constant count is a useful comparison of two procedures in the same
+model; it is not a precision measurement of the Higgs signal strength. The
+large interval scale and coarse mass template motivate retaining the
+absolute widths alongside relative improvements.
+
+\subsection{Contributions and conditional interactions}
+
+The median Shapley contributions are
+\begin{align}
+ &(\phi_A,\phi_B,\phi_C,\phi_D)_{\mathrm{med}}\nonumber\\
+ &\hspace{8mm}= (\PhiA,\PhiB,\PhiC,\PhiD).
+ \label{eq:observedphi}
+\end{align}
+Groups B and C contribute most strongly and have comparable median values.
+Group A contributes positively but less, whereas D is negative in every
+seed [Fig.~\ref{fig:shapley}]. Exact recomputation from the published
+coalition widths reproduces the stored contributions and their per-seed
+efficiency identity. This algebraic consistency verifies the attribution
+calculation, without adding information about its finite-MC uncertainty.
+
+\begin{figure}[tbp]
+\includegraphics[width=\columnwidth]{shapley}
+\caption{Exact Shapley contributions to negative interval width. Colours
+identify the same seeds as in Fig.~\ref{fig:widths}; black ticks denote
+medians. Positive values indicate an average reduction of width when a
+group is added over all possible conditioning coalitions. D is negative in
+each seed. The points describe variability across fitted networks on the
+same MC, rather than total uncertainty or intrinsic physical information.}
+\label{fig:shapley}
+\end{figure}
+
+The second differences refine this picture. Without a conditioning group,
+the AC interaction is positive in every seed, with median approximately
+$+0.04246$ in width units. The corresponding AB interaction is negative
+in every seed, with median $-0.05344$. Under this value function, A and C
+provide a joint gain larger than the sum of their separate gains, while
+A and B exhibit diminishing combined gain. Other conditioning coalitions
+can change the numerical size or sign of a contrast. All 24 contrasts,
+rather than only these two examples, are listed in
+Appendix~\ref{app:interactions}.
+
+This pattern has a plausible representation-level interpretation. Dilepton
+masses and separations expose structures that a small learner would
+otherwise have to infer indirectly, while collective kinematics can provide
+different discrimination or acceptance information. Overlap among the
+representations can make the gain from adding one depend strongly on what
+is already present. However, the numerical attribution cannot determine
+which physical mechanism dominates. Establishing that mechanism would
+require matched controls that separate production information, mass
+dependence, reconstruction effects, and learning convenience.
+
+In particular, the negative D contribution is not evidence against the
+physical relevance of decay angles. It states that adding this angular
+representation tends to widen the interval after retraining and rebuilding
+the prescribed score categories and finite-statistics likelihood. The
+comparison combines effects of estimation, optimization, category support,
+and the input-dependent parameter count. An ideal information-preserving
+analysis could disregard unhelpful coordinates, whereas this finite
+training procedure need not do so. A negative contribution is therefore
+compatible with physically informative observables.
+
+\subsection{Classification and inference rankings}
+
+Figure~\ref{fig:auc} compares the validation AUC with the expected interval
+width. There is a broad association: more discriminating classifiers
+usually yield narrower intervals in this family. Across the fifteen
+candidate medians, the descriptive Pearson and Spearman correlations are
+approximately $-0.945$ and $-0.911$, respectively. These correlated,
+exploratorily examined candidates are not independent observations for a
+population-level significance test, and no such test is assigned to the
+correlation coefficients.
+
+\begin{figure}[tbp]
+\includegraphics[width=\columnwidth]{auc_width}
+\caption{Validation absolute-weight AUC versus nominal T1 interval width.
+Faint coloured points are individual seed results; black points are the
+separate AUC and width medians for each nonempty combination. Selected
+combinations are labelled for readability. The overall association is
+strong, but the rankings differ: AC has the highest median AUC and BC the
+smallest median width. The constant baseline is omitted because its AUC is
+not recorded as a trained-model validation result.}
+\label{fig:auc}
+\end{figure}
+
+The strongest classification ranking nevertheless differs from the
+strongest inference ranking. AC has the highest median AUC, while BC has
+the smallest median width. ABCD has a higher median AUC than BC but a wider
+interval. This is expected to be possible because AUC does not include
+the signal/background normalization, the two-category compression, or the
+penalty from finite template statistics. A change that improves ordering
+over much of the score range can leave the particular threshold used by
+the likelihood less favourable.
+
+The distinction is also sharpened by the weighting convention. Validation
+AUC is evaluated with absolute weights, whereas the category expectations
+are signed physical yields. Thus even before compression the evaluation
+measures are not identical. The study supports evaluating representations
+through the intended inference pipeline, but does not compare conventional
+training with an inference-optimized learner. It supplies no benchmark
+against INFERNO, a matrix-element likelihood, or an optimal statistic.
+
+\section{Validation and limitations}
+\label{sec:validation}
+
+\subsection{Finite-MC resampling}
+
+The event-MC bootstrap resamples physical groups in the calibration and
+template roles separately, using common draws across all candidates. The
+networks remain fixed; score thresholds are refitted, category templates
+are rebuilt, and the complete inference and attribution calculation is
+repeated on the frozen nominal mass grid. The procedure therefore addresses
+the finite calibration/template sample conditional on the trained models.
+It does not include retraining, assessment-parent uncertainty, or variation
+of the underlying generator and detector model.
+
+The prescribed ensemble contains 200 replicas. Of these, 161 are complete
+and valid and 39 fail the statistical-support requirements. The registered
+rule requires all 200 complete replicas for formal percentile intervals,
+so no such intervals are reported. Summaries conditional on the successful
+replicas would describe a selected subset of the resampling distribution.
+They cannot be silently substituted for the missing unconditional
+bootstrap result. The failure fraction, 19.5\%, is itself evidence that
+the present finite-MC support is a material limitation.
+
+Consequently, the nominal differences and the seed patterns do not yet
+establish a gain that survives finite-simulation uncertainty. The missing
+intervals cannot be repaired by combining seed spread with a conditional
+bootstrap spread or by generating additional random replicas until all
+desired results appear. More draws from the same parent improve Monte
+Carlo integration of a resampling procedure; they do not supply absent
+support or additional independent simulated events.
+
+\subsection{Pseudo-experiments and repeated calibration}
+
+Model-self and assessment-parent pseudo-experiments are generated at
+$\mu=0,1,2$, with 500 trials per candidate and injection for each of the five
+training-seed blocks. The first tests closure under the fitted model; the
+second uses the frozen assessment parent to examine a distinct source of
+expectations. Poisson auxiliary observations are regenerated according to
+the registered T1 prescription. Each block contains sixteen candidates. The retained report
+contains valid numerical outputs for all fifteen model-self cells and all
+fifteen assessment cells. Numerical completion is distinguished from the
+physical applicability and independence of those diagnostics.
+
+Within a block, candidate count vectors are coupled by sharing total
+Poisson draws and using common uniforms for monotone category allocation.
+This construction preserves each candidate's marginal Poisson law. It does
+not reproduce the covariance of classifications of a common set of physical
+events. As a result, paired errors describe the registered artificial
+common-random-number coupling, not physical cross-model covariance.
+Matching trial indices in different training-seed blocks has no event-pairing
+meaning. A sensitivity calculation with independent category allocation is
+pending, so coupled pairwise diagnostic uncertainties are not used as a
+primary reliability claim.
+
+Repeated-calibration diagnostics, denoted T2, use twenty outer
+calibration-group bootstrap replicas per seed and one hundred inner
+pseudo-experiments at $\mu=1$ for each replica. Each replica's thresholds
+are applied consistently to the template and pseudo-observation
+construction, with the nominal mass grid held fixed. Networks and the
+template/assessment parent events are not regenerated. All five T2 cells
+have valid numerical outputs. The outer calibration replicas are the
+procedure-level units; the inner trials are conditional simulations within
+each unit. Treating the resulting 2,000 fits as independent replications
+of the entire analysis would overstate the evidence.
+
+Table~\ref{tab:validation} gives conditional coverage for the three
+highlighted candidates. Entries are medians over training seeds, not
+pooled binomial estimates. At the nominal 68\% level, assessment coverage
+ranges from 0.634 for AC and ABCD to 0.668 for BC. The corresponding T2
+values are 0.648, 0.650, and 0.666. At 95\%, the displayed fractions are
+near or somewhat above nominal. These values indicate that the interval
+construction deserves further coverage study; they do not support an
+unqualified statement that the narrowest interval is the most reliable.
+
+\begin{table*}[tbp]
+\caption{Conditional coverage at $\mu=1$ and the status of the validation
+layers. Numerical entries are five-seed medians of the reported conditional
+coverage. T2 averages inner conditional coverage within each outer
+calibration procedure before the seed summary. These are not pooled
+confidence intervals or independent validation results.}
+\label{tab:validation}
+\begin{ruledtabular}
+\begin{tabular}{lccp{8.0cm}}
+Diagnostic / candidate & 68\% & 95\% & Interpretation or remaining limitation \\
+\hline
+Assessment: BC & \AssessmentBCSixtyEight & \AssessmentBCNinetyFive & Frozen assessment parent; non-independent access review. \\
+Assessment: AC & \AssessmentACSixtyEight & \AssessmentACNinetyFive & Same parent convention and artificial within-seed coupling. \\
+Assessment: ABCD & \AssessmentABCDSixtyEight & \AssessmentABCDNinetyFive & No total or externally validated coverage claim. \\
+T2: BC & \TtwoBCSixtyEight & \TtwoBCNinetyFive & Twenty outer calibration replicas; fixed networks and parents. \\
+T2: AC & \TtwoACSixtyEight & \TtwoACNinetyFive & One hundred conditional inner trials per outer replica. \\
+T2: ABCD & \TtwoABCDSixtyEight & \TtwoABCDNinetyFive & Outer procedures must not be replaced by pooled inner trials. \\
+\hline
+Nominal comparison & \multicolumn{2}{c}{80/80 valid} & Fixed-model Asimov comparison; five complete coalition vectors. \\
+Model-self / assessment & \multicolumn{2}{c}{15/15 cells each} & Conditional diagnostics; physical-event covariance not reproduced. \\
+Event-MC bootstrap & \multicolumn{2}{c}{161/200 valid} & Formal percentile intervals unavailable; 39 support failures. \\
+Independent validation & \multicolumn{2}{c}{Pending} & Signed-MC approximation, access history, and physical variations. \\
+\end{tabular}
+\end{ruledtabular}
+\end{table*}
+
+For a single set of 500 independent conditional Bernoulli outcomes, the
+binomial standard error at coverage 0.68 would be about 0.021. This provides
+a scale for simulation noise within a cell, but cannot be applied directly
+to a median across shared-MC seeds or to nested T2 trials. The report
+distinguishes successful-fit conditional coverage, the planned-denominator
+fraction of trials that both succeed and cover, and the fit-failure rate.
+These distinctions matter whenever fits fail. At $\mu=0$, the physical
+boundary additionally alters the behaviour of the intervals; conservative
+boundary coverage is not evidence of validated coverage away from zero.
+
+\subsection{Scope of the physical interpretation}
+
+Three limitations constrain the interpretation beyond numerical precision.
+First, the comparison is specific to a restricted simulated process model
+and a single reconstructed final state. Generator composition, normalization,
+negative-weight origin, radiation conventions, and the detector description
+require independent source-level validation. The use of an open simulated
+collection does not by itself provide that validation. Nor does a finite-MC
+nuisance model represent the full set of theoretical and experimental
+systematic uncertainties in a Higgs measurement.
+
+Second, the learned representations are compared at one training budget
+with one architecture family. Their input dimensions and first-layer
+parameter counts differ. The results therefore cannot establish that BC
+or AC is sufficient for the underlying physics, or that it will dominate
+with more simulation, a different learner, or a more informative likelihood.
+A matrix-element reference, controlled capacity comparisons, and training
+sample-size studies would help separate representation convenience from
+missing information. Those experiments have not been performed as part of
+the result reported here.
+
+Third, the compact candidates were highlighted after observing the complete
+combination ranking. Model-selection criteria themselves fluctuate, and
+choosing a favourable candidate can bias a subsequent interpretation of its
+performance\cite{Cawley2010}. The five seeds and exhaustive contrasts improve
+transparency, but do not eliminate this selection effect or create a
+simultaneous-coverage guarantee for the 105 pair comparisons. Independent
+confirmation requires a separately fixed candidate comparison and eligible
+data or simulation whose previous use does not compromise that confirmation.
+Relabelling the same events or merely changing a seed would not meet that
+requirement.
+
+These limitations leave a useful, narrower conclusion. In the executed
+single-mass-bin analysis, conventional classifier training can yield compact
+kinematic representations whose score partitions have smaller nominal
+signal-strength intervals than the full input. Exact coalition accounting
+helps identify where this occurs and shows why the contribution of one
+group depends on the others. Whether the observed improvement persists
+under adequate finite-MC support, validated signed-template modelling, a
+resolved mass fit, and independently sourced variations remains open.
+
+\section{Conclusions}
+\label{sec:conclusions}
+
+We have examined kinematic feature groups through their effect on the
+expected precision of signal-strength inference in a controlled simulated
+$H\to ZZ^*\to2e2\mu$ population. All fifteen nonempty combinations of
+nineteen observables were evaluated with five trained networks each and a
+deterministic empty-coalition reference. Explicit four-lepton mass was
+excluded from the classifiers. The final T1 likelihood used a common,
+frozen grid that had merged to one mass bin, so the comparison concerns
+score-category information within the selected mass window.
+
+The compact BC and AC inputs have median nominal widths of \WidthBC{} and
+\WidthAC{}, compared with \WidthABCD{} for ABCD. They improve over the
+constant reference by \GainBC\% and \GainAC\% and outperform ABCD in all
+five same-seed comparisons. Their relative ordering is not stable enough
+to identify a universal winner. Exact Shapley attribution gives the largest
+positive contributions to B and C, a smaller positive contribution to A,
+and a negative contribution to D for this particular procedure. The AUC
+and interval-width rankings differ despite their strong overall association.
+
+The numerical result remains exploratory. Event-group bootstrap failures
+prevent formal finite-MC percentile intervals, pseudo-experiment pairing is
+artificial, and independent physical and assessment-history validation is
+incomplete. The negative angular contribution does not imply absent angular
+information, and the nominal reductions do not establish a precision gain
+over a resolved mass-spectrum analysis. The complete coalition comparison
+instead defines concrete compact candidates and validation questions for a
+subsequent independently controlled study.
+
+\begin{acknowledgments}
+[Funding and acknowledgments to be supplied by the authors.]
+\end{acknowledgments}
+
+\section*{Data and computational materials}
+Only simulated members of the cited public collection were used. The
+accompanying draft materials contain the aggregate result snapshot, its
+source-file checksums, plotting code, and compilation instructions. The
+snapshot records the existing frozen analysis; preparing this manuscript
+did not retrain models, refit likelihoods, or generate new pseudo-experiments.
+The run provenance and the source revision used for manuscript verification
+are distinguished in the accompanying evidence record. A permanent archival
+software and result release has not been established by this draft.
+
+\clearpage
+\onecolumngrid
+\appendix
+\section{Complete nominal comparison}
+\label{app:nominal}
+Table~\ref{tab:nominal} supplies the full nominal coalition vector for each
+seed. Displayed values are rounded to five decimal places; ranking and
+contrasts use the full-precision aggregate snapshot. The AUC column is the
+median of the selected-checkpoint validation values under absolute physical
+weights. The blank AUC for the deterministic reference is preserved rather
+than replaced with an assumed trained-model measurement.
+
+\begin{table}[!h]
+\caption{Nominal $\W$ by training seed, its median, and median validation AUC.
+The empty coalition is $\varnothing$. The five seed columns share the same
+underlying MC. Their spread is not a total uncertainty estimate.}
+\label{tab:nominal}
+\small
+\centering
+\begin{ruledtabular}
+\begin{tabular}{lrrrrrrr}
+Subset & 42 & 43 & 44 & 45 & 46 & Median $\W$ & Median AUC \\
+\hline
+\input{generated/nominal_rows}
+\end{tabular}
+\end{ruledtabular}
+\end{table}
+
+\clearpage
+\section{Complete conditional interactions}
+\label{app:interactions}
+Table~\ref{tab:interactions} reports every second difference in
+Eq.~\eqref{eq:interaction}. The table specifies the conditioning coalition
+because a group-pair label alone does not define an interaction. Positive
+and negative values refer to the negative-width coalition value and cannot
+be converted into percentages of information. These descriptive contrasts
+do not have a simultaneous-confidence interpretation.
+
+\begin{table}[!h]
+\caption{All 24 conditional interactions in $\W$ units. Each row identifies
+the added pair $GH$ and conditioning subset $S$. The last column is the median
+of the five within-seed contrasts, rather than a contrast of median widths.}
+\label{tab:interactions}
+\small
+\centering
+\begin{ruledtabular}
+\begin{tabular}{llrrrrrr}
+$GH$ & $S$ & 42 & 43 & 44 & 45 & 46 & Median \\
+\hline
+\input{generated/interaction_rows}
+\end{tabular}
+\end{ruledtabular}
+\end{table}
+
+\clearpage
+\twocolumngrid
+\bibliography{references}
+\end{document}
