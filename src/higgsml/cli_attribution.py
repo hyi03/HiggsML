@@ -10,6 +10,7 @@ from higgsml.protocol import load_protocol, DEFAULT_PATH
 def main(argv=None):
     parser=argparse.ArgumentParser(description='Immutable registered mass-off attribution stages')
     parser.add_argument('stage',choices=['register','nominal','support-check','evaluation-spec','evaluation-plan','access-review','freeze','asimov','mc-bootstrap','model-self','assessment','t2','report'])
+    parser.add_argument('--threshold-method', choices=['median-v1','joint-support-v1'], default=None)
     parser.add_argument('--training-seed', type=int, choices=range(42,47))
     parser.add_argument('--plan-only', action='store_true')
     parser.add_argument('--gate', choices=['J0','J1'], default='J0')

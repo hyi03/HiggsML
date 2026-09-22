@@ -48,10 +48,23 @@ def validate_bundle(bundle, protocol, prepared_id):
     from higgsml.modeling.calibration import assign_categories
     try:
         model = bundle["model"]
+        joint = bundle['thresholds'].get('method_id') == 'h4l-off-joint-support-v1'
+        if joint and model['candidate'] != 'M0off':
+            from higgsml.modeling.joint_support import validate_threshold
+            validate_threshold(bundle['thresholds'], protocol)
         if model["candidate"] == "M0off":
             validate_empty_model(model)
-            if model["prepared_artifact_id"] != prepared_id or bundle != empty_bundle(model, protocol):
+            if model["prepared_artifact_id"] != prepared_id or (bundle['thresholds'].get('method_id') != 'h4l-off-joint-support-v1' and bundle != empty_bundle(model, protocol)):
                 raise ResearchError("M0off prepared/bundle binding mismatch")
+            if joint:
+                from higgsml.modeling.joint_support import analysis_contract
+                expected = empty_bundle(model, protocol)
+                for field in ('method_id','input_bindings','analysis_contract_digest','selector_bypassed'):
+                    expected['thresholds'][field] = bundle['thresholds'].get(field)
+                expected['thresholds']['threshold_id'] = digest({k:v for k,v in expected['thresholds'].items() if k != 'threshold_id'})
+                if (bundle != expected or bundle['thresholds']['selector_bypassed'] != 'registered_constant_baseline'
+                        or bundle['thresholds']['analysis_contract_digest'] != analysis_contract(protocol)['analysis_contract_digest']):
+                    raise ResearchError('joint constant baseline identity mismatch')
             subset = ""
         else:
             subset = "".join(model["groups"])

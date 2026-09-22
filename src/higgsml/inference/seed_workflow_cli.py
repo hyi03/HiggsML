@@ -21,9 +21,14 @@ def dispatch(args, protocol, root):
         if not args.prepared_run or (not args.source_root and not args.source_registration):
             raise ResearchError('register needs prepared run and source root or source registration')
         return workflow.register(args.source_root,args.prepared_run,protocol,args.run_dir,root,args.t1_validation,
-                                  source_registration=args.source_registration)
+                                  source_registration=args.source_registration, threshold_method=getattr(args,'threshold_method',None) or 'median-v1')
     if not args.registration_run:
         raise ResearchError('--registration-run required')
+    selected_method = getattr(args,'threshold_method',None)
+    if selected_method is not None:
+        registration = workflow.load_registration(args.registration_run,protocol)[1]
+        if registration.get('threshold_method','median-v1') != selected_method:
+            raise ResearchError('explicit threshold method conflicts with registration')
     if args.stage == 'nominal':
         return workflow.nominal(args.registration_run,protocol,args.run_dir,root,source_nominal=args.source_nominal)
     if not args.template_run:

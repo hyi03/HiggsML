@@ -82,6 +82,7 @@ def _parser() -> argparse.ArgumentParser:
                         help="Run only one registered evaluation unit; repeatable.")
     parser.add_argument("--retry-failed", action="store_true",
                         help="Retry selected claimed units with no recoverable terminal.")
+    parser.add_argument("--threshold-method", choices=["median-v1","joint-support-v1"], default="median-v1")
     return parser
 
 
@@ -141,7 +142,11 @@ def _run(args):
         raise WorkflowError('--stage-b cannot be combined with --evaluation',2)
     if output.exists() and not args.continue_run and not args.evaluation and not args.plan:
         raise WorkflowError('Output exists; use --continue to validate and resume',4)
-    common=['--protocol',str(protocol_path),'--worker-threads',str(args.worker_threads)]
+    common=['--threshold-method',args.threshold_method,'--protocol',str(protocol_path),'--worker-threads',str(args.worker_threads)]
+    if (output/'register'/'manifest.json').exists():
+        registered_method=workflow.load_registration(output/'register',protocol)[1].get('threshold_method','median-v1')
+        if registered_method != args.threshold_method:
+            raise WorkflowError('threshold method conflicts with existing registration',2)
     reg=['--registration-run',str(output/'register')]
     nominal=reg+['--template-run',str(output/'nominal')]
     frozen=nominal+['--freeze-run',str(output/'freeze')]

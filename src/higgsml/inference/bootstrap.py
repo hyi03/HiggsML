@@ -35,6 +35,10 @@ def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_
     if (set(calibration.role) != {'calibration'} or set(template.role) != {'template'}
             or set(calibration.event_group_id) & set(template.event_group_id)):
         raise ResearchError('MC bootstrap role/group isolation failed')
+    from higgsml.modeling.joint_support import bootstrap_counts, refit_bundle, QUALIFICATION, selection_diagnostics
+    contract_digest = grid.get('analysis_contract_digest')
+    if any(b.get('thresholds',{}).get('analysis_contract_digest') != contract_digest for b in bundles.values()):
+        raise ResearchError('bootstrap mixed threshold methods')
     budget = BUDGETS['mc_bootstrap']
     rng = np.random.default_rng(budget['seed'])
     calibration_groups = np.asarray(sorted(calibration.event_group_id.astype(str).unique()))
@@ -45,8 +49,8 @@ def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_
     def tasks():
         for index in range(budget['replicas']):
             yield (index,
-                   rng.multinomial(len(calibration_groups), np.full(len(calibration_groups), 1 / len(calibration_groups))),
-                   rng.multinomial(len(template_groups), np.full(len(template_groups), 1 / len(template_groups))))
+                   bootstrap_counts(calibration_groups, contract_digest, index, 'calibration') if contract_digest else rng.multinomial(len(calibration_groups), np.full(len(calibration_groups), 1 / len(calibration_groups))),
+                   bootstrap_counts(template_groups, contract_digest, index, 'template') if contract_digest else rng.multinomial(len(template_groups), np.full(len(template_groups), 1 / len(template_groups))))
 
     def finish(task):
         index, calibration_counts, template_counts = task
@@ -56,13 +60,17 @@ def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_
             c,cm = _resample_groups_from_counts(calibration,calibration_groups,calibration_counts,f'c{index}')
             t,tm = _resample_groups_from_counts(template,template_groups,template_counts,f't{index}')
             row.update(calibration_group_multiplicities=cm,template_group_multiplicities=tm,mappings={})
+            if contract_digest:
+                row['counts_digests'] = {'calibration':digest_json(cm),'template':digest_json(tm)}
             fitted,built = {},{}
             for key,bundle in bundles.items():
                 try:
                     value = _replica_bundle(bundle)
                     if value['transform'] != 'raw' or value['mapping'] is not None:
                         raise ResearchError('off bootstrap must retain raw mapping')
-                    if value['candidate_id'] != 'M0off':
+                    if contract_digest:
+                        value['thresholds'] = refit_bundle(value,c,t,protocol,draw_identity={'stage':'mc_bootstrap','replica':index})
+                    elif value['candidate_id'] != 'M0off':
                         value['thresholds'] = fit_thresholds(c,predict_discriminant(value['model'],c),protocol,
                                                             model_id=value['model_id'],mapping_id=value['mapping_id'])
                     frame = categorize_bundle(value,t)
@@ -75,13 +83,18 @@ def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_
                     row['mappings'][key] = {'mapping_id':value['mapping_id'],'thresholds':value['thresholds']}
                     if artifact['status']=='valid': fitted[key],built[key] = value,artifact
                 except ResearchError as error:
-                    row['candidate_states'][key] = {'status':error.status,'reason':str(error)}
+                    if contract_digest and not isinstance(error, ResearchStateError):
+                        raise
+                    row['candidate_states'][key] = {'status':error.status,'reason':str(error),
+                        **({'threshold_record':error.threshold_record} if hasattr(error,'threshold_record') else {})}
                 completed_candidates += 1
             if set(built)==set(candidate_keys()):
                 records,results = asimov_records({'templates':built},fitted,protocol,t1_validation,f'replica:{index}')
                 summary = summarize(records,require_auc=False)
                 row.update(status=summary['status'],summary=summary,inference=results)
         except ResearchError as error:
+            if contract_digest and not isinstance(error, ResearchStateError):
+                raise
             row.update(status=error.status,reason=str(error))
         return row, completed_candidates
 
@@ -110,11 +123,18 @@ def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_
         for subset in (r['subset'] for r in valid[0]['summary']['ranking_stability']):
             uncertainty['ranking'].append({'subset':subset,'estimand':'rank_of_five_seed_median_width68',**intervals([
                 next(x['rank_of_median_width68'] for x in r['summary']['ranking_stability'] if x['subset']==subset) for r in valid])})
-    return {'family_id':FAMILY,'status':'valid' if complete else 'bootstrap_incomplete',
+    return {**({'analysis_contract_digest':contract_digest, **QUALIFICATION,
+             'selection_diagnostics':selection_diagnostics([
+                 m['thresholds'] for r in replicas for m in r.get('mappings',{}).values()] + [
+                 state['threshold_record'] for r in replicas for state in r['candidate_states'].values()
+                 if isinstance(state,dict) and 'threshold_record' in state]),
+             'numpy_version':np.__version__, 'group_digests':{
+                 'calibration':digest_json(calibration_groups.tolist()), 'template':digest_json(template_groups.tolist())}} if contract_digest else {}),
+            'family_id':FAMILY,'status':'valid' if complete else 'bootstrap_incomplete',
             'planned_replicas':budget['replicas'],'valid_replicas':len(valid),'failed_replicas':budget['replicas']-len(valid),
             'seed':budget['seed'],'mass_grid':grid['mass_edges'],'replicas':replicas,'uncertainty':uncertainty,
             'interval_scope':'event_MC_only_fixed_network_not_total_uncertainty',
-            'successful_replica_interpretation':'conditional_diagnostic_only' if not complete else 'registered_percentile'}
+            'successful_replica_interpretation':'conditional_diagnostic_only' if not complete else ('exploratory_percentile_spread_selection_aware_coverage_unvalidated' if contract_digest else 'registered_percentile')}
 
 
 def _resample_groups(frame, rng, label):

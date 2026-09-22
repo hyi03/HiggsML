@@ -203,6 +203,20 @@
         "physical_process",
         "label_level_legacy"
       ]
+    },
+    "threshold_method": {
+      "const": "joint-support-v1"
+    },
+    "analysis_contract": {
+      "type": "object"
+    },
+    "analysis_contract_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "source_core_protocol_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
     }
   },
   "$defs": {
@@ -282,5 +296,31 @@
         "$ref": "#/$defs/unit"
       }
     }
+  },
+  "dependentRequired": {
+    "threshold_method": [
+      "threshold_method",
+      "analysis_contract",
+      "analysis_contract_digest",
+      "source_core_protocol_digest"
+    ],
+    "analysis_contract": [
+      "threshold_method",
+      "analysis_contract",
+      "analysis_contract_digest",
+      "source_core_protocol_digest"
+    ],
+    "analysis_contract_digest": [
+      "threshold_method",
+      "analysis_contract",
+      "analysis_contract_digest",
+      "source_core_protocol_digest"
+    ],
+    "source_core_protocol_digest": [
+      "threshold_method",
+      "analysis_contract",
+      "analysis_contract_digest",
+      "source_core_protocol_digest"
+    ]
   }
 }

@@ -47,7 +47,8 @@ def close(actual, reference):
 
 def cell_stream(*, block, stage, mu, outer_index, toy_index, process, mass_bin,
                 kind, toy_base_seed, candidate=None):
-    body = {'contract_digest': block.pairing_contract_digest, 'stage': stage, 'mu': float(mu),
+    body = {**({'analysis_contract_digest':block.analysis_contract_digest} if block.analysis_contract_digest else {}),
+            'contract_digest': block.pairing_contract_digest, 'stage': stage, 'mu': float(mu),
             'training_seed': block.seed, 'outer_index': outer_index, 'toy_index': toy_index,
             'process': str(process), 'mass_bin': mass_bin, 'kind': kind,
             'toy_base_seed': toy_base_seed, 'candidate': candidate}

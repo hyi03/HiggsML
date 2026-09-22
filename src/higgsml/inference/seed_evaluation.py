@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 
 import numpy as np
 
@@ -15,12 +16,13 @@ from higgsml.protocol import protocol_dict
 EXPECTED_SCIENTIFIC_STATES = {
     "insufficient_statistics", "unsupported_assessment_support",
     "template_stat_model_unvalidated", "inference_incomplete",
+    "no_feasible_joint_threshold", "nonpositive_calibration_yield",
 }
 STAGES = {"model-self": "template", "assessment": "assessment"}
 
 
 def _validate_block(block):
-    if not isinstance(block, SeedBlockSpec) or block not in (*canonical_seed_blocks(), *marginal_blocks()):
+    if not isinstance(block, SeedBlockSpec) or replace(block, analysis_contract_digest=None) not in (*canonical_seed_blocks(), *marginal_blocks()):
         raise ResearchError("noncanonical seed evaluation block")
 
 
@@ -29,6 +31,11 @@ def _block_inputs(grid, bundles, block):
     keys = set(block.candidate_keys)
     if not keys <= set(grid.get("templates", {})) or not keys <= set(bundles):
         raise ResearchError("seed evaluation inputs do not cover the block")
+    if grid.get('analysis_contract_digest') != block.analysis_contract_digest:
+        raise ResearchError('seed block analysis contract mismatch')
+    if any(bundles[key].get('thresholds', {}).get('analysis_contract_digest') != block.analysis_contract_digest
+           for key in keys):
+        raise ResearchError('seed block threshold method mismatch')
     selected_grid = deepcopy(grid)
     selected_grid["templates"] = {key: deepcopy(grid["templates"][key]) for key in block.candidate_keys}
     return selected_grid, {key: bundles[key] for key in block.candidate_keys}
@@ -66,10 +73,10 @@ def evaluate_seed_block(grid, bundles, parent, protocol, *, block, stage, mu, co
     if stage not in STAGES or type(count) is not int or count < 1:
         raise ResearchError("invalid seed evaluation stage or budget")
     selected_grid, selected_bundles = _block_inputs(grid, bundles, block)
-    physical = stream_identity(contract_digest=block.pairing_contract_digest, stage=stage,
+    physical = stream_identity(contract_digest=block.rng_contract_digest, stage=stage,
         mu=mu, training_seed=block.seed, outer_index=None, stream_kind="physical_poisson",
         toy_base_seed=toy_base_seed)
-    auxiliary = {key: stream_identity(contract_digest=block.pairing_contract_digest,
+    auxiliary = {key: stream_identity(contract_digest=block.rng_contract_digest,
         stage=stage, mu=mu, training_seed=block.seed, outer_index=None,
         stream_kind="candidate_auxiliary", candidate_if_auxiliary=key,
         toy_base_seed=toy_base_seed) for key in block.candidate_keys}
