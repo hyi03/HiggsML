@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import json
 import sys
 import pytest
 
@@ -70,7 +71,9 @@ def test_explicit_run_name_reuses_an_existing_access_review(
         / "validated-off-assessment-access.json"
     )
     review.parent.mkdir(parents=True)
-    review.write_text("{}", encoding="utf-8")
+    review.write_text(json.dumps({
+        "schema_version": "h4l-off-assessment-access-v3",
+    }), encoding="utf-8")
     plan = tmp_path / "h4l-off-study-001" / "evaluation-plan" / "evaluation-plan.json"
     plan.parent.mkdir(parents=True)
     plan.write_text("{}", encoding="utf-8")
@@ -87,6 +90,53 @@ def test_explicit_run_name_reuses_an_existing_access_review(
         "--evaluation", "--access-review", str(review),
         "--workers", "4", "--worker-threads", "1",
     ]
+
+
+def test_explicit_source_review_is_adapted_before_evaluation(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    workflow = _load_module()
+    monkeypatch.setattr(workflow, "RUNS_ROOT", tmp_path)
+    monkeypatch.setattr(workflow, "_physical_memory_bytes", lambda: 16 * 1024**3)
+    source_review = tmp_path / "independent-review.json"
+    source_review.write_text(json.dumps({
+        "schema_version": "h4l-off-assessment-access-v1",
+    }), encoding="utf-8")
+    plan = tmp_path / "h4l-off-study-002" / "evaluation-plan" / "evaluation-plan.json"
+    plan.parent.mkdir(parents=True)
+    plan.write_text("{}", encoding="utf-8")
+    commands: list[list[str]] = []
+    monkeypatch.setattr(workflow, "_invoke", lambda command: commands.append(command))
+
+    workflow._run(workflow._parser().parse_args([
+        "--run-name", "study-002", "--access-review", str(source_review),
+    ]))
+
+    adapter = commands[-2]
+    assert adapter[1:5] == ["-m", "higgsml.cli", "attribution", "access-review"]
+    assert adapter[adapter.index("--access-review") + 1] == str(source_review.resolve())
+    expected = (
+        tmp_path / "h4l-off-study-002" / "access-review"
+        / "validated-off-assessment-access.json"
+    )
+    assert commands[-1][commands[-1].index("--access-review") + 1] == str(expected)
+
+
+def test_missing_explicit_access_review_fails_before_work_starts(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    workflow = _load_module()
+    monkeypatch.setattr(workflow, "RUNS_ROOT", tmp_path)
+    commands: list[list[str]] = []
+    monkeypatch.setattr(workflow, "_invoke", lambda command: commands.append(command))
+
+    with pytest.raises(workflow.WorkflowError, match="Access review not found"):
+        workflow._run(workflow._parser().parse_args([
+            "--run-name", "study-003",
+            "--access-review", str(tmp_path / "missing.json"),
+        ]))
+
+    assert commands == []
 
 
 def test_version_selector_is_removed() -> None:

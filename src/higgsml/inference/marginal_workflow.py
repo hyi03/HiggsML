@@ -582,6 +582,16 @@ def _access(prepared, frozen_run, spec, plan, protocol, access_path):
     return receipt
 
 
+def validate_access(registration_path, nominal_path, freeze_path, result_path, protocol, *,
+                    evaluation_plan_path, access_review):
+    """Validate the complete assessment access binding without consuming a claim."""
+    registered, value, prepared, adapter, nominal_run, grid, bundles, frozen_run, spec = load_frozen(
+        registration_path, nominal_path, freeze_path, protocol)
+    plan, result = _bound_plan(evaluation_plan_path, protocol, registered, prepared, adapter,
+                               frozen_run, spec, result_path)
+    return _access(prepared, frozen_run, spec, plan, protocol, access_review)
+
+
 def access_adapter(registration_path, nominal_path, freeze_path, protocol, output, allowed_root, *,
                    evaluation_plan_path, result_path, access_review):
     registered, value, prepared, adapter, nominal_run, grid, bundles, frozen_run, spec = load_frozen(

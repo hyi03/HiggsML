@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -94,8 +95,35 @@ def _off_workers() -> int:
     return max(1, min(MAX_OFF_WORKERS, worker_memory // AVAILABLE_MEMORY_PER_WORKER))
 
 
+def _read_access_review(path: Path) -> tuple[Path, dict]:
+    resolved = (path if path.is_absolute() else PROJECT_ROOT / path).resolve()
+    if not resolved.is_file():
+        raise WorkflowError(f"Access review not found: {resolved}", 2)
+
+    def strict_object(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError(f"duplicate JSON key: {key}")
+            value[key] = item
+        return value
+
+    try:
+        review = json.loads(resolved.read_text(encoding="utf-8"),
+                            object_pairs_hook=strict_object,
+                            parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+    except (OSError, ValueError) as error:
+        raise WorkflowError(f"Invalid access review JSON: {resolved}", 2) from error
+    if not isinstance(review, dict) or review.get("schema_version") not in {
+        "h4l-off-assessment-access-v1", "h4l-off-assessment-access-v3",
+    }:
+        raise WorkflowError(f"Unsupported access review schema: {resolved}", 2)
+    return resolved, review
+
+
 def _run(args: argparse.Namespace) -> None:
     name = args.run_name
+    explicit_review = _read_access_review(args.access_review) if args.access_review else None
     python = sys.executable
     off_workers = str(_off_workers())
     method_flags = ["--threshold-method",args.threshold_method] if args.threshold_method != "median-v1" else []
@@ -119,9 +147,12 @@ def _run(args: argparse.Namespace) -> None:
     if not (off_root/'evaluation-plan'/'evaluation-plan.json').is_file():
         print(f'Support qualification blocked freeze. Report: {off_root / "gate-failure-report" / "report.md"}')
         return
-    access_review = args.access_review
-    if access_review is None:
-        source_review = off_root/'source-access-review'/'validated-off-assessment-access.json'
+    access_review = None
+    if explicit_review and explicit_review[1]["schema_version"] == "h4l-off-assessment-access-v3":
+        access_review = explicit_review[0]
+    else:
+        source_review = (explicit_review[0] if explicit_review else
+                         off_root/'source-access-review'/'validated-off-assessment-access.json')
         if not source_review.is_file():
             _invoke([python,str(SCRIPTS_ROOT/'h4l_off_self_review.py'),'--run-name',name])
         access_review = off_root/'access-review'/'validated-off-assessment-access.json'
