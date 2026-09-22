@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import sys
 
 import numpy as np
 import pandas as pd
@@ -100,7 +101,8 @@ def mass_off_mc_bootstrap(grid, bundles, calibration, template, protocol, *, t1_
 
     replicas = []
     for row, completed_candidates in ordered_map(
-            finish, tasks(), workers=workers, worker_threads=worker_threads):
+            finish, tasks(), workers=workers, worker_threads=worker_threads,
+            execution="thread" if sys.platform == "win32" else "process"):
         replicas.append(row)
         if progress is not None:
             for _ in range(completed_candidates):
