@@ -91,6 +91,16 @@ python scripts/h4l_all.py
 
 最终报告位于 `runs/h4l-off-<run-name>/evaluation/report/report.md`。`m4l=off` 仅表示分类器不输入显式四轻子质量，似然仍保留质量坐标。完整阶段契约、人工独立审核方式及恢复限制见[复现实验手册](docs/implementation-and-reproduction.md)。
 
+运行完成后，可从同一 off-only run 重新校验论文聚合快照、生成图表并编译 PDF：
+
+```bash
+python paper/scripts/build.py --run-name test01
+```
+
+这里的短名称 `test01` 对应 `runs/h4l-off-test01/`。生成的阅读版位于
+`paper/latex/main.pdf`；构建依赖和单独刷新证据快照的方法见
+[`paper/README.md`](paper/README.md)。
+
 ## 6. 分阶段运行 H4l 工作流
 
 新增 off-only 分析入口为 `python -m higgsml.cli attribution --help`。它复用现有 75 个 off 模型，新增五个确定性 M0off 身份，并依次发布注册、共同模板、freeze、Asimov、事件 bootstrap、Toys、T2 和独立报告。完整命令见[off-only 复现步骤](docs/implementation-and-reproduction.md#off-only-attribution-execution)。已有标准训练链路保留兼容，不需要为这项分析重训模型。

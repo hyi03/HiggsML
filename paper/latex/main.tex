@@ -743,10 +743,11 @@ $\mu=0,1,2$, with 500 trials per candidate and injection for each of the five
 training-seed blocks. The first tests closure under the fitted model; the
 second uses the frozen assessment parent to examine a distinct source of
 expectations. Poisson auxiliary observations are regenerated according to
-the registered T1 prescription. Each block contains sixteen candidates. The retained report
-contains valid numerical outputs for all fifteen model-self cells and all
-fifteen assessment cells. Numerical completion is distinguished from the
-physical applicability and independence of those diagnostics.
+the registered T1 prescription. Each block contains sixteen candidates. In
+the currently checked aggregate snapshot, the requested model-self and
+assessment coverage cells are marked as incomplete seed vectors, so numerical
+coverage summaries are not reported. This numerical incompleteness is separate
+from the physical applicability and independence of those diagnostics.
 
 Within a block, candidate count vectors are coupled by sharing total
 Poisson draws and using common uniforms for monotone category allocation.
@@ -770,21 +771,20 @@ procedure-level units; the inner trials are conditional simulations within
 each unit. Treating the resulting 2,000 fits as independent replications
 of the entire analysis would overstate the evidence.
 
-Table~\ref{tab:validation} gives conditional coverage for the three
-highlighted candidates. Entries are medians over training seeds, not
-pooled binomial estimates. At the nominal 68\% level, assessment coverage
-ranges from 0.634 for AC and ABCD to 0.668 for BC. The corresponding T2
-values are 0.648, 0.650, and 0.666. At 95\%, the displayed fractions are
-near or somewhat above nominal. These values indicate that the interval
-construction deserves further coverage study; they do not support an
-unqualified statement that the narrowest interval is the most reliable.
+Table~\ref{tab:validation} records the current availability of conditional
+coverage for the three highlighted candidates. A dash denotes an incomplete
+five-seed vector in the checked aggregate snapshot. The missing summaries
+reinforce that the interval construction requires further coverage study;
+they do not support an unqualified statement that the narrowest interval is
+the most reliable.
 
 \begin{table*}[tbp]
 \caption{Conditional coverage at $\mu=1$ and the status of the validation
-layers. Numerical entries are five-seed medians of the reported conditional
-coverage. T2 averages inner conditional coverage within each outer
-calibration procedure before the seed summary. These are not pooled
-confidence intervals or independent validation results.}
+layers. Numerical entries, when available, are five-seed medians of the
+reported conditional coverage; a dash denotes an incomplete seed vector.
+T2 averages inner conditional coverage within each outer calibration
+procedure before the seed summary. These are not pooled confidence intervals
+or independent validation results.}
 \label{tab:validation}
 \begin{ruledtabular}
 \begin{tabular}{lccp{8.0cm}}

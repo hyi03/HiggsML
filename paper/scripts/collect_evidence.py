@@ -1,23 +1,39 @@
 """Read published aggregate artifacts; never open events or run inference."""
 from __future__ import annotations
 
+import argparse
 import csv
 import hashlib
 import itertools
 import json
 import math
 from pathlib import Path
+import re
 import subprocess
 from statistics import median
 
 PAPER_DIR = Path(__file__).resolve().parents[1]
 ROOT = PAPER_DIR.parent
-STUDY = ROOT / "runs/h4l-off-test01"
-REPORT = STUDY / "evaluation/report"
 SEEDS = list(range(42, 47))
 GROUPS = "ABCD"
 SUBSETS = ["".join(s) for n in range(5) for s in itertools.combinations(GROUPS, n)]
 SOURCES = {}
+RUN_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--run-name", default="test01",
+        help="Short run name; reads runs/h4l-off-<name> (default: test01).",
+    )
+    args = parser.parse_args()
+    if RUN_NAME.fullmatch(args.run_name) is None:
+        parser.error(
+            "run name must contain 1-64 letters, digits, underscores, or hyphens "
+            "and must start with a letter or digit"
+        )
+    return args
 
 
 def published(directory, name):
@@ -44,8 +60,8 @@ def read_json(directory, name):
     return json.loads(published(directory, name))
 
 
-def read_csv(name):
-    return list(csv.DictReader(published(REPORT, name).splitlines()))
+def read_csv(report, name):
+    return list(csv.DictReader(published(report, name).splitlines()))
 
 
 def close(actual, expected):
@@ -54,7 +70,10 @@ def close(actual, expected):
 
 
 def main():
-    rows = read_csv("mass_off_feature_metrics.csv")
+    args = parse_args()
+    study = ROOT / "runs" / f"h4l-off-{args.run_name}"
+    report = study / "evaluation/report"
+    rows = read_csv(report, "mass_off_feature_metrics.csv")
     assert len(rows) == 80
     widths, aucs = {}, {}
     for row in rows:
@@ -72,20 +91,20 @@ def main():
     assert len({r["family_id"] for r in rows}) == 1
     for seed in SEEDS:
         close(widths[seed, ""], widths[42, ""])
-    inference = read_json(STUDY / "asimov", "inference.json")
-    saved_summary = read_json(STUDY / "asimov", "summary.json")
+    inference = read_json(study / "asimov", "inference.json")
+    saved_summary = read_json(study / "asimov", "summary.json")
     for row in rows:
         result = inference[row["candidate_key"]]
         interval = next(i for i in result["results"][0]["intervals"] if i["confidence"] == .68)
         assert result["layer"] == "T1" and result["results"][0]["mu"] == 1
         close(interval["width"], float(row["width68"]))
-    freeze = read_json(STUDY / "freeze", "freeze.json")
-    protocol = read_json(REPORT, "protocol.json")
+    freeze = read_json(study / "freeze", "freeze.json")
+    protocol = read_json(report, "protocol.json")
     assert freeze["mass_edges"] == [105, 140]
     assert protocol["luminosity_pb"] == 10000
-    attribution = read_csv("mass_off_feature_attribution.csv")
-    interactions = read_csv("mass_off_feature_interactions.csv")
-    pair_rows = read_csv("mass_off_pairwise_comparisons.csv")
+    attribution = read_csv(report, "mass_off_feature_attribution.csv")
+    interactions = read_csv(report, "mass_off_feature_interactions.csv")
+    pair_rows = read_csv(report, "mass_off_pairwise_comparisons.csv")
     phi = {}
     residuals = []
     for seed in SEEDS:
@@ -125,14 +144,14 @@ def main():
             for actual, expected in zip(vals, saved["per_seed"]):
                 close(actual, expected)
     assert len(attribution) == 4 and len(interactions) == 24 and len(pair_rows) == 105
-    completeness = read_csv("evaluation_completeness.csv")
-    diagnostics = read_csv("five_seed_descriptive_diagnostics.csv")
-    bootstrap_intervals = read_csv("mc_bootstrap_uncertainty.csv")
+    completeness = read_csv(report, "evaluation_completeness.csv")
+    diagnostics = read_csv(report, "five_seed_descriptive_diagnostics.csv")
+    bootstrap_intervals = read_csv(report, "mc_bootstrap_uncertainty.csv")
     assert all(not r["interval68"] and not r["interval95"] for r in bootstrap_intervals)
-    bootstrap = read_json(STUDY / "evaluation/mc-bootstrap-mu1", "evaluation.json")
+    bootstrap = read_json(study / "evaluation/mc-bootstrap-mu1", "evaluation.json")
     bootstrap_meta = {k: v for k, v in bootstrap.items() if not isinstance(v, (list, dict))}
     audit = read_json(ROOT / "runs/h4l-prepare/prepare", "audit.json")
-    access = read_json(STUDY / "access-review", "validated-off-assessment-access.json")
+    access = read_json(study / "access-review", "validated-off-assessment-access.json")
     assert SOURCES["runs/h4l-prepare/prepare/audit.json"]["artifact_id"] == freeze["prepared_artifact_id"]
     assert {r["cohort_id"] for r in rows} == {freeze["template_artifact_id"]}
     assert all(s["protocol_sha256"] == freeze["protocol_sha256"] for s in SOURCES.values())
