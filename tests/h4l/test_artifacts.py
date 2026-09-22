@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from higgsml._transaction import RunPathError
-from higgsml.artifacts import ResearchRun, read_run, digest_json
+from higgsml.artifacts import ResearchRun, read_json, read_run, digest_json
 from higgsml.errors import ResearchError, ResearchStateError
 
 
@@ -54,6 +54,17 @@ def test_streamed_artifact_receipt_avoids_publication_reread(tmp_path, monkeypat
     }
     assert "events.jsonl" not in calls
     assert "audit.json" in calls
+
+
+def test_read_json_distinguishes_missing_from_malformed_artifacts(tmp_path):
+    missing = tmp_path / "missing.json"
+    with pytest.raises(ResearchError, match=r"JSON artifact not found: .*missing\.json"):
+        read_json(missing)
+
+    malformed = tmp_path / "malformed.json"
+    malformed.write_text("{", encoding="utf-8")
+    with pytest.raises(ResearchError, match="invalid JSON artifact: malformed.json"):
+        read_json(malformed)
 
 
 def test_upstream_binding_and_no_overwrite(tmp_path):
