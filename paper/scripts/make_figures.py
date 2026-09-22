@@ -92,7 +92,11 @@ for stage, prefix in [("assessment","Assessment"),("t2","Ttwo")]:
     for subset in ["BC","AC","ABCD"]:
         for level, suffix in [("0.68","SixtyEight"),("0.95","NinetyFive")]:
             row = next(r for r in DATA["diagnostics"] if r["stage"] == stage and float(r["mu"]) == 1 and r["subset"] == subset and r["confidence_level"] == level and r["metric"] == "conditional_coverage")
-            commands[prefix+subset+suffix] = f"{float(row['median']):.4f}"
+            commands[prefix+subset+suffix] = (
+                f"{float(row['median']):.4f}"
+                if row["status"] == "valid" and row["median"]
+                else r"\textemdash{}"
+            )
 (GEN/"numbers.tex").write_text("% Generated from checked aggregate results.\n"+"\n".join(
     f"\\newcommand{{\\{key}}}{{{val}}}" for key,val in commands.items())+"\n",encoding="utf-8")
 nominal=[]

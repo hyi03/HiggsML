@@ -13,7 +13,19 @@ EVIDENCE_DIR = PAPER_DIR / "evidence"
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--latexmk", default="latexmk", help="latexmk executable or full path")
+    parser.add_argument(
+        "--run-name",
+        help=("Short run name. When supplied, refresh the checked snapshot from "
+              "runs/h4l-off-<name> before building."),
+    )
     args = parser.parse_args()
+    if args.run_name:
+        subprocess.run(
+            [sys.executable, str(PAPER_DIR / "scripts/collect_evidence.py"),
+             "--run-name", args.run_name],
+            cwd=PAPER_DIR.parent,
+            check=True,
+        )
     if not (EVIDENCE_DIR / "data/results.json").is_file():
         raise SystemExit("Missing checked snapshot. Run paper/scripts/collect_evidence.py first.")
     latexmk = shutil.which(args.latexmk)

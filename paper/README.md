@@ -19,6 +19,15 @@ conda activate pytorch
 python paper/scripts/build.py
 ```
 
+To refresh the checked snapshot from a particular off-only run before building,
+pass its short run name. For example, `test01` selects
+`runs/h4l-off-test01/evaluation/report` and the other bound artifacts under
+`runs/h4l-off-test01/`:
+
+```bash
+python paper/scripts/build.py --run-name test01
+```
+
 If latexmk is not on PATH, pass its executable explicitly:
 
 ```bash
@@ -34,7 +43,7 @@ floats before publishing the reading copy. Visual PDF inspection remains separat
 ## Refresh from the same published local artifacts
 
 ```bash
-python paper/scripts/collect_evidence.py
+python paper/scripts/collect_evidence.py --run-name test01
 python paper/scripts/build.py
 ```
 
