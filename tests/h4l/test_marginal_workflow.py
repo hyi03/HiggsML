@@ -285,6 +285,7 @@ def test_script_matrix_and_immutable_report_resume(tmp_path,monkeypatch,capsys):
     module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
     monkeypatch.setattr(module,'RUNS_ROOT',tmp_path)
     monkeypatch.setattr(w,'validate_plan',lambda *a:None)
+    monkeypatch.setattr(w,'validate_access',lambda *a,**kw:None)
     commands=[]; reports=[]
     monkeypatch.setattr(module,'_invoke_with_progress',lambda command,**kw:commands.append(command))
     def report(*args,**kw):
@@ -295,7 +296,8 @@ def test_script_matrix_and_immutable_report_resume(tmp_path,monkeypatch,capsys):
     args=module._parser().parse_args(['--plan',str(tmp_path/'plan'),
         '--registration-run',str(tmp_path/'register'),'--prepared-run',str(tmp_path/'prepared'),
         '--template-run',str(tmp_path/'nominal'),'--freeze-run',str(tmp_path/'freeze'),
-        '--result-run',str(tmp_path/'asimov'),'--output-root',str(tmp_path/'evaluation'),'--no-progress'])
+        '--result-run',str(tmp_path/'asimov'),'--output-root',str(tmp_path/'evaluation'),
+        '--access-review',str(tmp_path/'access.json'),'--no-progress'])
     module._run_default(args,{}, {})
     args.continue_run=True
     module._run_default(args,{}, {})

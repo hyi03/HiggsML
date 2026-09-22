@@ -113,6 +113,19 @@ def _run_default(args,protocol,plan):
         raise EvaluationError('Output exists; explicit --continue required')
     if not args.registration_run or not args.result_run:
         raise EvaluationError('Within-seed evaluation requires --registration-run and --result-run')
+    if any(unit['stage'] in {'assessment', 't2'} for unit in selected):
+        if not args.access_review:
+            raise EvaluationError('Assessment/T2 evaluation requires --access-review', 2)
+        try:
+            workflow.validate_access(
+                _resolve(args.registration_run), _resolve(args.template_run),
+                _resolve(args.freeze_run), _resolve(args.result_run), protocol,
+                evaluation_plan_path=_resolve(args.plan),
+                access_review=_resolve(args.access_review),
+            )
+        except ResearchError as error:
+            raise EvaluationError('Invalid assessment access review: ' + str(error),
+                                  error.exit_code) from error
     output.mkdir(parents=True,exist_ok=True)
     common=['--protocol',str(_resolve(args.protocol)),
             '--registration-run',str(_resolve(args.registration_run)),

@@ -33,10 +33,15 @@ def read_json(path: Path) -> Any:
             result[key] = value
         return result
     try:
-        return json.loads(path.read_text(encoding="utf-8"),
-                          object_pairs_hook=strict_object,
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError as error:
+        raise ResearchError(f"JSON artifact not found: {path}") from error
+    except OSError as error:
+        raise ResearchError(f"cannot read JSON artifact: {path}") from error
+    try:
+        return json.loads(text, object_pairs_hook=strict_object,
                           parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
-    except (OSError, ValueError) as error:
+    except ValueError as error:
         raise ResearchError(f"invalid JSON artifact: {path.name}") from error
 
 
