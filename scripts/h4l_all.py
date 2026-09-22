@@ -162,6 +162,10 @@ def _run(args: argparse.Namespace) -> None:
                 '--freeze-run',str(off_root/'freeze'),'--result-run',str(off_root/'asimov'),
                 '--evaluation-plan',str(off_root/'evaluation-plan'/'evaluation-plan.json'),
                 '--access-review',str(source_review),'--run-dir',str(off_root/'access-review')])
+        if not access_review.is_file():
+            print('Assessment access remains blocked; evaluation was not started. '
+                  f'Stage B report: {off_root / "report-B" / "report.md"}')
+            return
     _invoke([python,str(SCRIPTS_ROOT/'h4l_off_run.py'),
         '--source-run-name',name,'--run-name',name,*method_flags,'--evaluation',*_resume_flag(off_root/'evaluation'),
         '--access-review',str(access_review),'--workers',off_workers,'--worker-threads',OFF_WORKER_THREADS])
