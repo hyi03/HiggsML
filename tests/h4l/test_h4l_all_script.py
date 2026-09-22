@@ -29,7 +29,16 @@ def test_default_run_uses_marginal_workflow_without_version_flag(
     plan.parent.mkdir(parents=True)
     plan.write_text("{}", encoding="utf-8")
     commands: list[list[str]] = []
-    monkeypatch.setattr(workflow, "_invoke", lambda command: commands.append(command))
+    def invoke(command):
+        commands.append(command)
+        if command[1:5] == ["-m", "higgsml.cli", "attribution", "access-review"]:
+            access = (
+                tmp_path / "h4l-off-default" / "access-review"
+                / "validated-off-assessment-access.json"
+            )
+            access.parent.mkdir(parents=True)
+            access.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(workflow, "_invoke", invoke)
 
     workflow._run(workflow._parser().parse_args([]))
 
@@ -106,7 +115,16 @@ def test_explicit_source_review_is_adapted_before_evaluation(
     plan.parent.mkdir(parents=True)
     plan.write_text("{}", encoding="utf-8")
     commands: list[list[str]] = []
-    monkeypatch.setattr(workflow, "_invoke", lambda command: commands.append(command))
+    def invoke(command):
+        commands.append(command)
+        if command[1:5] == ["-m", "higgsml.cli", "attribution", "access-review"]:
+            access = (
+                tmp_path / "h4l-off-study-002" / "access-review"
+                / "validated-off-assessment-access.json"
+            )
+            access.parent.mkdir(parents=True)
+            access.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(workflow, "_invoke", invoke)
 
     workflow._run(workflow._parser().parse_args([
         "--run-name", "study-002", "--access-review", str(source_review),
@@ -137,6 +155,34 @@ def test_missing_explicit_access_review_fails_before_work_starts(
         ]))
 
     assert commands == []
+
+
+def test_blocked_access_adapter_does_not_start_evaluation(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    workflow = _load_module()
+    monkeypatch.setattr(workflow, "RUNS_ROOT", tmp_path)
+    monkeypatch.setattr(workflow, "_physical_memory_bytes", lambda: 16 * 1024**3)
+    plan = tmp_path / "h4l-off-blocked" / "evaluation-plan" / "evaluation-plan.json"
+    plan.parent.mkdir(parents=True)
+    plan.write_text("{}", encoding="utf-8")
+    source = (
+        tmp_path / "h4l-off-blocked" / "source-access-review"
+        / "validated-off-assessment-access.json"
+    )
+    source.parent.mkdir(parents=True)
+    source.write_text(json.dumps({
+        "schema_version": "h4l-off-assessment-access-v1",
+    }), encoding="utf-8")
+    commands: list[list[str]] = []
+    monkeypatch.setattr(workflow, "_invoke", lambda command: commands.append(command))
+
+    workflow._run(workflow._parser().parse_args(["--run-name", "blocked"]))
+
+    assert commands[-1][1:5] == ["-m", "higgsml.cli", "attribution", "access-review"]
+    assert not any(Path(command[1]).name == "h4l_off_run.py" and "--evaluation" in command
+                   for command in commands)
+    assert "Assessment access remains blocked; evaluation was not started" in capsys.readouterr().out
 
 
 def test_version_selector_is_removed() -> None:
