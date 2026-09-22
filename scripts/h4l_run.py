@@ -19,7 +19,6 @@ from tqdm.auto import tqdm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RUNS_ROOT = (PROJECT_ROOT / "runs").resolve()
-GLOBAL_PREPARE_ROOT = (RUNS_ROOT / "h4l-prepare").resolve()
 DEFAULT_CONFIG = PROJECT_ROOT / "config" / "protocols" / "feature_combinations_seed42.json"
 T1_SCHEMA = PROJECT_ROOT / "config" / "schemas" / "t1_validation_v1.schema.json"
 EXPECTED_SEEDS = tuple(range(42, 47))
@@ -36,7 +35,7 @@ from higgsml.artifacts import digest_json, read_run  # noqa: E402
 from higgsml.cleanup import remove_run_directories  # noqa: E402
 from higgsml.errors import ResearchError  # noqa: E402
 from higgsml.protocol import load_protocol  # noqa: E402
-from higgsml.run_names import workflow_directory_name  # noqa: E402
+from higgsml.run_names import prepare_directory_name, workflow_directory_name  # noqa: E402
 
 
 class WorkflowError(Exception):
@@ -340,11 +339,12 @@ def _run(args: argparse.Namespace) -> None:
             )
         try:
             root = RUNS_ROOT / workflow_directory_name(run_name)
+            prepare_root = RUNS_ROOT / prepare_directory_name(run_name)
         except ValueError as error:
             raise WorkflowError(str(error), 2) from error
-        prepared = GLOBAL_PREPARE_ROOT / "prepare"
+        prepared = prepare_root / "prepare"
         gate = root / "g1" / "templates"
-        t1_validation = GLOBAL_PREPARE_ROOT / "inputs" / "t1-validation.json"
+        t1_validation = prepare_root / "inputs" / "t1-validation.json"
         batch_root = root / "batch" / ("all-seeds" if complete else f"seed{seeds[0]}")
     else:
         prepared = _resolve(args.prepared_run or config["prepared_run"])

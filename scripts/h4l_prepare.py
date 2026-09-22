@@ -39,6 +39,7 @@ from higgsml.cleanup import remove_run_directories  # noqa: E402
 from higgsml.data import source_access_record  # noqa: E402
 from higgsml.protocol import load_protocol  # noqa: E402
 from higgsml.errors import ResearchError  # noqa: E402
+from higgsml.run_names import prepare_directory_name  # noqa: E402
 from higgsml.workflow_resume import classify_stage  # noqa: E402
 
 
@@ -54,8 +55,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dataset-receipt", type=Path, default=DEFAULT_RECEIPT)
     parser.add_argument(
+        "--run-name",
+        help="Short experiment name; writes runs/h4l-prepare-<name>.",
+    )
+    parser.add_argument(
         "--run-root", type=Path,
-        help="Override the default global prepare root at runs/h4l-prepare.",
+        help="Override the prepare root; cannot be combined with --run-name.",
     )
     parser.add_argument("--protocol", type=Path, default=DEFAULT_PROTOCOL)
     parser.add_argument(
@@ -99,6 +104,14 @@ def _resolve(value: Path) -> Path:
 
 def _run_root(args: argparse.Namespace) -> Path:
     run_root = getattr(args, "run_root", None)
+    run_name = getattr(args, "run_name", None)
+    if run_name is not None:
+        if run_root is not None:
+            raise WorkflowError("--run-name cannot be combined with --run-root", 2)
+        try:
+            return (RUNS_ROOT / prepare_directory_name(run_name)).resolve()
+        except ValueError as error:
+            raise WorkflowError(str(error), 2) from error
     return DEFAULT_RUN_ROOT if run_root is None else _resolve(run_root)
 
 
@@ -409,7 +422,7 @@ def _run_workflow(args: argparse.Namespace, receipt: Path) -> None:
     next_command = [
         sys.executable, str(G1_SCRIPT),
         "--protocol", str(protocol_path),
-        "--run-name", "<RUN_NAME>",
+        "--run-name", getattr(args, "run_name", None) or "<RUN_NAME>",
     ]
     print("Next G1 command:")
     print(_display(next_command))
@@ -422,14 +435,7 @@ def _run_workflow(args: argparse.Namespace, receipt: Path) -> None:
 def _clean(args: argparse.Namespace) -> None:
     if getattr(args, "plan_only", False):
         raise WorkflowError("--clean cannot be combined with --plan-only", 2)
-    configured_root = getattr(args, "run_root", None)
-    if configured_root is None:
-        run_root = DEFAULT_RUN_ROOT
-    else:
-        run_root = Path(configured_root).expanduser()
-        if not run_root.is_absolute():
-            run_root = PROJECT_ROOT / run_root
-        run_root = run_root.absolute()
+    run_root = _run_root(args)
     try:
         result = remove_run_directories(
             [run_root / "inputs", run_root / "audit", run_root / "prepare"],

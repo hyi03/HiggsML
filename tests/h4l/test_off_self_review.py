@@ -1,7 +1,22 @@
 import json
+import importlib.util
 from pathlib import Path
 
 from higgsml.artifacts import digest_json, sha256_file
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SELF_REVIEW_SCRIPT = PROJECT_ROOT / "scripts" / "h4l_off_self_review.py"
+
+
+def _load_self_review_module():
+    spec = importlib.util.spec_from_file_location(
+        "h4l_off_self_review_test_module", SELF_REVIEW_SCRIPT,
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _write(path: Path, value):
@@ -53,3 +68,28 @@ def test_generate_default_self_review_binds_current_stage_b(tmp_path):
             "sha256": sha256_file(target),
             "size_bytes": target.stat().st_size,
         }
+
+
+def test_self_review_cli_defaults_to_matching_named_prepare_root(
+    tmp_path, monkeypatch,
+):
+    module = _load_self_review_module()
+    observed = {}
+
+    def observe(run_root, prepared, *, reviewer):
+        observed.update(
+            run_root=run_root,
+            prepared=prepared,
+            reviewer=reviewer,
+        )
+        return run_root / "source-access-review" / "validated.json"
+
+    monkeypatch.setattr(module, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(module, "generate_self_review", observe)
+
+    assert module.main(["--run-name", "test02", "--reviewer", "Reviewer"]) == 0
+    assert observed == {
+        "run_root": tmp_path / "runs" / "h4l-off-test02",
+        "prepared": tmp_path / "runs" / "h4l-prepare-test02" / "prepare",
+        "reviewer": "Reviewer",
+    }

@@ -23,6 +23,7 @@ def test_plan_prints_one_command_workflow_without_creating_output():
     assert completed.stdout.count("higgsml.cli attribution") == 9
     assert "h4l_evaluate.py" in completed.stdout
     assert "Execution requires --access-review" in completed.stdout
+    assert str(PROJECT_ROOT / "runs" / "h4l-prepare-02" / "prepare") in completed.stdout
     assert not output.exists()
 
 
