@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "h4l-joint-support-threshold-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "method_id",
+    "model_id",
+    "mapping_id",
+    "candidate_key",
+    "protocol_id",
+    "analysis_contract_digest",
+    "source_role",
+    "process_identity_source",
+    "ties",
+    "status",
+    "reason",
+    "record_digest",
+    "threshold_id",
+    "schema_version",
+    "seed",
+    "input_bindings",
+    "draw_identity",
+    "role_bindings",
+    "candidates",
+    "thresholds",
+    "selected_quantile_numerator",
+    "selected_threshold"
+  ],
+  "properties": {
+    "method_id": {
+      "type": "string"
+    },
+    "model_id": {
+      "type": "string"
+    },
+    "mapping_id": {
+      "type": "string"
+    },
+    "candidate_key": {
+      "type": "string"
+    },
+    "protocol_id": {
+      "type": "string"
+    },
+    "analysis_contract_digest": {
+      "type": "string"
+    },
+    "source_role": {
+      "type": "string"
+    },
+    "process_identity_source": {
+      "type": "string"
+    },
+    "ties": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "record_digest": {
+      "type": "string"
+    },
+    "threshold_id": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "h4l-joint-support-threshold-v1"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 42,
+      "maximum": 46
+    },
+    "input_bindings": {
+      "type": "object"
+    },
+    "draw_identity": {
+      "type": "object"
+    },
+    "role_bindings": {
+      "type": "object"
+    },
+    "distribution_fit": {
+      "type": "object"
+    },
+    "candidates": {
+      "type": "array",
+      "maxItems": 19,
+      "items": {
+        "type": "object",
+        "required": [
+          "quantile_numerator",
+          "quantile_denominator",
+          "threshold",
+          "feasible",
+          "support"
+        ],
+        "properties": {
+          "quantile_numerator": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 19
+          },
+          "quantile_denominator": {
+            "const": 20
+          },
+          "threshold": {
+            "type": "number"
+          },
+          "feasible": {
+            "type": "boolean"
+          },
+          "support": {
+            "type": "object",
+            "required": [
+              "calibration",
+              "template"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "thresholds": {
+      "type": "array",
+      "maxItems": 1,
+      "items": {
+        "type": "number"
+      }
+    },
+    "selected_quantile_numerator": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "maximum": 19
+    },
+    "selected_threshold": {
+      "type": [
+        "number",
+        "null"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "valid"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "minItems": 19
+          },
+          "thresholds": {
+            "minItems": 1
+          },
+          "selected_quantile_numerator": {
+            "type": "integer"
+          },
+          "selected_threshold": {
+            "type": "number"
+          }
+        }
+      }
+    }
+  ]
+}

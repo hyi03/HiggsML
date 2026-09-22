@@ -419,8 +419,12 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
                 mapping = fit_calibration(bootstrap, scores, p, target=bundle["mapping"]["target"], model_id=bundle["model_id"])
                 scores = apply_calibration(mapping, bootstrap.m4l.to_numpy(), scores, model_id=bundle["model_id"])
             mapping_id = mapping["mapping_id"] if mapping else "raw:" + bundle["model_id"]
-            thresholds = (bundle['thresholds'] if bundle.get('candidate_id')=='M0off' else
+            thresholds = (bundle['thresholds'] if bundle.get('candidate_id')=='M0off' or bundle['thresholds'].get('method_id')=='h4l-off-joint-support-v1' else
                           fit_thresholds(bootstrap, scores, p, model_id=bundle["model_id"], mapping_id=mapping_id))
+            if bundle['thresholds'].get('method_id') == 'h4l-off-joint-support-v1':
+                from higgsml.modeling.joint_support import refit_bundle
+                thresholds = refit_bundle(bundle,bootstrap,template,p,draw_identity={'stage':'t2_outer'},
+                    calibration_scores=scores,template_scores=raw_scores(key,bundle,template))
             bundle.update(mapping=mapping, mapping_id=mapping_id, thresholds=thresholds)
             fitted[key] = bundle
         return {"bundles": fitted, "mapping_id": digest_json(fitted)}
@@ -461,7 +465,7 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
         if seed_block is not None:
             from higgsml.inference.seed_blocks import stream_identity
             auxiliary_streams = {
-                key: stream_identity(contract_digest=seed_block.pairing_contract_digest,
+                key: stream_identity(contract_digest=seed_block.rng_contract_digest,
                     stage="t2", mu=mu, training_seed=seed_block.seed,
                     outer_index=stream["outer_index"], stream_kind="candidate_auxiliary",
                     candidate_if_auxiliary=key, toy_base_seed=seed)
@@ -493,7 +497,7 @@ def run_assessment_t2(grid, bundles, calibration, template, mother, protocol, *,
     if seed_block is not None:
         from higgsml.inference.seed_blocks import stream_identity
         def inner_seed_factory(outer):
-            stream = stream_identity(contract_digest=seed_block.pairing_contract_digest,
+            stream = stream_identity(contract_digest=seed_block.rng_contract_digest,
                 stage="t2", mu=mu, training_seed=seed_block.seed, outer_index=outer,
                 stream_kind="inner_physical_poisson", toy_base_seed=seed)
             inner_streams_by_seed[stream["seed"]] = stream

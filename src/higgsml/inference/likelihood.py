@@ -316,9 +316,11 @@ def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mappin
             except ResearchError as exc:
                 if inner_seed_factory is not None and (not isinstance(exc, ResearchStateError)
                         or exc.status not in {"insufficient_statistics", "unsupported_assessment_support",
-                                             "template_stat_model_unvalidated", "inference_incomplete"}):
+                                             "template_stat_model_unvalidated", "inference_incomplete", "no_feasible_joint_threshold", "nonpositive_calibration_yield"}):
                     raise
                 row.update(status=exc.status,error=str(exc))
+                if hasattr(exc,'threshold_record'):
+                    row['threshold_record'] = exc.threshold_record
                 yield row, None
     def finish(task):
         row, arguments = task
@@ -331,7 +333,7 @@ def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mappin
         except ResearchError as exc:
             if inner_seed_factory is not None and (not isinstance(exc, ResearchStateError)
                     or exc.status not in {"insufficient_statistics", "unsupported_assessment_support",
-                                         "template_stat_model_unvalidated", "inference_incomplete"}):
+                                         "template_stat_model_unvalidated", "inference_incomplete", "no_feasible_joint_threshold", "nonpositive_calibration_yield"}):
                 raise
             row.update(status=exc.status,error=str(exc))
         return row
@@ -348,7 +350,7 @@ def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mappin
                 row['preflight'] = preflight(*arguments)
                 row['preflight_status'] = 'valid'
             except ResearchStateError as exc:
-                if exc.status not in {'insufficient_statistics','unsupported_assessment_support','template_stat_model_unvalidated','inference_incomplete'}:
+                if exc.status not in {'insufficient_statistics','unsupported_assessment_support','template_stat_model_unvalidated','inference_incomplete','no_feasible_joint_threshold','nonpositive_calibration_yield'}:
                     raise
                 failed = True
                 row.update(status=exc.status, preflight_status=exc.status, error=str(exc),

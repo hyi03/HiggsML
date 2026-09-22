@@ -46,7 +46,9 @@
         "insufficient_statistics",
         "unsupported_assessment_support",
         "template_stat_model_unvalidated",
-        "inference_incomplete"
+        "inference_incomplete",
+        "no_feasible_joint_threshold",
+        "nonpositive_calibration_yield"
       ]
     },
     "qualification": {

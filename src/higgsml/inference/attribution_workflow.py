@@ -260,7 +260,7 @@ def _result(run, output):
     return {'status':run.status,'run_dir':str(output),'artifact_id':run.manifest.get('artifact_id')}
 
 
-def nominal(registration_path, protocol, output, allowed_root, *, force=False):
+def nominal(registration_path, protocol, output, allowed_root, *, force=False, joint_bindings=None):
     registered,overlay,prepared = load_registration(registration_path,protocol,force=force)
     rows,bundles,_,bundle_protocols = audit_sources(
         overlay['source_root'],prepared,protocol,force=force)
@@ -285,11 +285,30 @@ def nominal(registration_path, protocol, output, allowed_root, *, force=False):
                                                'auc':.5 if all(v>0 for v in support.values()) else None,
                                                'role':'validation','measure':'absolute_physical_weight','class_support':support})
         template = frame.loc[frame.role=='template'].copy()
+        if joint_bindings is not None:
+            from higgsml.modeling.joint_support import METHOD, refit_bundle
+            calibration = frame.loc[frame.role == 'calibration'].copy()
+            for key, bundle in bundles.items():
+                old = bundle['thresholds']
+                old.update(method_id=METHOD, input_bindings=joint_bindings,
+                           analysis_contract_digest=joint_bindings['analysis_contract_digest'])
+                if bundle['candidate_id'] == 'M0off':
+                    old.update(selector_bypassed='registered_constant_baseline')
+                    old['threshold_id'] = digest({k:v for k,v in old.items() if k != 'threshold_id'})
+                else:
+                    try:
+                        bundle['thresholds'] = refit_bundle(bundle, calibration, template, protocol,
+                                                           draw_identity={'stage':'nominal'})
+                    except ResearchStateError as error:
+                        run.write_json('threshold-failure.json', getattr(error, 'threshold_record', {}))
+                        raise
         candidates = {key:categorize_bundle(bundle,template) for key,bundle in bundles.items()}
         empty = {key:bundle for key,bundle in bundles.items() if bundle['candidate_id']=='M0off'}
-        grid = common_mass_grid(candidates,mass_edges=protocol['templates']['mass_edges'],
+        grid = common_mass_grid(candidates,mass_edges=[105,140] if joint_bindings is not None else protocol['templates']['mass_edges'],
                                 thresholds=protocol['templates'],structural_zero_bundles=empty)
         grid['family_id'] = FAMILY
+        if joint_bindings is not None:
+            grid['analysis_contract_digest'] = joint_bindings['analysis_contract_digest']
         for key,value in grid['templates'].items():
             bundle = bundles[key]
             value.update(mapping_id=bundle['mapping_id'],candidate_id=bundle['candidate_id'],seed=bundle['seed'],

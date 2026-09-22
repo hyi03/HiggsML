@@ -118,13 +118,30 @@
       "type": "object"
     },
     "registration_status": {
-      "const": "exploratory_v3"
+      "enum": [
+        "exploratory_v3",
+        "exploratory_posthoc"
+      ]
     },
     "assessment_payload_read": {
       "const": false
     },
     "registration_id": {
       "$ref": "#/$defs/digest"
+    },
+    "threshold_method": {
+      "const": "joint-support-v1"
+    },
+    "analysis_contract": {
+      "type": "object"
+    },
+    "analysis_contract_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "source_core_protocol_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
     }
   },
   "$defs": {
@@ -271,5 +288,54 @@
         }
       }
     }
-  }
+  },
+  "dependentRequired": {
+    "threshold_method": [
+      "threshold_method",
+      "analysis_contract",
+      "analysis_contract_digest",
+      "source_core_protocol_digest"
+    ],
+    "analysis_contract": [
+      "threshold_method",
+      "analysis_contract",
+      "analysis_contract_digest",
+      "source_core_protocol_digest"
+    ],
+    "analysis_contract_digest": [
+      "threshold_method",
+      "analysis_contract",
+      "analysis_contract_digest",
+      "source_core_protocol_digest"
+    ],
+    "source_core_protocol_digest": [
+      "threshold_method",
+      "analysis_contract",
+      "analysis_contract_digest",
+      "source_core_protocol_digest"
+    ]
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "threshold_method"
+        ]
+      },
+      "then": {
+        "properties": {
+          "registration_status": {
+            "const": "exploratory_posthoc"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "registration_status": {
+            "const": "exploratory_v3"
+          }
+        }
+      }
+    }
+  ]
 }

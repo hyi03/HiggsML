@@ -355,7 +355,7 @@ python -m higgsml.cli attribution report \
 
 The paths must point to actual eligible artifacts. Each stage refuses an existing destination. A Stage B report may be published while later evidence is `not_run` or `pending`. Constant M0off models are embedded in the nominal calibration artifact with individual model IDs and prepared/seed binding; they have no trainable parameters. Nominal G1 requires exactly 80 identities and an active-bin likelihood equivalence certificate. The immutable freeze binds the registration, nominal artifact, mappings, mass grid and budget definition; the later evaluation plan binds the freeze, without a circular digest.
 
-The Stage B report automatically writes `evaluation-plan.json` from the five actual registration/prepared/nominal/freeze/Asimov manifests; no manual ID editing is needed. Every C–E run stores this snapshot, its canonical digest and all five input identities, which report/reuse ingestion checks again. The checked-in [generic evaluation example](../config/examples/h4l_evaluation_plan.json) contains unresolved zero IDs for schema illustration only and is not the generated off-only plan. `--plan-only` reads safe manifests/protocol snapshots, displays the 80 candidates and complete budgets, and reports unresolved identities without opening assessment payload. It does not validate numerical payloads or authorize assessment. Old evaluation v1 remains compatible. The off-only default does not run the legacy stress matrix; additional stress requires separate registration outside this fixed plan.
+The Stage B report automatically writes `evaluation-plan.json` from the five actual registration/prepared/nominal/freeze/Asimov manifests; no manual ID editing is needed. Every C鈥揈 run stores this snapshot, its canonical digest and all five input identities, which report/reuse ingestion checks again. The checked-in [generic evaluation example](../config/examples/h4l_evaluation_plan.json) contains unresolved zero IDs for schema illustration only and is not the generated off-only plan. `--plan-only` reads safe manifests/protocol snapshots, displays the 80 candidates and complete budgets, and reports unresolved identities without opening assessment payload. It does not validate numerical payloads or authorize assessment. Old evaluation v1 remains compatible. The off-only default does not run the legacy stress matrix; additional stress requires separate registration outside this fixed plan.
 
 ```bash
 python scripts/h4l_evaluate.py --plan runs/off-study-001/report-B/evaluation-plan.json \
@@ -428,3 +428,51 @@ selection and `--retry-failed`; their original claims and every recomputation
 receipt remain durable. The schema filenames under `config/schemas/` are unversioned defaults,
 while schema IDs inside immutable artifacts remain versioned. Software and
 synthetic checks do not establish controlled-MC qualification.
+
+
+### Opt-in joint support threshold selection
+
+`--threshold-method joint-support-v1` registers `h4l-off-joint-support-v1` while
+leaving the default `median-v1` workflow unchanged. It reuses audited frozen
+models, reconstructs a new nominal artifact on the fixed [105,140] grid, and
+binds all 19 quantile candidates and the selected threshold to a separate
+analysis contract. An explicit flag conflicting with registration is rejected.
+
+```bash
+python scripts/h4l_off_run.py --source-run-name test01 --run-name joint-support-001 \
+  --threshold-method joint-support-v1 --stage-b --show-command
+```
+
+The direct `higgsml attribution register` entry point accepts the same flag.
+Later direct stages derive the method from registration; an explicitly supplied
+method must match. `h4l_all.py` also propagates the flag; for reusing existing
+models without training, use the off wrapper above. Always use a fresh run root.
+
+The full registered matrix remains nominal/Asimov, five-seed attribution,
+200 new complete C/T bootstrap replicas, model-self and assessment at mu=0,1,2
+with 500 Toys per candidate/cell, and T2 with 20 calibration outer draws and
+100 inner Toys. T2 holds template fixed. Assessment/T2 require the existing
+access and population-history review; a new method identity does not restore
+access to an already opened population. Use the existing evaluation command
+only for stages whose access is authorized, adding the same threshold flag.
+
+Every bootstrap draw reselects using both resampled roles. T2 reselects using
+resampled calibration and fixed template; ordinary Toys never select thresholds.
+No feasible cut is a scientific terminal, with all candidate diagnostics kept.
+Incomplete bootstrap yields null formal percentile intervals. Reports include
+quantile frequencies, support margins and selection failures separately from
+full-chain execution. Even complete runs remain `exploratory_posthoc`,
+`selection_aware_coverage=unvalidated` and `primary_claim_eligible=false`.
+Percentile spread is not a calibrated total confidence interval.
+
+For development regression only, with the original locally retained evidence:
+
+```bash
+python scripts/h4l_joint_support_replay.py \
+  --output var/joint-support-replay-001 --workers 4
+```
+
+This verifies the pinned hashes and replays NPZ rows 201–400, plus nominal row 0.
+It never imports these draws into formal bootstrap or accesses assessment.
+The expected 200/200 support and 131 nonmedian selections are implementation
+consistency checks, not independent validation or a guarantee for future draws.

@@ -38,6 +38,7 @@ def _parser() -> argparse.ArgumentParser:
         help=f"Shared standard/off-only run name (default: {DEFAULT_RUN_NAME}).",
     )
     parser.add_argument('--access-review', type=Path)
+    parser.add_argument("--threshold-method", choices=["median-v1","joint-support-v1"], default="median-v1")
     return parser
 
 
@@ -97,6 +98,7 @@ def _run(args: argparse.Namespace) -> None:
     name = args.run_name
     python = sys.executable
     off_workers = str(_off_workers())
+    method_flags = ["--threshold-method",args.threshold_method] if args.threshold_method != "median-v1" else []
     train_root = RUNS_ROOT / f"h4l-train-{name}"
     off_root = RUNS_ROOT / f"h4l-off-{name}"
     commands = [
@@ -108,7 +110,7 @@ def _run(args: argparse.Namespace) -> None:
          "--run-name", name, *_resume_flag(train_root / "batch" / "all-seeds")],
         [python, str(SCRIPTS_ROOT / "h4l_off_run.py"),
          "--source-run-name", name, "--run-name", name,
-         "--stage-b", *_resume_flag(off_root),
+         "--stage-b", *method_flags, *_resume_flag(off_root),
          "--workers", off_workers, "--worker-threads", OFF_WORKER_THREADS],
     ]
     for command in commands:
@@ -130,7 +132,7 @@ def _run(args: argparse.Namespace) -> None:
                 '--evaluation-plan',str(off_root/'evaluation-plan'/'evaluation-plan.json'),
                 '--access-review',str(source_review),'--run-dir',str(off_root/'access-review')])
     _invoke([python,str(SCRIPTS_ROOT/'h4l_off_run.py'),
-        '--source-run-name',name,'--run-name',name,'--evaluation',*_resume_flag(off_root/'evaluation'),
+        '--source-run-name',name,'--run-name',name,*method_flags,'--evaluation',*_resume_flag(off_root/'evaluation'),
         '--access-review',str(access_review),'--workers',off_workers,'--worker-threads',OFF_WORKER_THREADS])
 
 

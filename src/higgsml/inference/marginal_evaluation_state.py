@@ -25,6 +25,7 @@ TERMINAL_SCIENTIFIC_STATUSES = VALID_SCIENTIFIC_STATUSES | {
     "unsupported_assessment_support",
     "template_stat_model_unvalidated",
     "inference_incomplete",
+    "no_feasible_joint_threshold", "nonpositive_calibration_yield",
 }
 CELL_STAGES = frozenset({"model-self", "assessment", "t2"})
 ASSESSMENT_ACCESS_STAGES = frozenset({"assessment", "t2"})

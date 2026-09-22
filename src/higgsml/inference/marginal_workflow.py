@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 import json
 
 from higgsml.artifacts import ResearchRun, read_run, read_json, digest_json, sha256_file
 from higgsml.errors import ResearchError, ResearchStateError
+from higgsml.modeling.joint_support import method_fields, QUALIFICATION, selection_diagnostics
 from higgsml.data import load_research_data
 from higgsml.inference import attribution_workflow as legacy
 from higgsml.inference.attribution import FAMILY, BUDGETS, candidate_keys, summarize
@@ -157,7 +159,7 @@ def source_history(prepared):
 
 
 def register(source_root, prepared_path, protocol, output, allowed_root, t1_path=None, *,
-             source_registration=None, force=False):
+             source_registration=None, force=False, threshold_method="median-v1"):
     if force:
         raise ResearchError('v3 compatibility requires exact audited semantics; --force is not an adapter')
     # Reuse the existing complete 75-model audit and deterministic empty definitions.
@@ -170,13 +172,13 @@ def register(source_root, prepared_path, protocol, output, allowed_root, t1_path
     if source_root and Path(source_root).resolve() != Path(overlay['source_root']).resolve():
         raise ResearchError('v3 source registration model root mismatch')
     value = _seal({'schema_version': 'h4l-mass-off-registration-v3', 'family_id': FAMILY,
-        **_definition_digests(protocol),
+        **_definition_digests(protocol), **method_fields(protocol, threshold_method),
         'source_registration_path': str(original.path), 'source_registration_id': _id(original),
         'prepared_artifact_id': _id(prepared), 'population_id': overlay['population_id'],
         'protocol_sha256': digest_json(protocol), 'candidate_keys': candidate_keys(),
         'pairing_contract': pairing_contract(), 'blocks': [b.as_dict() for b in canonical_seed_blocks()],
         'budgets': deepcopy(BUDGETS), 'source_history': source_history(prepared),
-        'qualification': overlay['qualification'], 'registration_status': 'exploratory_v3',
+        'qualification': overlay['qualification'], 'registration_status': 'exploratory_posthoc' if threshold_method == 'joint-support-v1' else 'exploratory_v3',
         'assessment_payload_read': False}, 'registration_id')
     return _publish(output, allowed_root, protocol, 'register', {'registration.json': value}, [original, prepared])
 
@@ -196,11 +198,16 @@ def load_registration(path, protocol):
             or any(value.get(k) != v for k,v in _definition_digests(protocol).items())
             or value['blocks'] != [b.as_dict() for b in canonical_seed_blocks()]):
         raise ResearchError('v3 registration binding mismatch')
+    fields = method_fields(protocol, value.get('threshold_method', 'median-v1'))
+    if any(value.get(k) != v for k,v in fields.items()):
+        raise ResearchError('analysis contract binding mismatch')
     return registered, value, original, overlay, prepared
 
 
 def _semantics(nominal_run, grid, bundles, prepared, protocol):
-    return {'protocol_sha256': digest_json(protocol), 'source_nominal_id': _id(nominal_run),
+    return {**({'analysis_contract_digest':grid['analysis_contract_digest'],
+                'source_core_protocol_digest':digest_json(protocol)} if 'analysis_contract_digest' in grid else {}),
+            'protocol_sha256': digest_json(protocol), 'source_nominal_id': _id(nominal_run),
             'prepared_artifact_id': _id(prepared), 'population_id': prepared.manifest['population_id'],
             'mass_edges': grid['mass_edges'], 'templates_digest': digest_json(grid),
             'bundles_digest': digest_json(bundles), 'candidate_keys': candidate_keys(),
@@ -214,9 +221,19 @@ def _semantics(nominal_run, grid, bundles, prepared, protocol):
 def nominal(registration_path, protocol, output, allowed_root, *, source_nominal=None):
     registered, value, original, overlay, prepared = load_registration(registration_path, protocol)
     source = Path(source_nominal) if source_nominal else Path(output).parent / 'source-nominal'
+    joint = value.get('threshold_method') == 'joint-support-v1'
+    if joint and source_nominal is not None:
+        raise ResearchError('joint nominal requires a fresh rebuilt source nominal')
+    bindings = (dict(analysis_contract_digest=value['analysis_contract_digest'],
+        prepared_artifact_id=_id(prepared), population_id=value['population_id'],
+        source_artifact_id=_id(original)) if joint else None)
     if not source_nominal and not source.exists():
-        legacy.nominal(original.path, protocol, source, allowed_root)
+        legacy.nominal(original.path, protocol, source, allowed_root, **({'joint_bindings':bindings} if joint else {}))
     source_run, grid, bundles = legacy.load_nominal(source, original, overlay, protocol)
+    if grid.get('analysis_contract_digest') != value.get('analysis_contract_digest') or any(
+            b['thresholds'].get('analysis_contract_digest') != value.get('analysis_contract_digest')
+            or (joint and b['thresholds'].get('input_bindings') != bindings) for b in bundles.values()):
+        raise ResearchError('nominal threshold method or input bindings mismatch')
     adapter = _seal({'schema_version': 'h4l-mass-off-compatibility-audit-v3',
         'status': 'compatible', 'registration_id': _id(registered), 'source_path': str(source_run.path),
         'semantics': _semantics(source_run, grid, bundles, prepared, protocol),
@@ -231,6 +248,10 @@ def load_nominal(registration_path, nominal_path, protocol):
     adapter = adapter_run.read_json('compatibility-audit.json')
     _check_seal(adapter, 'adapter_id')
     nominal_run, grid, bundles = legacy.load_nominal(adapter['source_path'], original, overlay, protocol)
+    expected_digest = value.get('analysis_contract_digest')
+    if grid.get('analysis_contract_digest') != expected_digest or any(
+            b['thresholds'].get('analysis_contract_digest') != expected_digest for b in bundles.values()):
+        raise ResearchError('nominal threshold method mismatch')
     if (adapter['registration_id'] != _id(registered) or adapter['status'] != 'compatible'
             or adapter['semantics'] != _semantics(nominal_run, grid, bundles, prepared, protocol)):
         raise ResearchError('v3 nominal compatibility semantics changed')
@@ -402,6 +423,7 @@ def specification(registration_path, nominal_path, protocol, output, allowed_roo
         'gate_artifact_ids': list(map(_id, gates)),
         'support_qualification': gates[0].read_json('marginal-support-summary.json')['seeds']['42']['summary']['identity_qualification'],
         'source_history': source_history(prepared),
+        **method_fields(protocol, value.get('threshold_method', 'median-v1')),
         'rng': {'algorithm': 'sha256-full-256-PCG64', 'version': 'h4l-marginal-stream-v1'},
         'semantics': _semantics(nominal_run, grid, bundles, prepared, protocol),
         'evidence_scope': 'MC_only_exploratory_within_seed'}, 'specification_id')
@@ -411,6 +433,11 @@ def specification(registration_path, nominal_path, protocol, output, allowed_roo
 
 def validate_specification(spec, protocol):
     _check_seal(spec, 'specification_id')
+    fields = method_fields(protocol, spec.get('threshold_method', 'median-v1'))
+    if any(spec.get(k) != v for k,v in fields.items()):
+        raise ResearchError('specification analysis contract mismatch')
+    if spec.get('analysis_contract_digest') != spec.get('semantics',{}).get('analysis_contract_digest'):
+        raise ResearchError('specification threshold method/semantics mismatch')
     if (spec.get('schema_version') != 'h4l-mass-off-evaluation-spec-v3'
             or any(key in spec for key in ('freeze_artifact_id', 'evaluation_plan_id', 'asimov_artifact_id'))
             or spec.get('protocol_sha256') != digest_json(protocol) or spec.get('matrix') != matrix()
@@ -430,6 +457,7 @@ def freeze(registration_path, nominal_path, protocol, output, allowed_root, *, s
             or spec['semantics'] != _semantics(nominal_run, grid, bundles, prepared, protocol)):
         raise ResearchError('freeze specification source mismatch')
     frozen = _seal({'schema_version': 'h4l-mass-off-freeze-v3', 'status': 'frozen',
+        **method_fields(protocol, value.get('threshold_method', 'median-v1')),
         'protocol_sha256': digest_json(protocol), 'specification_id': spec['specification_id'],
         'specification_path': str(spec_run.path), 'specification_artifact_id': _id(spec_run),
         'registration_artifact_id': _id(registered), 'template_artifact_id': _id(adapter),
@@ -447,6 +475,9 @@ def load_frozen(registration_path, nominal_path, freeze_path, protocol):
     spec_run = _load(frozen['specification_path'], protocol, 'evaluation-spec')
     spec = spec_run.read_json('evaluation-spec.json')
     validate_specification(spec, protocol)
+    if (frozen.get('analysis_contract_digest') != spec.get('analysis_contract_digest')
+            or any(frozen.get(k) != v for k,v in method_fields(protocol,value.get('threshold_method','median-v1')).items())):
+        raise ResearchError('freeze analysis contract mismatch')
     if (frozen['specification_id'] != spec['specification_id'] or frozen['specification_artifact_id'] != _id(spec_run)
             or frozen['registration_artifact_id'] != _id(registered) or frozen['template_artifact_id'] != _id(adapter)
             or frozen['prepared_artifact_id'] != _id(prepared) or frozen['protocol_sha256'] != digest_json(protocol)
@@ -477,6 +508,7 @@ def evaluation_plan(registration_path, nominal_path, freeze_path, result_path, p
     if binding['specification_id'] != spec['specification_id'] or binding['freeze_artifact_id'] != _id(frozen_run):
         raise ResearchError('Asimov/specification binding mismatch')
     plan = _seal({'schema_version': 'h4l-mass-off-evaluation-plan-v3', 'specification': spec,
+        **method_fields(protocol, value.get('threshold_method', 'median-v1')),
         'specification_id': spec['specification_id'], 'pairing_scope': 'within_seed', 'cross_seed_pairing': 'none',
         'inputs': {'registration_artifact_id': _id(registered), 'prepared_artifact_id': _id(prepared),
                    'template_artifact_id': _id(adapter), 'freeze_artifact_id': _id(frozen_run), 'asimov_artifact_id': _id(result)},
@@ -488,6 +520,9 @@ def evaluation_plan(registration_path, nominal_path, freeze_path, result_path, p
 def validate_plan(plan, protocol):
     _check_seal(plan, 'evaluation_plan_id')
     validate_specification(plan['specification'], protocol)
+    if (plan.get('analysis_contract_digest') != plan['specification'].get('analysis_contract_digest')
+            or any(plan.get(k) != v for k,v in method_fields(protocol,plan['specification'].get('threshold_method','median-v1')).items())):
+        raise ResearchError('plan analysis contract mismatch')
     if (plan.get('schema_version') != 'h4l-mass-off-evaluation-plan-v3'
             or plan['specification_id'] != plan['specification']['specification_id']
             or plan.get('matrix') != matrix() or plan.get('unit_count_including_report') != 37
@@ -588,9 +623,10 @@ def evaluation_binding(prepared, frozen_run, spec, plan, *, stage, mu, training_
     block = next((b for b in canonical_seed_blocks() if b.seed == training_seed), None)
     if block is None or {'stage': stage, 'mu': mu, 'training_seed': training_seed} not in matrix():
         raise ResearchError('unregistered v3 block evaluation')
+    block = replace(block, analysis_contract_digest=spec.get('analysis_contract_digest'))
     budget = ({'planned_outer': BUDGETS['t2']['outer_replicas'], 'planned_inner_per_outer': BUDGETS['t2']['inner_toys']}
               if stage == 't2' else {'planned_toys_per_candidate': BUDGETS['toys']['count']})
-    rng = stream_identity(contract_digest=block.pairing_contract_digest, stage=stage, mu=mu,
+    rng = stream_identity(contract_digest=block.rng_contract_digest, stage=stage, mu=mu,
         training_seed=training_seed, outer_index=None, stream_kind='physical_poisson', toy_base_seed=BUDGETS['toys']['seed'])
     return block, SeedEvaluationBinding(prepared.manifest['population_id'], _id(frozen_run),
         spec['specification_id'], plan['evaluation_plan_id'], pairing_contract()['contract_digest'],
@@ -651,7 +687,7 @@ def evaluate(registration_path, nominal_path, freeze_path, protocol, output, all
         workers=workers, worker_threads=worker_threads, progress=progress)
     if stage == 't2':
         calibration = frame.loc[frame.role == 'calibration'].copy()
-        outer = make_t2_outer_multiplicities(calibration, contract_digest=block.pairing_contract_digest,
+        outer = make_t2_outer_multiplicities(calibration, contract_digest=block.rng_contract_digest,
             outer_replicas=BUDGETS['t2']['outer_replicas'], toy_base_seed=BUDGETS['t2']['seed'])
         configured = deepcopy(protocol)
         configured['inference'].update(outer_replicas=BUDGETS['t2']['outer_replicas'], inner_toys=BUDGETS['t2']['inner_toys'])
@@ -817,10 +853,16 @@ def report(registration_path, nominal_path, protocol, output, allowed_root, *, f
             supports.append(gate)
             upstreams.append(gate_run)
     complete = plan is not None and summary and summary['status'] == 'valid' and all(r['status'] == 'valid' for r in rows)
+    execution_complete = plan is not None and summary is not None and all(u['value'] is not None for u in entries.values())
     historical_other_freeze = any(
         h['claim'].get('binding',h['claim']).get('freeze_artifact_id') != (_id(frozen_run) if plan else None)
         for h in source_history(prepared))
     answer = {'schema_version': 'h4l-mass-off-report-v3', **METADATA, 'family_id': FAMILY,
+        **({**method_fields(protocol, 'joint-support-v1'), **QUALIFICATION,
+            't2_scope':'calibration_variation_conditional_on_fixed_template_joint_selector',
+            'nominal_selection':selection_diagnostics(b['thresholds'] for b in bundles.values()),
+            'execution_status':'complete' if execution_complete else 'incomplete'}
+           if value.get('threshold_method') == 'joint-support-v1' else {}),
         'aggregate_status': 'valid' if complete else 'incomplete', 'pairing_scope': 'within_seed', 'cross_seed_pairing': 'none',
         'nominal_asimov': summary, 'value_source': 'nominal_asimov', 'seed_layers': layers,
         'seed_descriptive_diagnostics':diagnostic_rows,'five_seed_descriptive_diagnostics':diagnostic_aggregates,
@@ -865,6 +907,8 @@ def report(registration_path, nominal_path, protocol, output, allowed_root, *, f
         lines = ['# Within-seed MC-only evaluation', '', 'Aggregate status: ' + answer['aggregate_status'], '',
                  'Artificial marginal CRN coupling: physical_event_pairing=false. Paired errors are conditional diagnostics only; sensitivity is pending. Five seeds share MC. Independent validation remains pending.', '',
                  '| Stage | mu | Training seed | Scientific status |', '|---|---:|---:|---|']
+        if value.get('threshold_method') == 'joint-support-v1':
+            lines[-2:-2] = ['', 'Joint selection: exploratory_posthoc; selection_aware_coverage=unvalidated; primary_claim_eligible=false.', 'T2 varies calibration conditional on fixed template. Bootstrap percentile spread is not a calibrated total confidence interval.', '']
         lines += [f"| {r['stage']} | {r['mu']} | {r['training_seed']} | {r['status']} |" for r in rows]
         (run.path / 'report.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
         run.register_file('report.md')
