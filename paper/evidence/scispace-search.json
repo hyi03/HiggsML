@@ -1,0 +1,21 @@
+{
+  "checked_date": "2026-09-22",
+  "provider": "SciSpace",
+  "queries": [
+    "How does INFERNO inference-aware neural optimisation distinguish the objective of reducing parameter uncertainty in high-energy physics from maximising the classification area under the ROC curve?",
+    "How do Shapley values based on retraining all feature subsets quantify global feature importance, and what limitations arise from dependent features and a fixed learning algorithm?",
+    "How does the MEKD matrix-element method use four-lepton kinematics to distinguish Higgs boson decays from continuum backgrounds, and why are these observables useful for Higgs property studies?",
+    "What do the MEKD analysis of Higgs decays to four leptons, INFERNO inference-aware neural optimisation, and Shapley feature selection studies establish about using kinematic feature groups to improve parameter inference rather than only classification?"
+  ],
+  "scope": "Semantic literature discovery and abstracts; not a systematic review or full-text validation of every cited method.",
+  "adopted_core_links": [
+    "https://doi.org/10.1103/PhysRevD.87.055006",
+    "https://doi.org/10.1016/j.cpc.2019.06.007",
+    "https://doi.org/10.1109/ACCESS.2021.3119110"
+  ],
+  "bibliographic_rule": "Publication metadata is verified separately. SciSpace index dates for preprint copies are not treated as publication years. The cited MEKD and INFERNO journal versions are from 2013 and 2019, respectively.",
+  "verification_records": [
+    "data/bibliography_metadata.json",
+    "data/web_metadata.json"
+  ]
+}

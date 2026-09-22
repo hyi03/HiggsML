@@ -1,0 +1,13 @@
+.build/
+figures/
+generated/
+main.pdf
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*Notes.bib
