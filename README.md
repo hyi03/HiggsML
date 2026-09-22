@@ -77,7 +77,7 @@ python scripts/init_data.py --dataset atlas2020_4lep
 python scripts/h4l_all.py --run-name test01
 ```
 
-`--run-name` 是唯一需要输入的参数，同时用于 `runs/h4l-train-test01/` 和 `runs/h4l-off-test01/`。`--access-review` 是可选的独立审核覆盖项。不传运行名时默认使用 `default`：
+`--run-name` 是唯一需要输入的参数，同时用于 `runs/h4l-prepare-test01/`、`runs/h4l-train-test01/` 和 `runs/h4l-off-test01/`。`--access-review` 是可选的独立审核覆盖项。不传运行名时默认使用 `default`：
 
 ```bash
 python scripts/h4l_all.py
@@ -102,7 +102,7 @@ python scripts/h4l_all.py
 ### 6.1 准备并固化可复用输入
 
 ```bash
-python scripts/h4l_prepare.py
+python scripts/h4l_prepare.py --run-name test01
 ```
 
 脚本执行 `audit` 和 `prepare`，默认使用：
@@ -110,20 +110,20 @@ python scripts/h4l_prepare.py
 - receipt：`data/raw/atlas2020_4lep/dataset_receipt.json`
 - profile：`config/profiles/open_data_2020.yaml`
 - 协议：`config/protocols/h4l_protocol.json`
-- 输出根：`runs/h4l-prepare/`
+- 输出根：`runs/h4l-prepare-test01/`
 
-可复用的 prepared artifact 位于 `runs/h4l-prepare/prepare`。它不会继续训练、校准或构建模板。需要先做有限工作量性能诊断时，可使用 `--diagnostic-entries-per-file`；诊断产物不能作为 G1 输入。
+可复用的 prepared artifact 位于 `runs/h4l-prepare-test01/prepare`。它不会继续训练、校准或构建模板。需要先做有限工作量性能诊断时，可使用 `--diagnostic-entries-per-file`；诊断产物不能作为 G1 输入。
 
-全局 prepare 根目录的结构为：
+命名 prepare 根目录的结构为：
 
 ```text
-runs/h4l-prepare/
+runs/h4l-prepare-test01/
 ├── inputs/    ROOT manifest、P0/T1 绑定证据
 ├── audit/     来源审计产物
 └── prepare/   events.jsonl 与 prepared manifest
 ```
 
-`h4l_prepare.py` 不接受 `--run-name`。只有在诊断或需要独立新目录时才传入 `--run-root`；正式全局目录已存在时，脚本会拒绝覆盖。
+`h4l_prepare.py --run-name <name>` 与 G1、训练和 off-only 阶段共享同一短名称。`--run-name` 不能与 `--run-root` 同时使用；省略 `--run-name` 时仍保留旧的 `runs/h4l-prepare/` 默认目录，供显式路径工作流兼容使用。
 
 ### 6.2 运行门控检查
 

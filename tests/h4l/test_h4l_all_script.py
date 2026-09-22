@@ -51,7 +51,7 @@ def test_default_run_uses_marginal_workflow_without_version_flag(
         "-m",
         "h4l_off_run.py",
     ]
-    assert commands[0][2:] == []
+    assert commands[0][2:] == ["--run-name", "default"]
     assert commands[1][2:] == ["--run-name", "default"]
     assert commands[2][2:] == ["--run-name", "default"]
     assert commands[3][2:] == [

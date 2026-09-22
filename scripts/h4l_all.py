@@ -128,10 +128,11 @@ def _run(args: argparse.Namespace) -> None:
     off_workers = str(_off_workers())
     method_flags = ["--threshold-method",args.threshold_method] if args.threshold_method != "median-v1" else []
     train_root = RUNS_ROOT / f"h4l-train-{name}"
+    prepare_root = RUNS_ROOT / f"h4l-prepare-{name}"
     off_root = RUNS_ROOT / f"h4l-off-{name}"
     commands = [
         [python, str(SCRIPTS_ROOT / "h4l_prepare.py"),
-         *_resume_flag(RUNS_ROOT / "h4l-prepare")],
+         "--run-name", name, *_resume_flag(prepare_root)],
         [python, str(SCRIPTS_ROOT / "h4l_check.py"),
          "--run-name", name, *_resume_flag(train_root / "g1")],
         [python, str(SCRIPTS_ROOT / "h4l_run.py"),

@@ -21,7 +21,7 @@ if str(SOURCE_ROOT) not in sys.path:
 
 from higgsml.errors import ResearchError  # noqa: E402
 from higgsml.protocol import DEFAULT_PATH, load_protocol  # noqa: E402
-from higgsml.run_names import workflow_directory_name  # noqa: E402
+from higgsml.run_names import prepare_directory_name, workflow_directory_name  # noqa: E402
 from higgsml.workflow_resume import classify_stage  # noqa: E402
 
 
@@ -45,9 +45,7 @@ def _parser() -> argparse.ArgumentParser:
         help="New short name; writes runs/h4l-off-<name>.",
     )
     parser.add_argument("--protocol", type=Path, default=DEFAULT_PATH)
-    parser.add_argument(
-        "--prepared-run", type=Path, default=Path("runs/h4l-prepare/prepare"),
-    )
+    parser.add_argument("--prepared-run", type=Path)
     parser.add_argument("--t1-validation", type=Path)
     parser.add_argument(
         "--access-review", type=Path,
@@ -128,6 +126,11 @@ def _run(args):
     from higgsml.artifacts import read_json, read_run
     output=RUNS_ROOT / _safe_run_leaf('h4l-off-',args.run_name)
     source=RUNS_ROOT / _safe_run_leaf('h4l-train-',args.source_run_name) / 'batch' / 'all-seeds'
+    try:
+        prepared_run = (_resolve(args.prepared_run) if args.prepared_run else
+                        RUNS_ROOT / prepare_directory_name(args.source_run_name) / 'prepare')
+    except ValueError as error:
+        raise WorkflowError(str(error), 2) from error
     protocol_path=_resolve(args.protocol)
     protocol=load_protocol(protocol_path).to_dict()
     if args.force:
@@ -152,7 +155,7 @@ def _run(args):
     frozen=nominal+['--freeze-run',str(output/'freeze')]
     result=frozen+['--result-run',str(output/'asimov')]
     planned=result+['--evaluation-plan',str(output/'evaluation-plan'/'evaluation-plan.json')]
-    steps=[('register',['--source-root',str(source),'--prepared-run',str(_resolve(args.prepared_run)),
+    steps=[('register',['--source-root',str(source),'--prepared-run',str(prepared_run),
                         '--t1-validation',str(_resolve(args.t1_validation or source/'templates'/'t1-validation.json'))]),
            ('nominal',reg),('support-j0',[*nominal,'--gate','J0']),
            ('support-j1',[*nominal,'--gate','J1','--j0-run',str(output/'support-j0')]),
@@ -195,7 +198,7 @@ def _run(args):
     if not args.stage_b:
         command=[sys.executable,str(PROJECT_ROOT/'scripts'/'h4l_evaluate.py'),
             '--plan',str(output/'evaluation-plan'/'evaluation-plan.json'),'--registration-run',str(output/'register'),
-            '--prepared-run',str(_resolve(args.prepared_run)),'--template-run',str(output/'nominal'),
+            '--prepared-run',str(prepared_run),'--template-run',str(output/'nominal'),
             '--freeze-run',str(output/'freeze'),'--result-run',str(output/'asimov'),
             '--output-root',str(output/'evaluation'),'--protocol',str(protocol_path),
             '--workers',str(args.workers),'--worker-threads',str(args.worker_threads)]

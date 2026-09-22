@@ -85,22 +85,22 @@ Omitting `--run-name` uses the stable name `default`. Re-running the same comman
 ### Prepare reusable inputs
 
 ```powershell
-python scripts/h4l_prepare.py --plan-only
-python scripts/h4l_prepare.py
+python scripts/h4l_prepare.py --run-name pilot-001 --plan-only
+python scripts/h4l_prepare.py --run-name pilot-001
 ```
 
 Defaults bind the 2020 receipt, profile, and H4l protocol, and publish:
 
 ```text
-runs/h4l-prepare/
+runs/h4l-prepare-pilot-001/
   inputs/     ROOT manifest and P0/T1 bindings
   audit/      Source audit
   prepare/    Reusable events.jsonl and manifest
 ```
 
-Preparation does not train or calibrate. It has `--run-root`, not `--run-name`. Existing directories cannot be overwritten. Progress counts may include entries skipped without application payload requests; selected counts refer to published selected events. `--no-progress` disables progress. `root_prepare_metrics` persists timing regardless of terminal display; `--show-prepare-metrics` adds periodic and final timing, spans, throughput, RSS, and hotspot diagnosis. These are software observations.
+Preparation does not train or calibrate. Use `--run-name` for the named workflow or `--run-root` for an explicit diagnostic or legacy location; they cannot be combined. Existing directories cannot be overwritten. Progress counts may include entries skipped without application payload requests; selected counts refer to published selected events. `--no-progress` disables progress. `root_prepare_metrics` persists timing regardless of terminal display; `--show-prepare-metrics` adds periodic and final timing, spans, throughput, RSS, and hotspot diagnosis. These are software observations.
 
-For a separate bounded diagnostic, use a fresh directory:
+The same run name makes G1 and batch commands consume this scoped prepared artifact. Omitting `--run-name` retains the legacy `runs/h4l-prepare/` default for explicit-path workflows. For a separate bounded diagnostic, use a fresh directory:
 
 ```powershell
 python scripts/h4l_prepare.py --run-root runs/h4l-prepare-diagnostic-001 --diagnostic-entries-per-file 10000 --show-prepare-metrics
