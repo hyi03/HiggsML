@@ -18,7 +18,7 @@
 \author{[Author name to be supplied]}
 \email{[Corresponding-author email to be supplied]}
 \affiliation{[Institution and postal address to be supplied]}
-\date{September 22, 2026}
+\date{September 23, 2026}
 
 \begin{abstract}
 The usefulness of a kinematic representation for a Higgs analysis depends on
@@ -744,10 +744,11 @@ training-seed blocks. The first tests closure under the fitted model; the
 second uses the frozen assessment parent to examine a distinct source of
 expectations. Poisson auxiliary observations are regenerated according to
 the registered T1 prescription. Each block contains sixteen candidates. In
-the currently checked aggregate snapshot, the requested model-self and
-assessment coverage cells are marked as incomplete seed vectors, so numerical
-coverage summaries are not reported. This numerical incompleteness is separate
-from the physical applicability and independence of those diagnostics.
+the selected test01 aggregate snapshot, all fifteen model-self and all
+fifteen assessment cells have valid numerical outputs. Table~\ref{tab:validation}
+reports the available conditional coverage summaries. Numerical completion is
+separate from physical applicability and independent validation; neither is
+established by these internally generated diagnostics.
 
 Within a block, candidate count vectors are coupled by sharing total
 Poisson draws and using common uniforms for monotone category allocation.
@@ -772,11 +773,10 @@ each unit. Treating the resulting 2,000 fits as independent replications
 of the entire analysis would overstate the evidence.
 
 Table~\ref{tab:validation} records the current availability of conditional
-coverage for the three highlighted candidates. A dash denotes an incomplete
-five-seed vector in the checked aggregate snapshot. The missing summaries
-reinforce that the interval construction requires further coverage study;
-they do not support an unqualified statement that the narrowest interval is
-the most reliable.
+coverage for the three highlighted candidates in the same selected snapshot
+used by the Chinese manuscript. These numerical summaries require independent
+coverage validation and do not establish that the narrowest interval is the
+most reliable.
 
 \begin{table*}[tbp]
 \caption{Conditional coverage at $\mu=1$ and the status of the validation
@@ -891,14 +891,13 @@ subsequent independently controlled study.
 \end{acknowledgments}
 
 \section*{Data and computational materials}
-Only simulated members of the cited public collection were used. The
-accompanying draft materials contain the aggregate result snapshot, its
-source-file checksums, plotting code, and compilation instructions. The
-snapshot records the existing frozen analysis; preparing this manuscript
-did not retrain models, refit likelihoods, or generate new pseudo-experiments.
-The run provenance and the source revision used for manuscript verification
-are distinguished in the accompanying evidence record. A permanent archival
-software and result release has not been established by this draft.
+Only simulated members of the cited collection were used. Both drafts bind
+report \texttt{3fe3e15f}; its fourteen original aggregate sources and manifest
+hashes were verified in the local test01 archive on 23 September 2026. The
+evidence index records full identities, distinct execution revisions, and
+reproduction instructions. The unfinished active run is separate. This
+manuscript update retrained no models, refitted no likelihoods, and generated
+no pseudo-experiments. A permanent archival release remains pending.
 
 \clearpage
 \onecolumngrid

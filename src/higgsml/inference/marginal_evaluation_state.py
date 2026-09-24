@@ -201,23 +201,12 @@ def _population_marker(directory: Path, binding: SeedEvaluationBinding) -> Path:
 
 
 def _check_v1_population_history(claims_root: Path, binding: SeedEvaluationBinding) -> None:
-    for dirname in ('.research-claims','.h4l-mass-off-v2-claims','.h4l-mass-off-v3-claims','.h4l-population-access'):
-        legacy = claims_root / dirname
-        if not legacy.exists():
-            continue
-        if legacy.is_symlink() or not legacy.is_dir():
-            _fail('unsafe historical claim directory')
-        for path in legacy.glob('*.json'):
-            if path.is_symlink():
-                _fail('unsafe historical claim receipt')
-            claim = read_json(path)
-            prior = claim.get('binding',claim)
-            if prior.get('stage') == 'model-self':
-                continue
-            if (prior.get('population_id') == binding.population_id
-                    and prior.get('freeze_artifact_id') not in (None,binding.freeze_artifact_id)):
-                raise ResearchStateError('population previously used under another freeze',
-                                         status='assessment_already_started')
+    from higgsml.inference.population_history import audit_population_history
+    for item in audit_population_history(claims_root, population_id=binding.population_id)['matches']:
+        prior = item['claim'].get('binding', item['claim'])
+        if prior.get('freeze_artifact_id') != binding.freeze_artifact_id:
+            raise ResearchStateError('population previously used under another freeze',
+                                     status='assessment_already_started')
 
 
 def _claim_value(output_dir: Path, binding: SeedEvaluationBinding) -> dict[str, Any]:

@@ -221,22 +221,24 @@ def _binding_digests(manifest: dict, protocol_path: Path = DEFAULT_PROTOCOL) -> 
 
 def _automated_validations(manifest: dict, protocol_path: Path = DEFAULT_PROTOCOL) -> tuple[dict, dict]:
     protocol_sha256, source_evidence_sha256 = _binding_digests(manifest, protocol_path)
-    contract_reference = f"automated-not-independent:{protocol_sha256}"
+    from higgsml.qualification import contract_qualification
+    contract_reference = None
     p0 = {
-        "schema_version": "h4l-p0-validation-v1",
-        "status": "validated",
+        "schema_version": "h4l-p0-validation-v2",
+        "status": "contract_checked",
         "dataset": DATASET,
         "protocol_sha256": protocol_sha256,
         "source_evidence_sha256": source_evidence_sha256,
         "evidence_id": f"automated-p0-{source_evidence_sha256[:16]}",
         "independent_reference": contract_reference,
+        "qualification": contract_qualification(True),
         "physical_definitions": {
-            "processes": {"status": "validated", "reference": "dataset-receipt:higgs,zz"},
-            "units": {"status": "validated", "reference": "open_data_2020.yaml:momentum_unit"},
-            "four_vectors": {"status": "validated", "reference": "src/higgsml/physics/four_vectors.py"},
-            "pairing": {"status": "validated", "reference": "src/higgsml/physics/reconstruction.py:pair_four_leptons"},
-            "weights": {"status": "validated", "reference": "src/higgsml/physics/weights.py:physical_event_weight"},
-            "selection": {"status": "validated", "reference": "src/higgsml/physics/selection.py"},
+            "processes": {"status": "contract_checked", "reference": "dataset-receipt:higgs,zz"},
+            "units": {"status": "contract_checked", "reference": "open_data_2020.yaml:momentum_unit"},
+            "four_vectors": {"status": "contract_checked", "reference": "src/higgsml/physics/four_vectors.py"},
+            "pairing": {"status": "contract_checked", "reference": "src/higgsml/physics/reconstruction.py:pair_four_leptons"},
+            "weights": {"status": "contract_checked", "reference": "src/higgsml/physics/weights.py:physical_event_weight"},
+            "selection": {"status": "contract_checked", "reference": "src/higgsml/physics/selection.py"},
         },
     }
     t1_contract = {
@@ -246,34 +248,37 @@ def _automated_validations(manifest: dict, protocol_path: Path = DEFAULT_PROTOCO
         "pyhf_version": "0.7.6",
     }
     t1 = {
-        "schema_version": "h4l-t1-validation-v1",
-        "status": "validated",
+        "schema_version": "h4l-t1-validation-v2",
+        "status": "contract_checked",
         "dataset": DATASET,
         "protocol_sha256": protocol_sha256,
         "evidence_id": f"automated-t1-{digest_json(t1_contract)[:16]}",
         "independent_reference": contract_reference,
+        "qualification": contract_qualification(True),
         **t1_contract,
         "validation_summary": {
             "reviewed_by": "scripts/h4l_prepare.py",
             "reviewed_at": "generated-from-bound-repository-contract",
-            "numerical_tests": ["schema and frozen T1 contract validation"],
+            "numerical_tests": [],
         },
     }
-    _validate_schema(p0, "p0_validation_v1.schema.json", "Automated P0 validation")
-    _validate_schema(t1, "t1_validation_v1.schema.json", "Automated T1 validation")
+    _validate_schema(p0, "p0_validation_v2.schema.json", "Automated P0 validation")
+    _validate_schema(t1, "t1_validation_v2.schema.json", "Automated T1 validation")
     return p0, t1
 
 
 def _validate_bound_evidence(p0: dict, t1: dict, manifest: dict,
                              protocol_path: Path = DEFAULT_PROTOCOL) -> None:
-    _validate_schema(p0, "p0_validation_v1.schema.json", "P0 validation")
-    _validate_schema(t1, "t1_validation_v1.schema.json", "T1 validation")
+    from higgsml.qualification import contract_checked
+    for kind, evidence in (("p0", p0), ("t1", t1)):
+        version = "v2" if evidence.get("schema_version") == f"h4l-{kind}-validation-v2" else "v1"
+        _validate_schema(evidence, f"{kind}_validation_{version}.schema.json", f"{kind} contract")
     protocol_sha256, source_evidence_sha256 = _binding_digests(manifest, protocol_path)
-    if p0.get("status") != "validated" or t1.get("status") != "validated":
+    if not contract_checked(p0, "p0") or not contract_checked(t1, "t1"):
         pending = [name for name, value in (("P0", p0), ("T1", t1)) if value.get("status") == "pending"]
         detail = "/".join(pending) if pending else "P0/T1"
         raise WorkflowError(
-            f"{detail} evidence is pending; controlled MC requires independent review before validation.", 3
+            f"{detail} evidence is pending; controlled MC requires bound software contract checks for exploratory execution.", 3
         )
     if (
         p0.get("dataset") != DATASET

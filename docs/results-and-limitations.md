@@ -6,7 +6,7 @@ The retained `h4l-off-test01` analysis evaluates all 15 nonempty A/B/C/D subsets
 
 ## Evidence summary
 
-This documentation records the retained result as inspected on **2026-09-21**. The latest report artifact is `9c2413c8e5582e967b54f5a046883d5510143873941d6a53f320813297d47d68`, published from clean commit `e066bae9a12e5bd2d02cd199bbd09a99151ea6d7`. Its manifest is complete, while its scientific aggregate status is `incomplete` and `primary_claim_eligible=false`.
+The paper explicitly selects the archived report `var/runs-test-01/h4l-off-test01-old1/evaluation/report`, artifact `3fe3e15ffe27f8480719deaa2a84a201d6a5062ca2611b0c5f67d62f54d23e05`, executed at `3819547357354aa04fa2dd85e1da3afeeaeb8ffb`. On **2026-09-23**, all 14 original aggregate sources and enclosing manifest hashes matched the supplied archive. Asimov/freeze execution is separately `65a9d24f1f6ef0478669f3f0969fed0837938f61`. Publication is complete, aggregate status is incomplete and primary claim eligibility is false. The [version matrix](../paper/result-evidence.md) separates this result from the superseded Chinese recovery report and unfinished active test03 computation.
 
 The run supports an exploratory conclusion about the fixed controlled-MC procedure. It does not support a publication-ready physics result, reliable total uncertainty, external generalization, or an ATLAS/CMS measurement. The default core protocol still declares `synthetic_software_defaults_not_physics_validation`; the actual run adds bound controlled-MC evidence without silently changing that protocol scope.
 
@@ -55,7 +55,7 @@ These are conditional diagnostics under `marginal_common_total_monotone_crn`, wi
 
 The event-MC bootstrap completed only 161/200 replicas. Thirty-nine replicas failed with `insufficient_statistics`, so the report correctly leaves every formal bootstrap percentile interval empty. Forty-nine candidate failures occurred across those replicas: D-only seed 42 accounts for 37, D-only seeds 43 and 44 for five and four, and seed-46 AC/ACD for the remaining three. This makes D's finite-MC support particularly fragile.
 
-Three model-self cells are `blocked_consumed_budget`: `mu=0` for seeds 43 and 44, and `mu=1` for seed 45. Independent-allocation sensitivity is pending. The access receipt is a `single_researcher_self_review` with `independent=false`; independent P0 physical definitions, a signed-MC T1 applicability reference, and assessment-history review remain missing. These gaps determine the report's `incomplete` status.
+All 15 model-self cells in the selected archived report are valid. The earlier recovery report recorded three budget-blocked cells; that different report is preserved in the historical evidence index. Independent-allocation sensitivity is pending. The access receipt is a `single_researcher_self_review` with `independent=false`; independent P0 physical definitions, a signed-MC T1 applicability reference, and assessment-history review remain missing. These gaps determine the report's `incomplete` status.
 
 ## Historical exploratory observations
 
@@ -80,7 +80,7 @@ The following consolidates the inherited status document. It is a dated record, 
 | Capability | Recorded software state | Remaining evidence boundary |
 |---|---|---|
 | Controlled acquisition and dataset contracts | Implemented and bound in the retained prepared artifact | Release equivalence and independent source authority are not established |
-| Selection, reconstruction, Angular5, features, and weights | 38,990 selected controlled-MC groups recorded | Independent physical-definition and source-access audits remain incomplete |
+| Selection, reconstruction, Angular5, features, and weights | Non-assessment role counts recorded in the selected prepared audit | Independent physical-definition and source-access audits remain incomplete |
 | Five-role physical-group isolation | Bound population and role counts recorded; G0 passed | Does not replace history audit or ROOT interpretation validation |
 | Mass-only, decay7, engineered19, lab-extension | Implemented | Interpretation depends on shared mass/input scope |
 | Grouped M3 off-only attribution | Five-seed nominal controlled-MC result, exact attribution and pair tables recorded | Bootstrap incomplete; independent qualification pending; off models can retain implicit mass information |
@@ -89,7 +89,7 @@ The following consolidates the inherited status document. It is a dated record, 
 | CDF, common templates, pyhf inference | Implemented | Signed-MC T1 approximation requires independent evidence |
 | G0/G1, freeze, assessment, report | Implemented | No documented publication-ready frozen full-MC result |
 | Enhanced exports | Recorded synthetic and existing-MC-artifact replay checks | AUC remains selected-checkpoint validation AUC |
-| Registered evaluation orchestration | Controlled-MC assessment and T2 cells completed | Bootstrap incomplete; three model-self cells consumed; sensitivity pending |
+| Registered evaluation orchestration | Controlled-MC assessment and T2 cells completed | Bootstrap incomplete; model-self 15/15 numerically valid; sensitivity pending |
 | Current within-seed marginal CRN evaluation | 36-unit controlled-MC report published | Artificial CRN is not physical-event pairing; independent P0/T1/history review remains missing |
 | Independent evidence import | Receipt/type guards implemented | Missing materials remain `external_pending` |
 | Sample-efficiency subsets, batch, report, controls, confirmation | Implemented with synthetic tests | Registration values and independent/full-MC evidence pending |
@@ -99,6 +99,7 @@ The following consolidates the inherited status document. It is a dated record, 
 
 | Record | Reported result | Interpretation |
 |---|---|---|
+| 2026-09-23 F4/F11/F12 final verification | Windows Python 3.12.13: 596 passed, 5 skipped, 511 deprecation warnings, 922.92 s; short temporary root | Final software/synthetic suite for this working-tree change; not independent numerical or scientific validation. [Record](changes/evidence-alignment-20260923.md) |
 | 2026-09-13 enhanced-report/status update | Focused 39 passed; Windows full suite 416 passed / 34 failed | The source record attributes failures to existing scientific-resource seals and training-history contract inconsistency; no resources were re-signed. This rewrite has not independently reproduced the diagnosis. |
 | 2026-09-11 performance implementation | Windows 532 passed, 60 warnings, 332.74 s; dependency check and diff check passed | A historical checkout/test inventory, not the latest suite result |
 
@@ -230,3 +231,5 @@ Template-only J0/J1 engineering qualification, assessment execution and
 independent scientific validation are distinct gates. `h4l-off-test01` completed
 assessment under a non-independent self-review, so its diagnostics remain
 exploratory. Changing the workflow or run name does not reset source usage history.
+
+See [F4/F11/F12 verification](changes/evidence-alignment-20260923.md) for current software checks, archive restoration and build boundaries. The unfinished computation under `runs/` is separate from the selected archived test01.

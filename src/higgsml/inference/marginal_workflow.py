@@ -138,24 +138,10 @@ def _id(run):
 
 
 def source_history(prepared):
-    """Read identity receipts only, anchored to the original prepared lineage."""
-    root = prepared.path.parents[1]
-    found = []
-    for directory in (root / '.research-claims', root / '.h4l-mass-off-v2-claims', root / '.h4l-mass-off-v3-claims', root / '.h4l-population-access'):
-        if directory.is_symlink():
-            raise ResearchError('unsafe source history directory')
-        if directory.exists():
-            for path in sorted(directory.glob('*.json')):
-                if path.is_symlink():
-                    raise ResearchError('unsafe source history receipt')
-                value = read_json(path)
-                binding = value.get('binding', value)
-                if (binding.get('population_id') == prepared.manifest.get('population_id')
-                        or binding.get('prepared_artifact_id') == _id(prepared)):
-                    if binding.get('stage') == 'model-self':
-                        continue
-                    found.append({'path': str(path.resolve()), 'sha256': sha256_file(path), 'claim': value})
-    return found
+    """Read current and declared archived identity receipts, never event payloads."""
+    from higgsml.inference.population_history import audit_population_history
+    return audit_population_history(prepared.path.parents[1],
+        population_id=prepared.manifest.get('population_id'), prepared_id=_id(prepared))['matches']
 
 
 def register(source_root, prepared_path, protocol, output, allowed_root, t1_path=None, *,

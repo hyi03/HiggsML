@@ -31,6 +31,7 @@ from higgsml.artifacts import digest_json  # noqa: E402
 from higgsml.cleanup import remove_run_directories  # noqa: E402
 from higgsml.errors import ResearchError  # noqa: E402
 from higgsml.protocol import load_protocol  # noqa: E402
+from higgsml.qualification import contract_checked  # noqa: E402
 from higgsml.run_names import prepare_directory_name, workflow_directory_name  # noqa: E402
 from higgsml.workflow_resume import classify_stage  # noqa: E402
 
@@ -124,18 +125,21 @@ def _load_json(path: Path) -> dict:
 def _validate_t1(path: Path, protocol_path: Path) -> None:
     try:
         evidence = _load_json(path)
-        schema = _load_json(T1_SCHEMA)
+        schema_path = (T1_SCHEMA.with_name("t1_validation_v2.schema.json")
+                       if evidence.get("schema_version") == "h4l-t1-validation-v2" else T1_SCHEMA)
+        schema = _load_json(schema_path)
         Draft202012Validator(schema).validate(evidence)
+        checked = contract_checked(evidence, "t1")
         protocol = load_protocol(protocol_path, dataset=DATASET).to_dict()
     except (ValidationError, ResearchError) as error:
         raise WorkflowError(f"Invalid T1 validation evidence: {path}: {error}", 3) from error
     if (
-        evidence.get("status") != "validated"
+        not checked
         or evidence.get("dataset") != DATASET
         or evidence.get("protocol_sha256") != digest_json(protocol)
     ):
         raise WorkflowError(
-            "T1 validation evidence is not validated and bound to the current dataset/protocol.",
+            "T1 software contract evidence is pending or not bound to the current dataset/protocol.",
             3,
         )
 

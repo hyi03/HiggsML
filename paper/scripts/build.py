@@ -4,6 +4,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
+from paper_snapshot import load_snapshot
 
 PAPER_DIR = Path(__file__).resolve().parents[1]
 LATEX_DIR = PAPER_DIR / "latex"
@@ -13,25 +15,32 @@ EVIDENCE_DIR = PAPER_DIR / "evidence"
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--latexmk", default="latexmk", help="latexmk executable or full path")
-    parser.add_argument(
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument(
         "--run-name",
         help=("Short run name. When supplied, refresh the checked snapshot from "
               "runs/h4l-off-<name> before building."),
     )
+    source.add_argument('--evidence-manifest', type=Path, help='Reverify the selected archived report before building.')
     args = parser.parse_args()
-    if args.run_name:
+    snapshot_dir = None
+    if args.run_name or args.evidence_manifest:
+        # A fresh extraction cannot overwrite the selected historical snapshot.
+        snapshot_dir = Path(tempfile.mkdtemp(prefix='higgsml-paper-')) / 'snapshot'
+        selection_args = (['--run-name', args.run_name] if args.run_name else
+                          ['--evidence-manifest', str(args.evidence_manifest.resolve())])
         subprocess.run(
             [sys.executable, str(PAPER_DIR / "scripts/collect_evidence.py"),
-             "--run-name", args.run_name],
+             *selection_args, '--output', str(snapshot_dir)],
             cwd=PAPER_DIR.parent,
             check=True,
         )
-    if not (EVIDENCE_DIR / "data/results.json").is_file():
-        raise SystemExit("Missing checked snapshot. Run paper/scripts/collect_evidence.py first.")
+    load_snapshot(snapshot_dir, refreshed=snapshot_dir is not None)
     latexmk = shutil.which(args.latexmk)
     if not latexmk:
         raise SystemExit("latexmk is unavailable; add TeX Live to PATH or pass --latexmk PATH.")
-    subprocess.run([sys.executable, str(PAPER_DIR / "scripts/make_figures.py")], cwd=PAPER_DIR, check=True,
+    figure_args = ['--snapshot-dir', str(snapshot_dir), '--refreshed'] if snapshot_dir else []
+    subprocess.run([sys.executable, str(PAPER_DIR / "scripts/make_figures.py"), *figure_args], cwd=PAPER_DIR, check=True,
                    stdout=subprocess.DEVNULL)
     build = LATEX_DIR / ".build"
     build.mkdir(exist_ok=True)

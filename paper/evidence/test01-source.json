@@ -1,0 +1,19 @@
+{
+  "schema_version": "higgsml-paper-source-v1",
+  "report": "var/runs-test-01/h4l-off-test01-old1/evaluation/report",
+  "report_artifact_id": "3fe3e15ffe27f8480719deaa2a84a201d6a5062ca2611b0c5f67d62f54d23e05",
+  "access_review": {
+    "path": "var/runs-test-01/h4l-off-test01-old1/access-review",
+    "artifact_id": "0b8f4df7101b85fa2ce11f4e8f07fc100b41b5a13a6325293711045c642f2560"
+  },
+  "path_maps": [
+    {
+      "original": "D:/code/HiggsML/runs/h4l-off-test01",
+      "archived": "var/runs-test-01/h4l-off-test01-old1"
+    },
+    {
+      "original": "D:/code/HiggsML/runs",
+      "archived": "var/runs-test-01"
+    }
+  ]
+}

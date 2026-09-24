@@ -159,18 +159,23 @@ def _unchanged(rows):
 
 
 def _qualification(prepared, t1, protocol, accepted_protocol_sha256, *, force=False):
+    from higgsml.qualification import contract_checked, contract_qualification
     p0 = prepared.read_json('p0-validation.json') if 'p0-validation.json' in prepared.manifest['files'] else {}
     automated = [name for name,value in (('p0',p0),('t1',t1 or {}))
-                 if 'automated' in str(value.get('independent_reference','')).lower()]
+                 if 'automated' in str(value.get('independent_reference','')).lower()
+                 or str(value.get('evidence_id', '')).startswith('automated-')]
+    checked = (not force and contract_checked(p0, 'p0') and contract_checked(t1, 't1')
+               and t1.get('protocol_sha256') in accepted_protocol_sha256)
+    dimensions = contract_qualification(checked)
     # A free-form reference string is never a reviewed numerical evidence package.
     if force:
-        return {'software_contract':'forced_debug_unverified', 'independent_reference':'pending',
+        return {**dimensions, 'software_contract':'forced_debug_unverified', 'independent_reference':'pending',
                 'automated_materials':automated,
                 'assessment_access':'pending_independent_history_and_reference_review',
                 'allowed_conclusions':'debug_only_no_scientific_conclusions',
                 'missing':['protocol_consistency_bypassed','independent_P0_physical_definitions',
                            'signed_MC_T1_applicability_reference','assessment_history_review']}
-    return {'software_contract':'valid' if t1 and t1.get('protocol_sha256') in accepted_protocol_sha256 else 'pending',
+    return {**dimensions, 'software_contract':'valid' if checked else 'pending',
             'independent_reference':'pending', 'automated_materials':automated,
             'assessment_access':'pending_independent_history_and_reference_review',
             'allowed_conclusions':'exploratory_MC_model_self_only',

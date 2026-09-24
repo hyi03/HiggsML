@@ -35,6 +35,7 @@ from higgsml.artifacts import digest_json, read_run  # noqa: E402
 from higgsml.cleanup import remove_run_directories  # noqa: E402
 from higgsml.errors import ResearchError  # noqa: E402
 from higgsml.protocol import load_protocol  # noqa: E402
+from higgsml.qualification import contract_checked  # noqa: E402
 from higgsml.run_names import prepare_directory_name, workflow_directory_name  # noqa: E402
 
 
@@ -190,20 +191,24 @@ def _continue_stage(
 def _validate_t1(path: Path, protocol_path: Path, dataset: str) -> None:
     try:
         evidence = json.loads(path.read_text(encoding="utf-8-sig"))
-        schema = json.loads(T1_SCHEMA.read_text(encoding="utf-8-sig"))
+        schema_path = (T1_SCHEMA.with_name("t1_validation_v2.schema.json")
+                       if isinstance(evidence, dict)
+                       and evidence.get("schema_version") == "h4l-t1-validation-v2" else T1_SCHEMA)
+        schema = json.loads(schema_path.read_text(encoding="utf-8-sig"))
         Draft202012Validator(schema).validate(evidence)
+        checked = contract_checked(evidence, "t1")
         protocol = load_protocol(protocol_path, dataset=dataset).to_dict()
     except (OSError, json.JSONDecodeError, ValidationError, ResearchError) as error:
         raise WorkflowError(f"Invalid T1 validation evidence: {path}: {error}", 3) from error
     if evidence.get("status") == "pending":
         raise WorkflowError(
-            "T1 evidence is pending; the controlled MC batch cannot start before independent review.", 3
+            "T1 evidence is pending; exploratory execution requires bound software contract checks.", 3
         )
-    if (evidence.get("status") != "validated"
+    if (not checked
             or evidence.get("dataset") != dataset
             or evidence.get("protocol_sha256") != digest_json(protocol)):
         raise WorkflowError(
-            "T1 validation evidence is not validated and bound to the current dataset/protocol.", 3
+            "T1 software contract evidence is not checked and bound to the current dataset/protocol.", 3
         )
 
 

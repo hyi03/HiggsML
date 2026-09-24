@@ -7,13 +7,15 @@ import shutil
 import uuid
 
 from higgsml.artifacts import digest_json, read_json, sha256_file
-from higgsml.errors import ResearchError
+from higgsml.errors import ResearchError, ResearchStateError
+from higgsml.inference.population_history import audit_population_history
 
 
 MODE = "single_researcher_self_review"
 STATUS = "validated_for_self_reviewed_exploratory_access"
 CONCLUSIONS = "exploratory_self_reviewed_not_independently_validated"
 EVIDENCE_SCHEMA = "h4l-off-self-review-evidence-v1"
+ACCESS_SCHEMA = "h4l-off-self-review-access-v2"
 
 
 def _artifact_id(path: Path) -> str:
@@ -62,6 +64,12 @@ def generate_self_review(run_root, prepared_root, *, reviewer: str) -> Path:
     if not p0_source.is_file() or not t1_source.is_file():
         raise ResearchError("bound automated P0/T1 material is missing")
 
+    history = audit_population_history(prepared_root.parents[1],
+        population_id=registration['population_id'], prepared_id=prepared_id)
+    if history['matches']:
+        raise ResearchStateError('assessment history is not unused in declared roots',
+                                 status='blocked_missing_eligible_assessment_source')
+
     staging = run_root / f".source-access-review.{uuid.uuid4().hex}.staging"
     staging.mkdir()
     try:
@@ -86,13 +94,14 @@ def generate_self_review(run_root, prepared_root, *, reviewer: str) -> Path:
         _write(t1_path, {**common, "evidence_kind": "signed_mc_t1", "source": str(t1_source),
                          "source_sha256": sha256_file(t1_source)})
         review = {
-            "schema_version": "h4l-off-assessment-access-v1",
+            "schema_version": ACCESS_SCHEMA,
             "status": STATUS,
             "review_mode": MODE,
             "independent": False,
             "reviewer": reviewer,
             **bindings,
-            "history_review": "self_reviewed_unused_assessment_population",
+            "history_review": "self_reviewed_no_access_in_declared_roots",
+            "history_audit": history,
             "role_isolation": "self_reviewed_physical_groups_disjoint",
             "allowed_conclusions": CONCLUSIONS,
             "p0_reference": _receipt(p0_path),
@@ -110,14 +119,27 @@ def generate_self_review(run_root, prepared_root, *, reviewer: str) -> Path:
 
 
 def validate_self_review_access(review: dict, package_root) -> dict:
+    current = isinstance(review, dict) and review.get('schema_version') == ACCESS_SCHEMA
+    if current:
+        from jsonschema import Draft202012Validator
+        from jsonschema.exceptions import ValidationError
+        schema = read_json(Path(__file__).resolve().parents[3] /
+                           'config/schemas/h4l_self_review_access_v2.schema.json')
+        try:
+            Draft202012Validator(schema).validate(review)
+        except ValidationError as error:
+            raise ResearchError('invalid self-review history audit: ' + error.message) from error
     expected = {"schema_version", "status", "review_mode", "independent", "reviewer",
                 "prepared_artifact_id", "population_id", "protocol_sha256", "freeze_artifact_id",
                 "history_review", "role_isolation", "allowed_conclusions", "p0_reference", "t1_reference"}
+    if current:
+        expected.add('history_audit')
     if (not isinstance(review, dict) or set(review) != expected
-            or review["schema_version"] != "h4l-off-assessment-access-v1"
+            or review["schema_version"] != (ACCESS_SCHEMA if current else "h4l-off-assessment-access-v1")
             or review["status"] != STATUS or review["review_mode"] != MODE
             or review["independent"] is not False or not review["reviewer"]
-            or review["history_review"] != "self_reviewed_unused_assessment_population"
+            or review["history_review"] != ('self_reviewed_no_access_in_declared_roots' if current
+                                           else "self_reviewed_unused_assessment_population")
             or review["role_isolation"] != "self_reviewed_physical_groups_disjoint"
             or review["allowed_conclusions"] != CONCLUSIONS):
         raise ResearchError("invalid single-researcher assessment access review")
