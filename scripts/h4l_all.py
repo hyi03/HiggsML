@@ -47,7 +47,9 @@ def _parser() -> argparse.ArgumentParser:
         help=f"Shared standard/off-only run name (default: {DEFAULT_RUN_NAME}).",
     )
     parser.add_argument('--access-review', type=Path)
-    parser.add_argument("--threshold-method", choices=["median-v1","joint-support-v1"], default="median-v1")
+    parser.add_argument("--threshold-method", choices=["median-v1", "joint-support-v1"],
+                        default="joint-support-v1",
+                        help="Threshold method (default: joint-support-v1); use median-v1 for legacy runs.")
     parser.add_argument('--plan-only', action='store_true',
                         help='Read metadata and print the plan without launching children or writing outputs.')
     parser.add_argument('--stage-b-only', action='store_true',
@@ -151,7 +153,7 @@ def _run(args: argparse.Namespace) -> None:
     readiness = check()
     python = sys.executable
     off_workers = str(_off_workers())
-    method_flags = ["--threshold-method",args.threshold_method] if args.threshold_method != "median-v1" else []
+    method_flags = ["--threshold-method", args.threshold_method]
     train_root = RUNS_ROOT / f"h4l-train-{name}"
     prepare_root = RUNS_ROOT / f"h4l-prepare-{name}"
     off_root = RUNS_ROOT / f"h4l-off-{name}"

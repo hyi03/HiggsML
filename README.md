@@ -74,12 +74,12 @@ python scripts/init_data.py --dataset atlas2020_4lep
 用一个命令串联 prepare、G1、五随机种子批次、off-only Stage B、C–E evaluation 和最终报告；继续执行取决于 population 历史、门控和访问审核。未提供外部 assessment access receipt 且声明的历史目录中未发现访问时，命令生成绑定当前运行的本地单人 self-review，结果仍是非独立、探索性的。先只读预检，再决定实际运行：
 
 ```bash
-python scripts/h4l_all.py --run-name planned-joint-001 --threshold-method joint-support-v1 --plan-only
+python scripts/h4l_all.py --run-name planned-joint-001 --plan-only
 ```
 
 `--plan-only` 不启动子任务、不写运行产物，也不打开事件或 assessment 数值。没有 prepared manifest 时只返回 `pending_prepare_identity`，不能据此认定新 population 可用。实际完整运行需去掉该参数；加 `--stage-b-only` 则在核验 Stage B 计划和报告后停止，不生成访问审核、不启动 evaluation。
 
-`--run-name` 同时用于 prepare、train 和 off-only 目录。阈值方法默认仍为 `median-v1`；使用联合支持选择必须显式传入 `--threshold-method joint-support-v1`，恢复时必须与注册方法一致。`--access-review` 接受显式审核文件，其资格由内容和绑定决定。不传运行名时默认使用 `default`：
+`--run-name` 同时用于 prepare、train 和 off-only 目录。`h4l_all.py` 的阈值方法默认使用 `joint-support-v1`，并将所选方法显式传给 Stage B 和 evaluation。恢复已有 `median-v1` 运行时必须传入 `--threshold-method median-v1`；方法与注册不一致时拒绝执行，不会自动转换旧产物。直接使用 `h4l_off_run.py` 或 attribution 注册入口时仍需显式选择联合方法。`--access-review` 接受显式审核文件，其资格由内容和绑定决定。不传运行名时默认使用 `default`：
 
 ```bash
 python scripts/h4l_all.py

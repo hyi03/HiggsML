@@ -28,8 +28,13 @@ def _isolated_command_contract(workflow, monkeypatch):
     monkeypatch.setattr(workflow, 'verify_completion', lambda *args: {'execution_status': 'complete'})
 
 
-def test_default_run_uses_marginal_workflow_without_version_flag(
-    tmp_path: Path, monkeypatch,
+@pytest.mark.parametrize(('flags', 'method'), [
+    ([], 'joint-support-v1'),
+    (['--threshold-method', 'joint-support-v1'], 'joint-support-v1'),
+    (['--threshold-method', 'median-v1'], 'median-v1'),
+])
+def test_threshold_method_reaches_stage_b_and_evaluation(
+    tmp_path: Path, monkeypatch, flags, method,
 ) -> None:
     workflow = _load_module()
     _isolated_command_contract(workflow, monkeypatch)
@@ -50,7 +55,7 @@ def test_default_run_uses_marginal_workflow_without_version_flag(
             access.write_text("{}", encoding="utf-8")
     monkeypatch.setattr(workflow, "_invoke", invoke)
 
-    workflow._run(workflow._parser().parse_args([]))
+    workflow._run(workflow._parser().parse_args(flags))
 
     assert [Path(command[1]).name for command in commands] == [
         "h4l_prepare.py",
@@ -66,14 +71,15 @@ def test_default_run_uses_marginal_workflow_without_version_flag(
     assert commands[2][2:] == ["--run-name", "default"]
     assert commands[3][2:] == [
         "--source-run-name", "default", "--run-name", "default",
-        "--stage-b", "--continue", "--workers", "2", "--worker-threads", "1",
+        "--stage-b", "--threshold-method", method,
+        "--continue", "--workers", "2", "--worker-threads", "1",
     ]
     assert commands[4][2:] == ["--run-name", "default"]
     assert commands[5][1:4] == ["-m", "higgsml.cli", "attribution"]
     assert commands[5][4] == "access-review"
     assert commands[6][2:] == [
         "--source-run-name", "default", "--run-name", "default",
-        "--evaluation", "--access-review",
+        "--threshold-method", method, "--evaluation", "--access-review",
         str(tmp_path / "h4l-off-default" / "access-review" / "validated-off-assessment-access.json"),
         "--workers", "2", "--worker-threads", "1",
     ]
@@ -107,7 +113,7 @@ def test_explicit_run_name_reuses_an_existing_access_review(
     assert len(commands) == 5
     assert commands[-1][2:] == [
         "--source-run-name", "study-001", "--run-name", "study-001",
-        "--evaluation", "--access-review", str(review),
+        "--threshold-method", "joint-support-v1", "--evaluation", "--access-review", str(review),
         "--workers", "4", "--worker-threads", "1",
     ]
 
