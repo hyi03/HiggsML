@@ -30,14 +30,19 @@ def prepared(tmp_path):
           {**value, 'artifact_id': digest_json(value)})
 
 
-def test_plan_only_never_invokes_work_or_creates_run_root(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize(('flags', 'method'), [
+    ([], 'joint-support-v1'),
+    (['--threshold-method', 'median-v1'], 'median-v1'),
+])
+def test_plan_only_never_invokes_work_or_creates_run_root(tmp_path, monkeypatch, capsys, flags, method):
     module = wrapper(tmp_path, monkeypatch)
     monkeypatch.setattr(module, '_invoke', lambda *_: pytest.fail('plan invoked a child'))
-    args = module._parser().parse_args(['--run-name', 'new', '--plan-only',
-                                      '--threshold-method', 'joint-support-v1'])
+    args = module._parser().parse_args(['--run-name', 'new', '--plan-only', *flags])
     module._run(args)
     plan = json.loads(capsys.readouterr().out)
-    assert plan['threshold_method'] == 'joint-support-v1'
+    assert plan['threshold_method'] == method
+    stage_b = plan['commands_before_access'][-1]
+    assert stage_b[stage_b.index('--threshold-method') + 1] == method
     assert plan['access_status'] == 'pending_prepare_identity'
     assert plan['scientific_qualification'] == 'unvalidated_exploratory_only'
     assert not (tmp_path / 'runs').exists()
@@ -58,13 +63,30 @@ def test_archive_history_blocks_before_prepare_or_training(tmp_path, monkeypatch
     assert error.value.exit_code == 5
 
 
-def test_existing_joint_registration_rejects_implicit_median_before_work(tmp_path, monkeypatch):
+@pytest.mark.parametrize(('registration', 'flags'), [
+    ({}, []),  # Historical median registrations omit the method field.
+    ({'threshold_method': 'median-v1'}, []),
+    ({'threshold_method': 'joint-support-v1'}, ['--threshold-method', 'median-v1']),
+])
+def test_registration_method_conflict_rejected_before_work(tmp_path, monkeypatch, registration, flags):
     module = wrapper(tmp_path, monkeypatch)
     write(tmp_path / 'runs/h4l-off-new/register/registration.json',
-          {'threshold_method': 'joint-support-v1'})
+          registration)
     monkeypatch.setattr(module, '_invoke', lambda *_: pytest.fail('method conflict started work'))
     with pytest.raises(module.WorkflowError, match='threshold'):
-        module._run(module._parser().parse_args(['--run-name', 'new']))
+        module._run(module._parser().parse_args(['--run-name', 'new', *flags]))
+
+
+@pytest.mark.parametrize(('registration', 'flags', 'method'), [
+    ({'threshold_method': 'joint-support-v1'}, [], 'joint-support-v1'),
+    ({}, ['--threshold-method', 'median-v1'], 'median-v1'),
+])
+def test_matching_registration_passes_read_only_plan(tmp_path, monkeypatch, capsys, registration, flags, method):
+    module = wrapper(tmp_path, monkeypatch)
+    write(tmp_path / 'runs/h4l-off-new/register/registration.json', registration)
+    monkeypatch.setattr(module, '_invoke', lambda *_: pytest.fail('plan invoked a child'))
+    module._run(module._parser().parse_args(['--run-name', 'new', '--plan-only', *flags]))
+    assert json.loads(capsys.readouterr().out)['threshold_method'] == method
 
 
 def test_support_stop_returns_blocked_not_success(tmp_path, monkeypatch):

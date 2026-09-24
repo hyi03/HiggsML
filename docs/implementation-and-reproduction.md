@@ -82,7 +82,7 @@ python scripts/init_data.py --dataset atlas2020_4lep
 python scripts/h4l_all.py --run-name planned-joint-001 --threshold-method joint-support-v1 --plan-only
 ```
 
-Omitting `--run-name` uses the stable name `default`; omitting `--threshold-method` preserves `median-v1`. An existing registration must match the requested method. `--plan-only` reads manifests, registration metadata and access ledgers, prints the planned commands, and never launches children or opens event/assessment payloads. Without an existing prepared identity it reports `pending_prepare_identity`, which is not access clearance. Actual execution checks again immediately after prepare, before training. Remove `--plan-only` only when ready to execute. Add `--stage-b-only` to stop after verifying the bound Stage B plan, inputs and report, without generating access reviews or running evaluation; historical assessment access does not prevent this explicitly limited scope.
+Omitting `--run-name` uses the stable name `default`; `h4l_all.py` defaults to `joint-support-v1` and explicitly forwards the selected method to Stage B and evaluation. Resume legacy median runs with `--threshold-method median-v1`. An existing registration must match the requested method; old artifacts are never converted automatically. `--plan-only` reads manifests, registration metadata and access ledgers, prints the planned commands, and never launches children or opens event/assessment payloads. Without an existing prepared identity it reports `pending_prepare_identity`, which is not access clearance. Actual execution checks again immediately after prepare, before training. Remove `--plan-only` only when ready to execute. Add `--stage-b-only` to stop after verifying the bound Stage B plan, inputs and report, without generating access reviews or running evaluation; historical assessment access does not prevent this explicitly limited scope.
 
 Re-running the same command validates published manifests and skips complete stages before continuing at the next missing stage. Invalid final stage directories are quarantined without deleting `.failed` evidence. The wrapper passes `--worker-threads 1` to `h4l_off_run.py` and selects `--workers` from 1--4 from installed physical memory: it first retains 2 GiB for local orchestration and system variation, then budgets 5 GiB for each worker, falling back to one worker when physical memory cannot be detected. A 16 GiB host therefore starts two workers. The allowance covers transient process peaks while pyhf/SciPy fitting and result serialization overlap. Complete bootstrap, Toy, and T2 work units can therefore run in bounded parallelism without nested thread expansion. A pre-existing bound access review is reused; otherwise a local named-user single-researcher self-review can be generated only when the declared history contains no matching access. This remains explicitly non-independent and exploratory. Frozen assessment/T2 budget claims are never bypassed by resume.
 
@@ -453,10 +453,12 @@ while schema IDs inside immutable artifacts remain versioned. Software and
 synthetic checks do not establish controlled-MC qualification.
 
 
-### Opt-in joint support threshold selection
+### Joint support threshold selection
 
-`--threshold-method joint-support-v1` registers `h4l-off-joint-support-v1` while
-leaving the default `median-v1` workflow unchanged. It reuses audited frozen
+`h4l_all.py` defaults to `joint-support-v1`. The direct `h4l_off_run.py` and
+attribution registration entry points retain `median-v1` as their default;
+pass `--threshold-method joint-support-v1` there to register `h4l-off-joint-support-v1`.
+The method reuses audited frozen
 models, reconstructs a new nominal artifact on the fixed [105,140] grid, and
 binds all 19 quantile candidates and the selected threshold to a separate
 analysis contract. An explicit flag conflicting with registration is rejected.
