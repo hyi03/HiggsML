@@ -1,11 +1,11 @@
 ---
 title: H→ZZ*→4ℓ 中无显式四轻子质量输入的运动学特征归因与信号强度推断
 title_en: Kinematic Feature Attribution and Signal-Strength Inference without Explicit Four-Lepton Mass Input in H→ZZ*→4ℓ
-date: 2026-09-21
-version: writing-draft-v0.3
+date: 2026-09-23
+version: writing-draft-v0.4
 status: exploratory-MC-results-incomplete-validation
-documentation_source_revision: e066bae9a12e5bd2d02cd199bbd09a99151ea6d7
-scientific_result_baseline: h4l-off-test01/report-resume-6f5909a8b7f58d5e
+documentation_source_revision: 5275fc586ec25d41e84459e665c168dba6a31671 + F4-F11-F12 working-tree changes
+scientific_result_baseline: var/runs-test-01/h4l-off-test01-old1/evaluation/report
 protocol_reference: h4l-on-shell-software-v1
 scope: MC-only educational and technical demonstration
 ---
@@ -16,7 +16,7 @@ scope: MC-only educational and technical demonstration
 
 **作者、单位：**【待填：作者及单位】
 
-> 本文报告 h4l-off-test01 的探索性受控 MC 结果。数值来自已发布的冻结分析及最新恢复报告，方法核对至上述代码版本。运行整体仍为 incomplete，独立验证未完成。本文不构成 ATLAS/CMS 官方结果、Higgs 发现或真实数据物理测量。逐项来源、代码版本与文件摘要见[结果证据索引](result-evidence.md)。
+> 本文报告 h4l-off-test01 的探索性受控 MC 结果。中英文稿共同绑定 report `3fe3e15f…` 的同一聚合快照；原文件与 manifest 已在 `var/runs-test-01/h4l-off-test01-old1/` 按原哈希核验。当前源码检查版本与各阶段执行版本分别列于证据索引。运行整体仍为 incomplete，独立验证未完成。本文不构成 ATLAS/CMS 官方结果、Higgs 发现或真实数据物理测量。逐项来源、代码版本与文件摘要见[结果证据索引](result-evidence.md)。
 
 ## 摘要
 
@@ -65,7 +65,7 @@ y_{4\ell}=\frac{1}{2}\log\frac{E_{4\ell}+p_{z,4\ell}}
 | 训练种子 | 42、43、44、45、46 |
 | 软件协议 | h4l-on-shell-software-v1 |
 | 协议适用性 | 合成软件默认规则，尚非绑定 MC 的科学验证 |
-| 2e2μ 实际入选计数及物理产额 | 【待填：绑定输入审计】 |
+| 非 assessment 的角色计数及物理产额 | 绑定 prepared 审计见[结果证据索引](result-evidence.md)；不将角色重标度产额相加 |
 
 上述选择具有明确但有限的动机。固定 2020 MC 对使输入身份、标签和流程绑定可审计；选择 2e2μ 可限制首期工作量并减少同味配对歧义；on-shell 质量窗保留信号区及连续背景上下文；10 fb⁻¹ 提供统一的预期产额尺度。这些理由不证明具体窗口、角色比例或亮度是最优值，现有文档也没有建立其数值优化依据。是否适用于实际 MC 必须在冻结评估前审计，不能依据 assessment 的方法排名调整。
 
@@ -136,7 +136,7 @@ ABCD 共十九项，BC 六项，AC 十项。m4l 不属于四组，当前 off 模
 
 ### 3.2 学习器与校准
 
-网络结构为 input→Linear(64)→LayerNorm→SiLU→Dropout(0.1)→Linear(64)→LayerNorm→SiLU→Linear(32)→SiLU→Linear(1)。训练使用 CPU float32、AdamW、学习率 0.001、weight decay 0.0001、batch size 1024；最多 200 epochs，验证绝对权重 AUC 最小改善 0.0001、patience 20。标准化和类内绝对权重归一化由 train 估计。物理产额保留权重符号，优化使用类内均值归一后的绝对权重 BCE。
+按归档训练 manifest 的执行版本 `a4ecb8f3799729a01bb05aa00f1f5ef7c11b854a` 核对，网络结构为 input→Linear(64)→LayerNorm→SiLU→Dropout(0.1)→Linear(64)→LayerNorm→SiLU→Dropout(0.1)→Linear(32)→LayerNorm→SiLU→Linear(1)。训练使用 CPU float32、AdamW、学习率 0.001、weight decay 0.0001、batch size 1024；最多 200 epochs，验证绝对权重 AUC 最小改善 0.0001、patience 20。标准化和类内绝对权重归一化由 train 估计。物理产额保留权重符号，优化使用类内均值归一后的绝对权重 BCE。
 
 AUC 为所选 checkpoint 在 validation 角色上的绝对物理权重 AUC。它不使用 assessment，不是 signed 概率 ROC，也不是 CDF 后的新 AUC。相同隐藏宽度仍随输入数改变参数量，因此当前比较没有完全排除容量差异。
 
@@ -203,9 +203,9 @@ J0/J1 在 freeze 前检查模板边缘支持；J1 使用 200 次事件组 Bernou
 下表来自 nominal Asimov，而非 assessment 上重新优化后的结果。范围表示五个训练种子的最小／最大值，不是 MC 置信区间。空集相同，故此处相对空集的配对改善中位数也等于用宽度中位数计算的比值。
 
 | 组合 | 输入数 | W68 中位数 | 五种子最小–最大 | 相对空集改善 | 验证 AUC 中位数 |
-|---|---:|---:|---:|---:|---:|
-| BC | 6 | 1.511617 | 1.510597–1.519604 | 9.143% | 0.813139 |
-| AC | 10 | 1.515244 | 1.497197–1.517854 | 8.924% | 0.877541 |
+|---|---|---|---|---|---|
+| BC | 6 | 1.511617 | 1.510597–1.519604 | 9.143% | 0.813138 |
+| AC | 10 | 1.515244 | 1.497197–1.517854 | 8.924% | 0.877542 |
 | ABC | 14 | 1.521157 | 1.515306–1.530425 | 8.569% | 0.861716 |
 | BCD | 11 | 1.524459 | 1.510199–1.528379 | 8.371% | 0.828307 |
 | ABCD | 19 | 1.535930 | 1.529465–1.548047 | 7.681% | 0.846351 |
@@ -218,7 +218,7 @@ J0/J1 在 freeze 前检查模板边缘支持；J1 使用 200 次事件组 Bernou
 | CD | 7 | 1.600086 | 1.586208–1.607355 | 3.825% | 0.688374 |
 | A | 8 | 1.622891 | 1.615166–1.631261 | 2.454% | 0.683600 |
 | AD | 13 | 1.628972 | 1.622602–1.635079 | 2.089% | 0.684562 |
-| D | 5 | 1.659076 | 1.653873–1.662969 | 0.279% | 0.559358 |
+| D | 5 | 1.659076 | 1.653873–1.662969 | 0.279% | 0.559359 |
 | M0off（空集） | 0 | 1.663723 | 1.663723–1.663723 | 0.000% | — |
 
 BC 的宽度中位数最低，但逐种子冠军为 42:AC、43:BC、44:BC、45:BCD、46:AC。BC 和 AC 均没有在全部种子排名第一。ACD 的宽度范围为 1.522365–1.588725，显示其训练种子波动较大。
@@ -226,7 +226,7 @@ BC 的宽度中位数最低，但逐种子冠军为 42:AC、43:BC、44:BC、45:B
 ### 5.2 紧凑组合与完整表示
 
 | 比较（左／右） | 配对 ΔW68 中位数 | 配对相对改善中位数 | 95% 种子稳定性区间（改善） | 左侧胜出种子数 |
-|---|---:|---:|---:|---:|
+|---|---|---|---|---|
 | AC / BC | +0.001876 | -0.124% | [-0.361%, +0.943%] | 2/5 |
 | AC / ABCD | -0.021913 | +1.425% | [+0.930%, +3.285%] | 5/5 |
 | BC / ABCD | -0.019951 | +1.299% | [+1.031%, +2.364%] | 5/5 |
@@ -239,7 +239,7 @@ AC 的验证 AUC 中位数为 0.877541，高于 BC 的 0.813139；BC 的 W68 中
 ### 5.3 贡献与互补性
 
 | 组 | Shapley 中位数 | 95% 训练种子稳定性区间 |
-|---|---:|---:|
+|---|---|---|
 | A | +0.015023 | [+0.010241, +0.019018] |
 | B | +0.062223 | [+0.048518, +0.068939] |
 | C | +0.060943 | [+0.054209, +0.063676] |
@@ -252,7 +252,7 @@ AC 在空集条件下的二阶差分中位数为 +0.042459，95% 种子稳定性
 ### 5.4 覆盖与重复校准
 
 | 母模板／层次 | 注入 μ | 组合 | 68% 覆盖率中位数 | 95% 覆盖率中位数 |
-|---|---:|---|---:|---:|
+|---|---|---|---|---|
 | assessment | 0 | M0off | 0.8800 | 0.9900 |
 | assessment | 0 | BC | 0.8940 | 0.9800 |
 | assessment | 0 | AC | 0.9180 | 0.9940 |
@@ -280,8 +280,8 @@ AC 在空集条件下的二阶差分中位数为 +0.042459，95% 种子稳定性
 |---|---|---|
 | Nominal Asimov | 80 个身份 | 80/80 有效 |
 | MC bootstrap | 200 个完整副本 | 161 有效、39 不完整（19.5%） |
-| Model-self，μ=0 | 5 个种子区块 | 3 有效，43/44 为 blocked_consumed_budget |
-| Model-self，μ=1 | 5 个种子区块 | 4 有效，45 为 blocked_consumed_budget |
+| Model-self，μ=0 | 5 个种子区块 | 5/5 有效 |
+| Model-self，μ=1 | 5 个种子区块 | 5/5 有效 |
 | Model-self，μ=2 | 5 个种子区块 | 5 有效 |
 | Assessment，μ=0、1、2 | 各 5 个区块 | 15/15 有效；非独立自审 |
 | T2，μ=1 | 5 个区块 | 5/5 有效 |
@@ -290,7 +290,7 @@ AC 在空集条件下的二阶差分中位数为 +0.042459，95% 种子稳定性
 
 bootstrap 的 39 个失败副本共包含 49 个候选 insufficient_statistics 状态：D/seed42 为 37 次，D/seed43 为 5 次，D/seed44 为 4 次，ACD/seed46 为 2 次，AC/seed46 为 1 次。同一副本可涉及多个候选，因此 49 不能作为副本失败数。全部 148 条正式 bootstrap 不确定度导出记录均为 bootstrap_incomplete，区间为空。J1 通过并不与此矛盾：筛查抽样、支持对象和完整推断 bootstrap 的要求不同。
 
-这些结果说明 D 的部分模型在重采样下支持脆弱，但不证明负权重抵消是唯一原因。不能删除 D 或失败副本后重新把同一评估称为完整确认。三处 model-self 的预算阻断也不能当作零失败或由其他种子代替。
+这些结果说明 D 的部分模型在重采样下支持脆弱，但不证明负权重抵消是唯一原因。不能删除 D 或失败副本后重新把同一评估称为完整确认。早期恢复报告的三处 model-self 预算阻断属于另一报告版本；本稿选定归档报告的 15 个 model-self 单元均为 valid，不能混写这两份状态。
 
 ## 6 讨论与局限
 
@@ -314,4 +314,4 @@ BC/AC 是探索候选；Shapley 公理不保证最优子集选择 [R24](referenc
 
 核心方法对应 R14（INFERNO）、R15（Asimov／剖面似然）、R16–R21（有限 MC 与 pyhf）、R22–R25（归因与选择）、R29（欠覆盖）。项目方法以[文档索引](../docs/README.md)和绑定协议为准；当旧 docs 中的默认版本叙述与当前实现不同，以实际运行协议、manifest 和源码为此次结果依据。
 
-[结果证据索引](result-evidence.md)记录当前代码与实际运行代码的区别、所有数值来源及校验范围。此次论文更新读取已发布结果并重算汇总，没有重训模型、重新生成 Toy 或重开原始数据；没有把历史软件测试数目当作当前科学验证结果。
+[结果证据索引](result-evidence.md)记录当前代码与实际运行代码的区别、所有数值来源及校验范围。结果表由 `scripts/sync_manuscript.py` 从与英文图表相同的 `evidence/selected-snapshot.json` 选定快照生成。此次论文更新读取已发布结果并重算汇总，没有重训模型、重新生成 Toy 或重开原始数据；没有把历史软件测试数目当作当前科学验证结果。

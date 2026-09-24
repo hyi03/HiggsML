@@ -11,6 +11,7 @@ from higgsml.errors import ResearchError, ResearchStateError
 from higgsml.artifacts import digest_json
 from higgsml.inference.diagnostics import signed_mu_fit, signed_mu_summary
 from higgsml.resources import ordered_map
+from higgsml.qualification import contract_checked, contract_qualification
 
 
 def _is_sample_efficiency_payload(value):
@@ -48,9 +49,9 @@ def build_model(template, *, layer="T0", t1_validation=None, mu_max=20.):
     if template.get("status") != "valid":
         raise ResearchStateError("Template is not statistically usable", status="insufficient_statistics")
     if layer == "T1":
-        contract = {"status": "validated", "correlation": "independent_process_bins", "auxiliary": "poisson_tau_gamma", "modifier": "shapesys", "pyhf_version": "0.7.6"}
-        if not t1_validation or not t1_validation.get("evidence_id") or any(t1_validation.get(k) != v for k,v in contract.items()):
-            raise ResearchStateError("T1 requires independent numerical validation and exact modifier contract", status="template_stat_model_unvalidated")
+        contract = {"correlation": "independent_process_bins", "auxiliary": "poisson_tau_gamma", "modifier": "shapesys", "pyhf_version": "0.7.6"}
+        if not contract_checked(t1_validation, 't1') or any(t1_validation.get(k) != v for k,v in contract.items()):
+            raise ResearchStateError("T1 requires bound software checks and exact modifier contract; these do not grant independent numerical validation", status="template_stat_model_unvalidated")
     active = template["active_bins"]
     if not active:
         raise ResearchStateError("All bins are structural zeros", status="insufficient_statistics")
@@ -69,7 +70,7 @@ def build_model(template, *, layer="T0", t1_validation=None, mu_max=20.):
         samples.append({"name": s["name"], "data": y.tolist(), "modifiers": modifiers})
     specification = {"channels": [{"name": "mass_categories", "samples": samples}], "parameters": [{"name": "mu", "bounds": [[0.,float(mu_max)]], "inits": [1.]}]}
     model = pyhf.Model(specification, poi_name="mu")
-    return model, {"layer": layer, "pyhf_version": "0.7.6", "mapping_id": template["mapping_id"], "candidate_id": template["candidate_id"], "model_spec": specification, "auxiliary_constraint": "poisson_tau_gamma" if layer == "T1" else "none"}
+    return model, {"layer": layer, "qualification": contract_qualification(True), "pyhf_version": "0.7.6", "mapping_id": template["mapping_id"], "candidate_id": template["candidate_id"], "model_spec": specification, "auxiliary_constraint": "poisson_tau_gamma" if layer == "T1" else "none"}
 
 
 def profile_interval(model, data, confidence=.68):

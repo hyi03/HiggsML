@@ -14,6 +14,14 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_ROOT = PROJECT_ROOT / "scripts"
 RUNS_ROOT = PROJECT_ROOT / "runs"
+SOURCE_ROOT = PROJECT_ROOT / "src"
+if str(SOURCE_ROOT) not in sys.path:
+    sys.path.insert(0, str(SOURCE_ROOT))
+
+from higgsml.errors import ResearchError, ResearchStateError  # noqa: E402
+from higgsml.inference.run_readiness import preflight, verify_completion, verify_stage_b  # noqa: E402
+from higgsml.protocol import load_protocol  # noqa: E402
+from higgsml.run_names import workflow_directory_name  # noqa: E402
 DEFAULT_RUN_NAME = "default"
 MAX_OFF_WORKERS = 4
 LOCAL_MEMORY_RESERVE = 2 * 1024**3
@@ -40,6 +48,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument('--access-review', type=Path)
     parser.add_argument("--threshold-method", choices=["median-v1","joint-support-v1"], default="median-v1")
+    parser.add_argument('--plan-only', action='store_true',
+                        help='Read metadata and print the plan without launching children or writing outputs.')
+    parser.add_argument('--stage-b-only', action='store_true',
+                        help='Stop after a successful Stage B; do not generate access reviews or evaluate.')
     return parser
 
 
@@ -116,6 +128,7 @@ def _read_access_review(path: Path) -> tuple[Path, dict]:
         raise WorkflowError(f"Invalid access review JSON: {resolved}", 2) from error
     if not isinstance(review, dict) or review.get("schema_version") not in {
         "h4l-off-assessment-access-v1", "h4l-off-assessment-access-v3",
+        "h4l-off-self-review-access-v2",
     }:
         raise WorkflowError(f"Unsupported access review schema: {resolved}", 2)
     return resolved, review
@@ -123,7 +136,19 @@ def _read_access_review(path: Path) -> tuple[Path, dict]:
 
 def _run(args: argparse.Namespace) -> None:
     name = args.run_name
+    try:
+        workflow_directory_name(name)
+    except ValueError as error:
+        raise WorkflowError(str(error), 2) from error
     explicit_review = _read_access_review(args.access_review) if args.access_review else None
+    protocol = load_protocol().to_dict()
+    def check():
+        try:
+            return preflight(RUNS_ROOT, name, args.threshold_method, protocol)
+        except ResearchError as error:
+            raise WorkflowError(str(error), 5) from error
+
+    readiness = check()
     python = sys.executable
     off_workers = str(_off_workers())
     method_flags = ["--threshold-method",args.threshold_method] if args.threshold_method != "median-v1" else []
@@ -142,11 +167,36 @@ def _run(args: argparse.Namespace) -> None:
          "--stage-b", *method_flags, *_resume_flag(off_root),
          "--workers", off_workers, "--worker-threads", OFF_WORKER_THREADS],
     ]
-    for command in commands:
+    if args.plan_only:
+        print(json.dumps({**readiness, 'requested_scope': 'stage_b' if args.stage_b_only else 'full',
+            'commands_before_access': commands,
+            'evaluation_requires': ['bound access review', 'eligible history', 'registered budget'],
+            'run_name': name}, indent=2))
+        if readiness['access_blockers'] and not args.stage_b_only:
+            raise WorkflowError('Assessment preflight blocked: ' + '; '.join(readiness['access_blockers']), 5)
+        return
+    if readiness['access_blockers'] and not args.stage_b_only:
+        raise WorkflowError('Assessment preflight blocked: ' + '; '.join(readiness['access_blockers']), 5)
+    print(f"Threshold method: {args.threshold_method}; scope: exploratory, scientific validation pending", flush=True)
+    _invoke(commands[0])
+    # A new population is unknowable from a run name. Check immediately after
+    # prepare, before the expensive training batch or any assessment access.
+    readiness = check()
+    if readiness['prepared_artifact_id'] is None:
+        raise WorkflowError('Prepare did not publish a bound population manifest', 6)
+    if readiness['access_blockers'] and not args.stage_b_only:
+        raise WorkflowError('Assessment preflight blocked: ' + '; '.join(readiness['access_blockers']), 5)
+    for command in commands[1:]:
         _invoke(command)
 
     if not (off_root/'evaluation-plan'/'evaluation-plan.json').is_file():
-        print(f'Support qualification blocked freeze. Report: {off_root / "gate-failure-report" / "report.md"}')
+        raise WorkflowError(f'Support qualification blocked freeze. Report: {off_root / "gate-failure-report" / "report.md"}', 5)
+    if args.stage_b_only:
+        try:
+            completion = verify_stage_b(off_root, protocol)
+        except (ResearchError, OSError, ValueError) as error:
+            raise WorkflowError('Stage B execution incomplete: ' + str(error), 6) from error
+        print(json.dumps(completion, indent=2))
         return
     access_review = None
     if explicit_review and explicit_review[1]["schema_version"] == "h4l-off-assessment-access-v3":
@@ -164,12 +214,16 @@ def _run(args: argparse.Namespace) -> None:
                 '--evaluation-plan',str(off_root/'evaluation-plan'/'evaluation-plan.json'),
                 '--access-review',str(source_review),'--run-dir',str(off_root/'access-review')])
         if not access_review.is_file():
-            print('Assessment access remains blocked; evaluation was not started. '
-                  f'Stage B report: {off_root / "report-B" / "report.md"}')
-            return
+            raise WorkflowError('Assessment access remains blocked; evaluation was not started. '
+                  f'Stage B report: {off_root / "report-B" / "report.md"}', 5)
     _invoke([python,str(SCRIPTS_ROOT/'h4l_off_run.py'),
         '--source-run-name',name,'--run-name',name,*method_flags,'--evaluation',*_resume_flag(off_root/'evaluation'),
         '--access-review',str(access_review),'--workers',off_workers,'--worker-threads',OFF_WORKER_THREADS])
+    try:
+        completion = verify_completion(off_root, protocol)
+    except (ResearchError, OSError, ValueError) as error:
+        raise WorkflowError('Workflow execution incomplete: ' + str(error), 6) from error
+    print(json.dumps(completion, indent=2))
 
 
 def main() -> int:
@@ -178,6 +232,12 @@ def main() -> int:
     except WorkflowError as error:
         print(str(error), file=sys.stderr)
         return error.exit_code
+    except ResearchStateError as error:
+        print(str(error), file=sys.stderr)
+        return 5
+    except (ResearchError, OSError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return 3
     return 0
 
 

@@ -6,10 +6,16 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import argparse
+from paper_snapshot import load_snapshot
 
 PAPER_DIR = Path(__file__).resolve().parents[1]
 LATEX_DIR = PAPER_DIR / "latex"
-DATA = json.loads((PAPER_DIR / "evidence/data/results.json").read_text(encoding="utf-8"))
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--snapshot-dir', type=Path)
+parser.add_argument('--refreshed', action='store_true', help='Accept a newly verified provenance for identical pinned result bytes.')
+args = parser.parse_args()
+DATA = load_snapshot(args.snapshot_dir, refreshed=args.refreshed)
 FIG = LATEX_DIR / "figures"
 GEN = LATEX_DIR / "generated"
 FIG.mkdir(exist_ok=True)

@@ -1,76 +1,54 @@
-# PRD-style English manuscript
+# English and Chinese manuscript builds
 
-`latex/main.tex` is an independently written research draft, not a LaTeX conversion
-of `manuscript.md`. `latex/main.pdf` is the compiled reading copy. Author, affiliation,
-correspondence, and funding placeholders require the authors' information.
+Both drafts use [selected-snapshot.json](evidence/selected-snapshot.json), which pins
+result bytes, provenance bytes and report identity. The [version matrix](result-evidence.md)
+separates restored test01, the old Chinese recovery report and unfinished test03.
+The selected report is `var/runs-test-01/h4l-off-test01-old1/evaluation/report`;
+`var/runs-test-01/h4l-off-test01/` is another version.
 
-The draft is an exploratory simulation study. PRD/REVTeX styling does not establish
-submission readiness: the limitations in the abstract and validation section are
-part of the scientific result.
-
-## Build the supplied snapshot
-
-Use Python 3.12 with NumPy and Matplotlib (the project's `pytorch` Conda environment
-already supplies these), plus TeX Live with REVTeX 4.2, BibTeX, and latexmk.
-Run from the repository root:
+Use Python 3.12 in the `pytorch` environment, NumPy and Matplotlib. PDF compilation
+also requires TeX Live, REVTeX 4.2, BibTeX and latexmk. From the repository root:
 
 ```bash
-conda activate pytorch
+python paper/scripts/sync_manuscript.py --check
 python paper/scripts/build.py
 ```
 
-To refresh the checked snapshot from a particular off-only run before building,
-pass its short run name. For example, `test01` selects
-`runs/h4l-off-test01/evaluation/report` and the other bound artifacts under
-`runs/h4l-off-test01/`:
+`sync_manuscript.py` without `--check` regenerates Chinese result tables from the
+same pinned snapshot used by the English numeric macros and figures. The PDF build
+rejects undefined references, overfull boxes and stuck floats. Visual PDF inspection
+remains separate. Author/contact/affiliation/funding placeholders still need author input.
+
+To reverify archived sources and rebuild identical selected results:
 
 ```bash
-python paper/scripts/build.py --run-name test01
+python paper/scripts/build.py --evidence-manifest paper/evidence/test01-source.json
 ```
 
-If latexmk is not on PATH, pass its executable explicitly:
+The source manifest pins report/access identities and explicit original-to-archive
+path maps. Fresh provenance timestamps may differ, but the existing paper requires
+identical pinned result bytes. The selected snapshot is never overwritten.
+`--run-name NAME` selects `runs/h4l-off-NAME/evaluation/report`; it is usable only
+when its results match the paper selection. Changing analyses requires reconciling
+both drafts and explicitly updating the selection.
+
+Export a separate snapshot, without changing either draft:
 
 ```bash
-python paper/scripts/build.py --latexmk /path/to/latexmk
+python paper/scripts/collect_evidence.py --evidence-manifest paper/evidence/test01-source.json --output var/paper-evidence/test01-new-check
+python paper/scripts/collect_evidence.py --report runs/h4l-off-test03/report-B --output var/paper-evidence/test03-stage-B-new-check
 ```
 
-The script generates four vector figures, two appendix tables, and the shared
-numeric macros, then builds `latex/main.pdf`. It uses an argument vector for latexmk
-and works without shell-dependent quoting. Intermediate TeX files and logs are
-placed in `latex/.build/`. It rejects undefined references, overfull boxes, and stuck
-floats before publishing the reading copy. Visual PDF inspection remains separate.
+Output directories must be fresh. For relocated files use repeatable `--path-map OLD=NEW`;
+the longest prefix wins. Maps never alter manifest bytes, artifact IDs or result meaning.
+Missing required sources, wrong identities and hash mismatches fail closed. Stage B
+missing results, failed bootstrap, valid intervals and either access independence value
+are retained as recorded. The exporter checks selected aggregates and manifest links,
+not every checkpoint/event/raw payload. No training, fitting, Toys or new assessment runs.
 
-## Refresh from the same published local artifacts
-
-```bash
-python paper/scripts/collect_evidence.py --run-name test01
-python paper/scripts/build.py
-```
-
-`collect_evidence.py` reads only the named published aggregate files in the retained
-run and its prepared audit. It verifies their byte counts and SHA-256 values,
-compares all 80 nominal widths with the Asimov output, and recomputes the four
-Shapley contributions, 24 conditional interactions, and 105 paired comparisons.
-It never reads event payloads, refits a likelihood, retrains a model, or creates
-pseudo-experiments. A missing or changed input fails instead of substituting an
-old Markdown value. It is intentionally bound to this paper's one retained run.
-
-## Materials
-
-- `latex/main.tex`, `latex/references.bib`: manuscript and bibliography entries.
-- `scripts/collect_evidence.py`: verified extraction of the aggregate snapshot.
-- `scripts/make_figures.py`: figures, appendix rows, and numeric macros from that snapshot.
-- `scripts/build.py`: reproducible paper-only build.
-- `evidence/README.md`: source identities, verification scope, and differences from old documentation.
-- `evidence/scispace-search.json`: literature discovery queries and bibliographic policy.
-- `evidence/data/`: checked aggregate snapshot, provenance, Crossref and official-page metadata.
-- `latex/figures/`: vector PDF figures and PNG previews consumed by the manuscript.
-- `latex/generated/`: numeric macros and appendix table bodies consumed by the manuscript.
-- `latex/.build/`: TeX logs and local layout-review artifacts.
-
-Generated results, figures, build files, and the PDF are ignored by
-`latex/.gitignore` and the repository rules. They are available locally, but should not
-be committed under the repository's generated-artifact policy. Preserve the
-`evidence/data/` snapshot when moving the draft to another machine; it makes rebuilding
-independent of the original run directory. The existing Markdown manuscript,
-research code, protocols, and published runs are unchanged.
+The selected generated snapshot is in `var/paper-evidence/`; the original snapshot remains
+in `paper/evidence/data/`. Preserve these ignored local packages and archived sources when
+moving the manuscript. Generated results/plots/PDFs must not be committed. A clean source
+checkout requires the separate evidence package to rebuild; permanent external archival
+publication has not been performed. See [verification](../docs/changes/evidence-alignment-20260923.md)
+for software, source, numerical, PDF and scientific qualification boundaries.

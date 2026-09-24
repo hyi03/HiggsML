@@ -1,6 +1,7 @@
 import json
 import importlib.util
 from pathlib import Path
+import pytest
 
 from higgsml.artifacts import digest_json, sha256_file
 
@@ -24,10 +25,8 @@ def _write(path: Path, value):
     path.write_text(json.dumps(value), encoding="utf-8")
 
 
-def test_generate_default_self_review_binds_current_stage_b(tmp_path):
-    from higgsml.inference.self_review import generate_self_review
-
-    prepared = tmp_path / "prepare"
+def _stage_b(tmp_path):
+    prepared = tmp_path / "prepared" / "prepare"
     run = tmp_path / "h4l-off-study"
     protocol = {"dataset": "atlas2020_4lep", "id": "test"}
     _write(prepared / "manifest.json", {"artifact_id": "1" * 64})
@@ -52,6 +51,12 @@ def test_generate_default_self_review_binds_current_stage_b(tmp_path):
             "freeze_artifact_id": "3" * 64,
         }
     })
+    return prepared, run
+
+
+def test_generate_default_self_review_binds_current_stage_b(tmp_path):
+    from higgsml.inference.self_review import generate_self_review
+    prepared, run = _stage_b(tmp_path)
 
     access = generate_self_review(run, prepared, reviewer="Local Researcher")
 
@@ -68,6 +73,35 @@ def test_generate_default_self_review_binds_current_stage_b(tmp_path):
             "sha256": sha256_file(target),
             "size_bytes": target.stat().st_size,
         }
+
+
+def test_self_review_checks_history_before_publishing_unused_claim(tmp_path):
+    from higgsml.inference.self_review import generate_self_review
+    from higgsml.errors import ResearchStateError
+    prepared, run = _stage_b(tmp_path)
+    _write(tmp_path / '.h4l-population-access/old.json', {
+        'population_id': '2' * 64, 'freeze_artifact_id': 'old',
+    })
+    with pytest.raises(ResearchStateError, match='history'):
+        generate_self_review(run, prepared, reviewer='Researcher')
+    assert not (run / 'source-access-review').exists()
+    assert not list(run.glob('*.staging'))
+
+
+def test_new_self_review_records_bounded_history_audit(tmp_path):
+    from higgsml.inference.self_review import generate_self_review, validate_self_review_access
+    from higgsml.errors import ResearchError
+    prepared, run = _stage_b(tmp_path)
+    access = generate_self_review(run, prepared, reviewer='Researcher')
+    review = json.loads(access.read_text())
+    assert review['history_review'] == 'self_reviewed_no_access_in_declared_roots'
+    assert review['history_audit']['roots'] == [str(tmp_path.resolve())]
+    assert review['history_audit']['matches'] == []
+    assert review['independent'] is False
+    validate_self_review_access(review, access.parent)
+    review['history_audit']['matches'] = [{'claim': 'consumed'}]
+    with pytest.raises(ResearchError, match='history'):
+        validate_self_review_access(review, access.parent)
 
 
 def test_self_review_cli_defaults_to_matching_named_prepare_root(

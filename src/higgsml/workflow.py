@@ -199,6 +199,7 @@ def _claim_assessment(root, prepared_id, protocol, freeze_id, *, repeat=False, p
 
 
 def _p0_audit(frame, protocol, audit, evidence_path):
+    from higgsml.qualification import contract_checked, contract_qualification
     result = dict(audit)
     kind = frame.attrs.get('source_kind')
     result['source_kind'] = kind
@@ -212,12 +213,14 @@ def _p0_audit(frame, protocol, audit, evidence_path):
         result['scientific_gate'] = 'p0_source_validation_missing'
         return result, None
     evidence = read_json(Path(evidence_path))
-    expected = {'status':'validated','dataset':protocol['dataset'],'protocol_sha256':digest_json(protocol),
+    expected = {'dataset':protocol['dataset'],'protocol_sha256':digest_json(protocol),
                 'source_evidence_sha256':digest_json(frame.attrs.get('source_evidence',{}))}
     definitions = evidence.get('physical_definitions',{})
-    if any(evidence.get(k)!=v for k,v in expected.items()) or not evidence.get('evidence_id') or not evidence.get('independent_reference') or not all(definitions.get(k) for k in ('processes','units','four_vectors','pairing','weights','selection')):
-        raise ResearchError('P0 evidence lacks bound independent source/physical-definition validation')
-    result.update(physics_sources_validated=True,p0_evidence_id=evidence['evidence_id'],scope='bound_mc_source_and_statistics')
+    if any(evidence.get(k)!=v for k,v in expected.items()) or not contract_checked(evidence, 'p0') or not all(definitions.get(k) for k in ('processes','units','four_vectors','pairing','weights','selection')):
+        raise ResearchError('P0 evidence lacks bound source/physical-definition contract checks')
+    result.update(physics_sources_validated=False, contract_checked=True,
+                  qualification=contract_qualification(True),
+                  p0_evidence_id=evidence['evidence_id'],scope='bound_mc_contract_and_statistics_only')
     return result,evidence
 
 
@@ -227,8 +230,11 @@ def _require_g0(prepared):
     audit = prepared.read_json('audit.json')
     if audit['status'] != 'passed':
         raise ResearchStateError('G0 did not pass',status='insufficient_statistics')
-    if prepared.manifest.get('source_kind') != 'synthetic' and audit.get('physics_sources_validated') is not True:
-        raise ResearchStateError('Controlled MC requires independent bound P0 physical source validation',status='p0_source_validation_missing')
+    # Legacy audits retain their original bytes; their old boolean is only a
+    # software prerequisite here, never an independent scientific approval.
+    if prepared.manifest.get('source_kind') != 'synthetic' and not (
+            audit.get('contract_checked') is True or audit.get('physics_sources_validated') is True):
+        raise ResearchStateError('Controlled MC requires bound P0 contract checks',status='p0_source_validation_missing')
 
 
 def expected_candidates():

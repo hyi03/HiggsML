@@ -1,0 +1,7 @@
+{
+  "schema_version": "h4l-history-roots-v1",
+  "roots": [
+    {"path": "runs", "required": false},
+    {"path": "var/runs-test-01", "required": true}
+  ]
+}

@@ -42,6 +42,27 @@ def test_t1_tau_auxiliary_and_finite_search_bounds():
         assert toys["count"]==2 and toys["auxiliary_generation"]==auxiliary
 
 
+def test_t1_v2_contract_preserves_model_without_promoting_validation():
+    from copy import deepcopy
+    from higgsml.qualification import contract_qualification
+    legacy = {"status":"validated", "evidence_id":"synthetic", "correlation":"independent_process_bins",
+              "auxiliary":"poisson_tau_gamma", "modifier":"shapesys", "pyhf_version":"0.7.6"}
+    checked = {**legacy, 'schema_version':'h4l-t1-validation-v2', 'status':'contract_checked',
+               'dataset':'atlas2020_4lep', 'protocol_sha256':'a'*64, 'independent_reference':None,
+               'qualification':contract_qualification(True),
+               'validation_summary':{'reviewed_by':'synthetic-test','reviewed_at':'test','numerical_tests':[]}}
+    old_model, old_meta = build_model(single_bin(), layer='T1', t1_validation=legacy)
+    model, meta = build_model(single_bin(), layer='T1', t1_validation=checked)
+    assert meta['model_spec'] == old_meta['model_spec']
+    assert model.config.auxdata == old_model.config.auxdata
+    assert meta['qualification']['independent_numerical_validation'] is False
+    assert old_meta['qualification']['physical_applicability'] is False
+    promoted = deepcopy(checked)
+    promoted['qualification']['independent_numerical_validation'] = True
+    with pytest.raises(ResearchError, match='v2 contract'):
+        build_model(single_bin(), layer='T1', t1_validation=promoted)
+
+
 def test_joint_physical_pairing_and_negative_rejection():
     f=pd.DataFrame({"role":["assessment"]*4,"event_group_id":["a","b","c","d"],"label":[0,0,1,1],"m4l":[106.]*4,"yield_weight":[2.,3.,4.,5.],"left":[0,1,0,1],"right":[1,0,1,0]})
     paired=paired_event_toys(f,category_columns={"a":"left","b":"right"},mass_edges=[105,110],mu=1,count=20,seed=42,mother_id="physical")

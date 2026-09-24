@@ -69,18 +69,34 @@ python scripts/init_data.py --dataset atlas2020_4lep
 
 The downloader uses direct HTTPS requests for contracted MC members and publishes the receipt only after size/hash verification. Inputs live under `data/raw/<dataset>/`. Never inspect, hash, preprocess, score, or plot real data. The 2025 downloader option does not change the active H4l dataset.
 
-Controlled preparation additionally requires P0 evidence binding `status=validated`, dataset, protocol digest, source-evidence digest, evidence ID, independent reference, and physical definitions for processes, units, four-vectors, pairing, weights, and selection. Filling in the word `validated` cannot replace that audit. The distinction between acquisition evidence and preparation-time checks is explained in [Data and processing](data-and-processing.md#input-identity-and-access).
+Controlled preparation automatically emits `h4l-p0-validation-v2` and `h4l-t1-validation-v2` materials with `status=contract_checked`. Dataset, protocol, source identity and the physical-definition / T1 modifier contracts remain bound. Qualification explicitly keeps `source_audited`, `independent_numerical_validation`, `physical_applicability` and `confirmatory_eligibility` false. `independent_reference=null` and an empty T1 numerical-test list do not invent independent evidence. See [P0 v2](../config/schemas/p0_validation_v2.schema.json) and [T1 v2](../config/schemas/t1_validation_v2.schema.json).
+
+Legacy v1 `validated` evidence remains readable for exploratory software execution and is never rewritten in place. G0 and T1 accept bound software prerequisites, while scientific access/applicability gates still require separate receipts, independent packages and history review. New audits/inference metadata publish the conservative interpretation. Pure paper export requires no prepare/train/inference rerun. Publishing new audit/freeze qualification artifacts requires fresh roots for affected downstream stages; do not silently replace old artifacts.
 
 ## Main workflow
 
-The normal end-to-end path first initializes the controlled dataset and then accepts only one optional workflow argument, `--run-name`:
+The end-to-end path first initializes the controlled dataset. Start with a metadata-only preflight and explicitly select the threshold method:
 
 ```powershell
 python scripts/init_data.py --dataset atlas2020_4lep
-python scripts/h4l_all.py --run-name test01
+python scripts/h4l_all.py --run-name planned-joint-001 --threshold-method joint-support-v1 --plan-only
 ```
 
-Omitting `--run-name` uses the stable name `default`. Re-running the same command validates published manifests and skips complete stages before continuing at the next missing stage. Invalid final stage directories are quarantined without deleting `.failed` evidence. The wrapper passes `--worker-threads 1` to `h4l_off_run.py` and selects `--workers` from 1--4 from installed physical memory: it first retains 2 GiB for local orchestration and system variation, then budgets 5 GiB for each worker, falling back to one worker when physical memory cannot be detected. A 16 GiB host therefore starts two workers. The allowance covers transient process peaks while pyhf/SciPy fitting and result serialization overlap. Complete bootstrap, Toy, and T2 work units can therefore run in bounded parallelism without nested thread expansion. A pre-existing bound access review is reused; otherwise the command records a local named-user single-researcher self-review, which remains explicitly non-independent and exploratory. Frozen assessment/T2 budget claims are never bypassed by resume. The commands below remain available for diagnosis, explicit planning, independent access-review replacement, and individual-stage recovery.
+Omitting `--run-name` uses the stable name `default`; omitting `--threshold-method` preserves `median-v1`. An existing registration must match the requested method. `--plan-only` reads manifests, registration metadata and access ledgers, prints the planned commands, and never launches children or opens event/assessment payloads. Without an existing prepared identity it reports `pending_prepare_identity`, which is not access clearance. Actual execution checks again immediately after prepare, before training. Remove `--plan-only` only when ready to execute. Add `--stage-b-only` to stop after verifying the bound Stage B plan, inputs and report, without generating access reviews or running evaluation; historical assessment access does not prevent this explicitly limited scope.
+
+Re-running the same command validates published manifests and skips complete stages before continuing at the next missing stage. Invalid final stage directories are quarantined without deleting `.failed` evidence. The wrapper passes `--worker-threads 1` to `h4l_off_run.py` and selects `--workers` from 1--4 from installed physical memory: it first retains 2 GiB for local orchestration and system variation, then budgets 5 GiB for each worker, falling back to one worker when physical memory cannot be detected. A 16 GiB host therefore starts two workers. The allowance covers transient process peaks while pyhf/SciPy fitting and result serialization overlap. Complete bootstrap, Toy, and T2 work units can therefore run in bounded parallelism without nested thread expansion. A pre-existing bound access review is reused; otherwise a local named-user single-researcher self-review can be generated only when the declared history contains no matching access. This remains explicitly non-independent and exploratory. Frozen assessment/T2 budget claims are never bypassed by resume.
+
+### Cross-root history and completion states
+
+[`config/h4l_history_roots.json`](../config/h4l_history_roots.json) declares the history scope. Paths are relative to the project root, cannot escape it or use symlinks/junctions, and must include the current run root. The current configuration includes `runs/` and the required `var/runs-test-01/` archive. Missing required roots and malformed ledgers fail closed. Preserve the archive and its original ledgers when relocating it, then update the declared path; do not remove a known root to obtain access. A fresh checkout lacking that archive needs the preserved history restored before this project's preflight can pass. Standalone roots outside a project registry retain a clearly bounded single-root audit, not a claim of globally unused data.
+
+All registered roots use the first configured root for new atomic population reservations; scans still include every declared root. Claim-only history is evidence of access/budget consumption, not proof of completed computation. Model-self claims do not consume assessment access. A different or unknown freeze for the same population blocks a new assessment/T2 run, including after a new run name or a new prepare artifact. Same-freeze continuation requires its existing bound access receipt and obeys the original budgets.
+
+New local reviews use [`h4l-off-self-review-access-v2`](../config/schemas/h4l_self_review_access_v2.schema.json): `history_review=self_reviewed_no_access_in_declared_roots`, audited root paths, registry hash, and empty matches. Legacy v1 reviews remain readable without rewriting them, but neither schema bypasses the live history gate. `independent=false` and the exploratory-only conclusion remain explicit; external review is also subject to live history.
+
+The wrapper returns `5` for preflight/access/support blocking and `6` when children exit normally but the requested completion evidence is missing or invalid. Other child failures retain their exit codes. Exit `0` means the requested execution scope completed (or a read-only plan returned without blocking). Full completion requires all 36 registered terminal units, their payload hashes and identities, and a report bound to those exact units and the plan. The reported path may select a current `report-resume-*` snapshot instead of an older `report`. Published numerical failures can be terminal: `execution_status=complete` can coexist with `scientific_status=incomplete`. Even numerically valid output remains `unvalidated_exploratory_only`. Stage B alone reports `stage_b_complete` and `evaluation_started=false` for this invocation.
+
+These orchestration checks do not change physical weights, add scale factors, replace T0/T1 interval algorithms, or establish selection-aware coverage. See the [entry-hardening record](changes/h4l-entry-hardening-20260924.md) for verification and remaining scientific prerequisites.
 
 ### Prepare reusable inputs
 
@@ -308,13 +324,19 @@ Relevant scientific-contract checks include all/none/alternating eligible ROOT s
 
 ### Retained `h4l-off-test01` evidence snapshot
 
-The latest complete report artifact in the retained local run is
-`runs/h4l-off-test01/evaluation/report-resume-6f5909a8b7f58d5e` with artifact ID
-`9c2413c8e5582e967b54f5a046883d5510143873941d6a53f320813297d47d68`.
-It was published from clean commit `e066bae9a12e5bd2d02cd199bbd09a99151ea6d7` and binds freeze artifact
-`aa8767f7f31688e8f6d501158a2e20d1ea0993abd83ae7f3f416f425045fe2ed`.
-The manifest status `complete` means report publication completed; the report's
-scientific `aggregate_status` is `incomplete`. Consumers must read both states.
+The paper selects `var/runs-test-01/h4l-off-test01-old1/evaluation/report`, artifact
+`3fe3e15ffe27f8480719deaa2a84a201d6a5062ca2611b0c5f67d62f54d23e05`.
+Report execution is `3819547357354aa04fa2dd85e1da3afeeaeb8ffb`; Asimov/freeze use
+`65a9d24f1f6ef0478669f3f0969fed0837938f61` and freeze
+`01e623db2028849e7751c6c83c8811864833acd141be7eb521f0a773fbbd6a17`.
+Publication is complete; aggregate status is incomplete. All 15 model-self cells
+in this selected report are valid. The old recovery report and its three blocked
+cells belong to another version, preserved in the [version matrix](../paper/result-evidence.md).
+
+Use `paper/scripts/collect_evidence.py --evidence-manifest paper/evidence/test01-source.json`
+with a fresh `--output` directory for the selected archive. Use explicit
+`--report runs/h4l-off-test03/report-B` for that incomplete Stage B publication.
+Path maps relocate sources while preserving original identities and hashes.
 
 Authoritative values are in `report.json` and the exported CSV files. In particular,
 `mass_off_feature_metrics.csv` contains the 80 nominal candidate rows,
@@ -417,8 +439,9 @@ python scripts/h4l_off_run.py \
   --access-review path/to/validated-off-assessment-access.json --show-command
 ```
 
-For the complete automatic path, including local self-review and access
-adaptation, run `python scripts/h4l_all.py --run-name fresh01`. Outputs from
+For an eligible population, the complete automatic path includes local self-review and access
+adaptation: first inspect `python scripts/h4l_all.py --run-name fresh01 --plan-only`, then remove
+`--plan-only` when ready. A new name alone does not establish eligibility. Outputs from
 that default path remain `single_researcher_self_review`, `independent=false`,
 and exploratory. The wrapper never upgrades them to independent evidence.
 
@@ -476,3 +499,5 @@ This verifies the pinned hashes and replays NPZ rows 201–400, plus nominal row
 It never imports these draws into formal bootstrap or accesses assessment.
 The expected 200/200 support and 131 nonmedian selections are implementation
 consistency checks, not independent validation or a guarantee for future draws.
+
+See [F4/F11/F12 verification](changes/evidence-alignment-20260923.md) for current software checks, archive restoration and build boundaries. The unfinished computation under `runs/` is separate from the selected archived test01.

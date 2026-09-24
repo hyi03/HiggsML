@@ -1,0 +1,7 @@
+{
+  "schema_version": "higgsml-paper-selection-v1",
+  "directory": "var/paper-evidence/test01-aligned-20260923-v2",
+  "report_artifact_id": "3fe3e15ffe27f8480719deaa2a84a201d6a5062ca2611b0c5f67d62f54d23e05",
+  "snapshot_sha256": "9688cbc2c2b90403739b5c24464c3e00a172949c6c3ba639540edfeb8845da7f",
+  "provenance_sha256": "9b3df46b0b1c5af862594001099ad83f55ca07de8252f5b701747ea733f0079a"
+}

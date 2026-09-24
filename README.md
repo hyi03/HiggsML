@@ -71,13 +71,15 @@ python scripts/init_data.py --dataset atlas2020_4lep
 
 ## 5. 运行 H4l 工作流
 
-用一个命令完成 prepare、G1、五随机种子批次、off-only Stage B、C–E evaluation 和最终报告。未提供外部 assessment access receipt 时，命令自动生成一个绑定当前运行的本地单人 self-review，并将结果明确标记为非独立、探索性：
+用一个命令串联 prepare、G1、五随机种子批次、off-only Stage B、C–E evaluation 和最终报告；继续执行取决于 population 历史、门控和访问审核。未提供外部 assessment access receipt 且声明的历史目录中未发现访问时，命令生成绑定当前运行的本地单人 self-review，结果仍是非独立、探索性的。先只读预检，再决定实际运行：
 
 ```bash
-python scripts/h4l_all.py --run-name test01
+python scripts/h4l_all.py --run-name planned-joint-001 --threshold-method joint-support-v1 --plan-only
 ```
 
-`--run-name` 是唯一需要输入的参数，同时用于 `runs/h4l-prepare-test01/`、`runs/h4l-train-test01/` 和 `runs/h4l-off-test01/`。`--access-review` 是可选的独立审核覆盖项。不传运行名时默认使用 `default`：
+`--plan-only` 不启动子任务、不写运行产物，也不打开事件或 assessment 数值。没有 prepared manifest 时只返回 `pending_prepare_identity`，不能据此认定新 population 可用。实际完整运行需去掉该参数；加 `--stage-b-only` 则在核验 Stage B 计划和报告后停止，不生成访问审核、不启动 evaluation。
+
+`--run-name` 同时用于 prepare、train 和 off-only 目录。阈值方法默认仍为 `median-v1`；使用联合支持选择必须显式传入 `--threshold-method joint-support-v1`，恢复时必须与注册方法一致。`--access-review` 接受显式审核文件，其资格由内容和绑定决定。不传运行名时默认使用 `default`：
 
 ```bash
 python scripts/h4l_all.py
@@ -87,17 +89,17 @@ python scripts/h4l_all.py
 
 封装命令为 `h4l_off_run.py` 传入 `--worker-threads 1`，并按已安装物理内存先保留 2 GiB 本机调度/系统余量，再按每个 worker 5 GiB、在 1--4 个 worker 之间选择 `--workers`；内存探测失败时使用 1 个 worker。因此 16 GiB 主机只启动 2 个 worker。该预算覆盖 pyhf/SciPy 拟合与结果序列化重叠时的瞬时峰值。Windows 上的 MC bootstrap replica、assessment 候选和 T2 replica 使用线程 worker，以避开长时间运行的 spawned Python 进程在 `torch_cpu.dll` 中崩溃；其他平台使用进程 worker。可并行的完整 bootstrap、Toy 和 T2 工作单元保持注册顺序，Stage B 的注册、模板、freeze 与 Asimov 仍按依赖顺序执行。
 
-没有 `--access-review` 时，命令会自动生成本地单人 self-review、转换为与当前 specification/evaluation-plan 精确绑定的 access receipt，并继续 assessment/T2。该自动路径始终记录 `independent=false`，只允许探索性结论。需要独立审核状态时，应显式传入与未打开 eligible population、当前 freeze 和 P0/T1 材料绑定的外部审核文件。
+访问历史由 [`config/h4l_history_roots.json`](config/h4l_history_roots.json) 统一声明，当前覆盖 `runs/` 和必需归档 `var/runs-test-01/`。归档缺失、历史损坏或不同 freeze 已占用同一 population 时会阻断完整运行；换名字、重做 prepare 或换目录都不会产生独立 population。新 self-review v2 记录实际检查范围和配置摘要，始终为 `independent=false`。同一 freeze 的恢复仍需有效绑定的既有 access receipt；外部审核不能覆盖已存在的访问历史。
 
-最终报告位于 `runs/h4l-off-<run-name>/evaluation/report/report.md`。`m4l=off` 仅表示分类器不输入显式四轻子质量，似然仍保留质量坐标。完整阶段契约、人工独立审核方式及恢复限制见[复现实验手册](docs/implementation-and-reproduction.md)。
+完成检查核验全部 36 个注册单元、终态摘要及其哈希、报告绑定，并输出实际报告路径（可能是 `report-resume-*`）。入口退出码 `5` 表示预检或门控阻断，`6` 表示执行产物不完整，`0` 表示请求范围执行完成（或只读计划未遇到阻断）；即使返回 `0`，仍需查看独立的 `scientific_status`，不能据此宣称科研验证通过。物理权重及区间算法保持现有定义。`m4l=off` 仅表示分类器不输入显式四轻子质量，似然仍保留质量坐标。完整阶段契约、人工独立审核方式及恢复限制见[复现实验手册](docs/implementation-and-reproduction.md)。
 
 运行完成后，可从同一 off-only run 重新校验论文聚合快照、生成图表并编译 PDF：
 
 ```bash
-python paper/scripts/build.py --run-name test01
+python paper/scripts/build.py --evidence-manifest paper/evidence/test01-source.json
 ```
 
-这里的短名称 `test01` 对应 `runs/h4l-off-test01/`。生成的阅读版位于
+这里显式选择归档 `var/runs-test-01/h4l-off-test01-old1/` 的已核验报告；当前 `runs/` 未完成运算另列。生成的阅读版位于
 `paper/latex/main.pdf`；构建依赖和单独刷新证据快照的方法见
 [`paper/README.md`](paper/README.md)。
 

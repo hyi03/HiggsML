@@ -126,15 +126,64 @@ def test_automatic_validation_is_bound_and_schema_valid(
 
     for schema_name, instance in (
         ("h4l_root_input_v1.schema.json", manifest),
-        ("p0_validation_v1.schema.json", p0),
-        ("t1_validation_v1.schema.json", t1),
+        ("p0_validation_v2.schema.json", p0),
+        ("t1_validation_v2.schema.json", t1),
     ):
         schema = json.loads((VALIDATION_ROOT / schema_name).read_text(encoding="utf-8"))
         Draft202012Validator(schema).validate(instance)
-    assert p0["status"] == "validated"
-    assert t1["status"] == "validated"
+    assert p0["status"] == "contract_checked"
+    assert t1["status"] == "contract_checked"
+    for evidence in (p0, t1):
+        assert evidence["independent_reference"] is None
+        assert evidence["qualification"]["contract_checked"] is True
+        assert evidence["qualification"]["source_audited"] is False
+        assert evidence["qualification"]["independent_numerical_validation"] is False
+        assert evidence["qualification"]["physical_applicability"] is False
+        assert evidence["qualification"]["confirmatory_eligibility"] is False
     assert p0["evidence_id"].startswith("automated-p0-")
     assert t1["evidence_id"].startswith("automated-t1-")
+
+
+@pytest.mark.parametrize("consumer", ["g1", "batch"])
+@pytest.mark.parametrize("case", [
+    "generated_v2", "legacy_v1", "pending_v1", "invalid_status",
+    "scientific_promotion", "wrong_protocol", "unknown_version",
+])
+def test_t1_consumers_accept_contracts_without_scientific_promotion(
+    tmp_path: Path, consumer: str, case: str,
+) -> None:
+    prepare = _load_prepare_module()
+    receipt, _ = _dataset_receipt(tmp_path)
+    _, evidence = prepare._automated_validations(prepare._manifest_from_receipt(receipt))
+    if case in {"legacy_v1", "pending_v1"}:
+        evidence.pop("qualification")
+        evidence.update(schema_version="h4l-t1-validation-v1", status="validated",
+                        independent_reference="automated-not-independent:legacy")
+        evidence["validation_summary"]["numerical_tests"] = ["legacy contract checks"]
+        if case == "pending_v1":
+            evidence["status"] = "pending"
+    elif case == "invalid_status":
+        evidence["status"] = "validated"
+    elif case == "scientific_promotion":
+        evidence["qualification"]["independent_numerical_validation"] = True
+    elif case == "wrong_protocol":
+        evidence["protocol_sha256"] = "0" * 64
+    elif case == "unknown_version":
+        evidence["schema_version"] = "h4l-t1-validation-v99"
+    path = tmp_path / "t1-validation.json"
+    path.write_text(json.dumps(evidence), encoding="utf-8")
+    before = path.read_bytes()
+    module = _load_g1_module() if consumer == "g1" else _load_run_module()
+    arguments = [path, prepare.DEFAULT_PROTOCOL]
+    if consumer == "batch":
+        arguments.append("atlas2020_4lep")
+    if case in {"generated_v2", "legacy_v1"}:
+        module._validate_t1(*arguments)
+    else:
+        with pytest.raises(module.WorkflowError) as error:
+            module._validate_t1(*arguments)
+        assert error.value.exit_code == 3
+    assert path.read_bytes() == before
 
 
 def test_prepare_plan_stops_after_audit_and_prepare(
@@ -321,8 +370,8 @@ def test_prepare_writes_automatic_inputs_before_running_prerequisites(
     )
 
     inputs = run_root / "inputs"
-    assert json.loads((inputs / "p0-validation.json").read_text(encoding="utf-8"))["status"] == "validated"
-    assert json.loads((inputs / "t1-validation.json").read_text(encoding="utf-8"))["status"] == "validated"
+    assert json.loads((inputs / "p0-validation.json").read_text(encoding="utf-8"))["status"] == "contract_checked"
+    assert json.loads((inputs / "t1-validation.json").read_text(encoding="utf-8"))["status"] == "contract_checked"
     assert (inputs / "h4l-root-input-v1-manifest.json").is_file()
     assert [arguments[0] for arguments in invoked] == ["audit", "prepare"]
     assert "--show-prepare-progress" not in invoked[0]
