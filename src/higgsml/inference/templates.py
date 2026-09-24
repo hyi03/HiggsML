@@ -6,6 +6,7 @@ import pandas as pd
 
 from higgsml.errors import ResearchError, ResearchStateError
 from higgsml.inference.statistics import GroupBinStatistics, mass_merge_projection
+from higgsml.qualification import contract_checked
 
 
 def build_templates(frame, *, mass_edges, mapping_id, candidate_id,
@@ -146,9 +147,10 @@ def gate_g1(calibration_statuses, templates, t1_validation):
         except (KeyError,ValueError,TypeError,IndexError):
             if "template_stat_model_unvalidated" not in reasons:
                 reasons.append("template_stat_model_unvalidated")
-    contract = {"status": "validated", "correlation": "independent_process_bins", "auxiliary": "poisson_tau_gamma", "modifier": "shapesys", "pyhf_version": "0.7.6"}
-    if not t1_validation or not t1_validation.get("evidence_id") or any(t1_validation.get(k) != v for k,v in contract.items()):
-        reasons.append("template_stat_model_unvalidated")
+    contract = {"correlation": "independent_process_bins", "auxiliary": "poisson_tau_gamma", "modifier": "shapesys", "pyhf_version": "0.7.6"}
+    if not contract_checked(t1_validation, "t1") or any(t1_validation.get(k) != v for k,v in contract.items()):
+        if "template_stat_model_unvalidated" not in reasons:
+            reasons.append("template_stat_model_unvalidated")
     return {"status": "passed" if not reasons else "blocked", "reasons": reasons, "allowed_roles": ["calibration", "template"], "assessment_used": False}
 
 

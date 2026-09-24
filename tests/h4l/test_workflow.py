@@ -12,9 +12,10 @@ from higgsml.config import load_selection_protocol
 from higgsml.physics.selection import SelectionConfig, select_event
 from higgsml.physics.features import build_candidate_features
 from higgsml.physics.angular5 import build_angular5
-from higgsml.artifacts import read_run
+from higgsml.artifacts import digest_json, read_run
 from higgsml.data import assign_roles, write_research_data
 from higgsml.protocol import load_protocol, DEFAULT_PATH
+from higgsml.qualification import contract_qualification
 from higgsml.workflow import execute
 
 
@@ -87,6 +88,21 @@ def test_synthetic_end_to_end_and_scientific_blockers(tmp_path):
         assert grid['status']=='valid'
         assert set(grid['templates'])=={'M0','M0c:42','M2:42','M3:42','M4:42','M5:42'}
         assert templates.read_json('g1.json')['status']!='passed'
+        t1 = {
+            'schema_version': 'h4l-t1-validation-v2', 'status': 'contract_checked',
+            'dataset': protocol['dataset'], 'protocol_sha256': digest_json(protocol),
+            'evidence_id': 'synthetic-t1-contract', 'independent_reference': None,
+            'correlation': 'independent_process_bins', 'auxiliary': 'poisson_tau_gamma',
+            'modifier': 'shapesys', 'pyhf_version': '0.7.6',
+            'validation_summary': {'reviewed_by': 'synthetic-test', 'reviewed_at': 'test',
+                                   'numerical_tests': []},
+            'qualification': contract_qualification(True),
+        }
+        t1_path = tmp_path/'t1-validation.json'
+        t1_path.write_text(json.dumps(t1), encoding='utf-8')
+        checked_templates,_ = stage('templates','checked-templates','--input-run',prepared.path,
+                                    *calibrations,'--t1-validation',t1_path)
+        assert checked_templates.read_json('g1.json')['status']=='passed'
         inference,_ = stage('infer','t0','--template-run',templates.path,'--layer','T0')
         assert all(v['status']=='valid' for v in inference.read_json('inference.json').values())
         blocked,_ = stage('infer','t1','--template-run',templates.path,'--layer','T1')
