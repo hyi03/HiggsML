@@ -89,7 +89,7 @@ python scripts/h4l_all.py
 
 封装命令为 `h4l_off_run.py` 传入 `--worker-threads 1`，并按已安装物理内存先保留 2 GiB 本机调度/系统余量，再按每个 worker 5 GiB、在 1--4 个 worker 之间选择 `--workers`；内存探测失败时使用 1 个 worker。因此 16 GiB 主机只启动 2 个 worker。该预算覆盖 pyhf/SciPy 拟合与结果序列化重叠时的瞬时峰值。Windows 上的 MC bootstrap replica、assessment 候选和 T2 replica 使用线程 worker，以避开长时间运行的 spawned Python 进程在 `torch_cpu.dll` 中崩溃；其他平台使用进程 worker。可并行的完整 bootstrap、Toy 和 T2 工作单元保持注册顺序，Stage B 的注册、模板、freeze 与 Asimov 仍按依赖顺序执行。
 
-访问历史由 [`config/h4l_history_roots.json`](config/h4l_history_roots.json) 统一声明，当前覆盖 `runs/` 和必需归档 `var/runs-test-01/`。归档缺失、历史损坏或不同 freeze 已占用同一 population 时会阻断完整运行；换名字、重做 prepare 或换目录都不会产生独立 population。新 self-review v2 记录实际检查范围和配置摘要，始终为 `independent=false`。同一 freeze 的恢复仍需有效绑定的既有 access receipt；外部审核不能覆盖已存在的访问历史。
+访问历史由 [`config/h4l_history_roots.json`](config/h4l_history_roots.json) 统一声明，当前仅扫描当前仓库的 `runs/`；空目录或目录尚不存在时也可预检和启动新运行，不依赖 `var/` 中的归档。已有 `runs/` 历史损坏或不同 freeze 已占用同一 population 时仍会阻断完整运行。该扫描不能证明其他目录或机器上没有访问历史；换名字、重做 prepare 或换目录都不会产生独立 population。新 self-review v2 记录实际检查范围和配置摘要，始终为 `independent=false`。同一 freeze 的恢复仍需有效绑定的既有 access receipt。
 
 完成检查核验全部 36 个注册单元、终态摘要及其哈希、报告绑定，并输出实际报告路径（可能是 `report-resume-*`）。入口退出码 `5` 表示预检或门控阻断，`6` 表示执行产物不完整，`0` 表示请求范围执行完成（或只读计划未遇到阻断）；即使返回 `0`，仍需查看独立的 `scientific_status`，不能据此宣称科研验证通过。物理权重及区间算法保持现有定义。`m4l=off` 仅表示分类器不输入显式四轻子质量，似然仍保留质量坐标。完整阶段契约、人工独立审核方式及恢复限制见[复现实验手册](docs/implementation-and-reproduction.md)。
 
