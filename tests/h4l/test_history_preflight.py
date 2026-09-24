@@ -1,5 +1,6 @@
 """Archived access must remain visible without opening scientific payloads."""
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -24,6 +25,20 @@ def roots(tmp_path):
         'roots': [{'path': 'runs', 'required': False}, {'path': 'archive', 'required': True}],
     })
     return current, archive
+
+
+def test_project_history_scope_allows_a_fresh_checkout(tmp_path):
+    project_registry = Path(__file__).parents[2] / 'config/h4l_history_roots.json'
+    registry = tmp_path / 'config/h4l_history_roots.json'
+    registry.parent.mkdir(parents=True)
+    registry.write_bytes(project_registry.read_bytes())
+    current = tmp_path / 'runs'
+
+    audit = population_history.audit_population_history(current)
+
+    assert audit['roots'] == [str(current)]
+    assert audit['matches'] == []
+    assert not current.exists()
 
 
 def test_archived_claim_is_visible_from_new_prepare_root(tmp_path):
