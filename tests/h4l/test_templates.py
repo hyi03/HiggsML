@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 from higgsml.inference.templates import build_templates, common_mass_grid, gate_g1
 from higgsml.errors import ResearchError
+from higgsml.qualification import contract_qualification
 
 
 def sample():
@@ -34,6 +35,24 @@ def test_shared_grid_and_gate():
     assert result["mass_edges"]==[105,110]  # finite empty process bins require common merging
     with pytest.raises(ResearchError): common_mass_grid({"M4":f},mass_edges=[105,110],thresholds={},assessment_started=True)
     assert gate_g1({"M4":"valid"},result["templates"],{"status":"unvalidated"})["status"]=="blocked"
+
+
+def test_g1_accepts_bound_v2_software_contract_without_scientific_qualification():
+    grid = common_mass_grid({"M4":sample()}, mass_edges=[105, 110],
+                            thresholds={"min_neff_signed": 1})
+    evidence = {
+        "schema_version": "h4l-t1-validation-v2", "status": "contract_checked",
+        "dataset": "atlas2020_4lep", "protocol_sha256": "0" * 64,
+        "evidence_id": "synthetic-contract", "independent_reference": None,
+        "correlation": "independent_process_bins", "auxiliary": "poisson_tau_gamma",
+        "modifier": "shapesys", "pyhf_version": "0.7.6",
+        "validation_summary": {"reviewed_by": "test", "reviewed_at": "test", "numerical_tests": []},
+        "qualification": contract_qualification(True),
+    }
+    assert gate_g1({"M4": "valid"}, grid["templates"], evidence)["status"] == "passed"
+    evidence["modifier"] = "staterror"
+    with pytest.raises(ResearchError, match="Invalid T1 v2 contract evidence"):
+        gate_g1({"M4": "valid"}, grid["templates"], evidence)
 
 
 def test_finite_empty_bins_not_structural_without_bound_evidence():
