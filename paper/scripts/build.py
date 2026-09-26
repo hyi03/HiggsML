@@ -1,4 +1,4 @@
-"""Build paper assets and the REVTeX PDF; does not execute scientific workflows."""
+"""Build the REVTeX PDF from checked-in assets; refresh only when requested."""
 import argparse
 import filecmp
 from pathlib import Path
@@ -6,11 +6,16 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from paper_snapshot import load_snapshot
 
 PAPER_DIR = Path(__file__).resolve().parents[1]
 LATEX_DIR = PAPER_DIR / "latex"
-EVIDENCE_DIR = PAPER_DIR / "evidence"
+REQUIRED_ASSETS = (
+    *(LATEX_DIR / "figures" / f"{name}.pdf" for name in (
+        "subset_widths", "compact_comparisons", "shapley", "auc_width",
+        "mc_uncertainty", "coverage")),
+    *(LATEX_DIR / "generated" / f"{name}.tex" for name in (
+        "numbers", "mc_uncertainty_rows", "nominal_rows", "interaction_rows")),
+)
 
 
 def main():
@@ -19,10 +24,11 @@ def main():
     source = parser.add_mutually_exclusive_group()
     source.add_argument(
         "--run-name",
-        help=("Short run name. When supplied, refresh the checked snapshot from "
+        help=("Explicitly verify and regenerate assets from "
               "runs/h4l-off-<name> before building."),
     )
-    source.add_argument('--evidence-manifest', type=Path, help='Reverify the selected published report before building.')
+    source.add_argument('--evidence-manifest', type=Path,
+                        help='Explicitly verify and regenerate assets from a source manifest.')
     args = parser.parse_args()
     snapshot_dir = None
     if args.run_name or args.evidence_manifest:
@@ -36,15 +42,21 @@ def main():
             cwd=PAPER_DIR.parent,
             check=True,
         )
-    load_snapshot(snapshot_dir, refreshed=snapshot_dir is not None)
-    subprocess.run([sys.executable, str(PAPER_DIR/'scripts/sync_manuscript.py'), '--check'],
-                   cwd=PAPER_DIR.parent, check=True)
+        from paper_snapshot import load_snapshot
+        load_snapshot(snapshot_dir, refreshed=True)
+        subprocess.run([sys.executable, str(PAPER_DIR/'scripts/sync_manuscript.py'), '--check'],
+                       cwd=PAPER_DIR.parent, check=True)
+        subprocess.run(
+            [sys.executable, str(PAPER_DIR / "scripts/make_figures.py"),
+             '--snapshot-dir', str(snapshot_dir), '--refreshed'],
+            cwd=PAPER_DIR, check=True, stdout=subprocess.DEVNULL,
+        )
+    missing = [str(path.relative_to(PAPER_DIR)) for path in REQUIRED_ASSETS if not path.is_file()]
+    if missing:
+        raise SystemExit("Missing committed LaTeX assets: " + ", ".join(missing))
     latexmk = shutil.which(args.latexmk)
     if not latexmk:
         raise SystemExit("latexmk is unavailable; add TeX Live to PATH or pass --latexmk PATH.")
-    figure_args = ['--snapshot-dir', str(snapshot_dir), '--refreshed'] if snapshot_dir else []
-    subprocess.run([sys.executable, str(PAPER_DIR / "scripts/make_figures.py"), *figure_args], cwd=PAPER_DIR, check=True,
-                   stdout=subprocess.DEVNULL)
     build = LATEX_DIR / ".build"
     build.mkdir(exist_ok=True)
     with (build / "build-output.txt").open("w", encoding="utf-8") as log:

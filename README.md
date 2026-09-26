@@ -93,15 +93,15 @@ python scripts/h4l_all.py
 
 完成检查核验全部 36 个注册单元、终态摘要及其哈希、报告绑定，并输出实际报告路径（可能是 `report-resume-*`）。入口退出码 `5` 表示预检或门控阻断，`6` 表示执行产物不完整，`0` 表示请求范围执行完成（或只读计划未遇到阻断）；即使返回 `0`，仍需查看独立的 `scientific_status`，不能据此宣称科研验证通过。物理权重及区间算法保持现有定义。`m4l=off` 仅表示分类器不输入显式四轻子质量，似然仍保留质量坐标。完整阶段契约、人工独立审核方式及恢复限制见[复现实验手册](docs/implementation-and-reproduction.md)。
 
-运行完成后，可从同一 off-only run 重新校验论文聚合快照、生成图表并编译 PDF：
+论文所需图表与 TeX 表格文件已经纳入 Git，正常编译无需本地运行产物：
 
 ```bash
-python paper/scripts/build.py --run-name test05
+python paper/scripts/build.py
 ```
 
-这里显式重核当前 `runs/h4l-off-test05/evaluation/report` 的已发布结果，并与
-`paper/selected-snapshot.json` 的选定哈希核对。生成的阅读版位于
-`paper/latex/main.pdf`；构建依赖和单独刷新证据快照的方法见
+如果需要重新校验 `runs/h4l-off-test05/evaluation/report` 并再生成图表，显式传入
+`--run-name test05`。生成的阅读版位于 `paper/latex/main.pdf`；构建依赖和
+单独刷新证据快照的方法见
 [`paper/README.md`](paper/README.md)。
 
 ## 6. 分阶段运行 H4l 工作流

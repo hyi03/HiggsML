@@ -1,39 +1,43 @@
 # English and Chinese manuscript builds
 
-Both drafts use [selected-snapshot.json](selected-snapshot.json), which pins
-result bytes, provenance bytes and the **test05** report identity. The current
-source is `runs/h4l-off-test05/evaluation/report`. See the
-[evidence index](result-evidence.md) for scientific qualifications. The local
-`paper/evidence/` directory is ignored by Git; it holds optional source manifests,
-historical records and verification notes.
+The six PDF figures and four generated TeX inputs used by
+[main.tex](latex/main.tex) are committed under `latex/figures/` and
+`latex/generated/`. A normal PDF build reads these files directly; it does not
+need local runs, evidence snapshots, NumPy, Matplotlib, or figure generation.
+The Chinese result tables are already saved in [manuscript.md](manuscript.md).
+The current source is `runs/h4l-off-test05/evaluation/report`; its identity
+and result hashes are pinned by [selected-snapshot.json](selected-snapshot.json).
+See the [evidence index](result-evidence.md) for scientific qualifications.
+The local `paper/evidence/` directory is ignored by Git.
 
-Use Python 3.12 in the `pytorch` environment, NumPy and Matplotlib. PDF compilation
-requires a TeX distribution with REVTeX 4.2, BibTeX and latexmk. From the repository root:
+PDF compilation requires a TeX distribution with REVTeX 4.2, BibTeX and
+latexmk. From the repository root, build directly from the committed assets:
 
 ```powershell
-& 'D:/apps/anaconda3/envs/pytorch/python.exe' paper/scripts/sync_manuscript.py --check
 & 'D:/apps/anaconda3/envs/pytorch/python.exe' paper/scripts/build.py
 ```
 
-`sync_manuscript.py` without `--check` regenerates Chinese result tables from the
-same pinned snapshot used by the English numeric macros and six figures. The new
-MC percentile and conditional coverage figures distinguish finite-MC variability
-from training-seed spread. The build checks Chinese table synchronization and rejects
-undefined references, overfull boxes and stuck floats. Visual PDF inspection remains
-separate. Author/contact/affiliation/funding placeholders still need author input.
+The default build runs only the TeX compiler and layout/reference checks. It does
+not read `paper/selected-snapshot.json`, `paper/evidence/`, `var/`, or `runs/`.
+To compile without the Python wrapper, run `latexmk -pdf -outdir=.build main.tex`
+from `paper/latex/`; the resulting PDF is `.build/main.pdf`. The wrapper copies
+it to `paper/latex/main.pdf` and rejects undefined references, overfull boxes and
+stuck floats. Author/contact/affiliation/funding placeholders still need author input.
 
-To reverify the current sources and rebuild identical selected results:
+Only when intentionally refreshing figures and tables from the run, use Python
+3.12 in the `pytorch` environment with NumPy and Matplotlib:
 
 ```powershell
 & 'D:/apps/anaconda3/envs/pytorch/python.exe' paper/scripts/build.py --run-name test05
 ```
 
-The run-name option reads `runs/h4l-off-test05/evaluation/report` and rechecks the
-result against the pinned snapshot. Fresh provenance timestamps may differ, but the
-existing manuscript requires identical pinned result bytes. The selection is never
-overwritten. An optional local `--evidence-manifest` can additionally bind a report
-and access receipt. Changing analyses requires reconciling both drafts and updating
-the selection explicitly.
+The run-name option reads `runs/h4l-off-test05/evaluation/report`, checks it against
+the pinned snapshot, checks the Chinese tables, regenerates the six PDF figures and
+four TeX inputs, then compiles. Review the resulting asset diff before committing.
+Fresh provenance timestamps may differ, but the selected result bytes must match.
+An optional local `--evidence-manifest` can additionally bind a report and access
+receipt. Changing analyses requires reconciling both drafts and updating the
+selection explicitly.
 
 Export a separate snapshot without changing either draft:
 
@@ -48,10 +52,10 @@ retains recorded bootstrap completion, finite-MC intervals, method and qualifica
 metadata. It checks selected aggregates and manifest links, not every checkpoint/event/raw
 payload. It does not train models, fit likelihoods, generate Toys or open new assessment data.
 
-The generated snapshot is in `var/paper-evidence/test05-20260926/`. Preserve this ignored
-local package and the source runs when moving the manuscript. Historical test01 source
-bindings and snapshots remain local under `paper/evidence/`; they are not the current
-paper evidence. Generated results/plots/PDFs must not be committed. A clean source
-checkout requires the separate evidence package to rebuild; the tracked selection
-alone does not contain the full result arrays. Permanent external archival publication
-has not been performed.
+The current aggregate snapshot is in the ignored local directory
+`var/paper-evidence/test05-20260926/`. Preserve this package and the source runs
+for future regeneration or independent checks. Historical test01 bindings and
+snapshots remain local under `paper/evidence/`. The compiled `main.pdf`, PNG previews,
+build logs, runs and evidence packages remain ignored. The committed PDF figure and
+TeX inputs are sufficient to compile the current manuscript from a clean checkout.
+Permanent external archival publication has not been performed.
