@@ -1,8 +1,8 @@
 # 物理期刊论文参考文献与具体引用计划
 
-首次整理：2026-09-14；更新：2026-09-21。对应 [manuscript.md](../manuscript.md) 的 raw、m4l=off 特征归因与信号强度推断研究。检索使用 **SciSpace**，并以 Crossref、INSPIRE-HEP、CERN Open Data 等公开来源补充核验；[检索记录](literature-search-log.md) 保存查询与候选结果。
+首次整理：2026-09-14；更新：2026-09-21。此历史引用计划对应当前 [LaTeX 论文](../latex/main.tex) 的 raw、m4l=off 特征归因与信号强度推断研究。检索使用 **SciSpace**，并以 Crossref、INSPIRE-HEP、CERN Open Data 等公开来源补充核验；[检索记录](literature-search-log.md) 保存查询与候选结果。
 
-本文档面向物理期刊的方法与计算研究论文写作。引用目的在于说明物理动机、已有方法、本文差异和统计假设，不能替代本项目的完整 MC 结果。当前稿件已有 h4l-off-test01 的冻结 nominal Asimov 组合比较、assessment 和 T2 条件覆盖诊断；整体仍 incomplete，事件 MC bootstrap 仅 161/200 完整，独立 P0/T1 与访问历史审核仍待补齐。质量网格仅一个箱，结论限于该粗化分析。引用不授予独立科学资格；MELA、CDF、对抗训练与样本效率文献保留为可选扩展背景。
+本文档面向物理期刊的方法与计算研究论文写作。引用目的在于说明物理动机、已有方法、本文差异和统计假设，不能替代本项目的完整 MC 结果。原计划记录的是历史 test01 结果；当前 test05 数字和资格以 [论文证据索引](../result-evidence.md) 为准。引用不授予独立科学资格；MELA、CDF、对抗训练与样本效率文献保留为可选扩展背景。
 
 ## 使用规则与核验深度
 

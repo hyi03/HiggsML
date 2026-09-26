@@ -44,8 +44,6 @@ def main():
         )
         from paper_snapshot import load_snapshot
         load_snapshot(snapshot_dir, refreshed=True)
-        subprocess.run([sys.executable, str(PAPER_DIR/'scripts/sync_manuscript.py'), '--check'],
-                       cwd=PAPER_DIR.parent, check=True)
         subprocess.run(
             [sys.executable, str(PAPER_DIR / "scripts/make_figures.py"),
              '--snapshot-dir', str(snapshot_dir), '--refreshed'],

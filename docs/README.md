@@ -43,9 +43,9 @@ For execution, start with [environment and installation](implementation-and-repr
 - [Sample-efficiency overlay](../config/protocols/sample_efficiency_v1.json): registration template; null values require explicit registration.
 - [Dataset contracts](../config/datasets/): controlled member identities, locations, sizes, and hashes.
 - [Off-only definition](../config/protocols/feature_attribution_mass_off.json): estimands and candidate-family contract; actual runs bind this definition to concrete artifacts.
-- [Manuscript](../paper/manuscript.md): separate paper text supported by these method and reproduction documents.
+- [Manuscript](../paper/latex/main.tex): LaTeX paper text supported by these method and reproduction documents.
 - [Historical synthetic performance record](performance-synthetic-results.json): immutable numerical evidence interpreted in the results document.
 
 Scientific explanations, execution contracts, and evidence status have one maintained location each. Quoted protocol values explain the bound version; they do not permit tuning a frozen analysis. Old artifacts retain their original protocol snapshots and lineage. All seven maintained Markdown documents live directly in this directory.
 
-See [F4/F11/F12 verification](changes/evidence-alignment-20260923.md) for current software checks, archive restoration and build boundaries. The unfinished computation under `runs/` is separate from the selected archived test01.
+See the [current paper evidence index](../paper/result-evidence.md) for the selected test05 result and its validation boundaries. The [F4/F11/F12 record](changes/evidence-alignment-20260923.md) documents historical test01 checks.

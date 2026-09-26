@@ -1,10 +1,9 @@
-# English and Chinese manuscript builds
+# LaTeX manuscript build
 
 The six PDF figures and four generated TeX inputs used by
 [main.tex](latex/main.tex) are committed under `latex/figures/` and
 `latex/generated/`. A normal PDF build reads these files directly; it does not
 need local runs, evidence snapshots, NumPy, Matplotlib, or figure generation.
-The Chinese result tables are already saved in [manuscript.md](manuscript.md).
 The current source is `runs/h4l-off-test05/evaluation/report`; its identity
 and result hashes are pinned by [selected-snapshot.json](selected-snapshot.json).
 See the [evidence index](result-evidence.md) for scientific qualifications.
@@ -32,12 +31,12 @@ Only when intentionally refreshing figures and tables from the run, use Python
 ```
 
 The run-name option reads `runs/h4l-off-test05/evaluation/report`, checks it against
-the pinned snapshot, checks the Chinese tables, regenerates the six PDF figures and
-four TeX inputs, then compiles. Review the resulting asset diff before committing.
+the pinned snapshot, regenerates the six PDF figures and four TeX inputs, then
+compiles. Review the resulting asset diff before committing.
 Fresh provenance timestamps may differ, but the selected result bytes must match.
 An optional local `--evidence-manifest` can additionally bind a report and access
-receipt. Changing analyses requires reconciling both drafts and updating the
-selection explicitly.
+receipt. Changing analyses requires revising the LaTeX manuscript and updating
+the selection explicitly.
 
 Export a separate snapshot without changing either draft:
 
