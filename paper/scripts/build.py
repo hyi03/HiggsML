@@ -1,5 +1,6 @@
 """Build paper assets and the REVTeX PDF; does not execute scientific workflows."""
 import argparse
+import filecmp
 from pathlib import Path
 import shutil
 import subprocess
@@ -21,7 +22,7 @@ def main():
         help=("Short run name. When supplied, refresh the checked snapshot from "
               "runs/h4l-off-<name> before building."),
     )
-    source.add_argument('--evidence-manifest', type=Path, help='Reverify the selected archived report before building.')
+    source.add_argument('--evidence-manifest', type=Path, help='Reverify the selected published report before building.')
     args = parser.parse_args()
     snapshot_dir = None
     if args.run_name or args.evidence_manifest:
@@ -36,6 +37,8 @@ def main():
             check=True,
         )
     load_snapshot(snapshot_dir, refreshed=snapshot_dir is not None)
+    subprocess.run([sys.executable, str(PAPER_DIR/'scripts/sync_manuscript.py'), '--check'],
+                   cwd=PAPER_DIR.parent, check=True)
     latexmk = shutil.which(args.latexmk)
     if not latexmk:
         raise SystemExit("latexmk is unavailable; add TeX Live to PATH or pass --latexmk PATH.")
@@ -57,7 +60,11 @@ def main():
                 or "Deferred float stuck" in line]
     if problems:
         raise SystemExit("Resolve manuscript layout/reference warnings:\n"+"\n".join(problems))
-    shutil.copy2(build / "main.pdf", LATEX_DIR / "main.pdf")
+    rendered_pdf = build / "main.pdf"
+    published_pdf = LATEX_DIR / "main.pdf"
+    # An unchanged PDF may be open in a Windows viewer, which prevents copy2.
+    if not published_pdf.exists() or not filecmp.cmp(rendered_pdf, published_pdf, shallow=False):
+        shutil.copy2(rendered_pdf, published_pdf)
     print(f"Built {LATEX_DIR / 'main.pdf'}")
 
 

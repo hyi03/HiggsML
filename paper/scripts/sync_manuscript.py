@@ -7,7 +7,7 @@ from statistics import median
 
 import numpy as np
 
-from paper_snapshot import load_snapshot
+from paper_snapshot import load_snapshot, mc_interval
 
 PAPER = Path(__file__).resolve().parents[1]
 
@@ -42,19 +42,23 @@ def render(text, data):
         pair = next(r for r in data['pairwise'] if r['left']==left and r['right']==right)
         gain = pair['relative_improvement_left_vs_right']
         lo,hi = gain['interval95']
+        mc = mc_interval(data, 'pairwise', left=left, right=right, field='relative_improvement_left_vs_right')
+        mc_text = f'[{100*mc[0]:+.3f}%, {100*mc[1]:+.3f}%]' if mc else '—'
         rows.append([f'{left} / {right}', f'{pair["delta_width68_left_minus_right"]["median"]:+.6f}',
                      f'{100*gain["median"]:+.3f}%', f'[{100*lo:+.3f}%, {100*hi:+.3f}%]',
-                     f'{pair["strict_win_count"]}/5'])
-    text = replace_table(text,'### 5.2',table(['比较（左／右）','配对 ΔW68 中位数','配对相对改善中位数','95% 种子稳定性区间（改善）','左侧胜出种子数'],rows))
+                     mc_text, f'{pair["strict_win_count"]}/5'])
+    text = replace_table(text,'### 5.2',table(['比较（左／右）','配对 ΔW68 中位数','配对相对改善中位数','95% 种子稳定性区间（改善）','95% MC 百分位范围（改善）','左侧胜出种子数'],rows))
     rows = []
     for r in data['attribution']:
         # Exhaustive registered five-seed resampling, aggregate algebra only.
         medians = [median(r['per_seed'][i] for i in draw) for draw in itertools.product(range(5), repeat=5)]
         lo,hi = np.quantile(medians,[.025,.975],method='linear')
-        rows.append([r['group'],f'{r["median"]:+.6f}',f'[{lo:+.6f}, {hi:+.6f}]'])
-    text = replace_table(text,'### 5.3',table(['组','Shapley 中位数','95% 训练种子稳定性区间'],rows))
+        mc = mc_interval(data, 'contributions', group=r['group'])
+        rows.append([r['group'],f'{r["median"]:+.6f}',f'[{lo:+.6f}, {hi:+.6f}]',
+                     f'[{mc[0]:+.6f}, {mc[1]:+.6f}]' if mc else '—'])
+    text = replace_table(text,'### 5.3',table(['组','Shapley 中位数','95% 训练种子稳定性区间','95% MC 百分位范围'],rows))
     rows = []
-    for stage,mu in [('assessment',0),('assessment',1),('assessment',2),('t2',1)]:
+    for stage,mu in [('model-self',0),('model-self',1),('model-self',2),('assessment',0),('assessment',1),('assessment',2),('t2',1)]:
         for subset in ('','BC','AC','ABCD'):
             values = []
             for level in (.68,.95):

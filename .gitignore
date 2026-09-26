@@ -224,6 +224,7 @@ data/
 var/
 runs/
 artifacts/
+paper/evidence/
 .worktrees/
 .codebase-memory/
 

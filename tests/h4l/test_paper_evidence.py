@@ -204,3 +204,23 @@ def test_export_rejects_protocol_content_inconsistent_with_sealed_digest(tmp_pat
     reseal(report, 'protocol.json', {'luminosity_pb':20000})
     with pytest.raises(ValueError, match='[Pp]rotocol'):
         collector().collect(report)
+
+
+def test_mc_percentiles_never_fall_back_to_training_seed_intervals():
+    spec = importlib.util.spec_from_file_location('paper_snapshot',
+        Path(__file__).resolve().parents[2]/'paper/scripts/paper_snapshot.py')
+    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    data = {'bootstrap': {'status':'valid','planned_replicas':200,'valid_replicas':200},
+            'bootstrap_intervals':[{'estimand':'pairwise','left':'AC','right':'BC','status':'valid',
+                'delta_width68_left_minus_right':json.dumps({'interval95':[-.03,.04]})}]}
+    query = dict(estimand='pairwise',left='AC',right='BC',field='delta_width68_left_minus_right')
+    assert module.mc_interval(data, **query) == [-.03,.04]
+    data['bootstrap']['valid_replicas']=199
+    with pytest.raises(ValueError,match='Incomplete'):
+        module.mc_interval(data, **query)
+    data['bootstrap']['status']='bootstrap_incomplete'
+    assert module.mc_interval(data, **query) is None
+    data['bootstrap'].update(status='valid',valid_replicas=200)
+    data['bootstrap_intervals'] *= 2
+    with pytest.raises(ValueError,match='ambiguous'):
+        module.mc_interval(data, **query)
