@@ -1,6 +1,8 @@
 .build/
-figures/
-generated/
+figures/*
+!figures/*.pdf
+generated/*
+!generated/*.tex
 main.pdf
 *.aux
 *.bbl

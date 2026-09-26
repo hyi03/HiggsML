@@ -34,8 +34,9 @@
 
 W68/AUC 取五种子中位数；直接比较先同种子配对；Shapley 和 24 个交互从完整联盟向量重算；
 105 对比较均核验。代数容差 `rtol=atol=1e-12` 不代表独立统计数值验证。
-中文第 5.1–5.4 节表格由 `sync_manuscript.py` 生成；英文图表及宏由 `make_figures.py`
-从同一固定快照生成。MC 百分位范围只读取完整预算的 bootstrap 字段，不以训练种子区间替代。
+中文第 5.1–5.4 节表格由 `sync_manuscript.py` 生成，英文图表及宏由 `make_figures.py`
+从同一固定快照生成。当前英文 LaTeX 使用的六张 PDF 图和四个 TeX 输入已保存到 Git；
+普通 PDF 编译直接读取这些文件。MC 百分位范围只读取完整预算的 bootstrap 字段，不以训练种子区间替代。
 
 BC/AC/ABCD 的 W68 中位数分别为 1.511617/1.515244/1.535930；M0off 为 1.663723。
 AC−BC、AC−ABCD、BC−ABCD 的 95% MC 配对宽度差范围均跨零，不能写成显著优于。
