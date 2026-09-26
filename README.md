@@ -279,7 +279,7 @@ python -m pip check
 - [产物与谱系契约](docs/implementation-and-reproduction.md#artifact-and-lineage-contract)
 - [证据与完成边界](docs/results-and-limitations.md#evidence-required-for-conclusions)
 - [当前科研与软件状态](docs/results-and-limitations.md#software-and-validation-status)
-- [论文稿件](paper/manuscript.md)
+- [论文 LaTeX 源码](paper/latex/main.tex)
 
 ## 11. 许可证与第三方条款
 
