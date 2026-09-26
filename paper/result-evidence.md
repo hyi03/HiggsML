@@ -1,43 +1,80 @@
-# 论文结果证据索引与版本矩阵
+# 论文结果证据索引
 
-核对日期：2026-09-23。中英文稿共同选择 [test01-source.json](evidence/test01-source.json) 指定的报告；[selected-snapshot.json](evidence/selected-snapshot.json) 固定快照、来源清单和报告身份。路径变更只由显式映射处理，不修改任何历史 manifest。
+核对日期：2026-09-26。中英文稿共同采用 test05 的已发布报告；
+[selected-snapshot.json](selected-snapshot.json) 固定结果快照、来源清单和报告身份。
+依据为实际运行产物、绑定协议和执行代码，不将旧 docs 的陈述当作结果证据。
+`paper/evidence/` 为本地 Git 忽略目录，可保留额外来源清单和历史核验记录；论文默认构建不读取该目录。
 
-| 分析／证据版本 | 报告身份与执行 revision | 数值与完成度 | 本次可核验程度／资格 |
+## 当前版本与绑定
+
+报告路径：`runs/h4l-off-test05/evaluation/report`。报告、Asimov、freeze、prepared 及训练
+产物均记录执行提交 `c5cdfa8dfab1733ee1cb2c0b4fbca087ab222a4f`，生成时工作区为 clean。
+本次论文导出在同一 HEAD 加论文工具的未提交改动上执行，provenance 的 `source_dirty=true`
+描述导出环境，不代表历史科学运算使用了这些改动。
+
+| 对象 | Artifact ID |
+|---|---|
+| report | `baede583dc2ef36330af1184d266833f3e64a3179fc8d5ce8bff1b6867307cb5` |
+| asimov | `45805304950d8ad926f551d7a914fb7ed88cfd6267877aace79f613fffd6c78c` |
+| freeze | `21e5e6aaeea553c274eeceaffefff6afeb60a2f3ce85146933198ac9244bd2a1` |
+| prepared | `2933b92e8df4909c579499b6f57147830fd72a878bcdd3377689be479dfa23cb` |
+| registration | `9784a9de8a2b64cafd3ca540e51c26c98570dda1ef29e565975b50799abcb0c5` |
+| template | `649a09a23bff2317c2924261caa74ee4d9f06072af7d62498141726d2dec982d` |
+| access | `1551fbf5b4751212703e8ecd6d15358aaf16ff4491685614ad93bb27c9b38385` |
+
+核心协议 SHA-256 为 `e8747ca77188732bac1d1c72e9e0ce4c86056a580cd45db9be33975837ed515e`。
+阈值方法是另行绑定的 `joint-support-v1`，不能只按核心协议哈希把历史 median 方法与当前结果视为同一分析。
+快照目录为 `var/paper-evidence/test05-20260926/`；provenance 保存 15 个聚合来源的
+大小、SHA-256、artifact、执行版本及 manifest 哈希，并记录所有训练身份。
+
+2026-09-23 版本矩阵与旧快照选择保留在本地 `paper/evidence/history/`，原样保留历史含义。
+旧 test01 的 161/200 bootstrap 和 test03 Stage B 状态均不是当前稿的结果来源。
+
+## 数值映射
+
+W68/AUC 取五种子中位数；直接比较先同种子配对；Shapley 和 24 个交互从完整联盟向量重算；
+105 对比较均核验。代数容差 `rtol=atol=1e-12` 不代表独立统计数值验证。
+中文第 5.1–5.4 节表格由 `sync_manuscript.py` 生成；英文图表及宏由 `make_figures.py`
+从同一固定快照生成。MC 百分位范围只读取完整预算的 bootstrap 字段，不以训练种子区间替代。
+
+BC/AC/ABCD 的 W68 中位数分别为 1.511617/1.515244/1.535930；M0off 为 1.663723。
+AC−BC、AC−ABCD、BC−ABCD 的 95% MC 配对宽度差范围均跨零，不能写成显著优于。
+B、C 的 Shapley 95% MC 范围为正；A、D 跨零。200 个副本固定训练网络，不涵盖独立重新训练
+或选择后区间校准；每侧 2.5% 尾部仅约 5 个次序统计量。
+
+μ=1 的 model-self/assessment/T2 条件覆盖中位数（68%）分别为：
+
+| 候选 | model-self | assessment | T2 |
 |---|---|---|---|
-| **论文共同采用的 test01 归档**：`var/runs-test-01/h4l-off-test01-old1/evaluation/report` | `3fe3e15ffe27f8480719deaa2a84a201d6a5062ca2611b0c5f67d62f54d23e05`；report `3819547357354aa04fa2dd85e1da3afeeaeb8ffb` | 80/80 nominal；15/15 model-self、15/15 assessment、5/5 T2 valid；bootstrap 161/200 | 原快照 14 个来源文件与各自 manifest 哈希全部匹配；新导出再核验 report.json，共 15 个聚合文件。`incomplete`、非独立自审、主张资格 false |
-| 旧中文恢复报告：`report-resume-6f5909a8b7f58d5e` | `9c2413c8e5582e967b54f5a046883d5510143873941d6a53f320813297d47d68`；`e066bae9a12e5bd2d02cd199bbd09a99151ea6d7` | 历史记载三处 model-self 预算阻断 | [旧索引原文](evidence/history/result-evidence-20260921.md) 保留；不再作为当前两稿数字来源，不把旧记录的验证日期当成本次复核 |
-| 归档中另一 `var/runs-test-01/h4l-off-test01/evaluation/report` | `aecfa75935da0e8c393c4a4b637eecd9d008437d0ab574d500b0c06b749fd791`；`6cffa143f3ef97861b9b8849297b34e5c029475e` | 本次仅识别 manifest 身份 | 与 old1 不同，不按同名或部分数字相同替换来源 |
-| 活跃目录 test03 Stage B：`runs/h4l-off-test03/report-B` | `1d1eaed51a9172421889d26e6b0bb584b5dbe8eb76a69383d67516e8e4616971`；`5275fc586ec25d41e84459e665c168dba6a31671` | 已发布报告的 36 单元全部 `not_run`，80/80 nominal | 已单独导出 12 个聚合来源；不是 test01，也不表示后台计算状态。用户说明 `runs/` 是尚未完成的运算 |
-| joint-support 开发验证 | `docs/changes/h4l-off-joint-support-v1/verification.md` | 历史开发支持 200/200，`inference_run=false` | 仅开发证据；本次未运行新的正式 bootstrap/Toy/assessment/T2，未从开发成功推导正式结果 |
+| M0off | 0.6500 | 0.6280 | 0.6370 |
+| AC | 0.6680 | 0.6380 | 0.6535 |
+| BC | 0.6780 | 0.6580 | 0.6635 |
+| ABCD | 0.6560 | 0.6460 | 0.6495 |
 
-## 共同采用的精确绑定
+T2 先在各训练种子内汇总外层结果；不可把内层拟合当成独立全流程重复。图中的范围为五种子最小–最大，
+不是覆盖率的置信区间。名义 template signed 产额为背景 2.497852287449695、信号 2.7683194272433287。
+角色产额含角色重标度，不能跨角色相加。
 
-| 对象 | 身份／执行版本 |
+## 方法与资格
+
+`joint-support-v1` 显式指定质量边界 [105,140] GeV。非空候选为两个 score 类别各一个质量箱，
+M0off 为包容计数。阈值由 calibration 背景提出 19 个分位候选，同时满足 calibration/template
+支持条件后选择最接近中位数的点，不优化 W68。名义 75/75 取中位数；bootstrap 的 15000 次选择
+中有 112 次偏离中位数、0 次失败。T2 固定 template、重采样 calibration 并重新选择阈值。
+
+| 证据维度 | 当前状态 |
 |---|---|
-| Asimov | `5dac36b144f0992fcbfa0de6fe9d8019f22130b21548b8d8dcce8a4feb6ae876`；`65a9d24f1f6ef0478669f3f0969fed0837938f61` |
-| Freeze | `01e623db2028849e7751c6c83c8811864833acd141be7eb521f0a773fbbd6a17`；`65a9d24f1f6ef0478669f3f0969fed0837938f61` |
-| Prepared | `8c295b2881a808262e43300687b49d8f4c8cfde08c09cb54584c61a1e6c9d4da`；`a4ecb8f3799729a01bb05aa00f1f5ef7c11b854a` |
-| 75 个训练模型 | 逐个核对训练 manifest 的引用身份；执行 revision 全为 `a4ecb8f3799729a01bb05aa00f1f5ef7c11b854a`，模型 ID 保留在快照 75 个非空 records 中 |
-| Protocol digest | `e8747ca77188732bac1d1c72e9e0ce4c86056a580cd45db9be33975837ed515e`；历史 median 阈值分析，不追溯改标为 joint-support |
-| Access artifact | `0b8f4df7101b85fa2ce11f4e8f07fc100b41b5a13a6325293711045c642f2560`；`single_researcher_self_review`、`independent=false` |
-| 文稿核查代码 | `5275fc586ec25d41e84459e665c168dba6a31671` 加本次未提交 F4/F11/F12 改动；不是上述运行的执行 revision |
+| 正式计算完成度 | 80/80 nominal；36/36 evaluation valid；200/200 bootstrap valid |
+| Toy 候选拟合 | model-self 120000、assessment 120000、T2 160000，全部有效 |
+| 登记及选择后覆盖 | exploratory_posthoc；selection_aware_coverage=unvalidated |
+| 独立数值／物理适用性验证 | 未完成；同实现复算不能替代独立参照 |
+| assessment access | single_researcher_self_review，independent=false |
+| 主张资格 | primary_claim_eligible=false；类别分配敏感性 pending |
 
-原 14 文件归档核验记录为 `var/paper-evidence/test01-restoration-20260923.json`。共同采用的新派生快照在 `var/paper-evidence/test01-aligned-20260923-v2/`；`provenance.json` 列出逐文件大小、哈希、artifact、执行 revision、manifest 哈希与路径映射。它与原 `paper/evidence/data/` 快照分别保留，原字节不变。
+此前同次数据审查对三个 test05 根目录的 403 个 manifest 和 884 个绑定文件完成身份、大小及哈希检查，
+并从保存的 Toy 区间重算 4160 组覆盖统计，未发现不一致。完整记录在本地忽略目录
+`artifacts/test05-publication-review-20260926/review.md`。这不包含原始 ROOT 重新下载校验，
+也不是独立物理或统计实现验证。论文导出器只检查其选定聚合来源，不能把完整性审查范围归给导出器。
 
-## 数值与资格
-
-W68/AUC 取五种子中位数；直接比较先同种子配对；Shapley 和 24 个交互从完整联盟向量重算；105 对均核验。代数比较容差 `rtol=atol=1e-12`，不属于独立统计数值验证。中文第 5.1–5.4 节表格由 `sync_manuscript.py` 生成；英文图表及宏由 `make_figures.py` 生成，二者使用同一固定快照。
-
-在 μ=1 的 assessment 中，BC/AC/ABCD 的 68% 条件覆盖中位数为 0.6680/0.6340/0.6340；T2 对应 0.6660/0.6480/0.6500。这些数值有可复核来源，但没有因此获得独立数值验证或科学适用性资格。T2 先在各训练种子内汇总外层结果；不可把内层拟合当作独立全流程重复。
-
-Prepared 审计只列非 assessment 四角色：背景／信号事件组分别为 train 1140/14377、validation 312/3503、calibration 575/7262、template 590/7221；template 的 signed 产额为背景 2.497852287449695、信号 2.7683194272433287。角色产额含角色重标度，不能相加当总产额。历史 `physics_sources_validated=true` 是旧软件字段，本次按 v2 保守解释，未获得物理来源确认。
-
-| 证据维度 | 本次状态 |
-|---|---|
-| 软件契约与聚合代数 | 新代码测试及归档哈希／身份核对，见[验证记录](../docs/changes/evidence-alignment-20260923.md) |
-| 产物发布 | 选定 report 的 manifest 为 complete |
-| 正式计算完成度 | 总报告 incomplete；保留 bootstrap 161/200 与所有失败 |
-| 独立数值验证 | 未完成；同实现复算和单模型闭合不替代独立参照 |
-| 物理适用性与确认资格 | 未完成；self-review、已用样本和新目录名不创造独立性 |
-
-本次未打开原始 ROOT、事件载荷或新的 assessment，未重训、拟合或生成伪实验。核验是所列聚合产物、部分谱系元数据和历史架构源码的检查，不是全部 checkpoint／上游字节的递归重验。生成证据留在忽略目录，不提交为源码；迁移复现包需同时保存快照和归档，永久外部归档尚未建立。
+本次没有重训、重拟合、改变冻结阈值、生成新 Toy 或打开新的 assessment population。
+生成证据留在忽略目录，不提交为源码；迁移时须同时保存快照与运行产物，永久外部归档尚未建立。

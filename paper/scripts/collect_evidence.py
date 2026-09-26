@@ -162,7 +162,12 @@ def collect(report, *, path_maps=(), expected_report_id=None, access_review=None
             raise ValueError('Asimov/report registration identity mismatch')
         if READER.upstream(directory, 'attribution-v3-nominal') != nominal_path:
             raise ValueError('Asimov/report template identity mismatch')
-    report_value = read_json(report, 'report.json')
+    # The published report embeds all Toy and bootstrap records (>1 GB in test05).
+    # Release those vectors before loading bootstrap evidence; retain paper metadata.
+    report_fields = ('aggregate_status', 'execution_status', 'qualification',
+                     'primary_claim_eligible', 'threshold_method', 'registration_status',
+                     'selection_aware_coverage', 't2_scope', 'nominal_selection')
+    report_value = {k: v for k, v in read_json(report, 'report.json').items() if k in report_fields}
     rows = read_csv(report, "mass_off_feature_metrics.csv")
     assert len(rows) == 80
     widths, aucs = {}, {}
@@ -244,6 +249,12 @@ def collect(report, *, path_maps=(), expected_report_id=None, access_review=None
     bootstrap_state = bootstrap_states.pop()
     bootstrap = (read_json(bootstrap_path, 'evaluation.json') if bootstrap_path else {'status': bootstrap_state})
     bootstrap_meta = {k: v for k, v in bootstrap.items() if not isinstance(v, (list, dict))}
+    bootstrap_selection = bootstrap.get('selection_diagnostics', {})
+    if bootstrap.get('status') != bootstrap_state:
+        raise ValueError('Bootstrap status differs from bound report')
+    if bootstrap.get('status') == 'valid' and bootstrap.get('valid_replicas') != bootstrap.get('planned_replicas'):
+        raise ValueError('Valid bootstrap requires the complete registered budget')
+    del bootstrap
     if bootstrap_path is None and bootstrap_state not in ('not_run', 'invalid_or_consumed_output'):
         raise ValueError('Report claims bootstrap output without a bound upstream')
     if bootstrap_path is None and any(r.get('interval68') or r.get('interval95') for r in bootstrap_intervals):
@@ -279,6 +290,9 @@ def collect(report, *, path_maps=(), expected_report_id=None, access_review=None
                        "relative_improvement_left_vs_right": json.loads(r["relative_improvement_left_vs_right"])} for r in pair_rows],
         "diagnostics": diagnostics, "completeness": completeness,
         "bootstrap": bootstrap_meta, "prepared_audit": audit,
+        "analysis": {k: report_value[k] for k in report_fields
+                     if k in report_value and k not in ('aggregate_status', 'qualification')},
+        "bootstrap_selection": bootstrap_selection,
         "mass_edges": freeze["mass_edges"], "access_independent": access["independent"] if access else None,
         "bootstrap_intervals": bootstrap_intervals,
         "publication_status": report_manifest['status'],

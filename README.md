@@ -96,10 +96,11 @@ python scripts/h4l_all.py
 运行完成后，可从同一 off-only run 重新校验论文聚合快照、生成图表并编译 PDF：
 
 ```bash
-python paper/scripts/build.py --evidence-manifest paper/evidence/test01-source.json
+python paper/scripts/build.py --run-name test05
 ```
 
-这里显式选择归档 `var/runs-test-01/h4l-off-test01-old1/` 的已核验报告；当前 `runs/` 未完成运算另列。生成的阅读版位于
+这里显式重核当前 `runs/h4l-off-test05/evaluation/report` 的已发布结果，并与
+`paper/selected-snapshot.json` 的选定哈希核对。生成的阅读版位于
 `paper/latex/main.pdf`；构建依赖和单独刷新证据快照的方法见
 [`paper/README.md`](paper/README.md)。
 
