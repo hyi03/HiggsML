@@ -78,7 +78,7 @@ python scripts/init_data.py --dataset atlas2020_4lep
 用一个命令串联 prepare、G1、五随机种子批次、off-only Stage B、C–E evaluation 和最终报告：
 
 ```bash
-python scripts/h4l_all.py --run-name test01 --plan-only
+python scripts/h4l_all.py --run-name test01
 ```
 
 `--plan-only` 不启动子任务、不写运行产物，也不打开事件或 assessment 数值。没有 prepared manifest 时只返回 `pending_prepare_identity`，不能据此认定新 population 可用。实际完整运行需去掉该参数；加 `--stage-b-only` 则在核验 Stage B 计划和报告后停止，不生成访问审核、不启动 evaluation。
