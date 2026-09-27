@@ -9,12 +9,12 @@
 - 活跃代码只有 `src/higgsml` 下的 H4l 包；旧 legacy15 预处理、旧训练/测试流程和 XGBoost 实现已移除。
 - 默认研究对象是受控 `atlas2020_4lep` MC 对，协议终态为 `2e2mu`，质量范围为 105–140 GeV。
 - `mass-only`、`decay7`、`engineered19`、`lab-extension`，全部 A/B/C/D 非空组合的显式 `m4l` on/off 重训练对照、普通/对抗训练、条件 CDF、共同二维模板、冻结 assessment、T0/T1 推断及样本效率链路均已有软件实现。
-- 本论文绑定的 test05 报告已完成：36/36 个评价单元与 200/200 个 MC bootstrap 副本数值有效。运行产物位于本地忽略目录 `runs/h4l-off-test05/evaluation/report`，不随 Git 发布。该结果登记为 `exploratory_posthoc`，assessment 访问审核非独立，选择后的覆盖尚未验证，`primary_claim_eligible=false`。可用于论文中的探索性技术分析，不能称为已确认的精度优势或物理测量。
+- 本论文绑定的 test01 报告已完成：36/36 个评价单元与 200/200 个 MC bootstrap 副本数值有效。运行产物位于本地忽略目录 `runs/h4l-off-test01/evaluation/report`，不随 Git 发布。该结果登记为 `exploratory_posthoc`，assessment 访问审核非独立，选择后的覆盖尚未验证，`primary_claim_eligible=false`。可用于论文中的探索性技术分析，不能称为已确认的精度优势或物理测量。
 - MELA 只有导出/导入及可选 adapter 契约，实际后端和独立物理参考仍需验证。
 
-本次论文结果的身份、数字及局限见[论文证据索引](paper/result-evidence.md)；研究设计和通用方法见[研究方案](docs/research-design.md)。`docs/` 中较早的运行状态不替代当前 test05 的产物与绑定代码。
+本次论文结果的身份、数字及局限见[论文证据索引](paper/result-evidence.md)；研究设计和通用方法见[研究方案](docs/research-design.md)。`docs/` 中较早的运行状态不替代当前 test01 的产物与绑定代码。
 
-test05 的 `joint-support-v1` 方法将 105–140 GeV 质量窗明确设为一个质量箱。BC 和 AC 相对包容计数基线的名义 Asimov 区间分别缩小约 9.14% 和 8.92%；两者相对完整 ABCD 的有限 MC 配对差异范围均跨零。低计数条件下的区间覆盖及整个阈值选择程序仍需独立校准，不能将名义收益解释为已确认的精度提升。
+test01 的 `joint-support-v1` 方法将 105–140 GeV 质量窗明确设为一个质量箱。BC 和 AC 相对包容计数基线的名义 Asimov 区间分别缩小约 9.14% 和 8.92%；两者相对完整 ABCD 的有限 MC 配对差异范围均跨零。低计数条件下的区间覆盖及整个阈值选择程序仍需独立校准，不能将名义收益解释为已确认的精度提升。
 核心协议的 `protocol_scope` 仍为 `synthetic_software_defaults_not_physics_validation`；运行完成没有改变这一适用性限制。
 
 ## 2. 了解代码库目录结构
@@ -75,10 +75,10 @@ python scripts/init_data.py --dataset atlas2020_4lep
 
 ## 5. 运行 H4l 工作流
 
-用一个命令串联 prepare、G1、五随机种子批次、off-only Stage B、C–E evaluation 和最终报告；继续执行取决于 population 历史、门控和访问审核。未提供外部 assessment access receipt 且声明的历史目录中未发现访问时，命令生成绑定当前运行的本地单人 self-review，结果仍是非独立、探索性的。先只读预检，再决定实际运行：
+用一个命令串联 prepare、G1、五随机种子批次、off-only Stage B、C–E evaluation 和最终报告：
 
 ```bash
-python scripts/h4l_all.py --run-name planned-joint-001 --plan-only
+python scripts/h4l_all.py --run-name test01 --plan-only
 ```
 
 `--plan-only` 不启动子任务、不写运行产物，也不打开事件或 assessment 数值。没有 prepared manifest 时只返回 `pending_prepare_identity`，不能据此认定新 population 可用。实际完整运行需去掉该参数；加 `--stage-b-only` 则在核验 Stage B 计划和报告后停止，不生成访问审核、不启动 evaluation。
@@ -103,7 +103,7 @@ python scripts/h4l_all.py
 python paper/scripts/build.py
 ```
 
-如需重新核验 test05 并生成图表，才显式传入 `--run-name test05`；这要求本地保留对应 `runs/`。普通构建只需 Python 标准库和含 REVTeX 4.2、BibTeX、latexmk 的 TeX 环境，也可在 `paper/latex/` 直接运行 `latexmk -pdf -outdir=.build main.tex`。PDF 位于 `paper/latex/main.pdf`（直接运行 latexmk 时位于 `.build/main.pdf`）。具体步骤见[论文构建说明](paper/README.md)。
+如需重新核验 test01 并生成图表，才显式传入 `--run-name test01`；这要求本地保留对应 `runs/`。普通构建只需 Python 标准库和含 REVTeX 4.2、BibTeX、latexmk 的 TeX 环境，也可在 `paper/latex/` 直接运行 `latexmk -pdf -outdir=.build main.tex`。PDF 位于 `paper/latex/main.pdf`（直接运行 latexmk 时位于 `.build/main.pdf`）。具体步骤见[论文构建说明](paper/README.md)。
 
 ## 6. 分阶段运行 H4l 工作流
 
@@ -111,7 +111,7 @@ off-only 分析入口为 `python -m higgsml.cli attribution --help`。它复用�
 
 `m4l=off` 仅指分类器不输入显式四轻子质量；似然仍保留质量坐标。自动 P0/T1 材料不能授予独立科学资格；事件 bootstrap、Toys、T2 和外部参考状态分别保存。
 
-以下命令从仓库根目录运行，`example01` 和 `study-001` 只是示例新运行名；不要在已发布的 test05 目录上重跑或覆盖。完整规则、门槛与恢复方式以[复现实验手册](docs/implementation-and-reproduction.md)和相应命令的 `--help` 为准。
+以下命令从仓库根目录运行，`example01` 和 `study-001` 只是示例新运行名。完整规则、门槛与恢复方式以[复现实验手册](docs/implementation-and-reproduction.md)和相应命令的 `--help` 为准。
 
 ### 6.1 准备并固化可复用输入
 
@@ -271,8 +271,6 @@ python -m compileall -q src scripts tests
 python -m pytest -q
 python -m pip check
 ```
-
-软件测试、运行产物完整性与科学资格属于不同核验层次；本次 test05 的结果边界以[论文证据索引](paper/result-evidence.md)为准。完整测试套件的具体结果以实际执行记录为准，不在 README 中复制易过期的数字。
 
 ## 10. 查阅项目文档
 
