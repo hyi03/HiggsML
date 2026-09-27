@@ -2,11 +2,11 @@
 
 ## Active off-only study
 
-The active paper objective is to quantify the contribution, complementarity and training-seed stability of A/B/C/D kinematic groups when the classifier omits explicit `m4l`. The likelihood still uses the registered mass window and mass coordinate. The 15 nonempty combinations use seeds 42–46 and their existing checkpoints; five deterministic `M0off` identities supply the same-family empty set. No model is retrained for this analysis.
+The active study fixes the likelihood mass coordinate while removing explicit `m4l` from every trainable classifier. It evaluates all 15 nonempty A/B/C/D subsets for seeds 42–46 and adds a deterministic same-grid `M0off` empty set per seed. The six registered result areas are nominal paired `W68`, subset ranking and seed stability, exact Shapley and 24 conditional interactions, validation AUC versus `W68`, exploration-selected BC/AC comparisons with ABCD, and all 105 direct nonempty-subset pairs.
 
-The six result areas are all off-only: paired W68; complete subset ranking/stability; exact Shapley and 24 conditional interactions; validation-checkpoint AUC versus W68; BC/AC versus ABCD as exploration-selected comparisons pending frozen validation; and all 105 direct subset pairs. AUC is descriptive, not an inference or coverage qualification. Older physical-CDF M5/M4, explicit-mass controls, MELA and sample-efficiency workflows remain compatible background/extension studies and are not required off-family candidates.
+The selected paper result is `runs/h4l-off-test05/evaluation/report`, with complete nominal vectors, 36/36 numerically valid evaluation units and 200/200 valid event-MC bootstrap replicas. BC and AC have smaller nominal widths than ABCD in all five paired seeds, but their 95% MC paired difference ranges include zero. B and C have positive Shapley MC ranges; A and D cross zero. The result is `exploratory_posthoc`, assessment review is non-independent, and selection-aware coverage remains unvalidated. Numerical evidence is consolidated in [Results and limitations](results-and-limitations.md#h4l-off-test05-controlled-mc-result).
 
-The versioned [definition](../config/protocols/feature_attribution_mass_off_v1.json) is not a completed scientific registration. A new immutable registration run binds the actual core protocol, prepared population and 75 audited model/calibration artifacts. The candidate family has its own 80-identity G1 and freeze; freezing does not grant assessment access. Automatic P0/T1 materials remain software evidence, with independent qualification pending. Actual uncertainty and coverage stages are separate evidence levels; no operating system or CPU architecture is an authority requirement.
+The executed [joint-support method](../config/protocols/h4l_off_joint_support_v1.json) fixes one mass bin over 105–140 GeV. It selects raw-score thresholds using calibration proposals and calibration/template feasibility, rather than a conditional CDF or an inference-width objective. Thus the active question is how score partitions improve nominal inference over an inclusive count in this selected mass window. It does not establish a gain after exploiting a resolved mass peak. The six result areas are descriptive analyses of one exploratory family, not six independently confirmed claims.
 
 ## Physical motivation and scope
 
@@ -14,7 +14,7 @@ The `H -> ZZ* -> 4l` channel connects a reconstructible four-lepton final state 
 
 The four-lepton invariant mass, `m4l`, already has strong discriminating power. Better classification may reflect mass information, a more convenient representation, or a broader set of observables. The research separates these possibilities before interpreting an inference improvement.
 
-> Within the specified MC population and a fixed mass-conditioned analysis, can additional kinematics improve the expected precision of signal-strength inference, and does the improvement survive finite-MC uncertainty and validated model variations?
+> Within the specified MC population and frozen single-mass-bin analysis, how do kinematic input groups change nominal signal-strength interval widths, and which patterns remain plausible after finite-MC and coverage diagnostics?
 
 Signal strength, `mu`, scales the bound ggH125 signal template. This is an MC-only educational and technical workflow, not an ATLAS/CMS result, a Higgs discovery, or a physics measurement. The initial `mu s + b` model is an on-shell approximation whose interference and background assumptions require an applicability audit. Negative MC weights alone do not establish interference; subtraction and matching can also produce them.
 
@@ -31,7 +31,7 @@ Only the H4l package is maintained. Real data, off-shell width inference, CP/EFT
 | Q4a: How much does explicit mass add to each group subset? | Independently retrained `m4l` on/off pairs for all 15 nonempty subsets, with global and fixed-mass-slice AUC plus common-grid T1 W68 | Explicit mass contribution for the fixed learner; correlated kinematics may still encode mass |
 | Q5: Does an improvement generalize? | Independent events and documented generator, composition, or detector variations | Robustness within the variations actually tested |
 
-The retained legacy pilot has one primary comparison: **M5 (`engineered19` with physical CDF) versus M4 (`decay7` with physical CDF), under the same T1 template-statistical model at injected `mu=1`.** Compare the expected 68% Asimov interval width across paired network seeds 42--46. Retain all values and failures. Definitions are in [Methods and evaluation](methods-and-evaluation.md#primary-and-supporting-metrics).
+The supporting mass-conditioned pilot, distinct from the current paper result, defines one primary comparison: **M5 (`engineered19` with physical CDF) versus M4 (`decay7` with physical CDF), under the same T1 template-statistical model at injected `mu=1`.** Compare the expected 68% Asimov interval width across paired network seeds 42--46. Retain all values and failures. Definitions are in [Methods and evaluation](methods-and-evaluation.md#primary-and-supporting-metrics).
 
 AUC measures ranking on the declared nonnegative evaluation measure and remains useful for training and diagnostics. It does not incorporate the final mass templates, yields, nuisance model, or coverage. Narrower intervals are useful only when bias, coverage, and assumptions are also acceptable.
 
@@ -40,12 +40,12 @@ AUC measures ranking on the declared nonnegative evaluation measure and remains 
 | Choice | Reason and alternative | Cost or limitation |
 |---|---|---|
 | Controlled MC pilot | Explicit identity and closure studies before broader claims | No demonstration of agreement with real data |
-| One primary comparison | Separates hypothesis testing from selecting the best of many results | Auxiliary winners cannot replace it |
-| Common `m4l` input in the primary and attribution families, plus a registered on/off control | Compares kinematics under the same available mass condition while measuring the finite learner's dependence on explicit mass | The classifier is not automatically a conditional likelihood ratio, and the off model may reconstruct mass information from correlated kinematics |
+| Complete off-only coalition family | Exposes all subset comparisons and conditional group contributions | BC/AC were highlighted after ranking; 105 pairs have no simultaneous-coverage guarantee |
+| Common `m4l` input in the historical M5/M4 family; explicit `m4l` removed in the active off-only family; registered on/off controls retained | Separates the current kinematic-only classifier question from the older mass-conditioned comparison | The off model may still reconstruct mass information from correlated kinematics |
 | Shared roles, seeds, and templates | Supports fair, paired comparisons | Equal seeds alone do not guarantee event pairing |
 | Fixed small MLP | Controlled learner with manageable cost | Input dimension still changes parameter count |
-| Physical CDF for the primary pair | Equal post-processing opportunity | Signed calibration and finite statistics need validation |
-| T1 interval width | Connects representation quality to signal extraction and finite-template error | The signed-MC approximation requires independent evidence |
+| Raw scores and joint support in the current study; physical CDF for the separate M5/M4 pair | Keeps each comparison within its bound post-processing family | Template-assisted threshold selection needs whole-procedure coverage validation |
+| T1 interval width on the registered mass grid | Connects representation quality to signal extraction and finite-template error | Low counts, the nonnegative mu boundary and signed-MC approximation require independent validation |
 | Gates before expansion | Checks support before spending the full budget | Insufficient statistics can stop the study |
 
 These are methodological motivations, not proof of optimality. Exact windows, role fractions, training budgets, and binning are registered defaults. Their original numerical optimization rationale is not established by the existing documentation. Full-MC applicability must be audited without choosing values from assessment outcomes.
@@ -55,7 +55,8 @@ These are methodological motivations, not proof of optimality. Exact windows, ro
 | ID | Model or transformation | Input and purpose |
 |---|---|---|
 | M0 | Mass-only fit | `m4l`, no score category |
-| M0c | Mass-only classifier | `m4l`; diagnoses within-bin mass refinement |
+| M0c | Mass-only classifier | `m4l`; diagnoses within-bin mass refinement in the supporting mass-on family |
+| M0off | Constant score 0.5 | Active off-family empty coalition; one occupied category on the same grid |
 | M1 / M1c | Matrix-element score / physical CDF | Kinematic decay7 at fixed mass; independent backend reference required |
 | M2 / M4 | Ordinary MLP / physical CDF of M2 | decay7 plus mass, eight inputs |
 | M3 / M5 | Ordinary MLP / physical CDF of M3 | engineered19 plus mass, twenty inputs |
@@ -65,7 +66,7 @@ These are methodological motivations, not proof of optimality. Exact windows, ro
 | M6 | Adversarial MLP | Twenty inputs; strengths 0.05, 0.1, 0.2, 0.5 |
 | L1 | lab-extension with physical CDF | decay7, `pt4l`, `y4l`, mass; ten inputs, pilot seed 42 |
 
-M4/M5/M5-abs transform existing outputs without retraining. The grouped explicit-mass control is still candidate M3; its candidate key appends `:m4l=off` only for the off variant. M1c reuses validated M1 scores. Early-stopped M3 cannot replace the fixed-epoch M6 control. These IDs denote scientific methods, not software milestones. The standard batch covers ordinary models, feature subsets, and their explicit-mass on/off controls; it does not execute every optional comparison or establish MELA validity.
+M4/M5/M5-abs transform existing outputs without retraining. The grouped explicit-mass control is still candidate M3; its candidate key appends `:m4l=off` only for the off variant. M1c reuses validated M1 scores. Early-stopped M3 cannot replace the fixed-epoch M6 control. These IDs denote scientific methods, not software milestones. The standard batch covers ordinary models, feature subsets, and their explicit-mass on/off controls. The paper attribution reuses only its 75 grouped off checkpoints. It does not establish results for optional CDF/adversarial, MELA, capacity-control or sample-size comparisons.
 
 ## Stages and feedback boundaries
 
@@ -75,9 +76,10 @@ M4/M5/M5-abs transform existing outputs without retraining. The grouped explicit
 | P1 / G0 | Reconstructed events, group isolation, yields, effective counts | Prepared population passes registered support rules |
 | Minimal P2--P4 / G1 | Seed-42 minimum models, calibrations, common templates, T1 evidence | Calibration/template support and statistical model usable |
 | Expansion | Remaining seeds, controls, weight bridge, L1, and validated MELA | G1 passed; every new failure retained |
-| Frozen evaluation | Bound models, mappings, grid, likelihood, claims, and budgets | No feedback to training, calibration, or design |
+| Off-only Stage B | Source audit, 80 identities, common nominal templates, J0/J1, evaluation specification, freeze and Asimov | Joint selector and single-bin contract bound; support gates passed before freeze |
+| Frozen evaluation | 36 units: event bootstrap, model-self, assessment and T2; final report | Bound access review and history; no feedback to training, calibration, or design |
 | Interpretation | Paired estimates, uncertainty, failures, and limitations | Every claim matches its evidence |
-| Extended research | Attribution, sample efficiency, sourced variations | Separate budgets and independent confirmation |
+| Extended research | Sample efficiency and sourced variations beyond the completed exploratory off-only attribution | Separate budgets and independent confirmation |
 
 G0 cannot establish two-dimensional template validity before scores exist. G1 uses permitted calibration/template information, not assessment fit results or method rankings. A changed common grid must be registered and rebuilt consistently before assessment. After assessment, revisions are exploratory and require new independent validation; a new protocol name cannot erase feedback.
 
@@ -85,13 +87,13 @@ Preserve historical development/test identity. Repartitioning inspected events o
 
 ## Sample efficiency and deliverables
 
-The [sample-efficiency study](sample-efficiency.md) narrows Q4 to whether a frozen compact input set retains precision, particularly with less training MC. Its discovery and confirmation are distinct from the pilot M5/M4 comparison. Representation convenience, extra information, and finite-sample learning must be distinguished.
+The separately registered, mass-on [sample-efficiency study](sample-efficiency.md) narrows Q4 to whether a frozen compact input set retains precision, particularly with less training MC. Its discovery and confirmation are distinct from the pilot M5/M4 comparison. Representation convenience, extra information, and finite-sample learning must be distinguished.
 
-Deliverables include a frozen design, input audits, model/mapping/template/inference lineage, complete paired results and failure tables, independent references, and a manuscript supported by the evidence. Negative and inconclusive results remain legitimate outcomes. No gain is assumed in advance.
+Deliverables include a frozen design, input audits, model/mapping/template/inference lineage, complete paired results and failure tables, independent references, and a manuscript supported by the evidence. Negative and inconclusive results remain legitimate outcomes. No gain is assumed in advance. The current paper has committed figures and tables from test05; independent confirmation, sample-size curves and permanent external archival publication remain future work. A new run name or method cannot convert the previously inspected population into independent confirmation.
 
 ## References
 
-These references are retained from the original proposal, not newly reviewed literature. Verify the adopted algorithms, versions, and bibliographic scope before scientific registration or submission.
+The current paper bibliography is [references.bib](../paper/latex/references.bib), including Shapley attribution, selection effects, inference-aware learning, signed-weight statistics and likelihood methods. The following supporting references are retained from the original proposal; they are not evidence that every optional method has been executed. No new literature search is represented by this documentation update.
 
 1. [Avery et al., MEKD](https://arxiv.org/abs/1210.0896).
 2. [CMS, H to four-lepton measurements](https://arxiv.org/abs/1706.09936).

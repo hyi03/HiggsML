@@ -11,6 +11,7 @@ from higgsml.artifacts import LoadedRun, ResearchRun, digest_json, read_run
 from higgsml.modeling.calibration import build_raw_calibration_bundle
 from higgsml.errors import ResearchError, ResearchStateError
 from higgsml.inference.likelihood import run_asimov
+from higgsml.qualification import contract_checked
 from higgsml.protocol import ResearchProtocol, canonical
 from higgsml.sample_efficiency.protocol import SampleEfficiencyProtocol
 from higgsml.sample_efficiency.training import _ids, publish_subset_discriminant, read_subset_discriminant_run
@@ -33,7 +34,7 @@ TEMPLATE_STAGE = "sample-efficiency-template"
 INFERENCE_STAGE = "sample-efficiency-inference"
 BATCH_STAGE = "sample-efficiency-batch"
 ARCHITECTURE_VARIANT = "baseline-fixed64x64x32"
-T1_CONTRACT = {"status": "validated", "correlation": "independent_process_bins",
+T1_CONTRACT = {"correlation": "independent_process_bins",
                "auxiliary": "poisson_tau_gamma", "modifier": "shapesys",
                "pyhf_version": "0.7.6"}
 RESOURCE_KEYS = {"workers"}
@@ -91,14 +92,16 @@ def _validate_t1_gate(gate_run, prepared, evidence, base):
     if type(evidence) is not dict or canonical(snapshot) != canonical(evidence):
         _fail("external T1 evidence differs from the gate snapshot")
     try:
-        schema = json.loads(_T1_SCHEMA_PATH.read_text(encoding="utf-8"))
+        schema_path = (_T1_SCHEMA_PATH.with_name('t1_validation_v2.schema.json')
+                       if evidence.get('schema_version') == 'h4l-t1-validation-v2' else _T1_SCHEMA_PATH)
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
         Draft202012Validator(schema).validate(evidence)
     except Exception as exc:
         raise ResearchError("invalid T1 evidence schema",
                             status="training_subset_binding_mismatch") from exc
     if (evidence.get("dataset") != base["dataset"]
             or evidence.get("protocol_sha256") != base.digest
-            or not evidence.get("independent_reference")
+            or not contract_checked(evidence, 't1')
             or any(evidence.get(key) != value for key, value in T1_CONTRACT.items())):
         _fail("T1 evidence contract mismatch")
     return gate, snapshot

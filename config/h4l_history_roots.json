@@ -1,0 +1,6 @@
+{
+  "schema_version": "h4l-history-roots-v1",
+  "roots": [
+    {"path": "runs", "required": false}
+  ]
+}

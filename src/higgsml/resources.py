@@ -1,14 +1,14 @@
 """Call-scoped, bounded process execution; workers never publish artifacts."""
 from collections import deque
-from concurrent.futures import ProcessPoolExecutor, wait, FIRST_COMPLETED
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, wait, FIRST_COMPLETED
 import json
 from pathlib import Path
 from multiprocessing import get_context
+import time
 
 from higgsml.errors import ResearchError, ResearchStateError
 from higgsml.hpc import settings
 from higgsml.performance import snapshot, difference, add, peak_rss
-import time
 
 DEFAULTS = dict(workers=1, worker_threads=1, root_max_entries=4096, root_threads=4)
 
@@ -81,7 +81,6 @@ def _completion_map(executor, iterator, workers):
                         add(key, value)
                     add('worker_task_seconds', duration)
                     if rss is not None:
-                        # Record maximum separately, not a sum of process RSS samples.
                         maximum = snapshot().get('worker_peak_rss_bytes', 0)
                         add('worker_peak_rss_bytes', max(0, rss - maximum))
                     completed += 1
@@ -102,10 +101,32 @@ def _completion_map(executor, iterator, workers):
                 add(f'tasks_le_{bound}_seconds', sum(value <= bound for value in durations))
 
 
-def ordered_map(function, tasks, *, workers=1, worker_threads=1):
+def _ordered_futures(executor, submit, tasks, workers):
+    iterator = iter(tasks)
+    pending = deque()
+    try:
+        for _ in range(workers):
+            try:
+                pending.append(submit(executor, next(iterator)))
+            except StopIteration:
+                break
+        while pending:
+            yield pending.popleft().result()
+            try:
+                pending.append(submit(executor, next(iterator)))
+            except StopIteration:
+                pass
+    finally:
+        for future in pending:
+            future.cancel()
+
+
+def ordered_map(function, tasks, *, workers=1, worker_threads=1, execution="process"):
     """At most workers tasks in flight, yielding strictly in submission order."""
     if any(type(v) is not int or v < 1 for v in (workers, worker_threads)):
         raise ResearchError('Worker resources must be positive integers')
+    if execution not in {"process", "thread"}:
+        raise ResearchError('Worker execution must be process or thread')
     if workers == 1:
         for task in tasks:
             yield function(task)
@@ -115,9 +136,19 @@ def ordered_map(function, tasks, *, workers=1, worker_threads=1):
         import threadpoolctl
     except ImportError as exc:
         error_type = ResearchError if settings() else ResearchStateError
-        raise error_type('Install .[parallel] dependencies for worker execution',status='dependency_missing') from exc
-    iterator = iter(tasks)
-    pending = deque()
+        raise error_type('Install research-parallel dependencies for worker execution', status='dependency_missing') from exc
+    if execution == "thread":
+        import torch
+        previous_threads = torch.get_num_threads()
+        try:
+            torch.set_num_threads(worker_threads)
+            with threadpoolctl.threadpool_limits(limits=worker_threads):
+                with ThreadPoolExecutor(max_workers=workers) as executor:
+                    yield from _ordered_futures(
+                        executor, lambda pool, task: pool.submit(function, task), tasks, workers)
+        finally:
+            torch.set_num_threads(previous_threads)
+        return
     start = time.perf_counter()
     payload = cloudpickle.dumps(function)
     add('worker_context_serialization_seconds', time.perf_counter() - start)
@@ -125,20 +156,7 @@ def ordered_map(function, tasks, *, workers=1, worker_threads=1):
     with ProcessPoolExecutor(max_workers=workers, mp_context=get_context('spawn'), initializer=_initialize,
                              initargs=(payload,worker_threads)) as executor:
         if settings():
-            yield from _completion_map(executor, iterator, workers)
-            return
-        try:
-            for _ in range(workers):
-                try:
-                    pending.append(executor.submit(_call,next(iterator)))
-                except StopIteration:
-                    break
-            while pending:
-                yield pending.popleft().result()
-                try:
-                    pending.append(executor.submit(_call,next(iterator)))
-                except StopIteration:
-                    pass
-        finally:
-            for future in pending:
-                future.cancel()
+            yield from _completion_map(executor, iter(tasks), workers)
+        else:
+            yield from _ordered_futures(
+                executor, lambda pool, task: pool.submit(_call, task), tasks, workers)

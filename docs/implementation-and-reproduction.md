@@ -1,6 +1,6 @@
 # Implementation and reproduction
 
-This document connects the [scientific methods](methods-and-evaluation.md) to tools, commands, and persisted contracts. Run all commands from the repository root in a suitable environment. Examples containing placeholder paths require verified upstream artifacts; documenting a command does not establish that its scientific prerequisites have passed.
+This document connects the [scientific methods](methods-and-evaluation.md) to tools, commands, and persisted contracts. Aligned with the code and selected test05 paper on 2026-09-27. Run all commands from the repository root in a suitable environment. Examples containing placeholder paths require verified upstream artifacts; documenting a command does not establish that its scientific prerequisites have passed.
 
 ## Tools and architecture
 
@@ -46,7 +46,7 @@ The IDs below retain the former requirements document's traceability. Implementa
 
 ## Environment and installation
 
-Use Python `>=3.12,<3.13` and the Conda `pytorch` environment. The [environment definition](../environment.yml), [Windows lock](../win.yml), and [macOS lock](../osx.yml) define the environment context; [pyproject.toml](../pyproject.toml) defines the package.
+Use Python `>=3.12,<3.13` and the Conda `pytorch` environment. The [environment definition](../environment.yml), [Windows environment snapshot](../win.yml), and [macOS environment snapshot](../osx.yml) define the environment context; [pyproject.toml](../pyproject.toml) defines the package.
 
 ```powershell
 conda env create -f environment.yml
@@ -57,7 +57,7 @@ python -m pip check
 higgsml --help
 ```
 
-Create the environment only if it does not already exist. `requirements.txt` supplies the inference additions including pyhf. The optional package extra is `.[parallel]`, containing cloudpickle and threadpoolctl; it is not named `research-parallel`. Serial defaults do not require activating parallel execution. Do not change environment locks merely to make a validation claim pass.
+Create the environment only if it does not already exist. `requirements.txt` supplies the inference additions including pyhf. For parallel inference, install the optional package extra with `python -m pip install -e ".[parallel]"`, containing cloudpickle and threadpoolctl; it is not named `research-parallel`. Serial defaults do not require activating parallel execution. Do not change environment locks merely to make a validation claim pass.
 
 Windows, Linux, and macOS on supported CPU architectures are peer execution platforms; none is an authority requirement. Record the actual platform in provenance when evaluating portability. MELA uses an independently configured Linux/WSL environment, described below.
 
@@ -69,18 +69,34 @@ python scripts/init_data.py --dataset atlas2020_4lep
 
 The downloader uses direct HTTPS requests for contracted MC members and publishes the receipt only after size/hash verification. Inputs live under `data/raw/<dataset>/`. Never inspect, hash, preprocess, score, or plot real data. The 2025 downloader option does not change the active H4l dataset.
 
-Controlled preparation additionally requires P0 evidence binding `status=validated`, dataset, protocol digest, source-evidence digest, evidence ID, independent reference, and physical definitions for processes, units, four-vectors, pairing, weights, and selection. Filling in the word `validated` cannot replace that audit. The distinction between acquisition evidence and preparation-time checks is explained in [Data and processing](data-and-processing.md#input-identity-and-access).
+Controlled preparation automatically emits `h4l-p0-validation-v2` and `h4l-t1-validation-v2` materials with `status=contract_checked`. Dataset, protocol, source identity and the physical-definition / T1 modifier contracts remain bound. Qualification explicitly keeps `source_audited`, `independent_numerical_validation`, `physical_applicability` and `confirmatory_eligibility` false. `independent_reference=null` and an empty T1 numerical-test list do not invent independent evidence. See [P0 v2](../config/schemas/p0_validation_v2.schema.json) and [T1 v2](../config/schemas/t1_validation_v2.schema.json).
+
+Legacy v1 `validated` evidence remains readable for exploratory software execution and is never rewritten in place. G0 and T1 accept bound software prerequisites, while scientific access/applicability gates still require separate receipts, independent packages and history review. New audits/inference metadata publish the conservative interpretation. Pure paper export requires no prepare/train/inference rerun. Publishing new audit/freeze qualification artifacts requires fresh roots for affected downstream stages; do not silently replace old artifacts.
 
 ## Main workflow
 
-The normal end-to-end path first initializes the controlled dataset and uses the optional `--run-name`. Resource tuning is separately opt-in through `--HPC`:
+The end-to-end path first initializes the controlled dataset. Start with a metadata-only preflight and explicitly select the threshold method. Resource tuning is separately opt-in through `--HPC`:
 
 ```powershell
 python scripts/init_data.py --dataset atlas2020_4lep
-python scripts/h4l_all.py --run-name test01
+python scripts/h4l_all.py --run-name planned-joint-001 --threshold-method joint-support-v1 --plan-only
 ```
 
-Omitting `--run-name` uses the stable name `default`. Re-running the same command validates published manifests and skips complete stages before continuing at the next missing stage. Invalid final stage directories are quarantined without deleting `.failed` evidence. The wrapper passes `--worker-threads 1` to `h4l_off_run.py` and selects `--workers` from 1--4 using 6 GiB of currently available physical memory per worker, falling back to one worker when memory cannot be detected. Complete bootstrap, Toy, and T2 work units can therefore run in bounded parallelism without nested thread expansion. A pre-existing bound access review is reused; otherwise the command records a local named-user single-researcher self-review, which remains explicitly non-independent and exploratory. Frozen assessment/T2 budget claims are never bypassed by resume. The commands below remain available for diagnosis, explicit planning, independent access-review replacement, and individual-stage recovery.
+Omitting `--run-name` uses the stable name `default`; `h4l_all.py` defaults to `joint-support-v1` and explicitly forwards the selected method to Stage B and evaluation. Resume legacy median runs with `--threshold-method median-v1`. An existing registration must match the requested method; old artifacts are never converted automatically. `--plan-only` reads manifests, registration metadata and access ledgers, prints the planned commands, and never launches children or opens event/assessment payloads. Without an existing prepared identity it reports `pending_prepare_identity`, which is not access clearance. Actual execution checks again immediately after prepare, before training. Remove `--plan-only` only when ready to execute. Add `--stage-b-only` to stop after verifying the bound Stage B plan, inputs and report, without generating access reviews or running evaluation; historical assessment access does not prevent this explicitly limited scope.
+
+Re-running the same command validates published manifests and skips complete stages before continuing at the next missing stage. Invalid final stage directories are quarantined without deleting `.failed` evidence. The wrapper passes `--worker-threads 1` to `h4l_off_run.py` and selects `--workers` from 1--4 from installed physical memory: it first retains 2 GiB for local orchestration and system variation, then budgets 5 GiB for each worker, falling back to one worker when physical memory cannot be detected. A 16 GiB host therefore starts two workers. The allowance covers transient process peaks while pyhf/SciPy fitting and result serialization overlap. Complete bootstrap, Toy, and T2 work units can therefore run in bounded parallelism without nested thread expansion. A pre-existing bound access review is reused; otherwise a local named-user single-researcher self-review can be generated only when the declared history contains no matching access. This remains explicitly non-independent and exploratory. Frozen assessment/T2 budget claims are never bypassed by resume.
+
+### Cross-root history and completion states
+
+[`config/h4l_history_roots.json`](../config/h4l_history_roots.json) declares the history scope. Paths are relative to the project root, cannot escape it or use symlinks/junctions, and must include the current run root. The current configuration includes only `runs/`, which may be absent before a new run; no files under `var/` are needed for preflight. Malformed ledgers in a declared root fail closed. This single-root audit cannot establish that a population was never assessed in another directory or machine, and does not qualify the run as independent. Preserve archived history and its original ledgers when relocating or resuming an archived run, and explicitly register that root for a cross-root audit.
+
+All registered roots use the first configured root for new atomic population reservations; scans still include every declared root. Claim-only history is evidence of access/budget consumption, not proof of completed computation. Model-self claims do not consume assessment access. A different or unknown freeze for the same population blocks a new assessment/T2 run, including after a new run name or a new prepare artifact. Same-freeze continuation requires its existing bound access receipt and obeys the original budgets.
+
+New local reviews use [`h4l-off-self-review-access-v2`](../config/schemas/h4l_self_review_access_v2.schema.json): `history_review=self_reviewed_no_access_in_declared_roots`, audited root paths, registry hash, and empty matches. Legacy v1 reviews remain readable without rewriting them, but neither schema bypasses the live history gate. `independent=false` and the exploratory-only conclusion remain explicit; external review is also subject to live history.
+
+The wrapper returns `5` for preflight/access/support blocking and `6` when children exit normally but the requested completion evidence is missing or invalid. Other child failures retain their exit codes. Exit `0` means the requested execution scope completed (or a read-only plan returned without blocking). Full completion requires all 36 registered terminal units, their payload hashes and identities, and a report bound to those exact units and the plan. The reported path may select a current `report-resume-*` snapshot instead of an older `report`. Published numerical failures can be terminal: `execution_status=complete` can coexist with `scientific_status=incomplete`. Even numerically valid output remains `unvalidated_exploratory_only`. Stage B alone reports `stage_b_complete` and `evaluation_started=false` for this invocation.
+
+These orchestration checks do not change physical weights, add scale factors, replace T0/T1 interval algorithms, or establish selection-aware coverage. See the [entry-hardening record](changes/h4l-entry-hardening-20260924.md) for verification and remaining scientific prerequisites.
 
 <a id="single-node-hpc"></a>
 
@@ -168,22 +184,22 @@ evaluation goal is unverified until measured on the cluster.
 ### Prepare reusable inputs
 
 ```powershell
-python scripts/h4l_prepare.py --plan-only
-python scripts/h4l_prepare.py
+python scripts/h4l_prepare.py --run-name pilot-001 --plan-only
+python scripts/h4l_prepare.py --run-name pilot-001
 ```
 
 Defaults bind the 2020 receipt, profile, and H4l protocol, and publish:
 
 ```text
-runs/h4l-prepare/
+runs/h4l-prepare-pilot-001/
   inputs/     ROOT manifest and P0/T1 bindings
   audit/      Source audit
   prepare/    Reusable events.jsonl and manifest
 ```
 
-Preparation does not train or calibrate. It has `--run-root`, not `--run-name`. Existing directories cannot be overwritten. Progress counts may include entries skipped without application payload requests; selected counts refer to published selected events. `--no-progress` disables progress. `root_prepare_metrics` persists timing regardless of terminal display; `--show-prepare-metrics` adds periodic and final timing, spans, throughput, RSS, and hotspot diagnosis. These are software observations.
+Preparation does not train or calibrate. The prepare/check/run helpers support `--continue` for validated recovery; complete stages are reused and invalid final directories are quarantined as `.name.<uuid>.invalid`, preserving prior `.failed` evidence. Use `--run-name` for the named workflow or `--run-root` for an explicit diagnostic or legacy location; they cannot be combined. Published directories cannot be overwritten; use their supported continuation contract or a fresh root. Progress counts may include entries skipped without application payload requests; selected counts refer to published selected events. `--no-progress` disables progress. `root_prepare_metrics` persists timing regardless of terminal display; `--show-prepare-metrics` adds periodic and final timing, spans, throughput, RSS, and hotspot diagnosis. These are software observations.
 
-For a separate bounded diagnostic, use a fresh directory:
+The same run name makes G1 and batch commands consume this scoped prepared artifact. Omitting `--run-name` retains the legacy `runs/h4l-prepare/` default for explicit-path workflows. For a separate bounded diagnostic, use a fresh directory:
 
 ```powershell
 python scripts/h4l_prepare.py --run-root runs/h4l-prepare-diagnostic-001 --diagnostic-entries-per-file 10000 --show-prepare-metrics
@@ -206,7 +222,7 @@ The default `h4l-feature-combination-batch-v3` batch uses seeds 42--46, training
 
 The on key is `M3:<seed>:groups=<subset>` and the off key appends `:m4l=off`; this prevents the two independently trained artifacts from colliding in templates, inference, or exports. Batch completion requires a valid 15-pair comparison for every requested seed. A complete five-seed run additionally requires a valid mass-input summary, so a missing model, invalid T1 width, mismatched/unsupported mass slice, missing M0c reference, duplicate seed, or deleted failure cannot be silently summarized.
 
-The three helpers accept `--protocol`, defaulting to the sole H4l protocol, and propagate it to child stages. `--plan-only` audits planned commands; it does not provide scientific qualification. The standard Asimov batch does not authorize assessment or complete the optional candidate/variation matrix.
+The three helpers accept `--protocol`, defaulting to the sole H4l protocol, and propagate it to child stages. `--plan-only` audits planned commands; it does not provide scientific qualification. The standard Asimov batch does not authorize assessment or complete the optional candidate/variation matrix. Its fine-grid/CDF contracts and mass-on/off diagnostics are distinct from the later single-bin joint-support attribution analysis.
 
 ### Direct stage composition
 
@@ -219,10 +235,10 @@ audit -> prepare -> [me-export -> me-import] -> train -> calibrate
 For direct CLI calls, provide dataset, explicit protocol, correct upstream runs, and a fresh `--run-dir` under `runs/`. For example, after all relevant preparation gates:
 
 ```powershell
-higgsml train --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare/prepare --candidate M2 --seed 42 --run-dir runs/h4l-m2-42
-higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare/prepare --model-run runs/h4l-m2-42 --transform physical --run-dir runs/h4l-m4-42
-higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare/prepare --model-run runs/h4l-m2-42 --transform raw --run-dir runs/h4l-m2-raw-42
-higgsml train --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare/prepare --gate-run runs/h4l-train-pilot-001/g1 --candidate M3 --groups AB --mass-input off --seed 42 --run-dir runs/h4l-m3-ab-m4l-off-42
+higgsml train --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare-pilot-001/prepare --candidate M2 --seed 42 --run-dir runs/h4l-m2-42
+higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare-pilot-001/prepare --model-run runs/h4l-m2-42 --transform physical --run-dir runs/h4l-m4-42
+higgsml calibrate --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare-pilot-001/prepare --model-run runs/h4l-m2-42 --transform raw --run-dir runs/h4l-m2-raw-42
+higgsml train --dataset atlas2020_4lep --protocol config/protocols/h4l_protocol.json --input-run runs/h4l-prepare-pilot-001/prepare --gate-run runs/h4l-train-pilot-001/g1 --candidate M3 --groups AB --mass-input off --seed 42 --run-dir runs/h4l-m3-ab-m4l-off-42
 ```
 
 `--mass-input` defaults to `on`. `off` is accepted only by `train` for a grouped M3 with a nonempty A/B/C/D subset; other stages and candidates reject it. The model records the flag, exact ordered inputs, and validation AUC for every registered 5 GeV mass slice. Downstream calibration reads the flag from the bound model, so it does not take another off switch.
@@ -246,7 +262,7 @@ The [evaluation-plan example](../config/examples/h4l_evaluation_plan.json) is an
 python scripts/h4l_evaluate.py --plan config/examples/h4l_evaluation_plan.json --prepared-run runs/h4l-prepare/prepare --template-run runs/h4l-train-pilot-001/batch/all-seeds/templates --freeze-run runs/h4l-freeze-001 --output-root runs/h4l-evaluation-001 --plan-only
 ```
 
-The unchanged example may be used only to inspect its matrix, not execute a formal experiment. Replace it with the completed plan for execution. Matrix-only planning checks schema/budgets without requiring the local runs to exist or opening assessment; execution checks artifact IDs. The described 25 stages cover one paired fixed-network MC bootstrap, model-self/assessment Toys at 0/1/2, one T2 procedure, sixteen artificial stress cases, and an enhanced report. Failed replicas stay in the original denominators.
+The unchanged example may be used only to inspect its matrix, not execute a formal experiment. Replace it with the completed plan for execution. Matrix-only planning checks schema/budgets without requiring the local runs to exist or opening assessment; execution checks artifact IDs. This separate generic plan describes 25 stages covering one paired fixed-network MC bootstrap, model-self/assessment Toys at 0/1/2, one T2 procedure, sixteen artificial stress cases, and an enhanced report. It is not the current off-only 36-unit evaluation plan. Failed replicas stay in the original denominators.
 
 ### Cleanup and recovery
 
@@ -352,7 +368,7 @@ Pre-freeze ME export excludes assessment. After freeze, a bound `me-export --fre
 
 ## Performance implementation
 
-The performance work reduces repeated computation while preserving scientific rules. Serial ROOT requests use maximum legal spans, identity backfill, and source/entry order. For roughly random development selection at probability p, expected span count is `p+(N-1)*p*(1-p)`; p=0.8 gives mean spans near five entries. Batching therefore does not promise hundreds rather than hundreds of thousands of calls, nor proportional end-to-end speedup.
+The performance work reduces repeated computation while preserving scientific rules. ROOT payload requests preserve legal spans, identity backfill, and source/entry order. A call-scoped bounded thread executor (resource default `root_threads=4`) performs uproot decompression/interpretation within those requests; it does not authorize wider entry ranges or create independent ROOT process workers. For roughly random development selection at probability p, expected span count is `p+(N-1)*p*(1-p)`; p=0.8 gives mean spans near five entries. Batching therefore does not promise hundreds rather than hundreds of thousands of calls, nor proportional end-to-end speedup.
 
 Templates use a sparse physical-group/bin matrix G: yield is its column sum and covariance is `G.T @ G`. Keep a separate occupancy relation: zero signed contribution does not imply no group. With a merge map A, `G_new=G@A` and `C_new=A.T@C@A`; merged variance includes `2*C[a,b]`. Count groups by union, retain process/category ordering and structural support, and apply the original leftmost-failure merge sequence across all participants.
 
@@ -365,10 +381,10 @@ JSONL is streamed with identity-first access. Population digests retain deduplic
 Resources can be supplied through [resources.json](../config/examples/resources.json):
 
 ```json
-{"workers":1,"worker_threads":1,"root_max_entries":4096}
+{"workers":1,"worker_threads":1,"root_max_entries":4096,"root_threads":4}
 ```
 
-Unknown fields, booleans, nonintegers, and nonpositive values fail. Resources and performance records are in the manifest, with `performance_implementation=research-refactor-v1`; they do not redefine model/mapping scientific identities. CDF/joint-cell temporary arrays use approximately 8 MiB blocks; T2 score caching is bounded near 64 MiB. These are local budgets, not process RSS limits: final tables, results, dense output covariance, and worker runtimes still consume memory.
+The checked-in example omits `root_threads` and inherits the default of four. Unknown fields, booleans, nonintegers, and nonpositive values fail. Resources and performance records are in the manifest, with `performance_implementation=research-refactor-v1`; they do not redefine model/mapping scientific identities. CDF/joint-cell temporary arrays use approximately 8 MiB blocks; T2 score caching is bounded near 64 MiB. These are local budgets, not process RSS limits: final tables, results, dense output covariance, and worker runtimes still consume memory.
 
 ROOT process pools, candidate/seed training pools, warm starts, GPU/mixed precision, and changes to fixed small scientific loops are not default outcomes of this work. The historical A--G sequence covered baseline instrumentation, legal spans, interpolation/training caches, group statistics/merging, shared MLE, bounded inference parallelism, and streaming/identity caches. Every replacement must preserve discrete states, order, random inputs, merge history, and serialized identity where applicable. Numerical tolerances are set before comparison; near-equal payloads must not be called identical artifacts. Rollback uses a new run and retains failure evidence.
 
@@ -389,100 +405,251 @@ Relevant scientific-contract checks include all/none/alternating eligible ROOT s
 
 ## Off-only attribution execution
 
-Use a fresh run root. The source model run is read-only and is audited for candidate, seed, exact inputs, mass flag, selected checkpoint/AUC, core protocol, prepared population and calibrated mapping. The registration records allowed-source hashes and timestamps and inspects historical claim metadata without opening assessment payload. Historical detailed diagnostics are optional; missing histories are not fabricated.
+### Selected test05 evidence snapshot
 
-```bash
-python -m higgsml.cli attribution register \
-  --source-root runs/h4l-train-T2/batch/all-seeds \
-  --prepared-run runs/h4l-prepare/prepare \
-  --t1-validation runs/h4l-train-T2/batch/all-seeds/templates/t1-validation.json \
-  --run-dir runs/off-study-001/register
-python -m higgsml.cli attribution nominal \
-  --registration-run runs/off-study-001/register --run-dir runs/off-study-001/nominal
-python -m higgsml.cli attribution freeze \
-  --registration-run runs/off-study-001/register --template-run runs/off-study-001/nominal \
-  --run-dir runs/off-study-001/freeze
-python -m higgsml.cli attribution asimov \
-  --registration-run runs/off-study-001/register --template-run runs/off-study-001/nominal \
-  --freeze-run runs/off-study-001/freeze --run-dir runs/off-study-001/asimov
-python -m higgsml.cli attribution report \
-  --registration-run runs/off-study-001/register --template-run runs/off-study-001/nominal \
-  --freeze-run runs/off-study-001/freeze --result-run runs/off-study-001/asimov \
-  --run-dir runs/off-study-001/report-B
+The paper selects `runs/h4l-off-test05/evaluation/report`, artifact
+`baede583dc2ef36330af1184d266833f3e64a3179fc8d5ce8bff1b6867307cb5`.
+The source training batch is `runs/h4l-train-test05/batch/all-seeds`, and preparation
+is `runs/h4l-prepare-test05/prepare`. Execution records revision
+`c5cdfa8dfab1733ee1cb2c0b4fbca087ab222a4f`; the separate threshold method is
+`joint-support-v1`. Full bindings and the frozen snapshot are in
+[the evidence index](../paper/result-evidence.md) and
+[selection file](../paper/selected-snapshot.json).
+
+The report's aggregate status is `valid`, with 36/36 valid evaluation units and
+200/200 valid bootstrap replicas. Scientific qualification remains exploratory,
+non-independent and selection-aware-coverage unvalidated. Do not rerun or overwrite
+test05 to follow this manual. The following examples use new names and require
+eligible sources; a new name does not make the same MC population independent.
+
+| Published table | Interpretation |
+|---|---|
+| `mass_off_feature_metrics.csv` | 80 nominal candidate/seed rows, width and validation AUC |
+| `mass_off_feature_attribution.csv` | Four nominal Shapley summaries; its intervals describe training-seed stability |
+| `mass_off_feature_interactions.csv` | All 24 conditional second differences |
+| `mass_off_pairwise_comparisons.csv` | All 105 nonempty-subset pairs |
+| `evaluation_completeness.csv`, `seed_block_status.csv` | All 36 planned scientific units and retained terminal status |
+| `mc_bootstrap_uncertainty.csv` | Finite-MC percentile ranges from the complete replica budget |
+| `seed_descriptive_diagnostics.csv`, `five_seed_descriptive_diagnostics.csv` | Conditional per-seed and aggregate Toy/T2 diagnostics |
+| `candidate_fit_status.csv` | Candidate-level fit outcomes and failure denominators |
+| `report.json`, `provenance.json`, `data_dictionary.json` | Bound aggregate result, source identities and field semantics |
+
+`report.md` is a compact status view, not a replacement for numerical tables.
+Some result files are large; paper export selects aggregate fields and verifies
+receipts without decoding event data. Preserve local runs and snapshots separately
+from Git. Historical test01 paths and bootstrap failures are not current test05
+instructions or result sources.
+
+### Reuse checkpoints and publish Stage B
+
+The wrapper audits candidate keys, seeds, ordered inputs, explicit-mass flags,
+checkpoints/AUC, core protocol, prepared population and mappings for all 75 source
+off models. It creates five deterministic M0off identities without retraining.
+`--force` is rejected by the current marginal workflow; it cannot waive compatibility.
+An explicit `--prepared-run` may select a differently located, matching source.
+
+```powershell
+python scripts/h4l_off_run.py --source-run-name pilot-001 --run-name study-001 --threshold-method joint-support-v1 --stage-b --plan-only
+python scripts/h4l_off_run.py --source-run-name pilot-001 --run-name study-001 --threshold-method joint-support-v1 --stage-b
 ```
 
-The paths must point to actual eligible artifacts. Each stage refuses an existing destination. A Stage B report may be published while later evidence is `not_run` or `pending`. Constant M0off models are embedded in the nominal calibration artifact with individual model IDs and prepared/seed binding; they have no trainable parameters. Nominal G1 requires exactly 80 identities and an active-bin likelihood equivalence certificate. The immutable freeze binds the registration, nominal artifact, mappings, mass grid and budget definition; the later evaluation plan binds the freeze, without a circular digest.
+The dependency chain is:
 
-The Stage B report automatically writes `evaluation-plan.json` from the five actual registration/prepared/nominal/freeze/Asimov manifests; no manual ID editing is needed. Every C–E run stores this snapshot, its canonical digest and all five input identities, which report/reuse ingestion checks again. The [off-only evaluation example](../config/examples/h4l_mass_off_evaluation_plan.json) contains unresolved zero IDs for schema illustration only. `--plan-only` reads safe manifests/protocol snapshots, displays the 80 candidates and complete budgets, and reports unresolved identities without opening assessment payload. It does not validate numerical payloads or authorize assessment. Old evaluation v1 remains compatible. The off-only default does not run the legacy stress matrix; additional stress requires separate registration outside this fixed plan.
-
-```bash
-python scripts/h4l_evaluate.py --plan runs/off-study-001/report-B/evaluation-plan.json \
-  --registration-run runs/off-study-001/register --prepared-run runs/h4l-prepare/prepare \
-  --template-run runs/off-study-001/nominal --freeze-run runs/off-study-001/freeze \
-  --result-run runs/off-study-001/asimov --output-root runs/off-evaluation-001 \
-  --workers 2 --worker-threads 1 --plan-only
+```text
+source-register -> register -> source-nominal -> nominal
+  -> support-j0 -> support-j1 -> evaluation-spec -> freeze
+  -> asimov -> evaluation-plan -> report-B
 ```
 
-`--workers` parallelizes complete bootstrap/T2 replicas and complete model-self or assessment candidates while preserving registered draw order. Start with two workers on a 16 GB host and keep `--worker-threads 1`; increase the process count only after measuring peak memory without another prepare or training job running concurrently. The default remains one worker.
+`source-register` and `source-nominal` are created by the corresponding adapter
+stages. Joint support rebuilds the nominal thresholds/templates on `[105,140]`;
+it does not reuse an old median-method nominal artifact under a new label.
+G1 requires all 80 identities and an active-bin M0off likelihood-equivalence
+certificate. J0/J1 are additional pre-freeze support gates. A failed gate publishes
+`gate-failure-report` and prevents freeze; a normal child exit is not a passed gate.
 
-Individual `mc-bootstrap`, `model-self --mu 0|1|2`, `assessment --mu 0|1|2` and `t2` stages use the same registration/template/freeze arguments plus `--evaluation-plan runs/off-study-001/report-B/evaluation-plan.json --result-run runs/off-study-001/asimov`. Assessment/T2 additionally require `--access-review` with schema `h4l-off-assessment-access-v1`, exact population/protocol/freeze binding, independent P0/T1 file receipts, explicit historical-use and group-isolation review. P0 must satisfy [the applicability schema](../config/schemas/h4l_off_p0_applicability.schema.json): its recomputed `package_id` hashes the package without that field; dataset, prepared, protocol, freeze, template and original P0 source-file hash must match. Each physical definition has nonempty referenced content and a typed, finite expected/actual numerical comparison within declared tolerances. Source files have verified receipts and an independent producer/reference/basis. The schema checks evidence structure and bindings; independent human review must establish physical validity and acceptable tolerances. T1 uses the existing independent evidence package contract. Missing evidence is `assessment_qualification_pending`; an automatic reference or a new freeze name cannot restore independence. The original prepared run's `.research-claims` root owns exclusive per-cell budget claims; a failed or interrupted claimed cell is not rerun automatically.
+The evaluation specification binds registration, nominal templates, passed gates,
+seed blocks, coupling and budgets before freeze. The evaluation plan is a separate
+artifact published after Asimov; it binds all five registration/prepared/nominal/
+freeze/Asimov IDs without a circular digest. Its path is
+`runs/h4l-off-study-001/evaluation-plan/evaluation-plan.json`, not a file fabricated
+by editing the generic evaluation example or inferred from `report-B`.
 
-### Within-seed v2 sequence
+For direct composition, the required middle stages are explicit. These commands
+assume registration and nominal already exist and that each destination is fresh:
 
-The commands below are supported Linux Bash commands from the repository root. v1 remains the default, so every v2 entry point includes `--evaluation-version v2`.
-
-```bash
-python scripts/h4l_off_run.py \
-  --evaluation-version v2 \
-  --source-run-name test01 \
-  --run-name within-seed-001 \
-  --stage-b \
-  --show-command
-
-python -m higgsml.cli attribution access-review \
-  --evaluation-version v2 \
-  --protocol config/protocols/h4l_protocol.json \
-  --registration-run runs/h4l-off-within-seed-001/register \
-  --template-run runs/h4l-off-within-seed-001/nominal \
-  --freeze-run runs/h4l-off-within-seed-001/freeze \
-  --result-run runs/h4l-off-within-seed-001/asimov \
-  --evaluation-plan runs/h4l-off-within-seed-001/evaluation-plan/evaluation-plan.json \
-  --access-review path/to/validated-off-assessment-access.json \
-  --run-dir runs/h4l-off-within-seed-001/access-review-v2
-
-python scripts/h4l_off_run.py \
-  --evaluation-version v2 \
-  --source-run-name test01 \
-  --run-name within-seed-001 \
-  --evaluation \
-  --access-review runs/h4l-off-within-seed-001/access-review-v2/validated-off-assessment-access.json \
-  --show-command
+```powershell
+python -m higgsml.cli attribution support-check --registration-run runs/h4l-off-study-001/register --template-run runs/h4l-off-study-001/nominal --gate J0 --run-dir runs/h4l-off-study-001/support-j0
+python -m higgsml.cli attribution support-check --registration-run runs/h4l-off-study-001/register --template-run runs/h4l-off-study-001/nominal --gate J1 --j0-run runs/h4l-off-study-001/support-j0 --run-dir runs/h4l-off-study-001/support-j1
+python -m higgsml.cli attribution evaluation-spec --registration-run runs/h4l-off-study-001/register --template-run runs/h4l-off-study-001/nominal --j0-run runs/h4l-off-study-001/support-j0 --j1-run runs/h4l-off-study-001/support-j1 --run-dir runs/h4l-off-study-001/evaluation-spec
+python -m higgsml.cli attribution freeze --registration-run runs/h4l-off-study-001/register --template-run runs/h4l-off-study-001/nominal --specification-run runs/h4l-off-study-001/evaluation-spec --run-dir runs/h4l-off-study-001/freeze
 ```
 
-The Stage B wrapper executes these dependencies: `source-register` -> `register`; `source-nominal` -> `nominal`; J0 -> J1 -> `evaluation-spec` -> `freeze` -> `asimov` -> `evaluation-plan`. The `source-*` artifacts preserve the v1 registration and nominal identities. Their v2 children are compatibility adapters that record the audit and original IDs. Neither gate reads assessment payload. Use `--plan` for the wrapper's metadata-only plan; it does not consume a claim or validate deferred payload/access bindings.
+Do not run these again after a wrapper already published their destinations.
+Direct later stages derive the threshold method from registration; an explicitly
+supplied `--threshold-method` must match. `attribution --help` lists `asimov`,
+`evaluation-plan`, `access-review`, evaluation and report arguments. `--plan-only`
+reads safe manifests/protocol snapshots, reports unresolved identities and budgets,
+and does not open event/assessment payload or grant access.
 
-The evaluation driver runs 36 scientific units and then one report. Unit names distinguish `training_seed` from the Toy seed: model-self and assessment each run five seed blocks at each `mu=0,1,2`; T2 runs five seed blocks at `mu=1`; MC bootstrap spans the complete 80-identity family. Budgets are fixed at 500 Toys per candidate for model-self/assessment, 200 MC bootstrap replicas, and 20 outer by 100 inner T2 Toys. `--show-command` is opt-in; normal output remains concise.
+### Access review and C–E evaluation
 
-Resume accepts complete scientific terminal artifacts, including `insufficient_statistics`, as `skip_terminal`. It may recover publication only from a fully verified staging receipt. Once the durable claim exists, missing or damaged output becomes `blocked_consumed_budget`; neither `--continue` nor a new output path authorizes recomputation. Reports remain partial when units fail or have not run, retain planned denominators, and never substitute another seed.
+The direct `h4l_off_run.py --evaluation` and `h4l_evaluate.py` paths require an
+existing bound access receipt. They do not automatically generate or approve one.
+Only `h4l_all.py` provides automatic local self-review and adaptation when no
+external review is supplied and the declared history permits it. Its receipt
+remains `single_researcher_self_review`, `independent=false`.
 
-The v2 access adapter accepts a reviewed source only after binding it to the specification, plan, freeze, blocks, and source-history receipt. A previously opened population is restricted to a J0 `posthoc_support_diagnostic`; it cannot be presented as a fresh prospective assessment source. If no unused eligible source exists, assessment/T2 stay `blocked_missing_eligible_assessment_source`. These commands implement the software contract; synthetic tests are not controlled-MC evidence, and independent P0/T1 review plus the original scientific budgets remain pending.
+The current evaluator consumes `h4l-off-assessment-access-v3`, bound to the
+specification, evaluation plan, five blocks and the hash of its source review.
+The [pending example](../config/examples/h4l_off_assessment_access.pending.json)
+has placeholder digests and no complete blocks; it is not executable approval.
+For an independently reviewed source package, the source review must establish
+exact prepared/population/protocol/freeze bindings, P0/T1 receipts, historical use
+and group isolation. P0 definitions and independent numerical comparisons follow
+[the applicability schema](../config/schemas/h4l_off_p0_applicability.schema.json).
+Schema validity alone cannot establish physical validity or suitable tolerances.
 
-### Legacy v1 recovery and debug options
+Adapt a reviewed source receipt to the actual Stage B via:
 
-The following options apply only to the default v1 workflow. V2 rejects `--reuse-stage` and `--force`; use claim-aware `--continue` and the immutable report snapshot path printed by the v2 evaluator.
-
-For evaluator recovery use `--reuse-stage STAGE:MU=RUN`, for example `--reuse-stage model-self:1=runs/off-evaluation-001/model-self-mu1`, with a fresh output root. The tool verifies successful manifests, original registration/template/freeze bindings and budgets before skipping a cell. Failed scientific fits inside a completed budget remain recorded; fatal stage errors stop dependent commands. To publish intermediate evidence, pass each completed stage using repeated `--evaluation-run` to a fresh `attribution report`.
-
-Exports include four `mass_off_*.csv` tables, complete JSON, JSONL, provenance and a data dictionary. Seed and event-MC uncertainty are separate fields; planned denominators and missing evidence remain visible. The paper-facing Markdown contains only off-family results.
-
-The direct stages above can be orchestrated in the same naming and planning style as `h4l_run.py`. Stage B must run first because the independent access review binds its actual freeze:
-
-```bash
-python scripts/h4l_off_run.py --source-run-name T2 --run-name study-001 --stage-b
-python scripts/h4l_off_run.py --source-run-name T2 --run-name study-001 --evaluation --plan
-python scripts/h4l_off_run.py --source-run-name T2 --run-name study-001 --evaluation
+```powershell
+python -m higgsml.cli attribution access-review --registration-run runs/h4l-off-study-001/register --template-run runs/h4l-off-study-001/nominal --freeze-run runs/h4l-off-study-001/freeze --result-run runs/h4l-off-study-001/asimov --evaluation-plan runs/h4l-off-study-001/evaluation-plan/evaluation-plan.json --access-review path/to/reviewed-source-access.json --run-dir runs/h4l-off-study-001/access-review
 ```
 
-For protocol/debug development only, append `--force` and use a fresh debug run name. This bypasses source protocol consistency checks while retaining dataset, artifact digest, candidate, checkpoint, population, and upstream checks. Every generated stage is marked `forced_protocol_mismatch_debug`; these outputs are non-authoritative and must not be used as paper or scientific evidence. Remove `--force` for the final run.
+Adaptation preserves the source's independence status, checks live history and
+publishes a new receipt; it does not invent evidence or consume an assessment
+claim. Use an already valid v3 receipt directly rather than adapting it again.
+Same-freeze recovery reuses its existing receipt. Missing evidence or conflicting
+history blocks evaluation before decoding assessment payload.
 
-This writes Stage A--E under `runs/h4l-off-study-001/`. `--evaluation` requires the completed Stage B directories, reads `runs/h4l-off-study-001/access-review/validated-off-assessment-access.json` by default, and refuses an existing evaluation output. Use `--access-review` only to override that deterministic path. The pending structure in `config/examples/h4l_off_assessment_access.pending.json` is not valid access evidence until an independent reviewer replaces every placeholder with bound IDs and verified P0/T1 file receipts. The wrapper delegates every scientific operation and registered budget to the existing attribution CLI and `h4l_evaluate.py`.
+```powershell
+python scripts/h4l_off_run.py --source-run-name pilot-001 --run-name study-001 --threshold-method joint-support-v1 --evaluation --access-review runs/h4l-off-study-001/access-review/validated-off-assessment-access.json --workers 2 --worker-threads 1
+```
+
+The explicit evaluator equivalent can first be inspected without execution:
+
+```powershell
+python scripts/h4l_evaluate.py --plan runs/h4l-off-study-001/evaluation-plan/evaluation-plan.json --registration-run runs/h4l-off-study-001/register --prepared-run runs/h4l-prepare-pilot-001/prepare --template-run runs/h4l-off-study-001/nominal --freeze-run runs/h4l-off-study-001/freeze --result-run runs/h4l-off-study-001/asimov --output-root runs/h4l-off-study-001/evaluation --workers 2 --worker-threads 1 --plan-only
+```
+
+Execution requires the bound access receipt for assessment/T2. The matrix is one
+200-replica event-MC bootstrap, 15 model-self and 15 assessment cells (three
+injections × five seeds, 500 Toys per each of 16 candidates), and five T2 cells
+(20 outer calibration replicas × 100 inner Toys at mu=1). The final report is the
+37th unit. Individual `model-self`, `assessment` and `t2` calls require
+`--training-seed 42|43|44|45|46`; MC bootstrap uses the complete 80-identity family.
+All evaluation stages bind the generated plan and nominal Asimov source.
+
+### Default marginal CRN evaluation
+
+The wrapper, evaluator and attribution CLI use one common-total monotone marginal
+CRN contract. There is no command-line v1/v2/v3 choice; version strings in artifacts
+identify immutable schemas and compatibility. Candidate counts share total Poisson
+draws and monotone category uniforms within each seed. Their Poisson marginals are
+preserved, but `physical_event_pairing=false`. Cross-seed Toy indexes carry no
+pairing meaning. Independent-allocation sensitivity remains pending until a bound
+budget and its execution exist.
+
+J0 checks nominal marginal support and common totals. J1 checks all 200 group-level
+Bernoulli-thinning replicas per seed with zero allowed support failures. They are
+template-only engineering screens, not independent physical or interval validation.
+T2 validates every outer threshold/support record before inner generation; failed
+preflight retains planned denominators and generates no inner Toys for that seed.
+Existing population history, including older schema claims, remains binding.
+
+### Resources and recovery
+
+`--workers` bounds complete bootstrap/T2 replicas and supported candidate tasks;
+results retain registered order. Windows uses thread workers for MC bootstrap,
+assessment candidates and T2 replicas because long-running spawned workers can
+fail in `torch_cpu.dll`; other platforms use process workers for those tasks.
+The direct default is one worker. On a 16 GiB host start with two and
+`--worker-threads 1`; avoid concurrent preparation/training and measure peak memory
+before increasing parallelism. `h4l_all.py` chooses its bounded worker count as
+described in the main workflow.
+
+`--continue` validates and reuses published stages without changing frozen choices.
+Terminal artifacts, including published scientific failures, remain immutable.
+Interrupted assessment/T2 claims cannot be silently discarded or allocated a new
+random stream. To recompute a specifically selected claimed unit that has no
+complete or recoverable terminal after an implementation/infrastructure failure:
+
+```powershell
+python scripts/h4l_off_run.py --source-run-name pilot-001 --run-name study-001 --threshold-method joint-support-v1 --evaluation --continue --evaluation-unit t2-mu1-seed42 --retry-failed --access-review runs/h4l-off-study-001/access-review/validated-off-assessment-access.json --workers 2 --worker-threads 1
+```
+
+`--retry-failed` requires at least one `--evaluation-unit`. Complete terminals are
+skipped. Population, freeze, plan, candidates, stream and budget stay unchanged.
+Before payload decoding a durable receipt is stored in
+`runs/.h4l-mass-off-v3-recomputations/` and bound into the new terminal. The final
+report may be a fresh `report-resume-*` snapshot; use the printed path and verified
+bindings instead of assuming `evaluation/report` is always the current report.
+
+### Joint support threshold selection
+
+`h4l_all.py` defaults to `joint-support-v1`. Direct `h4l_off_run.py` and attribution
+registration still default to `median-v1`; explicitly select joint support for a
+new analysis of the paper's method. Resuming an older run requires its original
+method flag. Existing artifacts are not converted automatically.
+
+The [method definition](../config/protocols/h4l_off_joint_support_v1.json) fixes
+nineteen calibration quantile proposals, nearest-median feasible selection,
+calibration/template weight conventions, support thresholds and `[105,140]` mass
+edges. [Methods and evaluation](methods-and-evaluation.md#joint-support-thresholds-used-by-the-paper)
+explains the selector. All records bind the separate analysis-contract digest,
+model, upstream roles, draw identity, proposals and support diagnostics.
+
+Each bootstrap draw reselects using both resampled roles. T2 reselects with
+resampled calibration and fixed template; ordinary Toys keep thresholds fixed.
+No feasible cut is a scientific terminal. Incomplete budgets yield null MC
+percentile intervals. Even complete test05 remains exploratory with
+`selection_aware_coverage=unvalidated` and `primary_claim_eligible=false`.
+
+The optional `scripts/h4l_joint_support_replay.py --output <fresh-path> --workers 4`
+uses original local pinned diagnostic inputs, NPZ rows 201–400 plus nominal row 0.
+Its 200/200 support and 131 nonmedian selections are historical implementation
+consistency checks, not test05 formal replicas or independent validation. It does
+not import those draws into an existing analysis or access assessment. Its input
+availability is not required for ordinary paper compilation.
+
+## Manuscript reproduction
+
+The formal paper is [paper/latex/main.tex](../paper/latex/main.tex). Six PDF figures
+and four generated TeX inputs are committed. Ordinary compilation needs Python's
+standard library and a TeX distribution with REVTeX 4.2, BibTeX and latexmk; it does
+not read `runs/`, `var/`, `paper/evidence/` or the selected snapshot.
+
+```powershell
+python paper/scripts/build.py
+```
+
+The wrapper checks missing assets, compiler errors, undefined references, overfull
+boxes and stuck floats, then copies the PDF to `paper/latex/main.pdf`. Alternatively,
+from `paper/latex/`, `latexmk -pdf -outdir=.build main.tex` writes `.build/main.pdf`.
+Author/contact/affiliation/funding placeholders still require author input.
+
+Only intentional evidence/asset refresh requires the ignored local source runs,
+NumPy and Matplotlib. The following verifies a fresh extraction against the pinned
+selection, regenerates six figures and four TeX inputs, then compiles:
+
+```powershell
+python paper/scripts/build.py --run-name test05
+```
+
+Review the regenerated asset diff before committing. This is aggregate replay,
+not model retraining, likelihood refitting, new Toy generation or new assessment
+access. To export a separate aggregate package without editing manuscript assets:
+
+```powershell
+python paper/scripts/collect_evidence.py --run-name test05 --output var/paper-evidence/test05-new-check
+```
+
+The output must be fresh. Optional repeatable `--path-map OLD=NEW` relocates sources
+with longest-prefix precedence; it never changes stored bytes, hashes or identities.
+The collector can also use an explicit `--evidence-manifest` to bind a report and
+access source. The build wrapper accepts either `--run-name` or `--evidence-manifest`.
+Missing required sources or wrong hashes fail closed. It checks selected aggregate
+sources and enclosing manifests, not every raw/event/checkpoint payload. See
+[paper/README.md](../paper/README.md) for build and archive details. Preserve runs
+and snapshots separately; a clean checkout supports compilation from committed
+assets but cannot regenerate the underlying scientific evidence by itself.

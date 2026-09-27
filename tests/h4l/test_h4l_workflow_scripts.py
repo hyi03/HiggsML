@@ -95,7 +95,7 @@ def test_prepare_cli_has_no_manual_review_arguments() -> None:
     completed = _run(PREPARE_SCRIPT, "--help")
 
     assert completed.returncode == 0
-    assert "--run-name" not in completed.stdout
+    assert "--run-name" in completed.stdout
     assert "--run-root" in completed.stdout
     assert "--no-progress" in completed.stdout
     assert "--protocol" in completed.stdout
@@ -126,15 +126,64 @@ def test_automatic_validation_is_bound_and_schema_valid(
 
     for schema_name, instance in (
         ("h4l_root_input_v1.schema.json", manifest),
-        ("p0_validation_v1.schema.json", p0),
-        ("t1_validation_v1.schema.json", t1),
+        ("p0_validation_v2.schema.json", p0),
+        ("t1_validation_v2.schema.json", t1),
     ):
         schema = json.loads((VALIDATION_ROOT / schema_name).read_text(encoding="utf-8"))
         Draft202012Validator(schema).validate(instance)
-    assert p0["status"] == "validated"
-    assert t1["status"] == "validated"
+    assert p0["status"] == "contract_checked"
+    assert t1["status"] == "contract_checked"
+    for evidence in (p0, t1):
+        assert evidence["independent_reference"] is None
+        assert evidence["qualification"]["contract_checked"] is True
+        assert evidence["qualification"]["source_audited"] is False
+        assert evidence["qualification"]["independent_numerical_validation"] is False
+        assert evidence["qualification"]["physical_applicability"] is False
+        assert evidence["qualification"]["confirmatory_eligibility"] is False
     assert p0["evidence_id"].startswith("automated-p0-")
     assert t1["evidence_id"].startswith("automated-t1-")
+
+
+@pytest.mark.parametrize("consumer", ["g1", "batch"])
+@pytest.mark.parametrize("case", [
+    "generated_v2", "legacy_v1", "pending_v1", "invalid_status",
+    "scientific_promotion", "wrong_protocol", "unknown_version",
+])
+def test_t1_consumers_accept_contracts_without_scientific_promotion(
+    tmp_path: Path, consumer: str, case: str,
+) -> None:
+    prepare = _load_prepare_module()
+    receipt, _ = _dataset_receipt(tmp_path)
+    _, evidence = prepare._automated_validations(prepare._manifest_from_receipt(receipt))
+    if case in {"legacy_v1", "pending_v1"}:
+        evidence.pop("qualification")
+        evidence.update(schema_version="h4l-t1-validation-v1", status="validated",
+                        independent_reference="automated-not-independent:legacy")
+        evidence["validation_summary"]["numerical_tests"] = ["legacy contract checks"]
+        if case == "pending_v1":
+            evidence["status"] = "pending"
+    elif case == "invalid_status":
+        evidence["status"] = "validated"
+    elif case == "scientific_promotion":
+        evidence["qualification"]["independent_numerical_validation"] = True
+    elif case == "wrong_protocol":
+        evidence["protocol_sha256"] = "0" * 64
+    elif case == "unknown_version":
+        evidence["schema_version"] = "h4l-t1-validation-v99"
+    path = tmp_path / "t1-validation.json"
+    path.write_text(json.dumps(evidence), encoding="utf-8")
+    before = path.read_bytes()
+    module = _load_g1_module() if consumer == "g1" else _load_run_module()
+    arguments = [path, prepare.DEFAULT_PROTOCOL]
+    if consumer == "batch":
+        arguments.append("atlas2020_4lep")
+    if case in {"generated_v2", "legacy_v1"}:
+        module._validate_t1(*arguments)
+    else:
+        with pytest.raises(module.WorkflowError) as error:
+            module._validate_t1(*arguments)
+        assert error.value.exit_code == 3
+    assert path.read_bytes() == before
 
 
 def test_prepare_plan_stops_after_audit_and_prepare(
@@ -188,10 +237,10 @@ def test_prepare_metrics_output_is_opt_in(tmp_path: Path) -> None:
     assert not verbose_root.exists()
 
 
-def test_run_name_derives_global_prepare_and_scoped_output_paths() -> None:
+def test_run_name_derives_scoped_prepare_and_output_paths() -> None:
     run_name = f"pytest-shared-{uuid.uuid4().hex}"
     run_root = PROJECT_ROOT / "runs" / f"h4l-train-{run_name}"
-    global_root = PROJECT_ROOT / "runs" / "h4l-prepare"
+    prepare_root = PROJECT_ROOT / "runs" / f"h4l-prepare-{run_name}"
 
     hidden = _run(G1_SCRIPT, "--run-name", run_name, "--plan-only")
     assert hidden.returncode == 0, hidden.stderr
@@ -199,30 +248,30 @@ def test_run_name_derives_global_prepare_and_scoped_output_paths() -> None:
 
     g1 = _run(G1_SCRIPT, "--run-name", run_name, "--plan-only", "--show-command")
     assert g1.returncode == 0, g1.stderr
-    assert g1.stdout.count(f"--input-run {global_root / 'prepare'}") == 9
-    assert str(global_root / "inputs" / "t1-validation.json") in g1.stdout
+    assert g1.stdout.count(f"--input-run {prepare_root / 'prepare'}") == 9
+    assert str(prepare_root / "inputs" / "t1-validation.json") in g1.stdout
     assert str(run_root / "g1" / "templates") in g1.stdout
     assert f"--run-name {run_name}" in g1.stdout
 
     batch = _run(RUN_SCRIPT, "--run-name", run_name, "--plan-only", "--show-command")
     assert batch.returncode == 0, batch.stderr
-    assert str(global_root / "prepare") in batch.stdout
+    assert str(prepare_root / "prepare") in batch.stdout
     assert str(run_root / "g1" / "templates") in batch.stdout
-    assert str(global_root / "inputs" / "t1-validation.json") in batch.stdout
+    assert str(prepare_root / "inputs" / "t1-validation.json") in batch.stdout
     assert str(run_root / "batch" / "all-seeds" / "seed42") in batch.stdout
     assert str(run_root / "batch" / "all-seeds" / "seed46") in batch.stdout
     assert not run_root.exists()
 
 
-def test_multiple_run_names_share_the_global_prepared_input() -> None:
-    global_prepared = PROJECT_ROOT / "runs" / "h4l-prepare" / "prepare"
+def test_multiple_run_names_use_scoped_prepared_inputs() -> None:
     for run_name in ("reuse-001", "reuse-002"):
+        prepared = PROJECT_ROOT / "runs" / f"h4l-prepare-{run_name}" / "prepare"
         completed = _run(G1_SCRIPT, "--run-name", run_name, "--plan-only", "--show-command")
         assert completed.returncode == 0, completed.stderr
-        assert completed.stdout.count(f"--input-run {global_prepared}") == 9
+        assert completed.stdout.count(f"--input-run {prepared}") == 9
 
 
-@pytest.mark.parametrize("script", [G1_SCRIPT, RUN_SCRIPT])
+@pytest.mark.parametrize("script", [PREPARE_SCRIPT, G1_SCRIPT, RUN_SCRIPT])
 def test_shared_run_name_rejects_path_traversal(
     script: Path, tmp_path: Path,
 ) -> None:
@@ -236,6 +285,7 @@ def test_shared_run_name_rejects_path_traversal(
 @pytest.mark.parametrize(
     ("script", "explicit_option", "error_text"),
     [
+        (PREPARE_SCRIPT, "--run-root", "cannot be combined"),
         (G1_SCRIPT, "--output-root", "cannot be combined"),
         (RUN_SCRIPT, "--output-root", "cannot be combined"),
     ],
@@ -273,15 +323,16 @@ def test_prepare_fixed_workload_diagnosis_does_not_offer_g1(tmp_path: Path) -> N
     assert not run_root.exists()
 
 
-def test_prepare_run_name_is_not_a_supported_argument() -> None:
+def test_prepare_run_name_selects_scoped_root() -> None:
     completed = _run(
         PREPARE_SCRIPT,
         "--run-name", "001",
         "--plan-only",
     )
 
-    assert completed.returncode == 2
-    assert "unrecognized arguments: --run-name 001" in completed.stderr
+    assert completed.returncode == 0, completed.stderr
+    assert str(PROJECT_ROOT / "runs" / "h4l-prepare-001" / "prepare") in completed.stdout
+    assert "--run-name 001" in completed.stdout
 
 
 def test_prepare_uses_global_default_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -319,8 +370,8 @@ def test_prepare_writes_automatic_inputs_before_running_prerequisites(
     )
 
     inputs = run_root / "inputs"
-    assert json.loads((inputs / "p0-validation.json").read_text(encoding="utf-8"))["status"] == "validated"
-    assert json.loads((inputs / "t1-validation.json").read_text(encoding="utf-8"))["status"] == "validated"
+    assert json.loads((inputs / "p0-validation.json").read_text(encoding="utf-8"))["status"] == "contract_checked"
+    assert json.loads((inputs / "t1-validation.json").read_text(encoding="utf-8"))["status"] == "contract_checked"
     assert (inputs / "h4l-root-input-v1-manifest.json").is_file()
     assert [arguments[0] for arguments in invoked] == ["audit", "prepare"]
     assert "--show-prepare-progress" not in invoked[0]
@@ -741,6 +792,26 @@ def test_prepare_clean_without_override_targets_global_root(
     monkeypatch.setattr(module, "DEFAULT_RUN_ROOT", global_root.resolve())
     module._run(argparse.Namespace(run_root=None, clean=True, plan_only=False))
     assert not global_root.exists()
+
+
+def test_prepare_clean_with_run_name_targets_named_prepare_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_prepare_module()
+    named_root = tmp_path / "h4l-prepare-001"
+    legacy_root = tmp_path / "h4l-prepare"
+    for root in (named_root, legacy_root):
+        for name in ("inputs", "audit", "prepare"):
+            (root / name).mkdir(parents=True)
+            (root / name / "owned.txt").write_text(name, encoding="utf-8")
+    monkeypatch.setattr(module, "RUNS_ROOT", tmp_path.resolve())
+
+    module._run(argparse.Namespace(
+        run_name="001", run_root=None, clean=True, plan_only=False,
+    ))
+
+    assert not named_root.exists()
+    assert legacy_root.exists()
 
 
 def test_g1_and_run_clean_remove_only_selected_output(

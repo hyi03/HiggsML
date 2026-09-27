@@ -39,7 +39,10 @@ def test_controlled_mc_requires_bound_p0_synthetic_does_not(tmp_path):
         'source_evidence_sha256':digest_json(frame.attrs['source_evidence']),'evidence_id':'independent-fixture',
         'independent_reference':'synthetic-test-only','physical_definitions':{k:'bound-ref' for k in ('processes','units','four_vectors','pairing','weights','selection')}}
     path=tmp_path/'p0.json'; path.write_text(json.dumps(validation))
-    assert _p0_audit(frame,p,audit,path)[0]['physics_sources_validated']
+    checked, _ = _p0_audit(frame,p,audit,path)
+    assert checked['physics_sources_validated'] is False
+    assert checked['contract_checked'] is True
+    assert checked['qualification']['independent_numerical_validation'] is False
     validation['source_evidence_sha256']='wrong'; path.write_text(json.dumps(validation))
     with pytest.raises(ResearchError): _p0_audit(frame,p,audit,path)
     frame.attrs['source_kind']='synthetic'

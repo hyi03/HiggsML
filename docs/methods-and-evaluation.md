@@ -2,13 +2,11 @@
 
 ## Active off-only study
 
-The active paper objective is to quantify the contribution, complementarity and training-seed stability of A/B/C/D kinematic groups when the classifier omits explicit `m4l`. The likelihood still uses the registered mass window and mass coordinate. The 15 nonempty combinations use seeds 42–46 and their existing checkpoints; five deterministic `M0off` identities supply the same-family empty set. No model is retrained for this analysis.
+The active off-only family contains 15 nonempty A/B/C/D subsets for each seed 42–46 and a deterministic `M0off` empty set for each seed. Trainable classifiers omit explicit `m4l`; the final likelihood retains the mass coordinate. The attribution workflow audits and reuses existing checkpoints and calibrations, then binds 80 identities to a common nominal template, G1, freeze, Asimov result and evaluation plan.
 
-The six result areas are all off-only: paired W68; complete subset ranking/stability; exact Shapley and 24 conditional interactions; validation-checkpoint AUC versus W68; BC/AC versus ABCD as exploration-selected comparisons pending frozen validation; and all 105 direct subset pairs. AUC is descriptive, not an inference or coverage qualification. Older physical-CDF M5/M4, explicit-mass controls, MELA and sample-efficiency workflows remain compatible background/extension studies and are not required off-family candidates.
+The paper binds test05 and `joint-support-v1`: one mass bin over 105–140 GeV, raw scores, and thresholds selected jointly for calibration/template support. It completed 80 nominal identities, 200 event-MC bootstrap replicas and all 36 evaluation units. These are exploratory numerical results with non-independent access review, unvalidated selection-aware coverage, and artificial CRN coupling. See [Results and limitations](results-and-limitations.md#h4l-off-test05-controlled-mc-result) for values and uncertainty. Conditional CDF, adversarial training, MELA and the mass-on M5/M4 comparison below describe separate supported methods, not procedures used to obtain the current paper result.
 
-The versioned [definition](../config/protocols/feature_attribution_mass_off_v1.json) is not a completed scientific registration. A new immutable registration run binds the actual core protocol, prepared population and 75 audited model/calibration artifacts. The candidate family has its own 80-identity G1 and freeze; freezing does not grant assessment access. Automatic P0/T1 materials remain software evidence, with independent qualification pending. Actual uncertainty and coverage stages are separate evidence levels; no operating system or CPU architecture is an authority requirement.
-
-This document defines how the [research questions](research-design.md) are translated into models and statistical comparisons. Input definitions and weights are maintained in [Data and processing](data-and-processing.md); commands and persisted interfaces are in [Implementation and reproduction](implementation-and-reproduction.md). Exact numerical rules belong to the [versioned protocol](../config/protocols/h4l_protocol.json), whose default scope is synthetic software validation rather than full-MC scientific qualification.
+This document defines how the [research questions](research-design.md) are translated into models and statistical comparisons. Input definitions and weights are maintained in [Data and processing](data-and-processing.md); commands and persisted interfaces are in [Implementation and reproduction](implementation-and-reproduction.md). Base numerical rules belong to the [versioned protocol](../config/protocols/h4l_protocol.json); the paper additionally binds the [joint-support method](../config/protocols/h4l_off_joint_support_v1.json). The core scope is synthetic software validation rather than full-MC scientific qualification.
 
 ## Representations and common mass information
 
@@ -21,7 +19,7 @@ Let m denote `m4l`, z the standard decay coordinates, and r additional observabl
 \log\frac{p_s(r\mid m,z)}{p_b(r\mid m,z)}.
 \]
 
-This chain rule does not assume independent feature groups and is not a unique causal decomposition. Legacy mass-conditioned MLP representations receive the same explicit mass condition. The active raw off-only attribution family omits that input. The separate grouped-M3 control removes it only to form independently retrained on/off pairs. BCE training with mass does not guarantee a conditional likelihood ratio, while removing the explicit column does not remove mass information encoded by correlated kinematics; absolute training weights define a surrogate measure.
+This chain rule does not assume independent feature groups and is not a unique causal decomposition. The supporting mass-conditioned MLP representations receive the same explicit mass condition. The active raw off-only attribution family omits that input. The separate grouped-M3 control removes it only to form independently retrained on/off pairs. BCE training with mass does not guarantee a conditional likelihood ratio, while removing the explicit column does not remove mass information encoded by correlated kinematics; absolute training weights define a surrogate measure.
 
 `decay7` describes two dilepton masses and Angular5; engineered19 also exposes laboratory quantities and derived geometry. L1 checks whether adding `pt4l` and reliably reconstructed `y4l` partly reproduces the engineered representation's gain. This does not by itself identify production information: learning convenience, acceptance, and mass use remain alternatives. A future four-momentum study must preserve the beam direction and longitudinal production information rather than remove it by an arbitrary boost and then attribute the loss to other features.
 
@@ -35,7 +33,7 @@ input -> Linear(64) -> LayerNorm -> SiLU -> Dropout(0.1)
       -> Linear(32) -> LayerNorm -> SiLU -> Linear(1)
 ```
 
-Use CPU float32, AdamW, learning rate `1e-3`, weight decay `1e-4`, batch size 1024, and the declared absolute-weight normalization. Ordinary models run for at most 200 epochs, with validation absolute-weight AUC early stopping, patience 20, and minimum improvement `1e-4`. This keeps the learner and training budget comparable; it is not a search for the best architecture or a guarantee of optimal mu precision. Assessment interval width cannot select the checkpoint.
+Use CPU float32, AdamW, learning rate `1e-3`, weight decay `1e-4`, batch size 1024, and the declared absolute-weight normalization. Ordinary models run for at most 200 epochs, with validation absolute-weight AUC early stopping, patience 20, and minimum improvement `1e-4`. This keeps the learner and training budget comparable; it is not a search for the best architecture or a guarantee of optimal mu precision. Assessment interval width cannot select the checkpoint. Class-mean weight normalization does not equalize total class loss weights, and the selected-checkpoint validation AUC is not an independent test score. The fixed hidden widths give `64d + 6657` trainable parameters for input dimension d; BC, AC and ABCD off models therefore have 7041, 7297 and 7873 parameters. No capacity-matched result is claimed for test05.
 
 For adversarial training, an auxiliary network predicts eleven train-background mass-quantile bins from the classifier logit. Gradient reversal makes the classifier minimize
 
@@ -103,48 +101,80 @@ Use score categories c and mass bins j:
 \prod_a\pi_a(\theta_a).
 \]
 
-The initial design uses 1 GeV mass bins and two background equal-yield score categories. Thresholds come only from calibration. Every accepted event belongs to one category; do not first discard low-score events. Raw and CDF can define different categories, but the primary comparison retains equal category count and total acceptance where statistically valid. Do not split ties using labels or event identity to manufacture information.
+The core protocol initializes 1 GeV mass bins with two score categories and calibration-derived cuts. That is the supporting standard workflow. The active off-only `joint-support-v1` contract explicitly replaces its mass edges with `[105,140]`; this single bin is prescribed, not an outcome of fine-grid merging. Each nonempty model contributes two counts and `M0off` reduces to an inclusive count. Every accepted event belongs to a category; no low-score preselection is applied. The resulting improvement is conditional on this coarse analysis, not an improvement over a resolved Higgs mass fit.
 
-All participants share mass boundaries and the registered deterministic merge rule. Check nominal and required varied templates together; do not optimize a grid separately for each model. M0 sums the same sample over score categories. M0c diagnoses within-mass-bin refinement: even `t=f(m)` can split a finite mass bin. Compare registered coarse/fine common grids and report M0c versus M0 separately before assigning improvements to additional kinematics.
+### Joint-support thresholds used by the paper
+
+[The selector](../src/higgsml/modeling/joint_support.py) implements the separate
+[method contract](../config/protocols/h4l_off_joint_support_v1.json):
+
+1. Bin raw sigmoid scores of calibration background into the protocol's twenty equal score bins. Fit signed yields with a variance-weighted, nonnegative, total-preserving histogram. This defines a threshold proposal distribution; it does not transform event scores or replace signed physical templates.
+2. Interpolate nineteen quantile cuts `q=k/20`, `k=1,...,19`, within those histogram bins. For each cut, check both score categories for every represented process in both calibration and template. Calibration uses `physical_weight`; template uses `yield_weight`.
+3. Require occupied categories, positive signed yield and variance, `N_eff,signed >= 20`, and `rho >= 0.2`. Use physical-group moments and retained bootstrap multiplicities. Legacy labels establish only aggregate signal/background support, not separately identified physical background processes.
+4. Among feasible cuts, minimize `(abs(k-10), k)`. The nearest median wins, with the lower quantile breaking a tie. No AUC or W68 is optimized. Equality to a threshold goes to the higher category; identical scores are never split by label or identity.
+5. Bind all proposals, support checks, selected cut, role-group/multiplicity digests, model and analysis identity. No feasible cut terminates scientifically with retained diagnostics. `M0off` stays constant and bypasses this selector under its structural-zero contract.
+
+Nominal test05 selected the median for all 75 networks. Bootstrap reruns the
+selector with resampled calibration and template; T2 reruns it with resampled
+calibration and fixed template. Ordinary Toys use already fixed thresholds.
+Because template events help select the cut and estimate its yields, a successful
+support check is not selection-aware interval validation. The method records
+`selection_aware_coverage=unvalidated` and `primary_claim_eligible=false`.
+
+### Template statistics and T1 applicability
+
+In the standard fine-grid workflow, all participants share mass boundaries and the registered deterministic merge rule. In the joint-support workflow all participants share the explicit single mass bin. Check nominal and required varied templates together; do not optimize a grid separately for each model. M0 sums the same sample over score categories. M0c diagnoses within-mass-bin refinement: even `t=f(m)` can split a finite mass bin. Compare registered coarse/fine common grids and report M0c versus M0 separately before assigning improvements to additional kinematics.
 
 Templates retain signed yields, positive/negative sums, group occupancy, variance, covariance, effective counts, and cancellation. Nonpositive physical rates cannot be repaired with epsilon or absolute weights. No observed events is not proof of a structural zero. Distinguish structural zeros, zero variance, and insufficient statistics; omit all-process structural-zero observation bins only under the common support rule.
 
-T1 uses the validated per-process/per-bin pyhf `shapesys` approximation. For positive yield y and standard deviation sigma,
+T1 implements the per-process/per-bin pyhf `shapesys` approximation. Its contract checks and independent applicability validation are distinct. For positive yield y and standard deviation sigma,
 
 \[
 \tau=(y/\sigma)^2,\qquad E[n_{\rm auxiliary}]=\tau\gamma,
 \]
 
-with nonnegative multiplicative gamma. The evidence binds `pyhf_version=0.7.6`, `modifier=shapesys`, `correlation=independent_process_bins`, `auxiliary=poisson_tau_gamma`, protocol, and reference ID. Group correlations that contradict this assumption are rejected even if a validation marker exists. Saving sumw2 is not itself validation.
+with nonnegative multiplicative gamma. The T1 contract binds `pyhf_version=0.7.6`, `modifier=shapesys`, `correlation=independent_process_bins`, `auxiliary=poisson_tau_gamma`, protocol, and reference ID. Automatically emitted T1 v2 material has `status=contract_checked`; it does not supply an independent reference. Group correlations that contradict this assumption are rejected even if a validation marker exists. Saving sumw2 is not itself validation.
 
-`staterror` and `histosys` have different statistical meanings and cannot silently replace this model. Strong cancellation or low support triggers common merging; persistent problems become `insufficient_statistics` or `template_stat_model_unvalidated`. A more detailed positive/negative generative model requires separate design and validation.
+`staterror` and `histosys` have different statistical meanings and cannot silently replace this model. In the standard fine-grid method, strong cancellation or low support triggers common merging; joint support instead retains its fixed single bin and requires a feasible threshold. Persistent problems become `insufficient_statistics` or `template_stat_model_unvalidated`. A more detailed positive/negative generative model requires separate design and validation.
 
 ## Uncertainty layers and resampling
 
 | Layer | Randomness or model | Meaning |
 |---|---|---|
 | T0 | Fixed map and nominal templates | Idealized fixed-template comparison |
-| T1 | T0 plus validated finite-template MC model | Precision of that fixed analysis |
+| T1 | T0 plus the bound finite-template MC approximation | Nominal precision conditional on that model; applicability remains to be independently validated |
 | T2-procedure | Outer calibration group resampling and a new frozen map per replica; T1 within each | Repeated-calibration procedure variability |
 | S | Artificial yield/shape perturbations | Sensitivity to specified stress scenarios |
 | P | Sourced generator/theory/detector changes | Robustness only to those validated variations |
 
-The main fixed-network MC bootstrap resamples calibration/template physical groups in paired replicas. It does not include retraining or assessment-parent uncertainty. T2 instead isolates recalibration: resample calibration groups, fit CDF or raw thresholds, freeze the replica map, apply that same map to template and common pseudo-events, reconstruct bins, and fit T1. Never alter template categories while leaving observations under the original map.
+The main fixed-network MC bootstrap resamples calibration/template physical groups in paired replicas. It does not include retraining or assessment-parent uncertainty. T2 instead isolates recalibration: resample calibration groups, fit the registered CDF or raw thresholds (joint feasibility uses the fixed template for test05), freeze the replica map, apply it consistently to template and pseudo-observation parents, reconstruct bins, and fit T1. Never alter template categories while leaving observations under the original map.
 
 T2 normally fixes models and template/assessment parent events. Any broader resampling scope must be explicit. Declare whether auxiliary observations are fixed or regenerated. Do not add outer calibration spread again inside T1 or call calibration-only resampling unconditional uncertainty for the entire analysis. Using CDF uniformity as a predictive background model would require a different uncertainty treatment; the default uses independent templates.
 
 ## Primary and supporting metrics
 
-At `mu_true=1`, 10 fb^-1, and the same bound T1 expectation and interval construction,
+For the active family, at `mu_true=1`, 10 fb^-1 and the same bound T1 model-self Asimov construction,
 
 \[
-W_{68}=\mu_{\rm upper}-\mu_{\rm lower},\qquad
-R_s=1-\frac{W_{68}(M5,s)}{W_{68}(M4,s)}.
+W_{68}(S,s)=\mu_{\rm upper}(S,s)-\mu_{\rm lower}(S,s),\qquad
+R_s(S)=1-\frac{W_{68}(S,s)}{W_{68}(M0off,s)}.
 \]
 
-Report all five paired `R_s` and their median. Failed seeds and undefined denominators cannot be dropped while retaining a five-seed primary-comparison claim. W68 directly measures expected signal-strength resolution; 95% widths, Toy width distributions, bias, coverage, and failures qualify that interpretation.
+Compute direct differences and ratios within each training seed before taking
+five-seed medians. A median difference need not equal the difference of medians.
+The constant reference has no measured validation AUC; retain its missing value.
+Report complete widths, ranks, exact Shapley contributions, interactions and all
+105 nonempty-subset contrasts. The compact BC/AC highlights are exploration-selected.
+A nominally narrower interval requires uncertainty and coverage qualification.
 
-AUC means absolute-weight AUC at the selected validation checkpoint. It is neither an assessment measurement nor a newly measured CDF AUC inherited from the raw network. Include fixed-mass-slice AUC and local support; the empty-set global AUC is not automatically 0.5 when mass is available. Report the pull denominator convention when using asymmetric intervals.
+The supporting mass-conditioned M5/M4 family instead defines
+`R_s=1-W68(M5,s)/W68(M4,s)` under its own common template and mapping contract.
+Its five paired values and median must not be mixed with the off-family baseline.
+In either family, retain failed seeds and undefined denominators. W68 measures
+nominal expected signal-strength resolution; 95% widths, Toy distributions,
+bias, coverage and failures qualify its practical interpretation.
+
+AUC means absolute-weight AUC at the selected validation checkpoint. It is neither an assessment measurement nor a newly measured CDF AUC inherited from the raw network. Include fixed-mass-slice AUC and local support; the mass-on empty-set global AUC is not automatically 0.5 when mass is available. The no-input M0off reference is a separate deterministic construction. Report the pull denominator convention when using asymmetric intervals.
 
 For every nonempty A/B/C/D subset, the raw feature-combination family trains a paired model with explicit `m4l` and a model with `m4l` removed. The pair shares the event population, seed, learner, common template grid, and T1 model-self Asimov contract at `mu=1`, but each model is trained and checkpointed independently. Candidate keys are `M3:<seed>:groups=<subset>` and `M3:<seed>:groups=<subset>:m4l=off`.
 
@@ -152,13 +182,13 @@ Fixed-mass diagnostics use the registered 5 GeV calibration edges on validation 
 
 ## Pseudo-experiments, boundaries, and assessment
 
-Separate model-self closure, frozen assessment-parent mismatch, and externally sourced variation tests. Generate counts from a valid nonnegative model, not by using signed events as Poisson probabilities. Methods share physical pseudo-events or equivalent joint-cell sampling, not merely equal random seeds.
+Separate model-self closure, frozen assessment-parent mismatch, and externally sourced variation tests. Generate counts from a valid nonnegative model, not by using signed events as Poisson probabilities. For a physical paired-covariance claim, methods would need shared physical pseudo-events or equivalent valid joint-cell sampling. The current off-only workflow instead uses the explicitly artificial marginal CRN coupling defined below; matching random seeds alone establishes neither contract.
 
-The pilot uses seed 42 and 500 Toys for each registered generating scenario at `mu=0,1,2`. This budget does not multiply automatically across every T2 replica; outer/inner budgets are separately registered. At 500 independent conditional Toys, binomial standard errors are approximately 2.09 percentage points for 68% coverage and 0.97 points for 95%. Approximate 95% half-widths are 4.1 and 1.9 points, not minimum detectable differences. Report binomial intervals and paired coverage-difference uncertainty.
+The core Toy base seed is 42 with 500 Toys per candidate and injection at `mu=0,1,2`. The active off-only family derives distinct streams for five training-seed blocks; it does not execute only one training seed. This budget does not multiply automatically across every T2 replica; outer/inner budgets are separately registered. At 500 independent conditional Toys, binomial standard errors are approximately 2.09 percentage points for 68% coverage and 0.97 points for 95%. Approximate 95% half-widths are 4.1 and 1.9 points, not minimum detectable differences. Report binomial intervals and paired coverage-difference uncertainty.
 
 More Toys reduce conditional sampling error, not missing parent-template information or unsupported tails. Failed replicas remain in planned denominators; do not draw replacements until the result looks acceptable.
 
-Physical profile-likelihood intervals use `mu >= 0` and chi-square(1) critical values. Missing upper bounds and optimization failures remain failures. Toys currently check coverage; they do not calibrate critical values. Interval calibration requires separate registration and independent validation. Boundary bias must not automatically be called model mismatch.
+Physical profile-likelihood intervals use the bound search domain `0 <= mu <= 20` and chi-square(1) critical values. T0 holds template parameters fixed; T1 profiles the bound finite-template nuisances. Missing upper bounds and optimization failures remain failures. Toys currently check coverage; they do not calibrate critical values. Interval calibration requires separate registration and independent validation. Boundary bias must not automatically be called model mismatch.
 
 An optional `signed_mu_diagnostic` at injected zero fits the same counts with fixed nominal templates and nuisance values. Even with a T1 primary interval it is labelled `T0_fixed_template_diagnostic`. Search intersects `[-20,20]` with positive `b + mu*s` support, using the 0.99999999 interior factor at the negative physical boundary. Nonpositive background or absent sensitivity gives `signed_domain_unavailable`; a boundary optimum gives `search_bound_reached` and is not included in valid-estimate means. It is not a T1 signed profile, is not automatically enabled by the default protocol, and is not run for modeled stress.
 
@@ -173,19 +203,19 @@ Train every nonempty subset of `N={A,B,C,D}` afresh within the same experiment f
 \frac{|S|!(4-|S|-1)!}{4!}[v(S\cup\{G\})-v(S)].
 \]
 
-The legacy mass-conditioned raw family's empty set is M0c. The new raw off-only family's empty set is constant M0off, with structural-zero category evidence and a same-grid likelihood-equivalence check. Report M0c/M0 separately. Compute Shapley per seed, check `sum(phi)=v(N)-v(empty)`, then summarize; medians of individual contributions need not obey the identity. Contributions have interval-width units, not percentages of physical information.
+The supporting mass-conditioned raw family's empty set is M0c. The active raw off-only family's empty set is constant M0off, with structural-zero category evidence and a same-grid likelihood-equivalence check. Report M0c/M0 separately. Compute Shapley per seed, check `sum(phi)=v(N)-v(empty)`, then summarize; medians of individual contributions need not obey the identity. Contributions have interval-width units, not percentages of physical information.
 
 A CDF family must run its own mass-only empty set through the same calibration. At exact mass, a mass-only score is a conditional point mass; strict continuous-CDF assumptions fail. Follow ties/plateau/structural-zero rules without manufacturing two occupied categories. If an empty set or subset is invalid, exact Shapley for that family is unavailable; do not insert zero or substitute a different procedure. This need not block M5/M4.
 
 Second differences, `v(S+i+j)-v(S+i)-v(S+j)+v(S)`, measure complementarity in the chosen metric, not mutual information or causal synergy. Pair group resampling across combinations and propagate the declared upstream randomness; resampling only the final contribution table is insufficient. Raw and decorrelated families cannot be pooled.
 
-### Within-seed joint evaluation v2
+### Within-seed marginal CRN evaluation
 
-The v1 evaluation remains the default. The explicitly selected v2 contract partitions the same 80 identities into five complete 16-candidate blocks, one for each training seed 42--46. Within a seed and evaluation cell, all candidates share physical pseudo-observations; equal Toy indexes across different training seeds have no physical pairing interpretation. The five seeds also share the underlying MC, so they are not five independent data sets.
+The current off-only, evaluation and attribution entry points use one common-total monotone marginal CRN contract. The command-line version selector has been removed; version fields remain only for immutable artifact compatibility. The contract partitions the same 80 identities into five complete 16-candidate blocks, one for each training seed 42--46. Within a seed and evaluation cell, candidates share total Poisson draws and monotone category-allocation uniforms. This preserves each candidate's marginal Poisson law but does not reproduce physical cross-model covariance. Equal Toy indexes across different training seeds have no pairing interpretation. The five seeds also share the underlying MC, so they are not independent data sets.
 
 J0 checks the nominal template parent. J1 is a fixed 200-replica, group-level Bernoulli-thinning engineering screen with zero allowed failures per seed; it is not an independent physics validation or a guarantee that a prospective assessment parent will pass. Both gates run before freeze and must not decode assessment payload. The common nominal mass grid remains fixed across all five blocks. Signed process rates are never clipped, absolutized, or repaired with epsilon; unsupported negative rates produce a scientific terminal failure.
 
-The v2 matrix has 36 scientific units: one 200-replica MC bootstrap; model-self and assessment at `mu=0,1,2` for each of five training seeds, using 500 Toys per candidate in each cell; and T2 at `mu=1` for each seed with 20 outer calibration replicas and 100 inner Toys. The report is the 37th unit. `training_seed` selects a frozen 16-candidate model block. Toy streams are separately derived from the contract, stage, injection, training seed, outer index, and stream kind.
+The evaluation matrix has 36 scientific units: one 200-replica MC bootstrap; model-self and assessment at `mu=0,1,2` for each of five training seeds, using 500 Toys per candidate in each cell; and T2 at `mu=1` for each seed with 20 outer calibration replicas and 100 inner Toys. The report is the 37th unit. `training_seed` selects a frozen 16-candidate model block. Toy streams are separately derived from the contract, stage, injection, training seed, outer index, and stream kind.
 
 Exact Shapley, 24 conditional interactions, and 105 nonempty-subset comparisons still require each seed's complete canonical value vector. Five-seed summaries require 5/5 valid seeds; missing or failed seeds remain visible and are never replaced. Nominal Asimov, MC bootstrap, and paired-Toy diagnostics retain separate `value_source` labels. A failed Toy layer does not invalidate an already valid Asimov layer.
 
@@ -205,8 +235,18 @@ For every seed compute all 16 coalition values `v(S)=-W68(S)` under fixed T1 mod
 
 Display nonempty subsets by median W68, subset size, then alphabetic order. Statistical ties use unrounded equality and average ranks; first-place counts include shared minima. Every one of 105 canonical nonempty subset pairs keeps five differences and ratios: `W_left-W_right` (negative favours left) and `1-W_left/W_right` (positive favours left). Intervals are per pair, without simultaneous-coverage claims. BC and AC remain the exploration-selected compact comparisons and are not retrospectively preregistered. Missing/failed seeds or mixed cohorts make complete summaries unavailable; values are never imputed.
 
-Event-MC bootstrap uses 200 common physical-group draws for calibration and template roles separately, seed 42001, fixed networks and frozen nominal mass grid. Raw thresholds are refit, M0off stays constant, and the full inference/attribution chain is rebuilt. All 200 complete replicas are required for formal percentile intervals; failures keep their identities, mappings and budgets. Do not add event-MC and training-seed intervals.
+Event-MC bootstrap uses 200 common physical-group draws for calibration and template roles separately, base seed 42001, fixed networks and frozen nominal mass grid. Joint-support draws derive streams from the analysis-contract digest, replica and role using `h4l-off-joint-support-rng-v1`, so they cannot be identified by the base seed alone. Raw thresholds are reselected with the bound method, M0off stays constant, and the full inference/attribution chain is rebuilt. All 200 complete replicas are required for published MC percentile ranges; these are not independently calibrated total confidence intervals; failures keep their identities, mappings and budgets. Do not add event-MC and training-seed intervals.
 
-T1 Toys use mu=0,1,2 and 500 marginal Toys per candidate per expectation. Joint physical cells must have nonnegative process rates and compatible marginals. If the model-self joint construction fails, retain marginal closure and mark pairing unavailable; never claim pairing from equal seeds. Report successful-fit conditional coverage and its Wilson interval, planned-denominator success-and-coverage with its Wilson interval, and failure rates. No generic pilot pass threshold is introduced.
+T1 Toys use mu=0,1,2 and 500 marginal Toys per candidate per expectation. The active contract checks nonnegative marginal process rates and common-total consistency, then couples count vectors within each seed using shared totals and monotone category uniforms. It does not construct empirical physical joint cells or estimate physical cross-model covariance. Unsupported marginals produce retained failures, without clipping or replacement draws. Report successful-fit conditional coverage and its Wilson interval, planned-denominator success-and-coverage with its Wilson interval, and failure rates. No generic pilot pass threshold is introduced.
 
-T2 uses T1 at mu=1, 20 common calibration-group outer draws and 100 joint inner Toys per outer draw. A replica mapping transforms both template and pseudo-event classification on the fixed grid. Preserve outer mapping records, multiplicities and failed inner budgets; 20 outer replicas are the independent procedure units, not 2000 unconditional experiments. Independent assessment requires a separate reviewed access/evidence receipt and durable cell claim before payload decoding.
+T2 uses T1 at mu=1, 20 common calibration-group outer draws and 100 marginal-CRN inner Toys per outer draw. A replica mapping transforms both template and pseudo-event classification on the fixed grid. Preserve outer mapping records, multiplicities and failed inner budgets; 20 outer replicas are the procedure-level resampling units conditional on the fixed parents, not 2000 independent full-procedure experiments. Aggregate within outer replicas, then within each training seed, then across seeds. Assessment requires a bound access receipt and durable cell claim before payload decoding; test05 uses a non-independent self-review, so its assessment is not independent confirmation.
+
+### Marginal CRN coupling and evidence boundary
+
+Reports mark paired errors as conditional CRN diagnostics and exclude them from
+physical covariance, total uncertainty and primary reliability claims. J0/J1 test
+marginal signed rates and direct-parent total consistency without assessment
+payload. Legacy-label evidence cannot establish separate physical-process
+support. T2 validates all outer mappings and support before generating inner
+Toys. Historical v1/v2/v3 labels remain part of old artifact identities; they are
+not selectable alternatives in the current command-line workflow.

@@ -19,7 +19,6 @@ from tqdm.auto import tqdm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RUNS_ROOT = (PROJECT_ROOT / "runs").resolve()
-GLOBAL_PREPARE_ROOT = (RUNS_ROOT / "h4l-prepare").resolve()
 DEFAULT_CONFIG = PROJECT_ROOT / "config" / "protocols" / "feature_combinations_seed42.json"
 T1_SCHEMA = PROJECT_ROOT / "config" / "schemas" / "t1_validation_v1.schema.json"
 EXPECTED_SEEDS = tuple(range(42, 47))
@@ -36,9 +35,10 @@ from higgsml.artifacts import digest_json, read_run  # noqa: E402
 from higgsml.cleanup import remove_run_directories  # noqa: E402
 from higgsml.errors import ResearchError  # noqa: E402
 from higgsml.protocol import load_protocol  # noqa: E402
-from higgsml.run_names import workflow_directory_name  # noqa: E402
-from higgsml.hpc import settings, single_writer
-from higgsml.hpc_execution import training_steps
+from higgsml.hpc import settings, single_writer  # noqa: E402
+from higgsml.hpc_execution import training_steps  # noqa: E402
+from higgsml.qualification import contract_checked  # noqa: E402
+from higgsml.run_names import prepare_directory_name, workflow_directory_name  # noqa: E402
 
 
 class WorkflowError(Exception):
@@ -193,20 +193,24 @@ def _continue_stage(
 def _validate_t1(path: Path, protocol_path: Path, dataset: str) -> None:
     try:
         evidence = json.loads(path.read_text(encoding="utf-8-sig"))
-        schema = json.loads(T1_SCHEMA.read_text(encoding="utf-8-sig"))
+        schema_path = (T1_SCHEMA.with_name("t1_validation_v2.schema.json")
+                       if isinstance(evidence, dict)
+                       and evidence.get("schema_version") == "h4l-t1-validation-v2" else T1_SCHEMA)
+        schema = json.loads(schema_path.read_text(encoding="utf-8-sig"))
         Draft202012Validator(schema).validate(evidence)
+        checked = contract_checked(evidence, "t1")
         protocol = load_protocol(protocol_path, dataset=dataset).to_dict()
     except (OSError, json.JSONDecodeError, ValidationError, ResearchError) as error:
         raise WorkflowError(f"Invalid T1 validation evidence: {path}: {error}", 3) from error
     if evidence.get("status") == "pending":
         raise WorkflowError(
-            "T1 evidence is pending; the controlled MC batch cannot start before independent review.", 3
+            "T1 evidence is pending; exploratory execution requires bound software contract checks.", 3
         )
-    if (evidence.get("status") != "validated"
+    if (not checked
             or evidence.get("dataset") != dataset
             or evidence.get("protocol_sha256") != digest_json(protocol)):
         raise WorkflowError(
-            "T1 validation evidence is not validated and bound to the current dataset/protocol.", 3
+            "T1 software contract evidence is not checked and bound to the current dataset/protocol.", 3
         )
 
 
@@ -342,11 +346,12 @@ def _run(args: argparse.Namespace) -> None:
             )
         try:
             root = RUNS_ROOT / workflow_directory_name(run_name)
+            prepare_root = RUNS_ROOT / prepare_directory_name(run_name)
         except ValueError as error:
             raise WorkflowError(str(error), 2) from error
-        prepared = GLOBAL_PREPARE_ROOT / "prepare"
+        prepared = prepare_root / "prepare"
         gate = root / "g1" / "templates"
-        t1_validation = GLOBAL_PREPARE_ROOT / "inputs" / "t1-validation.json"
+        t1_validation = prepare_root / "inputs" / "t1-validation.json"
         batch_root = root / "batch" / ("all-seeds" if complete else f"seed{seeds[0]}")
     else:
         prepared = _resolve(args.prepared_run or config["prepared_run"])

@@ -1,15 +1,15 @@
-"""Argument routing for the explicit v2 workflow."""
+"""Argument routing for the default marginal CRN workflow."""
 from higgsml.errors import ResearchError
-from higgsml.inference import seed_workflow as workflow
 
 
 def dispatch(args, protocol, root):
+    from higgsml.inference import marginal_workflow as workflow
     if args.force:
-        raise ResearchError('v2 requires audited compatibility; --force is unavailable')
+        raise ResearchError('within-seed evaluation requires audited compatibility; --force is unavailable')
     if args.workers < 1 or args.worker_threads < 1:
         raise ResearchError('workers and worker threads must be positive')
     if args.training_seed is not None and args.stage not in {'model-self','assessment','t2'}:
-        raise ResearchError('--training-seed only applies to v2 block evaluation')
+        raise ResearchError('--training-seed only applies to within-seed block evaluation')
     if args.plan_only:
         return workflow.metadata_plan(protocol,stage=args.stage,registration_path=args.registration_run,
             nominal_path=args.template_run,specification_path=args.specification_run,freeze_path=args.freeze_run,
@@ -21,9 +21,14 @@ def dispatch(args, protocol, root):
         if not args.prepared_run or (not args.source_root and not args.source_registration):
             raise ResearchError('register needs prepared run and source root or source registration')
         return workflow.register(args.source_root,args.prepared_run,protocol,args.run_dir,root,args.t1_validation,
-                                  source_registration=args.source_registration)
+                                  source_registration=args.source_registration, threshold_method=getattr(args,'threshold_method',None) or 'median-v1')
     if not args.registration_run:
         raise ResearchError('--registration-run required')
+    selected_method = getattr(args,'threshold_method',None)
+    if selected_method is not None:
+        registration = workflow.load_registration(args.registration_run,protocol)[1]
+        if registration.get('threshold_method','median-v1') != selected_method:
+            raise ResearchError('explicit threshold method conflicts with registration')
     if args.stage == 'nominal':
         return workflow.nominal(args.registration_run,protocol,args.run_dir,root,source_nominal=args.source_nominal)
     if not args.template_run:
@@ -63,4 +68,4 @@ def dispatch(args, protocol, root):
                                         result_path=args.result_run,access_review=args.access_review)
     return workflow.evaluate(*common,stage=args.stage,mu=args.mu,training_seed=args.training_seed,
         access_review=args.access_review,evaluation_plan_path=args.evaluation_plan,result_path=args.result_run,
-        workers=args.workers,worker_threads=args.worker_threads)
+        workers=args.workers,worker_threads=args.worker_threads,retry_failed=args.retry_failed)

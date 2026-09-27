@@ -1,6 +1,0 @@
-{
-  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"h4l-mass-off-compatibility-audit-v1","type":"object","additionalProperties":false,
-  "required":["schema_version","status","registration_id","source_path","semantics","source_history","original_artifacts_relabelled","adapter_id"],
-  "properties":{"schema_version":{"const":"h4l-mass-off-compatibility-audit-v1"},"status":{"const":"compatible"},"registration_id":{"$ref":"#/$defs/digest"},"source_path":{"type":"string","minLength":1},"semantics":{"type":"object","required":["protocol_sha256","source_nominal_id","prepared_artifact_id","population_id","mass_edges","templates_digest","bundles_digest","candidate_keys","model_ids","mapping_digests","weight_semantics","development_probability","roles","value_function","estimator"]},"source_history":{"type":"array"},"original_artifacts_relabelled":{"const":false},"adapter_id":{"$ref":"#/$defs/digest"}},
-  "$defs":{"digest":{"type":"string","pattern":"^[0-9a-f]{64}$"}}
-}

@@ -21,7 +21,7 @@ from higgsml.resources import ordered_map
 
 
 def analysis_definition():
-    value=read_json(Path(__file__).resolve().parents[3]/'config/protocols/feature_attribution_mass_off_v1.json')
+    value=read_json(Path(__file__).resolve().parents[3]/'config/protocols/feature_attribution_mass_off.json')
     if value.get('family_id')!=FAMILY or value.get('candidate_keys')!=candidate_keys() or value.get('budgets')!=BUDGETS:
         raise ResearchError('analysis definition differs from implemented version')
     return value
@@ -162,18 +162,23 @@ def _unchanged(rows):
 
 
 def _qualification(prepared, t1, protocol, accepted_protocol_sha256, *, force=False):
+    from higgsml.qualification import contract_checked, contract_qualification
     p0 = prepared.read_json('p0-validation.json') if 'p0-validation.json' in prepared.manifest['files'] else {}
     automated = [name for name,value in (('p0',p0),('t1',t1 or {}))
-                 if 'automated' in str(value.get('independent_reference','')).lower()]
+                 if 'automated' in str(value.get('independent_reference','')).lower()
+                 or str(value.get('evidence_id', '')).startswith('automated-')]
+    checked = (not force and contract_checked(p0, 'p0') and contract_checked(t1, 't1')
+               and t1.get('protocol_sha256') in accepted_protocol_sha256)
+    dimensions = contract_qualification(checked)
     # A free-form reference string is never a reviewed numerical evidence package.
     if force:
-        return {'software_contract':'forced_debug_unverified', 'independent_reference':'pending',
+        return {**dimensions, 'software_contract':'forced_debug_unverified', 'independent_reference':'pending',
                 'automated_materials':automated,
                 'assessment_access':'pending_independent_history_and_reference_review',
                 'allowed_conclusions':'debug_only_no_scientific_conclusions',
                 'missing':['protocol_consistency_bypassed','independent_P0_physical_definitions',
                            'signed_MC_T1_applicability_reference','assessment_history_review']}
-    return {'software_contract':'valid' if t1 and t1.get('protocol_sha256') in accepted_protocol_sha256 else 'pending',
+    return {**dimensions, 'software_contract':'valid' if checked else 'pending',
             'independent_reference':'pending', 'automated_materials':automated,
             'assessment_access':'pending_independent_history_and_reference_review',
             'allowed_conclusions':'exploratory_MC_model_self_only',
@@ -238,7 +243,7 @@ def load_registration(path, protocol, *, force=False):
     from jsonschema import Draft202012Validator
     from jsonschema.exceptions import ValidationError
     try:
-        schema=read_json(Path(__file__).resolve().parents[3]/'config/schemas/h4l_mass_off_registration.schema.json')
+        schema=read_json(Path(__file__).resolve().parents[3]/'config/schemas/h4l_mass_off_source_registration.schema.json')
         Draft202012Validator(schema).validate(overlay)
     except ValidationError as error:
         raise ResearchError('invalid registration schema: '+error.message) from error
@@ -263,7 +268,7 @@ def _result(run, output):
     return {'status':run.status,'run_dir':str(output),'artifact_id':run.manifest.get('artifact_id')}
 
 
-def nominal(registration_path, protocol, output, allowed_root, *, force=False):
+def nominal(registration_path, protocol, output, allowed_root, *, force=False, joint_bindings=None):
     registered,overlay,prepared = load_registration(registration_path,protocol,force=force)
     rows,bundles,_,bundle_protocols = audit_sources(
         overlay['source_root'],prepared,protocol,force=force)
@@ -288,11 +293,30 @@ def nominal(registration_path, protocol, output, allowed_root, *, force=False):
                                                'auc':.5 if all(v>0 for v in support.values()) else None,
                                                'role':'validation','measure':'absolute_physical_weight','class_support':support})
         template = frame.loc[frame.role=='template'].copy()
+        if joint_bindings is not None:
+            from higgsml.modeling.joint_support import METHOD, refit_bundle
+            calibration = frame.loc[frame.role == 'calibration'].copy()
+            for key, bundle in bundles.items():
+                old = bundle['thresholds']
+                old.update(method_id=METHOD, input_bindings=joint_bindings,
+                           analysis_contract_digest=joint_bindings['analysis_contract_digest'])
+                if bundle['candidate_id'] == 'M0off':
+                    old.update(selector_bypassed='registered_constant_baseline')
+                    old['threshold_id'] = digest({k:v for k,v in old.items() if k != 'threshold_id'})
+                else:
+                    try:
+                        bundle['thresholds'] = refit_bundle(bundle, calibration, template, protocol,
+                                                           draw_identity={'stage':'nominal'})
+                    except ResearchStateError as error:
+                        run.write_json('threshold-failure.json', getattr(error, 'threshold_record', {}))
+                        raise
         candidates = {key:categorize_bundle(bundle,template) for key,bundle in bundles.items()}
         empty = {key:bundle for key,bundle in bundles.items() if bundle['candidate_id']=='M0off'}
-        grid = common_mass_grid(candidates,mass_edges=protocol['templates']['mass_edges'],
+        grid = common_mass_grid(candidates,mass_edges=[105,140] if joint_bindings is not None else protocol['templates']['mass_edges'],
                                 thresholds=protocol['templates'],structural_zero_bundles=empty)
         grid['family_id'] = FAMILY
+        if joint_bindings is not None:
+            grid['analysis_contract_digest'] = joint_bindings['analysis_contract_digest']
         for key,value in grid['templates'].items():
             bundle = bundles[key]
             value.update(mapping_id=bundle['mapping_id'],candidate_id=bundle['candidate_id'],seed=bundle['seed'],
@@ -432,12 +456,20 @@ def _assessment_frame(prepared,overlay,frozen_run,protocol,access_review,cell,*,
     # Shared original root prevents a new output directory from clearing history.
     from higgsml.workflow import _claim_assessment
     root=prepared.path.parents[1]
-    old_claim=root/'.research-claims'
-    if old_claim.exists():
-        for file in old_claim.glob('*.json'):
-            previous=read_json(file)
-            if previous.get('population_id')==overlay['population_id'] and previous.get('freeze_artifact_id')!=frozen_run.manifest['artifact_id']:
-                raise ResearchStateError('population previously used under another freeze',status='assessment_already_started')
+    for dirname in ('.research-claims','.h4l-mass-off-v2-claims','.h4l-mass-off-v3-claims','.h4l-population-access'):
+        old_claim=root/dirname
+        if old_claim.is_symlink():
+            raise ResearchError('unsafe historical claim directory')
+        if old_claim.exists():
+            for file in old_claim.glob('*.json'):
+                if file.is_symlink():
+                    raise ResearchError('unsafe historical claim receipt')
+                receipt=read_json(file)
+                previous=receipt.get('binding',receipt)
+                if previous.get('stage')=='model-self':
+                    continue
+                if previous.get('population_id')==overlay['population_id'] and previous.get('freeze_artifact_id')!=frozen_run.manifest['artifact_id']:
+                    raise ResearchStateError('population previously used under another freeze',status='assessment_already_started')
     _claim_assessment(root,prepared.manifest['artifact_id'],protocol,frozen_run.manifest['artifact_id'],
                       population_id=overlay['population_id'],repeat=True)
     cells=root/'.research-claims'/('off-cells-'+frozen_run.manifest['artifact_id'])

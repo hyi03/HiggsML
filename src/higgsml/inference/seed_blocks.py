@@ -23,6 +23,14 @@ class SeedBlockSpec:
     candidate_keys: tuple[str, ...]
     block_id: str
     pairing_contract_digest: str
+    analysis_contract_digest: str | None = None
+
+    @property
+    def rng_contract_digest(self):
+        if self.analysis_contract_digest is None:
+            return self.pairing_contract_digest
+        return _digest({'pairing_contract_digest':self.pairing_contract_digest,
+                        'analysis_contract_digest':self.analysis_contract_digest})
 
     def as_dict(self) -> dict:
         return {"seed": self.seed, "candidate_keys": list(self.candidate_keys),

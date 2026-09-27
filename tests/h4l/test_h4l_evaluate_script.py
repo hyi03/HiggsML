@@ -1,14 +1,15 @@
-import json
 import importlib.util
 from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
 import uuid
+
+import pytest
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = PROJECT_ROOT / "scripts" / "h4l_evaluate.py"
-EXAMPLE = PROJECT_ROOT / "config" / "examples" / "h4l_evaluation_plan.json"
 
 
 def invoke(plan):
@@ -17,54 +18,6 @@ def invoke(plan):
         "--prepared-run", "runs/missing-prepare", "--template-run", "runs/missing-template",
         "--freeze-run", "runs/missing-freeze", "--output-root", str(output), "--plan-only"],
         cwd=PROJECT_ROOT, text=True, capture_output=True, check=False)
-
-
-def test_evaluation_plan_only_prints_registered_25_stage_matrix():
-    completed = invoke(EXAMPLE)
-    assert completed.returncode == 0, completed.stderr
-    assert completed.stdout.count("python.exe -m higgsml.cli") == 25
-    assert "registration=exploratory_posthoc" in completed.stdout
-    assert "input receipts deferred" in completed.stdout
-    assert "normalization-minus1-omitted" in completed.stdout
-    assert "correlation-plus1-modeled" in completed.stdout
-    assert "--evaluation-plan" in completed.stdout
-
-
-def test_evaluation_plan_rejects_protocol_or_t2_budget_changes(tmp_path):
-    value = json.loads(EXAMPLE.read_text(encoding="utf-8"))
-    value["t2"]["inner_toys"] += 1
-    path = tmp_path / "bad-plan.json"
-    path.write_text(json.dumps(value), encoding="utf-8")
-    completed = invoke(path)
-    assert completed.returncode == 3
-    assert "T2 plan differs" in completed.stderr
-
-    value["t2"]["inner_toys"] -= 1
-    value["protocol_sha256"] = "0" * 64
-    path.write_text(json.dumps(value), encoding="utf-8")
-    completed = invoke(path)
-    assert completed.returncode == 3
-    assert "protocol digest mismatch" in completed.stderr
-
-
-def test_off_only_plan_is_unresolved_without_payload_access():
-    example=PROJECT_ROOT/'config/examples/h4l_mass_off_evaluation_plan.json'
-    completed=invoke(example)
-    assert completed.returncode==0, completed.stderr
-    result=json.loads(completed.stdout)
-    assert result['status']=='unresolved' and result['candidate_count']==80
-    assert result['assessment_payload_opened'] is False
-    assert len(result['stages'])==8
-    assert result['stress']=='not_registered'
-    assert len(result['unresolved'])==5
-
-
-def test_off_only_plan_rejects_changed_budget(tmp_path):
-    value=json.loads((PROJECT_ROOT/'config/examples/h4l_mass_off_evaluation_plan.json').read_text())
-    value['budgets']['toys']['count']=499
-    path=tmp_path/'off-plan.json'
-    path.write_text(json.dumps(value))
-    assert invoke(path).returncode==3
 
 
 def test_malformed_missing_and_nonobject_plans_have_controlled_errors(tmp_path):
@@ -83,6 +36,8 @@ def test_evaluator_supports_disabling_progress():
     )
     assert completed.returncode == 0
     assert "--no-progress" in completed.stdout
+    assert "--evaluation-unit" in completed.stdout
+    assert "--retry-failed" in completed.stdout
 
 
 def test_attribution_cli_supports_disabling_internal_progress():
@@ -106,6 +61,16 @@ def test_evaluator_and_attribution_cli_expose_process_workers():
     assert evaluator.returncode == attribution.returncode == 0
     assert "--workers" in evaluator.stdout and "--worker-threads" in evaluator.stdout
     assert "--workers" in attribution.stdout and "--worker-threads" in attribution.stdout
+
+
+def test_version_selector_is_removed():
+    for command in (
+        [sys.executable, str(SCRIPT), "--help"],
+        [sys.executable, "-m", "higgsml.cli", "attribution", "--help"],
+    ):
+        completed = subprocess.run(command, cwd=PROJECT_ROOT, text=True, capture_output=True, check=False)
+        assert completed.returncode == 0
+        assert "--evaluation-version" not in completed.stdout
 
 
 def test_long_off_stage_refreshes_progress_while_child_is_running(monkeypatch):
@@ -137,3 +102,36 @@ def test_long_off_stage_refreshes_progress_while_child_is_running(monkeypatch):
     module._invoke_with_progress(["research"], label="assessment mu=1", progress=progress)
     assert progress.label == "assessment mu=1"
     assert progress.refreshes == 3
+
+
+def test_assessment_access_is_validated_before_output_or_units(tmp_path, monkeypatch):
+    spec = importlib.util.spec_from_file_location("h4l_evaluate_preflight_test", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    from higgsml.errors import ResearchError
+    from higgsml.inference import marginal_workflow
+
+    monkeypatch.setattr(module, "RUNS_ROOT", tmp_path)
+    monkeypatch.setattr(marginal_workflow, "validate_plan", lambda *_a: None)
+    monkeypatch.setattr(marginal_workflow, "matrix", lambda: [
+        {"stage": "assessment", "mu": 0, "training_seed": 42},
+    ])
+    monkeypatch.setattr(
+        marginal_workflow, "validate_access",
+        lambda *_a, **_k: (_ for _ in ()).throw(ResearchError("missing receipt")),
+    )
+    output = tmp_path / "evaluation"
+    args = SimpleNamespace(
+        force=False, reuse_stage=[], evaluation_unit=[], retry_failed=False,
+        output_root=output, plan_only=False, registration_run=tmp_path / "register",
+        result_run=tmp_path / "result", template_run=tmp_path / "nominal",
+        freeze_run=tmp_path / "freeze", plan=tmp_path / "plan.json",
+        access_review=tmp_path / "missing.json", workers=1, worker_threads=1,
+        show_command=False, no_progress=True, continue_run=False,
+    )
+
+    with pytest.raises(module.EvaluationError, match="Invalid assessment access review: missing receipt"):
+        module._run_default(args, {}, {})
+
+    assert not output.exists()

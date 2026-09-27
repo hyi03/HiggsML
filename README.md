@@ -9,10 +9,13 @@
 - 活跃代码只有 `src/higgsml` 下的 H4l 包；旧 legacy15 预处理、旧训练/测试流程和 XGBoost 实现已移除。
 - 默认研究对象是受控 `atlas2020_4lep` MC 对，协议终态为 `2e2mu`，质量范围为 105–140 GeV。
 - `mass-only`、`decay7`、`engineered19`、`lab-extension`，全部 A/B/C/D 非空组合的显式 `m4l` on/off 重训练对照、普通/对抗训练、条件 CDF、共同二维模板、冻结 assessment、T0/T1 推断及样本效率链路均已有软件实现。
-- 默认协议的 `protocol_scope` 是 `synthetic_software_defaults_not_physics_validation`；当前没有可直接作为论文结果的冻结完整 MC run。
+- 本论文绑定的 test01 报告已完成：36/36 个评价单元与 200/200 个 MC bootstrap 副本数值有效。运行产物位于本地忽略目录 `runs/h4l-off-test01/evaluation/report`，不随 Git 发布。该结果登记为 `exploratory_posthoc`，assessment 访问审核非独立，选择后的覆盖尚未验证，`primary_claim_eligible=false`。可用于论文中的探索性技术分析，不能称为已确认的精度优势或物理测量。
 - MELA 只有导出/导入及可选 adapter 契约，实际后端和独立物理参考仍需验证。
 
-精确证据状态见[当前科研与软件状态](docs/results-and-limitations.md#software-and-validation-status)，研究设计见[研究方案](docs/research-design.md)。
+本次论文结果的身份、数字及局限见[论文证据索引](paper/result-evidence.md)；研究设计和通用方法见[研究方案](docs/research-design.md)。`docs/` 中较早的运行状态不替代当前 test01 的产物与绑定代码。
+
+test01 的 `joint-support-v1` 方法将 105–140 GeV 质量窗明确设为一个质量箱。BC 和 AC 相对包容计数基线的名义 Asimov 区间分别缩小约 9.14% 和 8.92%；两者相对完整 ABCD 的有限 MC 配对差异范围均跨零。低计数条件下的区间覆盖及整个阈值选择程序仍需独立校准，不能将名义收益解释为已确认的精度提升。
+核心协议的 `protocol_scope` 仍为 `synthetic_software_defaults_not_physics_validation`；运行完成没有改变这一适用性限制。
 
 ## 2. 了解代码库目录结构
 
@@ -22,9 +25,10 @@ config/            数据集契约、profiles、协议、schemas 与示例
 scripts/           受控下载、主工作流和研究辅助脚本
 tests/             单元、工作流与合成科学契约测试
 docs/              方法、复现、产物和验证文档
-paper/             论文稿件
+paper/             正式 LaTeX 论文、已提交图表与 TeX 数值表、结果证据索引
 data/raw/          本地受控 MC 输入（忽略，不提交）
 runs/              本地不可变运行产物（忽略，不提交）
+var/               本地论文聚合快照等派生证据（忽略，不提交）
 ```
 
 ## 3. 配置运行环境并安装项目
@@ -73,25 +77,35 @@ python scripts/init_data.py --dataset atlas2020_4lep
 
 ### 5.1 默认模式
 
-用一个命令完成 prepare、G1、五随机种子批次、off-only Stage B、评估访问包、C–E evaluation 和最终报告：
+用一个命令串联 prepare、G1、五随机种子批次、off-only Stage B、C–E evaluation 和最终报告：
 
 ```bash
 python scripts/h4l_all.py --run-name test01
 ```
 
-`--run-name` 是唯一需要输入的参数，同时用于 `runs/h4l-train-test01/` 和 `runs/h4l-off-test01/`。不传时默认使用 `default`：
+`--plan-only` 不启动子任务、不写运行产物，也不打开事件或 assessment 数值。没有 prepared manifest 时只返回 `pending_prepare_identity`，不能据此认定新 population 可用。实际完整运行需去掉该参数；加 `--stage-b-only` 则在核验 Stage B 计划和报告后停止，不生成访问审核、不启动 evaluation。
+
+`--run-name` 同时用于 prepare、train 和 off-only 目录。`h4l_all.py` 的阈值方法默认使用 `joint-support-v1`，并将所选方法显式传给 Stage B 和 evaluation。恢复已有 `median-v1` 运行时必须传入 `--threshold-method median-v1`；方法与注册不一致时拒绝执行，不会自动转换旧产物。直接使用 `h4l_off_run.py` 或 attribution 注册入口时仍需显式选择联合方法。`--access-review` 接受显式审核文件，其资格由内容和绑定决定。不传运行名时默认使用 `default`：
 
 ```bash
 python scripts/h4l_all.py
 ```
 
-重复执行同一命令会自动核对进度。绑定一致且 manifest 完整的阶段直接跳过；缺失阶段继续执行；损坏、不完整或绑定不匹配的最终目录会保留为 `.名称.<uuid>.invalid` 后再尝试当前阶段，已有 `.failed` 证据不会删除。若评估预算已经被失败或中断的 assessment/T2 占用，脚本仍按冻结协议拒绝自动重跑。
+重复执行同一命令会自动核对进度。绑定一致且 manifest 完整的阶段直接跳过；缺失阶段继续执行；损坏、不完整或绑定不匹配的最终目录会保留为 `.名称.<uuid>.invalid` 后再尝试当前阶段，已有 `.failed` 证据不会删除。若 assessment/T2 已有 claim 但没有完整或可恢复的终态，默认仍拒绝自动重跑；可用 `--evaluation-unit <unit> --retry-failed` 显式重算该单元。原 claim 保留，重算 receipt 和最终 artifact 会记录这次尝试，其他完整单元不会重复计算。
 
-封装命令为 `h4l_off_run.py` 传入 `--worker-threads 1`，并按启动时可用物理内存为每个 worker 预留 6 GiB、在 1--4 个进程之间选择 `--workers`；内存探测失败时使用 1 个进程。可并行的完整 bootstrap、Toy 和 T2 工作单元并行执行，Stage B 的注册、模板、freeze 与 Asimov 仍按依赖顺序执行。
+封装命令为 `h4l_off_run.py` 传入 `--worker-threads 1`，并按已安装物理内存先保留 2 GiB 本机调度/系统余量，再按每个 worker 5 GiB、在 1--4 个 worker 之间选择 `--workers`；内存探测失败时使用 1 个 worker。因此 16 GiB 主机只启动 2 个 worker。该预算覆盖 pyhf/SciPy 拟合与结果序列化重叠时的瞬时峰值。Windows 上的 MC bootstrap replica、assessment 候选和 T2 replica 使用线程 worker，以避开长时间运行的 spawned Python 进程在 `torch_cpu.dll` 中崩溃；其他平台使用进程 worker。可并行的完整 bootstrap、Toy 和 T2 工作单元保持注册顺序，Stage B 的注册、模板、freeze 与 Asimov 仍按依赖顺序执行。
 
-如果 `runs/h4l-off-<run-name>/access-review/validated-off-assessment-access.json` 已存在，命令直接复用它；否则使用本机 `git user.name`（回退到登录账户名）生成明确标记为 `single_researcher_self_review`、`independent: false` 的单研究者自审包。该包只允许探索性自审结论，不代表独立科学验证。
+访问历史由 [`config/h4l_history_roots.json`](config/h4l_history_roots.json) 统一声明，当前仅扫描当前仓库的 `runs/`；空目录或目录尚不存在时也可预检和启动新运行，不依赖 `var/` 中的归档。已有 `runs/` 历史损坏或不同 freeze 已占用同一 population 时仍会阻断完整运行。该扫描不能证明其他目录或机器上没有访问历史；换名字、重做 prepare 或换目录都不会产生独立 population。新 self-review v2 记录实际检查范围和配置摘要，始终为 `independent=false`。同一 freeze 的恢复仍需有效绑定的既有 access receipt。
 
-最终报告位于 `runs/h4l-off-<run-name>/evaluation/report/report.md`。`m4l=off` 仅表示分类器不输入显式四轻子质量，似然仍保留质量坐标。完整阶段契约、人工独立审核方式及恢复限制见[复现实验手册](docs/implementation-and-reproduction.md)。
+完成检查核验全部 36 个注册单元、终态摘要及其哈希、报告绑定，并输出实际报告路径（可能是 `report-resume-*`）。入口退出码 `5` 表示预检或门控阻断，`6` 表示执行产物不完整，`0` 表示请求范围执行完成（或只读计划未遇到阻断）；即使返回 `0`，仍需查看独立的 `scientific_status`，不能据此宣称科研验证通过。物理权重及区间算法保持现有定义。`m4l=off` 仅表示分类器不输入显式四轻子质量，似然仍保留质量坐标。完整阶段契约、人工独立审核方式及恢复限制见[复现实验手册](docs/implementation-and-reproduction.md)。
+
+正式论文为 [LaTeX 源码](paper/latex/main.tex)。它所需的六张 PDF 图与四个生成的 TeX 输入已纳入 Git；普通编译无需本地运行产物、图表生成脚本或 `paper/evidence/`：
+
+```bash
+python paper/scripts/build.py
+```
+
+如需重新核验 test01 并生成图表，才显式传入 `--run-name test01`；这要求本地保留对应 `runs/`。普通构建只需 Python 标准库和含 REVTeX 4.2、BibTeX、latexmk 的 TeX 环境，也可在 `paper/latex/` 直接运行 `latexmk -pdf -outdir=.build main.tex`。PDF 位于 `paper/latex/main.pdf`（直接运行 latexmk 时位于 `.build/main.pdf`）。具体步骤见[论文构建说明](paper/README.md)。
 
 ### 5.2 HPC 超算节点模式
 
@@ -107,16 +121,16 @@ HPC 模式按 SLURM、CPU affinity、cgroup 和内存约束配置并发，默认
 
 ## 6. 分阶段运行 H4l 工作流
 
-新增 off-only 分析入口为 `python -m higgsml.cli attribution --help`。它复用现有 75 个 off 模型，新增五个确定性 M0off 身份，并依次发布注册、共同模板、freeze、Asimov、事件 bootstrap、Toys、T2 和独立报告。完整命令见[off-only 复现步骤](docs/implementation-and-reproduction.md#off-only-attribution-execution)。已有标准训练链路保留兼容，不需要为这项分析重训模型。
+off-only 分析入口为 `python -m higgsml.cli attribution --help`。它复用五种子批次的 75 个 off 模型，新增五个确定性 M0off 身份，并依次发布注册、共同模板、freeze、Asimov、事件 bootstrap、Toys、T2 和最终报告。完整命令见[off-only 复现步骤](docs/implementation-and-reproduction.md#off-only-attribution-execution)。复用既有模型无需为同一分析重训；新的独立确认研究则须另行设计。
 
 `m4l=off` 仅指分类器不输入显式四轻子质量；似然仍保留质量坐标。自动 P0/T1 材料不能授予独立科学资格；事件 bootstrap、Toys、T2 和外部参考状态分别保存。
 
-所有命令从仓库根目录运行。完整规则、门槛与恢复方式以[复现实验手册](docs/implementation-and-reproduction.md)为准。
+以下命令从仓库根目录运行，`example01` 和 `study-001` 只是示例新运行名。完整规则、门槛与恢复方式以[复现实验手册](docs/implementation-and-reproduction.md)和相应命令的 `--help` 为准。
 
 ### 6.1 准备并固化可复用输入
 
 ```bash
-python scripts/h4l_prepare.py
+python scripts/h4l_prepare.py --run-name example01
 ```
 
 脚本执行 `audit` 和 `prepare`，默认使用：
@@ -124,34 +138,34 @@ python scripts/h4l_prepare.py
 - receipt：`data/raw/atlas2020_4lep/dataset_receipt.json`
 - profile：`config/profiles/open_data_2020.yaml`
 - 协议：`config/protocols/h4l_protocol.json`
-- 输出根：`runs/h4l-prepare/`
+- 输出根：`runs/h4l-prepare-example01/`
 
-可复用的 prepared artifact 位于 `runs/h4l-prepare/prepare`。它不会继续训练、校准或构建模板。需要先做有限工作量性能诊断时，可使用 `--diagnostic-entries-per-file`；诊断产物不能作为 G1 输入。
+可复用的 prepared artifact 位于 `runs/h4l-prepare-example01/prepare`。它不会继续训练、校准或构建模板。需要先做有限工作量性能诊断时，可使用 `--diagnostic-entries-per-file`；诊断产物不能作为 G1 输入。
 
-全局 prepare 根目录的结构为：
+命名 prepare 根目录的结构为：
 
 ```text
-runs/h4l-prepare/
+runs/h4l-prepare-example01/
 ├── inputs/    ROOT manifest、P0/T1 绑定证据
 ├── audit/     来源审计产物
 └── prepare/   events.jsonl 与 prepared manifest
 ```
 
-`h4l_prepare.py` 不接受 `--run-name`。只有在诊断或需要独立新目录时才传入 `--run-root`；正式全局目录已存在时，脚本会拒绝覆盖。
+`h4l_prepare.py --run-name <name>` 与 G1、训练和 off-only 阶段共享同一短名称。`--run-name` 不能与 `--run-root` 同时使用；省略 `--run-name` 时仍保留旧的 `runs/h4l-prepare/` 默认目录，供显式路径工作流兼容使用。
 
 ### 6.2 运行门控检查
 
 ```bash
-python scripts/h4l_check.py --run-name test01
+python scripts/h4l_check.py --run-name example01
 ```
 
 Gate 从全局 prepared artifact 运行 M0c、M2、M3、五个校准和共同模板。只有 Gate 通过后，才允许展开受门控的候选。失败目录仍是不可变证据；修复后必须使用新的 `--run-name` 或 `--output-root`。
-`--run-name test01` 的实验输出根目录为 `runs/h4l-train-test01/`。
+`--run-name example01` 的实验输出根目录为 `runs/h4l-train-example01/`。
 
 ### 6.3 运行五随机种子正式批次
 
 ```bash
-python scripts/h4l_run.py --run-name test01
+python scripts/h4l_run.py --run-name example01
 ```
 
 默认批次执行 seed 42–46 的注册候选、校准、共同模板、T1 `mu=1` inference 与报告。显式 `--seed 42` 仅是单种子诊断，不能支持五种子主比较。
@@ -159,7 +173,7 @@ python scripts/h4l_run.py --run-name test01
 批次中断后，使用 `--continue` 继续：合法的完整阶段会被跳过；不完整、损坏或绑定不匹配的最终阶段目录会先隔离为 `.名称.<uuid>.invalid`，再重试一次。已有 `.failed` 证据不会被删除。
 
 ```bash
-python scripts/h4l_run.py --run-name test01 --continue
+python scripts/h4l_run.py --run-name example01 --continue
 ```
 
 三个脚本均支持 `--help`、`--plan-only` 和 `--no-progress`。它们也提供严格限于所选 `runs/` 子目录的 `--clean`；`--clean` 不能与 `--plan-only` 同时使用，执行前应先用 `--help` 或单独的计划命令核对路径。清理会删除不可恢复的本地运行产物；完成、失败、诊断或已发布的 run 均不得原地覆盖。
@@ -167,20 +181,15 @@ python scripts/h4l_run.py --run-name test01 --continue
 ### 6.4 运行 Stage B 生成 freeze
 
 ```bash
-python scripts/h4l_off_run.py --source-run-name test01 --run-name study-001 --stage-b
+python scripts/h4l_off_run.py --source-run-name example01 --run-name study-001 \
+  --threshold-method joint-support-v1 --stage-b
 ```
 
 先运行 Stage B，产生 freeze 和自动绑定的 evaluation plan。
 
-`scripts/h4l_off_run.py` 直接复用已有的完整五随机种子批次及 `runs/h4l-prepare/prepare`，不重新 prepare 或训练。它自动核对 prepared artifact、population、核心协议，以及 75 个 `m4l=off` 训练/校准产物的候选、seed、checkpoint 和上游绑定；任一身份不一致时拒绝复用。
+`scripts/h4l_off_run.py` 直接复用指定 `--source-run-name` 的完整五随机种子批次和对应的 `runs/h4l-prepare-<source-run-name>/prepare`，不重新 prepare 或训练。它自动核对 prepared artifact、population、核心协议，以及 75 个 `m4l=off` 训练/校准产物的候选、seed、checkpoint 和上游绑定；任一身份不一致时拒绝复用。
 
-调试协议或流程代码时，可以复用协议摘要不一致的既有 prepare/train/calibrate 产物：
-
-```bash
-python scripts/h4l_off_run.py --source-run-name test01 --run-name debug-001 --stage-b --force
-```
-
-`--force` 只绕过来源产物的协议一致性检查，仍校验 dataset、artifact digest、候选身份、checkpoint、population 和上游关系。输出会标记为 `forced_protocol_mismatch_debug`，仅用于调试，不能作为论文或科学结论证据。调试完成后必须去掉 `--force`，使用新的 run name 正常运行。
+默认边缘 CRN 工作流要求来源协议严格一致；`--force` 不可用于绕过兼容性审核。
 
 ### 6.5 评估访问审核
 
@@ -188,74 +197,33 @@ Stage B 完成后，assessment/T2 只能使用与实际 freeze、population、pr
 `config/examples/h4l_off_assessment_access.pending.json` 生成并审核一份完整的
 `validated-off-assessment-access.json`，然后在最终执行时通过 `--access-review` 显式传入。该 pending 文件含占位 ID 和 receipt，不能直接使用；脚本也不会自动把它提升为独立证据。
 
-如果项目只有一名研究者，不能形成独立审核，可明确生成单人自审包：
-
-```bash
-python scripts/h4l_off_self_review.py --run-name study-001 --reviewer "Researcher Name"
-```
-
-该命令只生成标记为 `single_researcher_self_review` 的 access-review，不代表独立验证；`--reviewer` 必须填写实际姓名。它不会执行最终评估。
-
 ### 6.6 生成最终报告
 
-完成独立审核，或生成单人自审包后，执行：
+完成独立审核后，执行：
 
 ```bash
-python scripts/h4l_off_run.py --source-run-name test01 --run-name study-001 --evaluation
+python scripts/h4l_off_run.py --source-run-name example01 --run-name study-001 \
+  --threshold-method joint-support-v1 --evaluation \
+  --access-review path/to/validated-off-assessment-access.json
 ```
 
-默认读取 `runs/h4l-off-study-001/access-review/validated-off-assessment-access.json`；独立审核包位于其他路径时，显式追加 `--access-review <path>`。该命令读取并绑定实际 prepared、registration、nominal、freeze 和 evaluation-plan artifact，随后执行 C–E evaluation 并生成最终报告。它不会自动生成或批准 access-review。
-
-单人自审命令生成的 access-review 包含：
-
-```text
-runs/h4l-off-study-001/access-review/
-├── self-reviewed-p0-applicability.json
-├── self-reviewed-signed-mc-t1.json
-└── validated-off-assessment-access.json
-```
-
-单人自审允许执行冻结的 assessment、T2 和最终报告，但不会伪装成独立验证。生成文件和最终报告固定记录 `single_researcher_self_review`、`independent: false` 与 `exploratory_self_reviewed_not_independently_validated`；论文必须披露该限制。命令拒绝覆盖既有 `access-review`。如果 Stage B 使用了 `--force`，最终输出还会保留 debug-only 标记，不能作为正式科学证据；应优先用协议一致的来源 run 和新名称重新运行 Stage B。
+该命令读取并绑定实际 prepared、registration、nominal、freeze 和 evaluation-plan artifact，随后执行 C–E evaluation 并生成最终报告。它不会自动生成或批准 access-review。
 
 脚本依次完成 registration、共同 nominal 模板、freeze、Asimov、事件 bootstrap、三组 model-self Toys、三组受控 assessment Toys、T2 和最终报告。Stage B 使用新目录；`--evaluation` 复用该 Stage B 并拒绝覆盖已有 evaluation。若来源批次尚不存在或不完整，先使用 `scripts/h4l_run.py` 生成新的完整五随机种子批次。详细阶段契约与恢复规则见[off-only 复现步骤](docs/implementation-and-reproduction.md#off-only-attribution-execution)。
 
-### 6.7 按 seed 配对的 v2 评估（显式启用）
-
-默认评估合同仍是 v1。v2 只在显式传入 `--evaluation-version v2` 时启用，并把每个 training seed 的 `M0off + 15` 个 coalition 作为一个 16-way joint block；Toy seed 由冻结预算派生，不能用 `--training-seed` 代替。以下 Linux Bash 命令从仓库根目录运行：
+### 6.7 默认边缘 CRN 评估
 
 ```bash
 python scripts/h4l_off_run.py \
-  --evaluation-version v2 \
-  --source-run-name test01 \
-  --run-name within-seed-001 \
-  --stage-b \
-  --show-command
-
-python -m higgsml.cli attribution access-review \
-  --evaluation-version v2 \
-  --protocol config/protocols/h4l_protocol.json \
-  --registration-run runs/h4l-off-within-seed-001/register \
-  --template-run runs/h4l-off-within-seed-001/nominal \
-  --freeze-run runs/h4l-off-within-seed-001/freeze \
-  --result-run runs/h4l-off-within-seed-001/asimov \
-  --evaluation-plan runs/h4l-off-within-seed-001/evaluation-plan/evaluation-plan.json \
-  --access-review path/to/validated-off-assessment-access.json \
-  --run-dir runs/h4l-off-within-seed-001/access-review-v2
-
-python scripts/h4l_off_run.py \
-  --evaluation-version v2 \
-  --source-run-name test01 \
-  --run-name within-seed-001 \
-  --evaluation \
-  --access-review runs/h4l-off-within-seed-001/access-review-v2/validated-off-assessment-access.json \
-  --show-command
+  --source-run-name example01 --run-name marginal-v3-001 \
+  --threshold-method joint-support-v1 --stage-b
 ```
 
-Stage B publishes `source-register`, `register`, `source-nominal`, `nominal`, J0, J1, `evaluation-spec`, `freeze`, `asimov`, and `evaluation-plan` in dependency order. The first two `source-*` directories retain the original v1 identities; `register` and `nominal` are audited v2 adapters and do not relabel those artifacts. J0 and J1 use development/template material and record `assessment_payload_read=false`; a failed gate blocks freeze.
-
-The evaluation contains 36 scientific units (one 200-replica MC bootstrap, 15 model-self cells, 15 assessment cells, and five T2 cells) plus the report, for 37 terminal units. Each model-self/assessment cell has 500 Toys for one training seed and one `mu` in `{0,1,2}`; each T2 seed has 20 outer replicas and 100 inner Toys. Scientific failures remain terminal evidence and do not authorize replacement draws. A consumed claim with missing or damaged output is `blocked_consumed_budget` and is never replayed automatically.
-
-An already opened historical assessment population can support only `posthoc_support_diagnostic`; it cannot become a new eligible prospective source. Without an unused, reviewed assessment source, prospective assessment remains `blocked_missing_eligible_assessment_source`. Independent P0/T1 applicability evidence and the original controlled-MC evaluation remain pending.
+默认工作流使用共同总数与单调类别分配的人工 CRN 耦合，保持候选边缘 Poisson
+分布；它不代表物理事件联合配对。J0/J1 必须通过才能 freeze，历史已打开的
+assessment 不会因此重新获得资格。命令行不再提供 v1/v2/v3 版本选择；现有
+产物中的版本字段继续用于不可变证据识别。完整契约见
+[复现手册](docs/implementation-and-reproduction.md#default-marginal-crn-evaluation)。
 
 ## 7. 使用项目工具开展研究
 
@@ -318,8 +286,6 @@ python -m pytest -q
 python -m pip check
 ```
 
-当前测试数量、警告和未完成的科学验证以[状态页](docs/results-and-limitations.md#software-and-validation-status)的日期化记录为准，不在 README 中复制易过期的数字。
-
 ## 10. 查阅项目文档
 
 - [文档索引](docs/README.md)
@@ -329,7 +295,7 @@ python -m pip check
 - [产物与谱系契约](docs/implementation-and-reproduction.md#artifact-and-lineage-contract)
 - [证据与完成边界](docs/results-and-limitations.md#evidence-required-for-conclusions)
 - [当前科研与软件状态](docs/results-and-limitations.md#software-and-validation-status)
-- [论文稿件](paper/manuscript.md)
+- [论文 LaTeX 源码](paper/latex/main.tex)
 
 ## 11. 许可证与第三方条款
 

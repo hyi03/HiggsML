@@ -18,7 +18,6 @@ from tqdm.auto import tqdm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RUNS_ROOT = (PROJECT_ROOT / "runs").resolve()
-GLOBAL_PREPARE_ROOT = (RUNS_ROOT / "h4l-prepare").resolve()
 DEFAULT_PROTOCOL = (PROJECT_ROOT / "config" / "protocols" / "h4l_protocol.json").resolve()
 RUN_SCRIPT = (PROJECT_ROOT / "scripts" / "h4l_run.py").resolve()
 T1_SCHEMA = (PROJECT_ROOT / "config" / "schemas" / "t1_validation_v1.schema.json").resolve()
@@ -32,7 +31,8 @@ from higgsml.artifacts import digest_json  # noqa: E402
 from higgsml.cleanup import remove_run_directories  # noqa: E402
 from higgsml.errors import ResearchError  # noqa: E402
 from higgsml.protocol import load_protocol  # noqa: E402
-from higgsml.run_names import workflow_directory_name  # noqa: E402
+from higgsml.qualification import contract_checked  # noqa: E402
+from higgsml.run_names import prepare_directory_name, workflow_directory_name  # noqa: E402
 from higgsml.workflow_resume import classify_stage  # noqa: E402
 from higgsml.hpc import settings, single_writer
 from higgsml.hpc_execution import training_steps
@@ -50,7 +50,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--run-name",
-        help=("Short experiment name; prepared inputs come from runs/h4l-prepare "
+        help=("Short experiment name; prepared inputs come from runs/h4l-prepare-<name> "
               "and G1 outputs are written below the experiment run root."),
     )
     parser.add_argument("--prepared-run", type=Path)
@@ -94,10 +94,11 @@ def _workflow_paths(args: argparse.Namespace) -> tuple[Path, Path, Path]:
             )
         try:
             root = RUNS_ROOT / workflow_directory_name(run_name)
+            prepare_root = RUNS_ROOT / prepare_directory_name(run_name)
         except ValueError as error:
             raise WorkflowError(str(error), 2) from error
-        return (GLOBAL_PREPARE_ROOT / "prepare",
-                GLOBAL_PREPARE_ROOT / "inputs" / "t1-validation.json",
+        return (prepare_root / "prepare",
+                prepare_root / "inputs" / "t1-validation.json",
                 root / "g1")
     if any(value is None for value in explicit):
         raise WorkflowError(
@@ -126,18 +127,21 @@ def _load_json(path: Path) -> dict:
 def _validate_t1(path: Path, protocol_path: Path) -> None:
     try:
         evidence = _load_json(path)
-        schema = _load_json(T1_SCHEMA)
+        schema_path = (T1_SCHEMA.with_name("t1_validation_v2.schema.json")
+                       if evidence.get("schema_version") == "h4l-t1-validation-v2" else T1_SCHEMA)
+        schema = _load_json(schema_path)
         Draft202012Validator(schema).validate(evidence)
+        checked = contract_checked(evidence, "t1")
         protocol = load_protocol(protocol_path, dataset=DATASET).to_dict()
     except (ValidationError, ResearchError) as error:
         raise WorkflowError(f"Invalid T1 validation evidence: {path}: {error}", 3) from error
     if (
-        evidence.get("status") != "validated"
+        not checked
         or evidence.get("dataset") != DATASET
         or evidence.get("protocol_sha256") != digest_json(protocol)
     ):
         raise WorkflowError(
-            "T1 validation evidence is not validated and bound to the current dataset/protocol.",
+            "T1 software contract evidence is pending or not bound to the current dataset/protocol.",
             3,
         )
 

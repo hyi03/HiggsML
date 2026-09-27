@@ -144,6 +144,16 @@ def test_ordered_process_execution_and_exception_cleanup():
     assert list(ordered_map(abs,[-1,-2],workers=2))==[1,2]
 
 
+def test_ordered_thread_execution_supports_local_fit_state_and_cleanup():
+    offset = 3
+    fit = lambda value: _delayed(value) + offset
+    assert list(ordered_map(fit, range(3), workers=2, execution="thread")) == [3,4,7]
+    with pytest.raises(RuntimeError, match="worker failure"):
+        list(ordered_map(_broken, range(3), workers=2, execution="thread"))
+    with pytest.raises(ResearchError, match="execution"):
+        list(ordered_map(abs, [-1], workers=2, execution="invalid"))
+
+
 def test_t2_workers_preserve_conditional_rng_and_failure_records():
     base=pd.DataFrame(dict(event_group_id=['a','b','c'],physical_weight=[1.,2.,3.],yield_weight=[1.,2.,3.]))
     def fit(frame):
@@ -166,6 +176,28 @@ def test_t2_workers_preserve_conditional_rng_and_failure_records():
         assert list(row['bootstrap_group_multiplicities'].values())==counts.tolist()
         if counts[0]>0:
             assert row['inner_seed']==int(rng.integers(0,2**31))
+
+
+def test_t2_uses_thread_workers_on_windows(monkeypatch):
+    base=pd.DataFrame(dict(event_group_id=['a'],physical_weight=[1.],yield_weight=[1.]))
+    frames=[base.assign(role=role,event_group_id=[role]) for role in ('template','assessment')]
+    executions=[]
+
+    def ordered(function,tasks,*,workers,worker_threads,execution):
+        executions.append(execution)
+        return map(function,tasks)
+
+    monkeypatch.setattr(inference.sys,'platform','win32')
+    monkeypatch.setattr(inference,'ordered_map',ordered)
+    result=inference.run_t2_procedure(
+        base.assign(role='calibration'),*frames,
+        fit_mapping=lambda frame:{'mapping_id':'mapping'},
+        apply_mapping=lambda mapping,frame:frame,
+        evaluate=lambda *args:{'status':'valid'},outer_replicas=1,inner_toys=1,
+        seed=42,model_id='model',mother_id='mother',workers=2)
+
+    assert result['status']=='valid'
+    assert executions==['thread']
 
 
 def test_toy_workers_equal_serial():

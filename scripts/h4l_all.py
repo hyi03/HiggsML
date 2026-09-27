@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import argparse
-import getpass
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -14,14 +14,23 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_ROOT = PROJECT_ROOT / "scripts"
 RUNS_ROOT = PROJECT_ROOT / "runs"
+SOURCE_ROOT = PROJECT_ROOT / "src"
+if str(SOURCE_ROOT) not in sys.path:
+    sys.path.insert(0, str(SOURCE_ROOT))
+
+from higgsml.errors import ResearchError, ResearchStateError  # noqa: E402
+from higgsml.inference.run_readiness import preflight, verify_completion, verify_stage_b  # noqa: E402
+from higgsml.protocol import load_protocol  # noqa: E402
+from higgsml.run_names import workflow_directory_name  # noqa: E402
+from higgsml.hpc import add_arguments, activation, settings  # noqa: E402
 DEFAULT_RUN_NAME = "default"
 MAX_OFF_WORKERS = 4
-AVAILABLE_MEMORY_PER_WORKER = 6 * 1024**3
+LOCAL_MEMORY_RESERVE = 2 * 1024**3
+# A worker's steady-state RSS can be much smaller than its transient peak while
+# pyhf/SciPy fits and result serialization overlap.  Budget the complete process
+# peak here so a 16 GiB workstation starts at most two evaluation workers.
+AVAILABLE_MEMORY_PER_WORKER = 5 * 1024**3
 OFF_WORKER_THREADS = "1"
-
-sys.path.insert(0, str(PROJECT_ROOT / 'src'))
-from higgsml.hpc import add_arguments, activation, settings
-from higgsml.errors import ResearchError
 
 
 class WorkflowError(Exception):
@@ -39,29 +48,20 @@ def _parser() -> argparse.ArgumentParser:
         help=f"Shared standard/off-only run name (default: {DEFAULT_RUN_NAME}).",
     )
     add_arguments(parser)
-    parser.add_argument('--plan-only', action='store_true', help='Print stages without running or creating artifacts.')
-    parser.add_argument('--evaluation-version', choices=['v1','v2'], default='v1')
     parser.add_argument('--access-review', type=Path)
+    parser.add_argument("--threshold-method", choices=["median-v1", "joint-support-v1"],
+                        default="joint-support-v1",
+                        help="Threshold method (default: joint-support-v1); use median-v1 for legacy runs.")
+    parser.add_argument('--plan-only', action='store_true',
+                        help='Read metadata and print the plan without launching children or writing outputs.')
+    parser.add_argument('--stage-b-only', action='store_true',
+                        help='Stop after a successful Stage B; do not generate access reviews or evaluate.')
     return parser
 
 
-def _reviewer_name() -> str:
-    completed = subprocess.run(
-        ["git", "config", "user.name"], cwd=PROJECT_ROOT,
-        capture_output=True, text=True, check=False,
-    )
-    reviewer = completed.stdout.strip() if completed.returncode == 0 else ""
-    if not reviewer:
-        reviewer = getpass.getuser().strip()
-    if not reviewer or "automat" in reviewer.lower():
-        raise WorkflowError(
-            "Cannot infer a named human reviewer from git user.name or the local account.", 3
-        )
-    return reviewer
-
-
 def _invoke(command: list[str]) -> None:
-    print(f"RUN: {Path(command[1]).name}", flush=True)
+    label = command[2] if command[1] == "-m" else Path(command[1]).name
+    print(f"RUN: {label}", flush=True)
     if settings():
         from higgsml.hpc_execution import supervised_run
         code = supervised_run(command, cwd=PROJECT_ROOT)
@@ -78,7 +78,7 @@ def _resume_flag(path: Path) -> list[str]:
     return ["--continue"] if path.is_dir() else []
 
 
-def _available_memory_bytes() -> int | None:
+def _physical_memory_bytes() -> int | None:
     if sys.platform == "win32":
         import ctypes
 
@@ -98,86 +98,141 @@ def _available_memory_bytes() -> int | None:
         status = MemoryStatus()
         status.length = ctypes.sizeof(status)
         if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
-            return int(status.available_physical)
+            return int(status.total_physical)
         return None
     try:
-        return int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_AVPHYS_PAGES"))
+        return int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES"))
     except (AttributeError, OSError, ValueError):
         return None
 
 
 def _off_workers() -> int:
-    available = _available_memory_bytes()
-    if available is None or available < 0:
+    physical = _physical_memory_bytes()
+    if physical is None or physical < 0:
         return 1
-    return max(1, min(MAX_OFF_WORKERS, available // AVAILABLE_MEMORY_PER_WORKER))
+    worker_memory = max(0, physical - LOCAL_MEMORY_RESERVE)
+    return max(1, min(MAX_OFF_WORKERS, worker_memory // AVAILABLE_MEMORY_PER_WORKER))
+
+
+def _read_access_review(path: Path) -> tuple[Path, dict]:
+    resolved = (path if path.is_absolute() else PROJECT_ROOT / path).resolve()
+    if not resolved.is_file():
+        raise WorkflowError(f"Access review not found: {resolved}", 2)
+
+    def strict_object(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError(f"duplicate JSON key: {key}")
+            value[key] = item
+        return value
+
+    try:
+        review = json.loads(resolved.read_text(encoding="utf-8"),
+                            object_pairs_hook=strict_object,
+                            parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+    except (OSError, ValueError) as error:
+        raise WorkflowError(f"Invalid access review JSON: {resolved}", 2) from error
+    if not isinstance(review, dict) or review.get("schema_version") not in {
+        "h4l-off-assessment-access-v1", "h4l-off-assessment-access-v3",
+        "h4l-off-self-review-access-v2",
+    }:
+        raise WorkflowError(f"Unsupported access review schema: {resolved}", 2)
+    return resolved, review
 
 
 def _run(args: argparse.Namespace) -> None:
     name = args.run_name
+    try:
+        workflow_directory_name(name)
+    except ValueError as error:
+        raise WorkflowError(str(error), 2) from error
+    explicit_review = _read_access_review(args.access_review) if args.access_review else None
+    protocol = load_protocol().to_dict()
+    def check():
+        try:
+            return preflight(RUNS_ROOT, name, args.threshold_method, protocol)
+        except ResearchError as error:
+            raise WorkflowError(str(error), 5) from error
+
+    readiness = check()
     python = sys.executable
-    train_root = RUNS_ROOT / f"h4l-train-{name}"
-    off_root = RUNS_ROOT / f"h4l-off-{name}"
     policy = settings()
-    workers = str(policy['workers']) if policy else str(_off_workers())
-    threads = str(policy['worker_threads']) if policy else OFF_WORKER_THREADS
+    off_workers = str(policy['workers']) if policy else str(_off_workers())
+    off_threads = str(policy['worker_threads']) if policy else OFF_WORKER_THREADS
+    method_flags = ["--threshold-method", args.threshold_method]
+    train_root = RUNS_ROOT / f"h4l-train-{name}"
+    prepare_root = RUNS_ROOT / f"h4l-prepare-{name}"
+    off_root = RUNS_ROOT / f"h4l-off-{name}"
     commands = [
         [python, str(SCRIPTS_ROOT / "h4l_prepare.py"),
-         *_resume_flag(RUNS_ROOT / "h4l-prepare")],
+         "--run-name", name, *_resume_flag(prepare_root)],
         [python, str(SCRIPTS_ROOT / "h4l_check.py"),
          "--run-name", name, *_resume_flag(train_root / "g1")],
         [python, str(SCRIPTS_ROOT / "h4l_run.py"),
          "--run-name", name, *_resume_flag(train_root / "batch" / "all-seeds")],
         [python, str(SCRIPTS_ROOT / "h4l_off_run.py"),
          "--source-run-name", name, "--run-name", name,
-         "--stage-b", *_resume_flag(off_root),
-         "--workers", workers, "--worker-threads", threads],
+         "--stage-b", *method_flags, *_resume_flag(off_root),
+         "--workers", off_workers, "--worker-threads", off_threads],
     ]
     if args.plan_only:
-        import shlex
-        for command in commands:
-            print(shlex.join(command))
-        print('Then reuse or create the named self-review; run evaluation and final report.')
-        print('Training/calibration dependencies: train -> its calibrations; all calibrations -> templates -> inference -> report.')
-        print(f'Evaluation: mc-bootstrap; model-self mu=0,1,2; assessment mu=0,1,2; t2; report. workers={workers}, threads={threads}')
+        print(json.dumps({**readiness, 'requested_scope': 'stage_b' if args.stage_b_only else 'full',
+            'commands_before_access': commands,
+            'evaluation_requires': ['bound access review', 'eligible history', 'registered budget'],
+            'run_name': name}, indent=2))
+        if readiness['access_blockers'] and not args.stage_b_only:
+            raise WorkflowError('Assessment preflight blocked: ' + '; '.join(readiness['access_blockers']), 5)
         return
-    for command in commands:
-        if args.evaluation_version == 'v2' and Path(command[1]).name == 'h4l_off_run.py':
-            command += ['--evaluation-version','v2']
+    if readiness['access_blockers'] and not args.stage_b_only:
+        raise WorkflowError('Assessment preflight blocked: ' + '; '.join(readiness['access_blockers']), 5)
+    print(f"Threshold method: {args.threshold_method}; scope: exploratory, scientific validation pending", flush=True)
+    _invoke(commands[0])
+    # A new population is unknowable from a run name. Check immediately after
+    # prepare, before the expensive training batch or any assessment access.
+    readiness = check()
+    if readiness['prepared_artifact_id'] is None:
+        raise WorkflowError('Prepare did not publish a bound population manifest', 6)
+    if readiness['access_blockers'] and not args.stage_b_only:
+        raise WorkflowError('Assessment preflight blocked: ' + '; '.join(readiness['access_blockers']), 5)
+    for command in commands[1:]:
         _invoke(command)
 
-    if args.evaluation_version == 'v2':
-        if not (off_root/'evaluation-plan'/'evaluation-plan.json').is_file():
-            print(f'V2 support qualification blocked freeze. Report: {off_root / "gate-failure-report" / "report.md"}')
-            return
-        if not args.access_review:
-            print(f'V2 assessment requires an eligible source and v2 access receipt. Stage B report: {off_root / "report-B" / "report.md"}')
-            return
-        _invoke([python,str(SCRIPTS_ROOT/'h4l_off_run.py'),'--evaluation-version','v2',
-            '--source-run-name',name,'--run-name',name,'--evaluation',*_resume_flag(off_root/'evaluation'),
-            '--access-review',str(args.access_review),'--workers',workers,'--worker-threads',threads])
+    if not (off_root/'evaluation-plan'/'evaluation-plan.json').is_file():
+        raise WorkflowError(f'Support qualification blocked freeze. Report: {off_root / "gate-failure-report" / "report.md"}', 5)
+    if args.stage_b_only:
+        try:
+            completion = verify_stage_b(off_root, protocol)
+        except (ResearchError, OSError, ValueError) as error:
+            raise WorkflowError('Stage B execution incomplete: ' + str(error), 6) from error
+        print(json.dumps(completion, indent=2))
         return
-
-    access_review = (
-        RUNS_ROOT / f"h4l-off-{name}" / "access-review"
-        / "validated-off-assessment-access.json"
-    )
-    if not access_review.is_file():
-        _invoke([
-            python, str(SCRIPTS_ROOT / "h4l_off_self_review.py"),
-            "--run-name", name, "--reviewer", _reviewer_name(),
-        ])
-
-    _invoke([
-        python, str(SCRIPTS_ROOT / "h4l_off_run.py"),
-        "--source-run-name", name, "--run-name", name,
-        "--evaluation", *_resume_flag(off_root / "evaluation"),
-        "--workers", workers, "--worker-threads", threads,
-    ])
-    print(
-        "H4l workflow complete. Final report: "
-        f"{RUNS_ROOT / f'h4l-off-{name}' / 'evaluation' / 'report' / 'report.md'}"
-    )
+    access_review = None
+    if explicit_review and explicit_review[1]["schema_version"] == "h4l-off-assessment-access-v3":
+        access_review = explicit_review[0]
+    else:
+        source_review = (explicit_review[0] if explicit_review else
+                         off_root/'source-access-review'/'validated-off-assessment-access.json')
+        if not source_review.is_file():
+            _invoke([python,str(SCRIPTS_ROOT/'h4l_off_self_review.py'),'--run-name',name])
+        access_review = off_root/'access-review'/'validated-off-assessment-access.json'
+        if not access_review.is_file():
+            _invoke([python,'-m','higgsml.cli','attribution','access-review',
+                '--registration-run',str(off_root/'register'),'--template-run',str(off_root/'nominal'),
+                '--freeze-run',str(off_root/'freeze'),'--result-run',str(off_root/'asimov'),
+                '--evaluation-plan',str(off_root/'evaluation-plan'/'evaluation-plan.json'),
+                '--access-review',str(source_review),'--run-dir',str(off_root/'access-review')])
+        if not access_review.is_file():
+            raise WorkflowError('Assessment access remains blocked; evaluation was not started. '
+                  f'Stage B report: {off_root / "report-B" / "report.md"}', 5)
+    _invoke([python,str(SCRIPTS_ROOT/'h4l_off_run.py'),
+        '--source-run-name',name,'--run-name',name,*method_flags,'--evaluation',*_resume_flag(off_root/'evaluation'),
+        '--access-review',str(access_review),'--workers',off_workers,'--worker-threads',off_threads])
+    try:
+        completion = verify_completion(off_root, protocol)
+    except (ResearchError, OSError, ValueError) as error:
+        raise WorkflowError('Workflow execution incomplete: ' + str(error), 6) from error
+    print(json.dumps(completion, indent=2))
 
 
 def main() -> int:
@@ -185,9 +240,15 @@ def main() -> int:
         args = _parser().parse_args()
         with activation(args):
             _run(args)
-    except (WorkflowError, ResearchError) as error:
+    except WorkflowError as error:
         print(str(error), file=sys.stderr)
         return error.exit_code
+    except ResearchStateError as error:
+        print(str(error), file=sys.stderr)
+        return 5
+    except (ResearchError, OSError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return 3
     return 0
 
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib
+import sys
 import numpy as np
 from scipy.optimize import brentq
 from scipy.stats import chi2
@@ -12,6 +13,7 @@ from higgsml.inference.diagnostics import signed_mu_fit, signed_mu_summary
 from higgsml.resources import ordered_map
 from higgsml.hpc import settings
 from higgsml.performance import add, measured
+from higgsml.qualification import contract_checked, contract_qualification
 
 
 def _is_sample_efficiency_payload(value):
@@ -49,9 +51,9 @@ def build_model(template, *, layer="T0", t1_validation=None, mu_max=20.):
     if template.get("status") != "valid":
         raise ResearchStateError("Template is not statistically usable", status="insufficient_statistics")
     if layer == "T1":
-        contract = {"status": "validated", "correlation": "independent_process_bins", "auxiliary": "poisson_tau_gamma", "modifier": "shapesys", "pyhf_version": "0.7.6"}
-        if not t1_validation or not t1_validation.get("evidence_id") or any(t1_validation.get(k) != v for k,v in contract.items()):
-            raise ResearchStateError("T1 requires independent numerical validation and exact modifier contract", status="template_stat_model_unvalidated")
+        contract = {"correlation": "independent_process_bins", "auxiliary": "poisson_tau_gamma", "modifier": "shapesys", "pyhf_version": "0.7.6"}
+        if not contract_checked(t1_validation, 't1') or any(t1_validation.get(k) != v for k,v in contract.items()):
+            raise ResearchStateError("T1 requires bound software checks and exact modifier contract; these do not grant independent numerical validation", status="template_stat_model_unvalidated")
     active = template["active_bins"]
     if not active:
         raise ResearchStateError("All bins are structural zeros", status="insufficient_statistics")
@@ -70,7 +72,7 @@ def build_model(template, *, layer="T0", t1_validation=None, mu_max=20.):
         samples.append({"name": s["name"], "data": y.tolist(), "modifiers": modifiers})
     specification = {"channels": [{"name": "mass_categories", "samples": samples}], "parameters": [{"name": "mu", "bounds": [[0.,float(mu_max)]], "inits": [1.]}]}
     model = pyhf.Model(specification, poi_name="mu")
-    return model, {"layer": layer, "pyhf_version": "0.7.6", "mapping_id": template["mapping_id"], "candidate_id": template["candidate_id"], "model_spec": specification, "auxiliary_constraint": "poisson_tau_gamma" if layer == "T1" else "none"}
+    return model, {"layer": layer, "qualification": contract_qualification(True), "pyhf_version": "0.7.6", "mapping_id": template["mapping_id"], "candidate_id": template["candidate_id"], "model_spec": specification, "auxiliary_constraint": "poisson_tau_gamma" if layer == "T1" else "none"}
 
 
 def profile_interval(model, data, confidence=.68):
@@ -272,7 +274,7 @@ def stress_weights(frame, *, kind, direction, reference_score_column="reference_
 def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mapping, evaluate,
                      outer_replicas, inner_toys, seed, model_id, mother_id, workers=1, worker_threads=1,
                      record_mappings=False, on_replica=None, outer_multiplicities=None,
-                     inner_seed_factory=None):
+                     inner_seed_factory=None, preflight=None):
     """Bounded paired group-bootstrap; callbacks retain scientific binding checks."""
     if not model_id or not mother_id or min(outer_replicas,inner_toys)<1:
         raise ResearchError("T2 requires frozen identities and positive budgets")
@@ -328,9 +330,11 @@ def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mappin
             except ResearchError as exc:
                 if inner_seed_factory is not None and (not isinstance(exc, ResearchStateError)
                         or exc.status not in {"insufficient_statistics", "unsupported_assessment_support",
-                                             "template_stat_model_unvalidated", "inference_incomplete"}):
+                                             "template_stat_model_unvalidated", "inference_incomplete", "no_feasible_joint_threshold", "nonpositive_calibration_yield"}):
                     raise
                 row.update(status=exc.status,error=str(exc))
+                if hasattr(exc,'threshold_record'):
+                    row['threshold_record'] = exc.threshold_record
                 yield row, None
     def finish(task):
         row, arguments = task
@@ -343,12 +347,41 @@ def run_t2_procedure(calibration, template, mother, *, fit_mapping, apply_mappin
         except ResearchError as exc:
             if inner_seed_factory is not None and (not isinstance(exc, ResearchStateError)
                     or exc.status not in {"insufficient_statistics", "unsupported_assessment_support",
-                                         "template_stat_model_unvalidated", "inference_incomplete"}):
+                                         "template_stat_model_unvalidated", "inference_incomplete", "no_feasible_joint_threshold", "nonpositive_calibration_yield"}):
                 raise
             row.update(status=exc.status,error=str(exc))
         return row
+    prepared_tasks = tasks()
+    if preflight is not None:
+        prepared_tasks = list(prepared_tasks)
+        failed = False
+        for row, arguments in prepared_tasks:
+            if arguments is None:
+                failed = True
+                row['preflight_status'] = row['status']
+                continue
+            try:
+                row['preflight'] = preflight(*arguments)
+                row['preflight_status'] = 'valid'
+            except ResearchStateError as exc:
+                if exc.status not in {'insufficient_statistics','unsupported_assessment_support','template_stat_model_unvalidated','inference_incomplete','no_feasible_joint_threshold','nonpositive_calibration_yield'}:
+                    raise
+                failed = True
+                row.update(status=exc.status, preflight_status=exc.status, error=str(exc),
+                           support=getattr(exc,'joint_support',{}))
+        if failed:
+            for row, _ in prepared_tasks:
+                row.setdefault('status','not_run')
+                row['generated_inner_toys'] = 0
+            statuses=sorted({r['preflight_status'] for r,_ in prepared_tasks if r['preflight_status']!='valid'})
+            return {'status':statuses[0] if len(statuses)==1 else 'inference_incomplete',
+                    'preflight_failure_statuses':statuses,'replicas':[r for r,_ in prepared_tasks],
+                    'planned_outer':outer_replicas,'planned_inner_per_outer':inner_toys,
+                    'generated_physical_toys':0}
     replicas = []
-    for row in ordered_map(finish, tasks(), workers=min(workers, outer_replicas), worker_threads=worker_threads):
+    for row in ordered_map(
+            finish, prepared_tasks, workers=min(workers, outer_replicas), worker_threads=worker_threads,
+            execution="thread" if sys.platform == "win32" else "process"):
         replicas.append(row)
         if on_replica is not None:
             on_replica(row)
