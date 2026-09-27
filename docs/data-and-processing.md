@@ -30,7 +30,7 @@ Identity is inspected first to preserve the pre-existing development/test split.
 
 ## Executed prepared population
 
-The prepared artifact reused by `h4l-off-test01` is `runs/h4l-prepare/prepare`, population ID `1059f531f6da7dd2aaae9ef4956c6f2a6465fbf1f5e1254bb0ee81b08fd42e00`. It was produced from a clean checkout at commit `06770b11dbfa1f16c5a3fa5cb8680f327af113a3` with the bound 2020 profile and protocol. These are run facts, not new protocol defaults.
+The selected test05 preparation is `runs/h4l-prepare-test05/prepare`, artifact `2933b92e8df4909c579499b6f57147830fd72a878bcdd3377689be479dfa23cb`, population ID `1059f531f6da7dd2aaae9ef4956c6f2a6465fbf1f5e1254bb0ee81b08fd42e00`. Its manifest records clean execution at `c5cdfa8dfab1733ee1cb2c0b4fbca087ab222a4f`. The following source/selected counts come from its published preparation metrics, and the four development-role counts from `audit.json`; no event payload needs to be reopened. Re-preparation changes artifact provenance, not the independence of the underlying population. These are run facts, not new protocol defaults.
 
 | Processing count | Signal | Background | Total |
 |---|---:|---:|---:|
@@ -38,7 +38,7 @@ The prepared artifact reused by `h4l-off-test01` is `runs/h4l-prepare/prepare`, 
 | Historical development entries eligible for payload processing | 131,776 | 443,408 | 575,184 |
 | Selected `2e2mu`, `105 <= m4l < 140` event groups | 36,068 | 2,922 | 38,990 |
 
-Every selected row has a distinct physical group in this artifact. Role assignment produced:
+The non-assessment audit records one row per physical group in each permitted role:
 
 | Role | Signal groups | Background groups | Total groups |
 |---|---:|---:|---:|
@@ -46,7 +46,10 @@ Every selected row has a distinct physical group in this artifact. Role assignme
 | validation | 3,503 | 312 | 3,815 |
 | calibration | 7,262 | 575 | 7,837 |
 | template | 7,221 | 590 | 7,811 |
-| assessment | 3,705 | 305 | 4,010 |
+
+The table deliberately uses the published non-assessment audit. Assessment remains a separate frozen-evaluation role; selected totals are not permission to inspect its payload.
+
+The template signed yields are 2.7683194272433287 signal and 2.497852287449695 background, including role rescaling. At `mu=1` the expected count is about 5.27, making asymptotic interval coverage a material limitation. Role yields estimate the same normalization separately and must not be added across roles.
 
 G0 passed all eight non-assessment role/label cells. The smallest recorded signed effective count was 104.34 for validation background, above the protocol threshold of 20; the smallest cancellation ratio was 0.637 for train background, above 0.2. This proves the registered G0 support checks for this artifact. It does not prove two-dimensional template validity, signed-MC T1 applicability, source independence, or physical process definitions.
 
@@ -84,7 +87,9 @@ Selected events retain lepton `pt`, `eta`, `phi`, energy, charge, flavour, pairi
 | C | `pt4l`, `deltaPhi_ZZ` | 2 |
 | D: Angular5 | `cos_theta_star`, `cos_theta_1`, `cos_theta_2`, `phi_decay_planes`, `phi_production_plane` | 5 |
 
-Leptons are pT-ordered; angles use radians, pseudorapidities/cosines are dimensionless, and masses/momenta use GeV. `m4l` is outside engineered19. It is a common condition in the primary and feature-attribution families; the registered grouped-M3 control independently retrains each nonempty subset with this explicit input present or absent. Registered B subdivisions are `B_mass` and `B_geometry`.
+Leptons are pT-ordered; angles use radians, pseudorapidities/cosines are dimensionless, and masses/momenta use GeV. `m4l` is outside engineered19. It is a common input in the supporting mass-on and sample-efficiency families; the active paper's off-only attribution excludes it from every classifier. The grouped-M3 batch independently retrains both variants. `B_mass` and `B_geometry` exist in the representation registry but are not additional candidates in the paper's 15-subset family.
+
+Angular5 fixes charge order and the positive laboratory beam direction. In the four-lepton rest frame, `cos_theta_star` compares Z1 with the boosted beam, and each decay-plane normal is proportional to the negative-lepton momentum crossed with the positive-lepton momentum. Oriented plane angles about Z1 lie in `[-pi,pi)`. The negative lepton in each Z rest frame defines its helicity angle relative to the direction opposite the other Z. These are implemented conventions, not independent MELA validation.
 
 | Representation | Actual classifier dimension |
 |---|---:|
@@ -95,7 +100,7 @@ Leptons are pT-ordered; angles use radians, pseudorapidities/cosines are dimensi
 | Nonempty A/B/C/D subset, explicit `m4l` off control | Selected count |
 | lab-extension: decay7, `pt4l`, `y4l`, mass | 10 |
 
-Order is fixed by the [representation registry](../src/higgsml/modeling/representations.py). The off variant is registered only for a nonempty grouped `engineered19`/M3 model; an empty off model and off variants of mass-only, decay7, lab-extension, or adversarial candidates are rejected. Identity, source, label, role, and weight fields must not enter the classifier.
+Order is fixed by the [representation registry](../src/higgsml/modeling/representations.py). The trainable off variant is registered only for a nonempty grouped `engineered19`/M3 model; an empty trainable off model and off variants of mass-only, decay7, lab-extension, or adversarial candidates are rejected. The attribution service separately constructs a deterministic no-input `M0off`; this is not a trained empty M3. BC has six off inputs, AC ten, and ABCD nineteen. Identity, source, label, role, and weight fields must not enter the classifier.
 
 For approximately massless leptons,
 
@@ -116,7 +121,7 @@ p_{\rm sample}=p_{\rm dev}r,\qquad
 w_{\rm yield}=w_i/p_{\rm sample}.
 \]
 
-Normalization comes from the science contract and protocol. Preserve the physical sign. The development probability is 0.8; `r` is the conditional role fraction. Variance scales with the squared sampling correction. Do not force role totals to agree and thereby conceal sampling fluctuations.
+Normalization comes from the science contract and protocol. The 2020 configuration uses effective cross sections and stored `mcWeight`; the implementation does not multiply additional detector-efficiency scale factors. Preserve the physical sign. The development probability is 0.8; `r` is the conditional role fraction. Variance scales with the squared sampling correction. Do not force role totals to agree and thereby conceal sampling fluctuations.
 
 Roles use the first eight big-endian bytes of `SHA256("h4l-role-v1:" + event_group_id)`, modulo 100:
 
@@ -125,7 +130,7 @@ Roles use the first eight big-endian bytes of `SHA256("h4l-role-v1:" + event_gro
 | train | 40% | Network, scaler, class normalization, adversary bins |
 | validation | 10% | Early stopping, checkpoint AUC, diagnostics |
 | calibration | 20% | CDF and category thresholds |
-| template | 20% | Yields, common grid, finite-MC statistics |
+| template | 20% | Yields, finite-MC statistics and common grid; joint-support threshold feasibility in the current off study |
 | assessment | 10% | Budgeted frozen evaluation |
 
 Independent calibration/template resources cost training events. This allocation is registered, not proven optimal. Five network seeds are not independent MC samples; historical folds do not replace these roles. Identity validation may precede payload access, but assessment payload requires bound frozen-analysis evidence. Pooling roles for a final fit destroys the original isolation. Historical feedback requires a separate audit.
@@ -140,11 +145,11 @@ N_{\rm eff,abs}=\frac{(\sum |w|)^2}{\mathrm{sumw2}},\quad
 \rho=\frac{|\sum w|}{\sum |w|}.
 \]
 
-Undefined denominators produce explicit states. G0 checks permitted non-assessment role/label populations against positive-yield, effective-count, and cancellation thresholds. These statistics do not prove likelihood validity. Controlled-MC training also requires independent P0 evidence for processes, units, four-vectors, pairing, weights, and selection.
+Undefined denominators produce explicit states. G0 checks permitted non-assessment role/label populations against positive-yield, effective-count, and cancellation thresholds. These statistics do not prove likelihood validity. Controlled-MC execution accepts receipt-bound P0 contract checks. Automatically generated P0 v2 records keep source audit, independent numerical validation, physical applicability and confirmatory eligibility false; independent evidence for processes, units, four-vectors, pairing, weights and selection remains a scientific prerequisite, not something generated by a successful G0.
 
 Fit feature means and population standard deviations (`ddof=0`) on train only. Zero scales become one. Validation/prediction reuse the stored transform. This improves optimization without leaking validation statistics.
 
-Optimizer weights are `abs(physical_weight)` divided by the train class-specific mean absolute weight. Validation AUC uses absolute physical weights; yields remain signed. M6 and its control fit eleven adversary bins from train-background absolute-weight quantiles, separately from calibration and likelihood bins.
+Optimizer weights are `abs(physical_weight)` divided by the train class-specific mean absolute weight. This class-mean normalization does not equalize total class contributions: class row counts still enter the loss. Validation AUC uses absolute physical weights; yields remain signed. M6 and its control fit eleven adversary bins from train-background absolute-weight quantiles, separately from calibration and likelihood bins.
 
 There is no undocumented imputation, winsorization, class oversampling, or outcome-driven selection. Physics rejection, role access, diagnostic truncation, numerical transformation, and binding failure are distinct operations.
 
