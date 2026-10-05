@@ -1,6 +1,6 @@
 # HiggsML：H → ZZ* → 4l 的 MC-only 研究流程
 
-本仓库只维护 `H -> ZZ* -> 4l` 的 **MC-only 教育与技术研究流程**。当前论文主线是在分类器移除显式 `m4l` 输入后，研究 A/B/C/D 运动学特征组对信号强度 `mu` 推断精度的贡献、互补性及五种子稳定性，并以绑定协议、不可覆盖产物和冻结后的 assessment 隔离保证流程可审计。
+本仓库只维护 `H -> ZZ* -> 4l` 的 **MC-only 教育与技术研究流程**。当前论文主线是在分类器移除显式 `m4l` 输入后，研究 A/B/C/D 运动学特征组对信号强度 `mu` 名义区间宽度的贡献、互补性及五种子稳定性，并以绑定协议、不可覆盖产物和冻结后的 assessment 隔离保证流程可审计。
 
 仓库输出不构成 ATLAS/CMS 官方结果、Higgs discovery 或物理测量。软件实现、合成测试、完整 MC 验证和独立矩阵元参考是不同证据层级，不能互相替代。支持的平台与 CPU 架构不具有科研权威等级差异。
 
@@ -9,12 +9,12 @@
 - 活跃代码只有 `src/higgsml` 下的 H4l 包；旧 legacy15 预处理、旧训练/测试流程和 XGBoost 实现已移除。
 - 默认研究对象是受控 `atlas2020_4lep` MC 对，协议终态为 `2e2mu`，质量范围为 105–140 GeV。
 - `mass-only`、`decay7`、`engineered19`、`lab-extension`，全部 A/B/C/D 非空组合的显式 `m4l` on/off 重训练对照、普通/对抗训练、条件 CDF、共同二维模板、冻结 assessment、T0/T1 推断及样本效率链路均已有软件实现。
-- 本论文绑定的 test01 报告已完成：36/36 个评价单元与 200/200 个 MC bootstrap 副本数值有效。运行产物位于本地忽略目录 `runs/h4l-off-test01/evaluation/report`，不随 Git 发布。该结果登记为 `exploratory_posthoc`，assessment 访问审核非独立，选择后的覆盖尚未验证，`primary_claim_eligible=false`。可用于论文中的探索性技术分析，不能称为已确认的精度优势或物理测量。
+- 当前论文由 [`paper/selected-snapshot.json`](paper/selected-snapshot.json) 固定选择 test05：80/80 个名义候选/种子结果、36/36 个评价单元与 200/200 个事件 MC bootstrap 副本数值有效。报告位于本地忽略目录 `runs/h4l-off-test05/evaluation/report`，聚合快照位于 `var/paper-evidence/test05-20260926/`，均不随 Git 发布。该结果登记为 `exploratory_posthoc`，assessment 访问审核 `independent=false`，`selection_aware_coverage=unvalidated`，`primary_claim_eligible=false`。可用于论文中的探索性技术分析，不能称为已确认的精度优势或物理测量。
 - MELA 只有导出/导入及可选 adapter 契约，实际后端和独立物理参考仍需验证。
 
-本次论文结果的身份、数字及局限见[论文证据索引](paper/result-evidence.md)；研究设计和通用方法见[研究方案](docs/research-design.md)。`docs/` 中较早的运行状态不替代当前 test01 的产物与绑定代码。
+本次论文结果的身份、数字及局限见[论文证据索引](paper/result-evidence.md)和[结果与局限](docs/results-and-limitations.md#h4l-off-test05-controlled-mc-result)；研究设计和通用方法见[研究方案](docs/research-design.md)。历史 test01 和合成性能记录保留原有含义，不作为当前论文的数值来源。
 
-test01 的 `joint-support-v1` 方法将 105–140 GeV 质量窗明确设为一个质量箱。BC 和 AC 相对包容计数基线的名义 Asimov 区间分别缩小约 9.14% 和 8.92%；两者相对完整 ABCD 的有限 MC 配对差异范围均跨零。低计数条件下的区间覆盖及整个阈值选择程序仍需独立校准，不能将名义收益解释为已确认的精度提升。
+test05 的 [`joint-support-v1`](config/protocols/h4l_off_joint_support_v1.json) 方法将 105–140 GeV 质量窗明确设为一个质量箱：非空特征组合使用两个 score 类别，`M0off` 为包容计数基线。BC、AC、ABCD 和 M0off 的五种子名义 `W68` 中位数分别为 1.511617、1.515244、1.535930 和 1.663723。BC 和 AC 相对基线的名义 Asimov 区间分别缩小约 9.14% 和 8.92%；两者相对完整 ABCD 的 95% 有限 MC 配对差异范围均跨零。该比较没有利用分辨的质量峰；移除显式质量列也不排除相关运动学中的隐式质量信息。低计数条件下的区间覆盖及整个阈值选择程序仍需独立校准，不能将名义收益解释为已确认的精度提升。
 核心协议的 `protocol_scope` 仍为 `synthetic_software_defaults_not_physics_validation`；运行完成没有改变这一适用性限制。
 
 ## 2. 了解代码库目录结构
@@ -35,7 +35,7 @@ var/               本地论文聚合快照等派生证据（忽略，不提交�
 
 项目要求 Python `>=3.12,<3.13`，仓库约定使用 Conda `pytorch` 环境。
 
-从环境定义创建时：
+若环境尚不存在，从环境定义创建：
 
 ```bash
 conda env create -f environment.yml
@@ -49,6 +49,8 @@ python -m pip check
 ```bash
 python -m pip install -r requirements.txt
 ```
+
+并行推断使用可选依赖 `cloudpickle` 和 `threadpoolctl`，安装方式为 `python -m pip install -e ".[parallel]"`。串行默认执行无需启用并行；安装后运行 `python -m pip check` 核对依赖。
 
 `win.yml` 与 `osx.yml` 是已有 Windows 和 macOS 环境快照，`environment.yml` 提供通用环境定义；它们都不是权威平台要求。项目可在依赖可用的 Windows、Linux 或 macOS，以及不同 CPU 架构上运行。MELA 后端需在独立 Linux/WSL 环境中配置。
 
@@ -75,11 +77,14 @@ python scripts/init_data.py --dataset atlas2020_4lep
 
 ## 5. 运行 H4l 工作流
 
-用一个命令串联 prepare、G1、五随机种子批次、off-only Stage B、C–E evaluation 和最终报告：
+先以只读计划核对 prepare、G1、五随机种子批次、off-only Stage B、C–E evaluation 和最终报告，再执行：
 
 ```bash
-python scripts/h4l_all.py --run-name test01
+python scripts/h4l_all.py --run-name planned-joint-001 --threshold-method joint-support-v1 --plan-only
+python scripts/h4l_all.py --run-name planned-joint-001 --threshold-method joint-support-v1
 ```
+
+`planned-joint-001` 是示例新名称；不要为跟随示例而重跑或覆盖 test05。新名称也不会使已访问过的 MC population 获得独立资格。
 
 `--plan-only` 不启动子任务、不写运行产物，也不打开事件或 assessment 数值。没有 prepared manifest 时只返回 `pending_prepare_identity`，不能据此认定新 population 可用。实际完整运行需去掉该参数；加 `--stage-b-only` 则在核验 Stage B 计划和报告后停止，不生成访问审核、不启动 evaluation。
 
@@ -103,7 +108,7 @@ python scripts/h4l_all.py
 python paper/scripts/build.py
 ```
 
-如需重新核验 test01 并生成图表，才显式传入 `--run-name test01`；这要求本地保留对应 `runs/`。普通构建只需 Python 标准库和含 REVTeX 4.2、BibTeX、latexmk 的 TeX 环境，也可在 `paper/latex/` 直接运行 `latexmk -pdf -outdir=.build main.tex`。PDF 位于 `paper/latex/main.pdf`（直接运行 latexmk 时位于 `.build/main.pdf`）。具体步骤见[论文构建说明](paper/README.md)。
+如需显式刷新当前论文图表，运行 `python paper/scripts/build.py --run-name test05`；这要求本地保留对应 `runs/`，并安装 NumPy 和 Matplotlib。该命令核对固定选择后重建六张图与四个 TeX 输入，应审查生成文件的差异。普通构建只需 Python 标准库和含 REVTeX 4.2、BibTeX、latexmk 的 TeX 环境，不读取 `runs/`、`var/`、`paper/evidence/` 或选择文件，也可在 `paper/latex/` 直接运行 `latexmk -pdf -outdir=.build main.tex`。PDF 位于 `paper/latex/main.pdf`（直接运行 latexmk 时位于 `.build/main.pdf`）。具体步骤见[论文构建说明](paper/README.md)。
 
 ## 6. 分阶段运行 H4l 工作流
 
@@ -162,7 +167,7 @@ python scripts/h4l_run.py --run-name example01
 python scripts/h4l_run.py --run-name example01 --continue
 ```
 
-三个脚本均支持 `--help`、`--plan-only` 和 `--no-progress`。它们也提供严格限于所选 `runs/` 子目录的 `--clean`；`--clean` 不能与 `--plan-only` 同时使用，执行前应先用 `--help` 或单独的计划命令核对路径。清理会删除不可恢复的本地运行产物；完成、失败、诊断或已发布的 run 均不得原地覆盖。
+三个脚本均支持 `--help`、`--plan-only`、`--no-progress` 和受校验的 `--continue`。完成、失败、诊断或已发布的 run 均须保留；恢复应使用续跑契约，新的诊断使用新目录。`--clean` 会删除本地产物，不能作为绕过不可变证据或 assessment 历史的恢复方式。
 
 ### 6.4 运行 Stage B 生成 freeze
 
@@ -179,9 +184,22 @@ python scripts/h4l_off_run.py --source-run-name example01 --run-name study-001 \
 
 ### 6.5 评估访问审核
 
-Stage B 完成后，assessment/T2 只能使用与实际 freeze、population、protocol 和 P0/T1 文件绑定的 access-review。独立审核者应依据
-`config/examples/h4l_off_assessment_access.pending.json` 生成并审核一份完整的
-`validated-off-assessment-access.json`，然后在最终执行时通过 `--access-review` 显式传入。该 pending 文件含占位 ID 和 receipt，不能直接使用；脚本也不会自动把它提升为独立证据。
+Stage B 完成后，assessment/T2 只能使用与实际 freeze、population、protocol 和 P0/T1 文件绑定的 access-review。当前 evaluator 消费 `h4l-off-assessment-access-v3` receipt，还须绑定 evaluation specification、plan、五个 seed block 和来源审核摘要。[pending 示例](config/examples/h4l_off_assessment_access.pending.json) 含占位 ID 且缺少完整 block，不能直接使用。
+
+独立审核者须提供真实来源审核材料，说明历史访问、事件组隔离及适用性证据，再通过以下命令绑定实际 Stage B：
+
+```bash
+python -m higgsml.cli attribution access-review \
+  --registration-run runs/h4l-off-study-001/register \
+  --template-run runs/h4l-off-study-001/nominal \
+  --freeze-run runs/h4l-off-study-001/freeze \
+  --result-run runs/h4l-off-study-001/asimov \
+  --evaluation-plan runs/h4l-off-study-001/evaluation-plan/evaluation-plan.json \
+  --access-review path/to/reviewed-source-access.json \
+  --run-dir runs/h4l-off-study-001/access-review
+```
+
+绑定会检查实时访问历史并保留来源的独立性状态，不会补造独立证据。已有合法 v3 receipt 可直接使用；同一 freeze 的恢复须复用既有 receipt。只有 `h4l_all.py` 在历史允许时提供自动本地 self-review，其结果始终为非独立、探索性材料。
 
 ### 6.6 生成最终报告
 
@@ -190,7 +208,7 @@ Stage B 完成后，assessment/T2 只能使用与实际 freeze、population、pr
 ```bash
 python scripts/h4l_off_run.py --source-run-name example01 --run-name study-001 \
   --threshold-method joint-support-v1 --evaluation \
-  --access-review path/to/validated-off-assessment-access.json
+  --access-review runs/h4l-off-study-001/access-review/validated-off-assessment-access.json
 ```
 
 该命令读取并绑定实际 prepared、registration、nominal、freeze 和 evaluation-plan artifact，随后执行 C–E evaluation 并生成最终报告。它不会自动生成或批准 access-review。
@@ -213,7 +231,7 @@ assessment 不会因此重新获得资格。命令行不再提供 v1/v2/v3 版�
 
 ## 7. 使用项目工具开展研究
 
-`higgsml` 暴露十二个可组合阶段：
+`higgsml` 暴露十二个核心可组合阶段，另有 `attribution`、`sample-efficiency`、`sample-efficiency-report` 和 `sample-efficiency-controls` 专用入口：
 
 ```text
 audit -> prepare -> [me-export -> me-import] -> train -> calibrate
@@ -281,6 +299,9 @@ python -m pip check
 - [产物与谱系契约](docs/implementation-and-reproduction.md#artifact-and-lineage-contract)
 - [证据与完成边界](docs/results-and-limitations.md#evidence-required-for-conclusions)
 - [当前科研与软件状态](docs/results-and-limitations.md#software-and-validation-status)
+- [样本效率独立研究](docs/sample-efficiency.md)
+- [论文证据索引](paper/result-evidence.md)与[固定选择](paper/selected-snapshot.json)
+- [论文构建说明](paper/README.md)
 - [论文 LaTeX 源码](paper/latex/main.tex)
 
 ## 11. 许可证与第三方条款

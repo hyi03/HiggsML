@@ -1,0 +1,291 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage{booktabs}
+\usepackage[colorlinks=true,urlcolor=blue,linkcolor=blue,citecolor=blue]{hyperref}
+\setlength{\oddsidemargin}{-0.24cm}
+\setlength{\evensidemargin}{-0.24cm}
+\setlength{\topmargin}{-0.24cm}
+\setlength{\headheight}{0pt}
+\setlength{\headsep}{0pt}
+\setlength{\textwidth}{16.4cm}
+\setlength{\textheight}{25.1cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.38em}
+\newcommand{\mfl}{m_{4\ell}}
+\newcommand{\W}{W_{68}}
+\newcommand{\Pois}{\mathrm{Pois}}
+\newcommand{\arxivref}[1]{\href{https://arxiv.org/abs/#1}{arXiv:#1}}
+\begin{document}
+\begin{center}
+{\Large\bfseries Paper outline for supervisory discussion}\\[0.4em]
+{\large Kinematic feature groups and the robustness of signal-strength inference}\\
+in simulated $H\to ZZ^*\to2e2\mu$ events \hfill 5 October 2026
+\end{center}
+
+\textbf{Summary.} This proposed study asks how kinematic input groups affect
+expected signal-strength interval widths within a fixed learning and inference
+procedure, and how robust the differences are. The exploratory comparison
+identifies compact candidates and different leading configurations under
+classification AUC and nominal interval width. Their advantage over the full
+input remains inconclusive under finite-MC resampling, while coverage needs
+further validation. Two priorities for discussion are the suitability of the
+educational data release for a publication study and the evidence needed to
+support the paper's main conclusion.
+
+\section{Research question and intended contribution}
+The primary question is how input groups change the expected 68\% interval
+width for signal strength $\mu$, which scales the simulated signal yield,
+and whether those changes withstand training randomness, finite Monte Carlo
+(MC) samples and alternative inference settings. Only the first two sources
+have existing diagnostics; robustness to alternative inference settings remains
+a research goal. AUC comparisons and compact candidates are secondary findings,
+not a claim that fewer inputs preserve all relevant information.
+
+MEKD illustrates matrix-element discrimination from four-lepton
+kinematics~\cite{mekd}; INFERNO optimizes learned summaries for an inference
+objective~\cite{inferno}; Cowan et al.\ provide the Asimov and asymptotic
+likelihood framework~\cite{cowan}. Here conventional classifier training is
+retained and feature groups are compared through a common downstream fit.
+No direct performance benchmark against MEKD or INFERNO has been completed.
+A focused literature assessment must still establish the distinctive contribution.
+
+\section{Data basis and suitability for publication}
+The current analysis uses two simulated samples from the 2020 ATLAS Open Data
+four-lepton release at $\sqrt{s}=13$ TeV: signal
+\texttt{ggH125\_ZZ4lep} (DSID 345060) and background \texttt{llll} (363490).
+Selection requires two electrons and two muons, trigger and lepton-quality
+requirements, and $105\leq\mfl<140$ GeV. No collision data are used.
+
+\textbf{Dataset decision.} The provider describes this collection, including
+accompanying simulated samples, as educational and not suited for scientific
+publications~\cite{data}. MC-only use does not establish an exception.
+Should this analysis remain a preliminary study, with publication work moved
+to suitable simulation, or should the proposed methodological use first be
+clarified with the provider? This is a scientific-suitability issue, not an
+assertion of a legal prohibition.
+
+\begin{center}
+\begin{tabular}{lrr}
+\toprule
+Published sample summary & Signal & Background\\
+\midrule
+Source MC entries & 164,716 & 554,279\\
+Selected event groups (eligible development population) & 36,068 & 2,922\\
+Template-role event groups & 7,221 & 590\\
+Expected template yield at $10\,\mathrm{fb}^{-1}$ & 2.7683 & 2.4979\\
+\bottomrule
+\end{tabular}
+\end{center}
+Yields include role-sampling corrections and cannot be added across roles.
+The expected total at $\mu=1$ is only about 5.27 events. This restricted model
+omits other Higgs production modes and additional experimental backgrounds;
+\texttt{llll} alone does not establish a pure $q\bar q\to ZZ$ component.
+Process, reconstruction and normalization applicability need independent review.
+
+\newpage
+\section{Core method and quantities to be compared}
+\subsection*{Inputs, training and weights}
+\begin{center}
+\begin{tabular}{ccl}
+\toprule
+Group & Count & Variables\\
+\midrule
+A & 8 & $p_{T,i},\eta_i$ for $i=1,\ldots,4$\\
+B & 4 & $m_{Z_1},m_{Z_2},\Delta R_{Z_1},\Delta R_{Z_2}$\\
+C & 2 & $p_{T,4\ell},\Delta\phi_{ZZ}$\\
+D & 5 & $\cos\theta^*,\cos\theta_1,\cos\theta_2,
+              \phi_{\mathrm{decay}},\phi_{\mathrm{production}}$\\
+\bottomrule
+\end{tabular}
+\end{center}
+Leptons are ordered by decreasing $p_T$; $Z_1$ is the same-flavour,
+opposite-sign pair closest to the nominal $Z$ mass, and $Z_2$ the remaining
+pair. Within each pair, $\Delta R=\sqrt{(\Delta\eta)^2+(\Delta\phi)^2}$.
+In the four-lepton rest frame, $\theta^*$ compares $Z_1$ with the boosted
+positive laboratory beam. Each helicity angle $\theta_{1,2}$ compares the
+negative lepton with the direction opposite the other pair in its own
+dilepton rest frame. Plane normals use $\mathbf{p}_{\ell^-}
+\times\mathbf{p}_{\ell^+}$; the two $\phi$ angles run about $Z_1$ from
+its decay normal to the other decay normal, and from the production normal
+(beam crossed with $Z_1$) to its decay normal, respectively, in $[-\pi,\pi)$.
+
+All 15 nonempty combinations use five network seeds (42--46), with common
+event roles and a constant-score empty-set reference. Separate training,
+validation, calibration, template and post-freeze assessment roles keep physical
+groups together. The MLP has hidden widths 64, 64 and 32, trained with binary
+cross entropy and AdamW. Validation AUC selects checkpoints within a maximum
+200 epochs. Input dimension changes parameter count; capacity is not matched.
+
+Training weights are $|w_i|$ divided by the training-class mean of $|w|$.
+Signed physical weights are retained for yields and group-level variances.
+Reported validation AUC also uses absolute physical weights and is a
+checkpoint-selection diagnostic, not an independent test metric.
+
+\subsection*{Score compression and statistical model}
+Classifiers omit explicit $\mfl$, but correlated inputs may retain mass
+information. One mass bin spans 105--140 GeV; each nonempty combination
+has two score categories. Calibration proposes thresholds, with joint
+calibration/template support checks selecting the feasible cut closest to
+the median, not the cut minimizing $\W$. All events enter a category.
+The reference is an inclusive count, not a resolved mass-spectrum fit.
+
+For categories $c$ and processes $p\in\{s,b\}$, the fitted model is
+\[
+ {\cal L}(\mu,\gamma)=
+ \prod_c\Pois(n_c\mid\mu s_c\gamma_{s,c}+b_c\gamma_{b,c})
+ \prod_{p,c}\Pois(a_{p,c}\mid\tau_{p,c}\gamma_{p,c}),
+ \qquad \tau_{p,c}=\frac{y_{p,c}^{\,2}}{V_{p,c}} .
+\]
+Here $y=\sum_g W_g$ and $V=\sum_g W_g^2$ use physical-group yield contributions.
+Independent process/category Poisson auxiliary constraints model finite-template
+statistics via pyhf \texttt{shapesys}; the nonnegative $\gamma$ parameters are
+profiled. This is an effective-count approximation for signed MC, not a
+validated complete generative model or a full experimental systematic model.
+
+Intervals invert the profile-likelihood ratio using a one-degree-of-freedom
+$\chi^2$ threshold, with $\mu\geq0$ and numerical search ceiling 20.
+Failure to find an upper crossing is recorded rather than assigned a finite width.
+$\W$ is the 68\% interval width
+on each model's Asimov expectation at $\mu=1$; coverage is a separate question.
+For each seed, $v(S)=-\W(S)$ defines exact Shapley contributions and conditional
+pair interactions. These attribute the whole procedure's performance, not
+intrinsic or causal physical information.
+
+\newpage
+\section{Minimum results and their interpretation}
+\textbf{Observed pattern.} BC and AC are compact candidates worth further
+investigation: their nominal widths are smaller than ABCD's, and the leading
+configuration differs between validation AUC and interval width. The table
+makes the size and limitations of those observations explicit.
+
+\begin{center}
+\textbf{Table 1. Existing exploratory results at injected $\mu=1$.}\\[0.6em]
+\textit{(a) Nominal performance: median [minimum, maximum] over five seeds.}\\[0.3em]
+\begin{tabular}{lcll}
+\toprule
+Configuration & Inputs & Validation AUC & Nominal $\W$\\
+\midrule
+Inclusive count & 0 & Not applicable & 1.66372 [1.66372, 1.66372]\\
+ABCD & 19 & 0.84635 [0.83018, 0.85500] & 1.53593 [1.52947, 1.54805]\\
+BC & 6 & 0.81314 [0.81220, 0.81425] & 1.51162 [1.51060, 1.51960]\\
+AC & 10 & 0.87754 [0.87194, 0.88068] & 1.51524 [1.49720, 1.51785]\\
+\bottomrule
+\end{tabular}\\[1em]
+\textit{(b) Paired contrasts and conditional coverage.}\\[0.3em]
+\begin{tabular}{lrrc}
+\toprule
+Configuration & Median $\Delta\W$ & 95\% MC percentile range
+ & 68\% coverage\\
+\midrule
+Inclusive count & --- & --- & 0.628\\
+ABCD & Reference & --- & 0.646\\
+BC & $-0.01995$ & [$-0.05611$, $+0.00349$] & 0.658\\
+AC & $-0.02191$ & [$-0.04826$, $+0.00162$] & 0.638\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{How to read the table.}
+$\Delta\W=\W(\mathrm{candidate})-\W(\mathrm{ABCD})$ is calculated within
+each seed, then summarized by its median; negative favours the candidate.
+It is not the difference between the medians in panel (a). Seed ranges
+describe training variability on shared MC, not confidence intervals.
+
+The MC ranges use all 200 valid event-group bootstrap replicas, with shared
+calibration/template resampling across candidates and threshold reselection.
+Networks remain fixed. These ranges do not cover retraining, assessment-parent
+uncertainty or all physical variations, and are not calibrated total confidence
+intervals. Both compact-versus-full ranges include zero; this establishes
+neither superiority, equivalence nor noninferiority.
+
+Coverage entries are five-seed medians from the post-freeze assessment-parent
+diagnostic at $\mu=1$, with 500 pseudo-experiments per candidate per seed.
+These cells have no invalid candidate fits. They are conditional checks using
+the same underlying MC, not independent repetitions of the complete study.
+For scale, a single independent set of 500 Bernoulli trials at coverage 0.68
+has standard error $\sqrt{0.68(1-0.68)/500}\simeq0.021$.
+This is not an error bar on a shared-MC seed median or on nested recalibration
+trials.
+
+\textbf{What the evidence currently supports.}
+The analysis identifies procedure-dependent differences in group combinations
+and a discrepancy between the leading AUC and width configurations. These
+provide a concrete starting point for studying representation effects and
+their reliability. BC and AC were highlighted after inspecting the rankings,
+so their role here is exploratory.
+
+\textbf{What remains unresolved.}
+The finite-MC contrasts are inconclusive and the displayed coverage medians
+are below 0.68. The whole threshold-selection and interval procedure needs
+validation; asymptotic intervals at the small expected counts cannot be assumed
+reliable. Assessment access has only a non-independent review. Pseudo-experiment
+comparisons also use artificial shared-random-number coupling rather than
+physical-event pairing, with allocation sensitivity still pending.
+Nominal narrowing therefore does not yet establish a calibrated precision gain.
+This result does not demonstrate robust compactness or a saving in training MC.
+
+\newpage
+\section{Research priorities and proposed writing direction}
+\subsection*{Order of work to discuss}
+\begin{enumerate}
+\setlength{\itemsep}{0.15em}\setlength{\parskip}{0pt}\setlength{\parsep}{0pt}
+\item \textbf{Data suitability and positioning.} Decide whether to retain this
+educational sample as preliminary work, clarify methodological use with the
+provider, or move publication work to suitable simulation.
+\item \textbf{Interval reliability.} Independently check the signed-template
+approximation and coverage of the complete selection and interval procedure.
+More conditional trials cannot resolve missing sample independence.
+\item \textbf{Baselines matching the claim.} A gain beyond mass-spectrum inference
+requires a resolved mass baseline; otherwise retain the single-bin scope.
+A physics reference needs matched inputs and validated implementation.
+\item \textbf{Representation controls.} Capacity and training-size studies are
+needed for claims of stable compactness or resource savings. Noninferiority
+requires a prespecified acceptable loss, decision rule and independent confirmation.
+\end{enumerate}
+These extensions are proposed. Confirmation requires eligible simulation not
+compromised by prior use; renaming or repartitioning inspected events cannot
+create independence.
+
+\subsection*{A paper organised around questions}
+\textbf{Motivation:} What gap remains after existing kinematic and inference-aware
+work? \textbf{Data and method:} Which population and assumptions make the comparison
+appropriate? \textbf{Results and reliability:} Which groups change the outcome,
+where do metric rankings differ, and which patterns survive completed checks?
+\textbf{Interpretation:} What is specific to this learner, sample and likelihood,
+and what evidence would support a broader claim?
+
+The intended contribution concerns feature-group effects and their robustness.
+Compact candidates motivate follow-up, not the main conclusion. Novelty remains
+to be established, and an inconclusive result is possible.
+
+\subsection*{Guidance requested}
+\begin{enumerate}
+\setlength{\itemsep}{0.15em}\setlength{\parskip}{0pt}\setlength{\parsep}{0pt}
+\item \textbf{Research design:} Is this question worthwhile and sufficiently
+focused? What data, baseline and methodological changes are essential?
+\item \textbf{Objectives and conclusions:} What should be the primary estimand
+and minimum evidence for a defensible conclusion? Which validation comes first?
+\item \textbf{Manuscript development:} How should the contribution be framed,
+which sections deserve emphasis, and how should the present conclusions be worded?
+\end{enumerate}
+
+\begingroup
+\small
+\begin{thebibliography}{4}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+\bibitem{data} ATLAS Collaboration, 2020 four-lepton collection,
+\href{https://opendata.cern.ch/record/15005}{CERN Open Data record 15005}
+(accessed 4 October 2026).
+\bibitem{mekd} P.~Avery et al., \textit{Precision studies of the Higgs boson
+decay channel $H\to ZZ\to4\ell$ with MEKD}, \arxivref{1210.0896}.
+\bibitem{inferno} P.~de Castro and T.~Dorigo, \textit{INFERNO:
+Inference-Aware Neural Optimisation}, \arxivref{1806.04743}.
+\bibitem{cowan} G.~Cowan et al., \textit{Asymptotic formulae for likelihood-based
+tests of new physics}, \arxivref{1007.1727}.
+\end{thebibliography}
+\textit{Local evidence:} the selected test05 aggregate snapshot and
+\texttt{paper/result-evidence.md}; no new experiment was run for this outline.
+Time and resources will be assessed after the scope is agreed.
+\endgroup
+\end{document}
