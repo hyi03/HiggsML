@@ -1,192 +1,221 @@
-# HiggsML：H → ZZ* → 4l 的 MC-only 研究流程
+# HiggsML: An MC-only research workflow for H → ZZ* → 4l
 
-本仓库只维护 `H -> ZZ* -> 4l` 的 **MC-only 教育与技术研究流程**。当前论文主线是在分类器移除显式 `m4l` 输入后，研究 A/B/C/D 运动学特征组对信号强度 `mu` 名义区间宽度的贡献、互补性及五种子稳定性，并以绑定协议、不可覆盖产物和冻结后的 assessment 隔离保证流程可审计。
+This repository maintains an **MC-only educational and technical research workflow** for `H -> ZZ* -> 4l`. The active paper compares all 15 nonempty A/B/C/D kinematic feature subsets for seeds 42–46, reusing 75 classifiers without explicit `m4l` and five deterministic `M0off` identities. It studies nominal signal-strength interval widths, feature-group contributions and complementarity, and training-seed stability. Bound protocols, immutable artifacts, and assessment isolation until after freezing make the workflow auditable.
 
-仓库输出不构成 ATLAS/CMS 官方结果、Higgs discovery 或物理测量。软件实现、合成测试、完整 MC 验证和独立矩阵元参考是不同证据层级，不能互相替代。支持的平台与 CPU 架构不具有科研权威等级差异。
+This README reflects the repository documentation and entry points reviewed on **2026-10-06**. The paper still selects the test05 evidence reviewed on **2026-09-26**; the documentation update does not execute or requalify an analysis.
 
-## 1. 了解项目范围与证据状态
+Repository outputs are not official ATLAS/CMS results, a Higgs discovery, or a physics measurement. Software implementation, synthetic tests, full-MC validation, and independent matrix-element references are distinct evidence levels and cannot substitute for one another. Supported platforms and CPU architectures have equal standing; none has greater scientific authority.
 
-- 活跃代码只有 `src/higgsml` 下的 H4l 包；旧 legacy15 预处理、旧训练/测试流程和 XGBoost 实现已移除。
-- 默认研究对象是受控 `atlas2020_4lep` MC 对，协议终态为 `2e2mu`，质量范围为 105–140 GeV。
-- `mass-only`、`decay7`、`engineered19`、`lab-extension`，全部 A/B/C/D 非空组合的显式 `m4l` on/off 重训练对照、普通/对抗训练、条件 CDF、共同二维模板、冻结 assessment、T0/T1 推断及样本效率链路均已有软件实现。
-- 当前论文由 [`paper/selected-snapshot.json`](paper/selected-snapshot.json) 固定选择 test05：80/80 个名义候选/种子结果、36/36 个评价单元与 200/200 个事件 MC bootstrap 副本数值有效。报告位于本地忽略目录 `runs/h4l-off-test05/evaluation/report`，聚合快照位于 `var/paper-evidence/test05-20260926/`，均不随 Git 发布。该结果登记为 `exploratory_posthoc`，assessment 访问审核 `independent=false`，`selection_aware_coverage=unvalidated`，`primary_claim_eligible=false`。可用于论文中的探索性技术分析，不能称为已确认的精度优势或物理测量。
-- MELA 只有导出/导入及可选 adapter 契约，实际后端和独立物理参考仍需验证。
+## 1. Understand the project scope and evidence status
 
-本次论文结果的身份、数字及局限见[论文证据索引](paper/result-evidence.md)和[结果与局限](docs/results-and-limitations.md#h4l-off-test05-controlled-mc-result)；研究设计和通用方法见[研究方案](docs/research-design.md)。历史 test01 和合成性能记录保留原有含义，不作为当前论文的数值来源。
+- The only active code is the H4l package under `src/higgsml`; legacy15 preprocessing, the old training/testing workflow, and XGBoost implementations have been removed.
+- The default study uses the controlled `atlas2020_4lep` MC sample pair, with the protocol-defined `2e2mu` final state and a mass range of 105–140 GeV.
+- The active off-only paper uses raw classifier scores and the separately bound `joint-support-v1` method. Software also supports `mass-only`, `decay7`, `engineered19`, `lab-extension`, independently retrained explicit-`m4l` on/off controls, ordinary/adversarial training, conditional CDFs, common mass/score templates, T0/T1 inference, and sample-efficiency studies. Those supporting implementations are not completed results of the active paper.
+- The current paper selects test05 through [`paper/selected-snapshot.json`](paper/selected-snapshot.json): 80/80 nominal candidate/seed results, 36/36 evaluation units, and 200/200 event-MC bootstrap replicas are numerically valid. The report is in the locally ignored directory `runs/h4l-off-test05/evaluation/report`, and the aggregate snapshot is in `var/paper-evidence/test05-20260926/`; neither is published through Git. The result is registered as `exploratory_posthoc`, with assessment access review `independent=false`, `selection_aware_coverage=unvalidated`, and `primary_claim_eligible=false`. It supports exploratory technical analysis in the paper, but must not be described as a confirmed precision gain or a physics measurement.
+- MELA currently provides only export/import contracts and an optional adapter contract; the actual backend and independent physical reference still require validation.
 
-test05 的 [`joint-support-v1`](config/protocols/h4l_off_joint_support_v1.json) 方法将 105–140 GeV 质量窗明确设为一个质量箱：非空特征组合使用两个 score 类别，`M0off` 为包容计数基线。BC、AC、ABCD 和 M0off 的五种子名义 `W68` 中位数分别为 1.511617、1.515244、1.535930 和 1.663723。BC 和 AC 相对基线的名义 Asimov 区间分别缩小约 9.14% 和 8.92%；两者相对完整 ABCD 的 95% 有限 MC 配对差异范围均跨零。该比较没有利用分辨的质量峰；移除显式质量列也不排除相关运动学中的隐式质量信息。低计数条件下的区间覆盖及整个阈值选择程序仍需独立校准，不能将名义收益解释为已确认的精度提升。
-核心协议的 `protocol_scope` 仍为 `synthetic_software_defaults_not_physics_validation`；运行完成没有改变这一适用性限制。
+For the identities, numerical results, and limitations of the current paper, see the [paper evidence index](paper/result-evidence.md) and [Results and limitations](docs/results-and-limitations.md#h4l-off-test05-controlled-mc-result). For the research design and general methods, see [Research design](docs/research-design.md). Historical test01 results and synthetic performance records retain their original meaning and are not the numerical source for the current paper.
 
-## 2. 了解代码库目录结构
+The test05 [`joint-support-v1`](config/protocols/h4l_off_joint_support_v1.json) method explicitly uses one mass bin over 105–140 GeV: nonempty feature combinations use two score categories, while `M0off` is an inclusive-count reference. `W68` is the nominal T1 model-self Asimov 68% interval width at injected `mu=1`. The five-seed median nominal `W68` values for BC, AC, ABCD, and M0off are 1.511617, 1.515244, 1.535930, and 1.663723, respectively. The nominal Asimov intervals for BC and AC are approximately 9.14% and 8.92% narrower than the reference; the 95% finite-MC paired difference ranges for both versus the full ABCD combination include zero. This comparison does not use a resolved mass peak, and removing the explicit mass column does not exclude implicit mass information in correlated kinematics. Interval coverage under low counts and the entire threshold-selection procedure still require independent calibration; nominal gains must not be interpreted as confirmed precision improvements.
+
+The 200 event-MC bootstrap replicas hold trained networks fixed. Their percentile ranges do not include independent retraining or calibrated post-selection uncertainty, and five-seed ranges are not confidence intervals. Independent signed-MC/T1 applicability validation, whole-procedure coverage calibration, category-allocation sensitivity, and independent confirmation remain separate requirements.
+
+The core protocol's `protocol_scope` remains `synthetic_software_defaults_not_physics_validation`; completing a run does not change this applicability limitation.
+
+The feature groups contain 19 inputs in total:
+
+| Group | Inputs | Count |
+|---|---|---:|
+| A | `lep1_pt` through `lep4_pt`, `lep1_eta` through `lep4_eta` | 8 |
+| B | `mZ1`, `mZ2`, `deltaR_Z1`, `deltaR_Z2` | 4 |
+| C | `pt4l`, `deltaPhi_ZZ` | 2 |
+| D: Angular5 | `cos_theta_star`, `cos_theta_1`, `cos_theta_2`, `phi_decay_planes`, `phi_production_plane` | 5 |
+
+Leptons are ordered by transverse momentum. `m4l` is outside these groups and is omitted from the active classifiers; BC has six off inputs, AC ten, and ABCD nineteen. `M0off` has a constant score of 0.5 and is not a trained empty classifier. Definitions, units, angular conventions, and information limits are in [Data and processing](docs/data-and-processing.md#features-and-information-content).
+
+## 2. Explore the repository layout
 
 ```text
-src/higgsml/       H4l 包：物理重建、建模、推断与样本效率
-config/            数据集契约、profiles、协议、schemas 与示例
-scripts/           受控下载、主工作流和研究辅助脚本
-tests/             单元、工作流与合成科学契约测试
-docs/              方法、复现、产物和验证文档
-paper/             正式 LaTeX 论文、已提交图表与 TeX 数值表、结果证据索引
-data/raw/          本地受控 MC 输入（忽略，不提交）
-runs/              本地不可变运行产物（忽略，不提交）
-var/               本地论文聚合快照等派生证据（忽略，不提交）
+src/higgsml/       H4l package: physics reconstruction, modeling, inference, and sample efficiency
+config/            Dataset contracts, profiles, protocols, schemas, and examples
+scripts/           Controlled download, main workflow, and research helper scripts
+tests/             Unit, workflow, and synthetic scientific-contract tests
+docs/              Methods, reproduction, artifacts, and validation documentation
+  methods/         Detailed joint-support and marginal CRN designs
+  studies/         Supporting study records and unexecuted confirmation proposals
+  history/         Dated implementation, review, and verification records
+paper/             LaTeX manuscript, committed figures and TeX numerical tables, evidence index
+data/raw/          Local controlled MC inputs (ignored; do not commit)
+runs/              Local immutable run artifacts (ignored; do not commit)
+var/               Local aggregate paper snapshots and other derived evidence (ignored; do not commit)
 ```
 
-## 3. 配置运行环境并安装项目
+## 3. Configure the environment and install the project
 
-项目要求 Python `>=3.12,<3.13`，仓库约定使用 Conda `pytorch` 环境。
+The project requires Python `>=3.12,<3.13` and uses the Conda `pytorch` environment by repository convention.
 
-若环境尚不存在，从环境定义创建：
+If the environment does not already exist, create it from the environment definition:
 
 ```bash
 conda env create -f environment.yml
+```
+
+Activate the existing or newly created environment, install the package, and add the inference dependencies (including `pyhf`):
+
+```bash
 conda activate pytorch
 python -m pip install --no-deps -e .
+python -m pip install -r requirements.txt
 python -m pip check
 ```
 
-核心推断需要 `pyhf` 等研究扩展依赖：
+Parallel inference uses the optional dependencies `cloudpickle` and `threadpoolctl`, installed with `python -m pip install -e ".[parallel]"`. Serial execution does not require enabling parallelism; run `python -m pip check` after installation to check dependencies.
 
-```bash
-python -m pip install -r requirements.txt
-```
+`win.yml` and `osx.yml` are existing Windows and macOS environment snapshots, while `environment.yml` provides a general environment definition; none establishes an authoritative platform requirement. The project can run on Windows, Linux, or macOS and on different CPU architectures where its dependencies are available. The MELA backend requires a separately configured Linux/WSL environment.
 
-并行推断使用可选依赖 `cloudpickle` 和 `threadpoolctl`，安装方式为 `python -m pip install -e ".[parallel]"`。串行默认执行无需启用并行；安装后运行 `python -m pip check` 核对依赖。
-
-`win.yml` 与 `osx.yml` 是已有 Windows 和 macOS 环境快照，`environment.yml` 提供通用环境定义；它们都不是权威平台要求。项目可在依赖可用的 Windows、Linux 或 macOS，以及不同 CPU 架构上运行。MELA 后端需在独立 Linux/WSL 环境中配置。
-
-安装后统一核心入口为：
+After installation, the common core entry point is:
 
 ```bash
 higgsml --help
 ```
 
-## 4. 下载并校验受控 MC 数据集
+## 4. Download and verify the controlled MC dataset
 
-下载器只执行数据集契约中固定的 HTTPS 请求，并在文件大小与 SHA-256 全部匹配后发布 receipt：
+The downloader uses only the fixed HTTPS requests in the dataset contract and publishes a receipt after all file sizes and SHA-256 hashes match:
 
 ```bash
 python scripts/init_data.py --dataset atlas2020_4lep
 ```
 
-输入写入 `data/raw/<dataset>/`。下载器也认识 `atlas2025_exactly4lep`，但它属于独立 release/collection，不能与 2020 文件混配；当前正式 H4l 协议与工作流仍绑定 `atlas2020_4lep`。任何阶段都不得读取或处理真实数据。
+Inputs are written to `data/raw/<dataset>/`. The downloader also recognizes `atlas2025_exactly4lep`, but it belongs to a separate release/collection and must not be mixed with 2020 files; the current formal H4l protocol and workflow remain bound to `atlas2020_4lep`. No stage may read or process real data.
 
-数据契约位于：
+Dataset contracts are located at:
 
 - [`config/datasets/atlas2020_4lep.json`](config/datasets/atlas2020_4lep.json)
 - [`config/datasets/atlas2025_exactly4lep.json`](config/datasets/atlas2025_exactly4lep.json)
 
-## 5. 运行 H4l 工作流
+## 5. Run the H4l workflow
 
-先以只读计划核对 prepare、G1、五随机种子批次、off-only Stage B、C–E evaluation 和最终报告，再执行：
+After initializing the controlled dataset, review prepare, G1, the five-seed batch, off-only Stage B, C–E evaluation, and the final report through a read-only plan, then execute:
 
 ```bash
 python scripts/h4l_all.py --run-name planned-joint-001 --threshold-method joint-support-v1 --plan-only
 python scripts/h4l_all.py --run-name planned-joint-001 --threshold-method joint-support-v1
 ```
 
-`planned-joint-001` 是示例新名称；不要为跟随示例而重跑或覆盖 test05。新名称也不会使已访问过的 MC population 获得独立资格。
+`planned-joint-001` is an example of a new name; do not rerun or overwrite test05 to follow this example. A new name does not give an already accessed MC population independent qualification.
 
-`--plan-only` 不启动子任务、不写运行产物，也不打开事件或 assessment 数值。没有 prepared manifest 时只返回 `pending_prepare_identity`，不能据此认定新 population 可用。实际完整运行需去掉该参数；加 `--stage-b-only` 则在核验 Stage B 计划和报告后停止，不生成访问审核、不启动 evaluation。
+`--plan-only` does not launch child tasks, write run artifacts, or open event or assessment values. Without a prepared manifest, it returns only `pending_prepare_identity`, which is not clearance to use a new population. Remove this option for an actual full run; adding `--stage-b-only` stops after validating the Stage B plan and report, without generating access reviews or starting evaluation.
 
-`--run-name` 同时用于 prepare、train 和 off-only 目录。`h4l_all.py` 的阈值方法默认使用 `joint-support-v1`，并将所选方法显式传给 Stage B 和 evaluation。恢复已有 `median-v1` 运行时必须传入 `--threshold-method median-v1`；方法与注册不一致时拒绝执行，不会自动转换旧产物。直接使用 `h4l_off_run.py` 或 attribution 注册入口时仍需显式选择联合方法。`--access-review` 接受显式审核文件，其资格由内容和绑定决定。不传运行名时默认使用 `default`：
+`--run-name` is used for the prepare, train, and off-only directories. `h4l_all.py` defaults to the `joint-support-v1` threshold method and explicitly forwards the selected method to Stage B and evaluation. To resume an existing `median-v1` run, pass `--threshold-method median-v1`; execution is rejected if the method does not match the registration, and old artifacts are not converted automatically. Direct `h4l_off_run.py` execution and attribution registration default to `median-v1`, so explicitly pass `--threshold-method joint-support-v1` for the paper method. `--access-review` accepts an explicit review file whose qualification depends on its contents and bindings. Omitting the run name uses `default`:
 
 ```bash
 python scripts/h4l_all.py
 ```
 
-重复执行同一命令会自动核对进度。绑定一致且 manifest 完整的阶段直接跳过；缺失阶段继续执行；损坏、不完整或绑定不匹配的最终目录会保留为 `.名称.<uuid>.invalid` 后再尝试当前阶段，已有 `.failed` 证据不会删除。若 assessment/T2 已有 claim 但没有完整或可恢复的终态，默认仍拒绝自动重跑；可用 `--evaluation-unit <unit> --retry-failed` 显式重算该单元。原 claim 保留，重算 receipt 和最终 artifact 会记录这次尝试，其他完整单元不会重复计算。
+Repeating the same command automatically checks progress. Stages with consistent bindings and complete manifests are skipped; missing stages continue. Corrupt, incomplete, or mismatched final directories are preserved as `.name.<uuid>.invalid` before the current stage is attempted again, and existing `.failed` evidence is not deleted. If assessment/T2 already has a claim but lacks a complete or recoverable terminal state, automatic reruns are still rejected by default; explicitly recompute the unit with `--evaluation-unit <unit> --retry-failed`. The original claim is preserved, the retry receipt and final artifact record this attempt, and other complete units are not recomputed.
 
-封装命令为 `h4l_off_run.py` 传入 `--worker-threads 1`，并按已安装物理内存先保留 2 GiB 本机调度/系统余量，再按每个 worker 5 GiB、在 1--4 个 worker 之间选择 `--workers`；内存探测失败时使用 1 个 worker。因此 16 GiB 主机只启动 2 个 worker。该预算覆盖 pyhf/SciPy 拟合与结果序列化重叠时的瞬时峰值。Windows 上的 MC bootstrap replica、assessment 候选和 T2 replica 使用线程 worker，以避开长时间运行的 spawned Python 进程在 `torch_cpu.dll` 中崩溃；其他平台使用进程 worker。可并行的完整 bootstrap、Toy 和 T2 工作单元保持注册顺序，Stage B 的注册、模板、freeze 与 Asimov 仍按依赖顺序执行。
+The wrapper passes `--worker-threads 1` to `h4l_off_run.py` and selects `--workers` between 1 and 4 from installed physical memory, reserving 2 GiB for local scheduling/system overhead and budgeting 5 GiB per worker; if memory detection fails, it uses 1 worker. A 16 GiB host therefore starts only 2 workers. This budget covers transient peaks when pyhf/SciPy fitting overlaps with result serialization. On Windows, MC bootstrap replicas, assessment candidates, and T2 replicas use thread workers to avoid crashes in `torch_cpu.dll` in long-running spawned Python processes; other platforms use process workers. Parallelizable full bootstrap, Toy, and T2 units retain their registered order, while Stage B registration, templates, freeze, and Asimov stages follow dependency order.
 
-访问历史由 [`config/h4l_history_roots.json`](config/h4l_history_roots.json) 统一声明，当前仅扫描当前仓库的 `runs/`；空目录或目录尚不存在时也可预检和启动新运行，不依赖 `var/` 中的归档。已有 `runs/` 历史损坏或不同 freeze 已占用同一 population 时仍会阻断完整运行。该扫描不能证明其他目录或机器上没有访问历史；换名字、重做 prepare 或换目录都不会产生独立 population。新 self-review v2 记录实际检查范围和配置摘要，始终为 `independent=false`。同一 freeze 的恢复仍需有效绑定的既有 access receipt。
+Access history is declared centrally in [`config/h4l_history_roots.json`](config/h4l_history_roots.json), which currently scans only this repository's `runs/`. Preflight and new runs can proceed when the directory is empty or does not yet exist, without relying on archives in `var/`. Corrupt existing `runs/` history, or a different freeze already claiming the same population, still blocks a full run. This scan cannot establish the absence of access history in other directories or on other machines; renaming, repeating prepare, or changing directories does not create an independent population. New self-review v2 records the actual scope checked and a configuration summary and always has `independent=false`. Resuming the same freeze still requires an existing, validly bound access receipt.
 
-完成检查核验全部 36 个注册单元、终态摘要及其哈希、报告绑定，并输出实际报告路径（可能是 `report-resume-*`）。入口退出码 `5` 表示预检或门控阻断，`6` 表示执行产物不完整，`0` 表示请求范围执行完成（或只读计划未遇到阻断）；即使返回 `0`，仍需查看独立的 `scientific_status`，不能据此宣称科研验证通过。物理权重及区间算法保持现有定义。`m4l=off` 仅表示分类器不输入显式四轻子质量，似然仍保留质量坐标。完整阶段契约、人工独立审核方式及恢复限制见[复现实验手册](docs/implementation-and-reproduction.md)。
+Completion checks verify all 36 scientific terminal units, terminal summaries and their hashes, and the bound report (the 37th unit), then print the actual report path (which may be `report-resume-*`). Wrapper exit code `5` indicates preflight or gate blocking, `6` indicates incomplete execution artifacts, and `0` indicates that execution completed for the requested scope (or that the read-only plan encountered no block). Published numerical failures can be terminal: `execution_status=complete` can coexist with `scientific_status=incomplete`. Even with exit code `0`, inspect the separate `scientific_status`; numerically valid output remains exploratory and does not establish independent scientific validation. Physical weights and interval algorithms retain their existing definitions. `m4l=off` only means the classifier does not receive explicit four-lepton mass; the likelihood still retains a mass coordinate. For full stage contracts, manual independent review, and recovery restrictions, see [Implementation and reproduction](docs/implementation-and-reproduction.md).
 
-正式论文为 [LaTeX 源码](paper/latex/main.tex)。它所需的六张 PDF 图与四个生成的 TeX 输入已纳入 Git；普通编译无需本地运行产物、图表生成脚本或 `paper/evidence/`：
+The formal paper is available as [LaTeX source](paper/latex/main.tex). Its six PDF figures and four generated TeX inputs are committed to Git; ordinary compilation requires no local run artifacts, figure-generation scripts, or `paper/evidence/`:
 
 ```bash
 python paper/scripts/build.py
 ```
 
-如需显式刷新当前论文图表，运行 `python paper/scripts/build.py --run-name test05`；这要求本地保留对应 `runs/`，并安装 NumPy 和 Matplotlib。该命令核对固定选择后重建六张图与四个 TeX 输入，应审查生成文件的差异。普通构建只需 Python 标准库和含 REVTeX 4.2、BibTeX、latexmk 的 TeX 环境，不读取 `runs/`、`var/`、`paper/evidence/` 或选择文件，也可在 `paper/latex/` 直接运行 `latexmk -pdf -outdir=.build main.tex`。PDF 位于 `paper/latex/main.pdf`（直接运行 latexmk 时位于 `.build/main.pdf`）。具体步骤见[论文构建说明](paper/README.md)。
+To explicitly refresh the current paper's figures and tables, run `python paper/scripts/build.py --run-name test05`; this requires the corresponding local `runs/`, NumPy, and Matplotlib. The command verifies the pinned selection before rebuilding six figures and four TeX inputs; review the generated-file diff. An ordinary build requires only Python's standard library and a TeX environment with REVTeX 4.2, BibTeX, and latexmk. It does not read `runs/`, `var/`, `paper/evidence/`, or the selection file. You can also run `latexmk -pdf -outdir=.build main.tex` directly in `paper/latex/`. The PDF is written to `paper/latex/main.pdf` (or `.build/main.pdf` when running latexmk directly). The wrapper rejects undefined references, overfull boxes, and stuck floats. Author, contact, affiliation, and funding placeholders still require author input. For details, see the [paper build instructions](paper/README.md).
 
-## 6. 分阶段运行 H4l 工作流
+To export a separate aggregate snapshot into a fresh directory without retraining, refitting, generating Toys, or opening new assessment data:
 
-off-only 分析入口为 `python -m higgsml.cli attribution --help`。它复用五种子批次的 75 个 off 模型，新增五个确定性 M0off 身份，并依次发布注册、共同模板、freeze、Asimov、事件 bootstrap、Toys、T2 和最终报告。完整命令见[off-only 复现步骤](docs/implementation-and-reproduction.md#off-only-attribution-execution)。复用既有模型无需为同一分析重训；新的独立确认研究则须另行设计。
+```bash
+python paper/scripts/collect_evidence.py --run-name test05 --output var/paper-evidence/test05-new-check
+```
 
-`m4l=off` 仅指分类器不输入显式四轻子质量；似然仍保留质量坐标。自动 P0/T1 材料不能授予独立科学资格；事件 bootstrap、Toys、T2 和外部参考状态分别保存。
+The collector checks selected aggregates and manifest links, not every checkpoint, event, or raw payload. Preserve the original source runs and `var/paper-evidence/test05-20260926/` separately from Git; the committed manuscript assets suffice for ordinary compilation.
 
-以下命令从仓库根目录运行，`example01` 和 `study-001` 只是示例新运行名。完整规则、门槛与恢复方式以[复现实验手册](docs/implementation-and-reproduction.md)和相应命令的 `--help` 为准。
+## 6. Run the H4l workflow by stage
 
-### 6.1 准备并固化可复用输入
+The off-only analysis entry point is `python -m higgsml.cli attribution --help`. It reuses the 75 off models from the five-seed batch, adds five deterministic M0off identities, and publishes registration, common templates, freeze, Asimov, event bootstrap, Toys, T2, and the final report in sequence. For complete commands, see [off-only attribution execution](docs/implementation-and-reproduction.md#off-only-attribution-execution). Reusing existing models does not require retraining for the same analysis; a new independent confirmatory study requires a separate design.
+
+`m4l=off` only means the classifier does not receive explicit four-lepton mass; the likelihood still retains a mass coordinate. Automatically emitted P0/T1 v2 materials have `status=contract_checked` and do not establish independent numerical validation, physical applicability, or confirmatory eligibility. Event bootstrap, Toys, T2, and external-reference status are stored separately.
+
+Run the following commands from the repository root. `example01` and `study-001` are examples of new run names. For complete rules, gates, and recovery procedures, refer to [Implementation and reproduction](docs/implementation-and-reproduction.md) and each command's `--help`.
+
+### 6.1 Prepare and persist reusable inputs
 
 ```bash
 python scripts/h4l_prepare.py --run-name example01
 ```
 
-脚本执行 `audit` 和 `prepare`，默认使用：
+The script executes `audit` and `prepare`, using these defaults:
 
-- receipt：`data/raw/atlas2020_4lep/dataset_receipt.json`
-- profile：`config/profiles/open_data_2020.yaml`
-- 协议：`config/protocols/h4l_protocol.json`
-- 输出根：`runs/h4l-prepare-example01/`
+- Receipt: `data/raw/atlas2020_4lep/dataset_receipt.json`
+- Profile: `config/profiles/open_data_2020.yaml`
+- Protocol: `config/protocols/h4l_protocol.json`
+- Output root: `runs/h4l-prepare-example01/`
 
-可复用的 prepared artifact 位于 `runs/h4l-prepare-example01/prepare`。它不会继续训练、校准或构建模板。需要先做有限工作量性能诊断时，可使用 `--diagnostic-entries-per-file`；诊断产物不能作为 G1 输入。
+The reusable prepared artifact is located at `runs/h4l-prepare-example01/prepare`. The script does not continue to training, calibration, or template construction. Use `--diagnostic-entries-per-file` when a bounded-workload performance diagnostic is needed first; diagnostic artifacts cannot serve as G1 inputs.
 
-命名 prepare 根目录的结构为：
+The named prepare root has this structure:
 
 ```text
 runs/h4l-prepare-example01/
-├── inputs/    ROOT manifest、P0/T1 绑定证据
-├── audit/     来源审计产物
-└── prepare/   events.jsonl 与 prepared manifest
+├── inputs/    ROOT manifest and P0/T1 binding evidence
+├── audit/     Source audit artifacts
+└── prepare/   events.jsonl and prepared manifest
 ```
 
-`h4l_prepare.py --run-name <name>` 与 G1、训练和 off-only 阶段共享同一短名称。`--run-name` 不能与 `--run-root` 同时使用；省略 `--run-name` 时仍保留旧的 `runs/h4l-prepare/` 默认目录，供显式路径工作流兼容使用。
+`h4l_prepare.py --run-name <name>` shares the same short name with G1, training, and off-only stages. `--run-name` cannot be combined with `--run-root`; omitting `--run-name` retains the old default directory `runs/h4l-prepare/` for compatibility with explicit-path workflows.
 
-### 6.2 运行门控检查
+### 6.2 Run gate checks
 
 ```bash
 python scripts/h4l_check.py --run-name example01
 ```
 
-Gate 从全局 prepared artifact 运行 M0c、M2、M3、五个校准和共同模板。只有 Gate 通过后，才允许展开受门控的候选。失败目录仍是不可变证据；修复后必须使用新的 `--run-name` 或 `--output-root`。
-`--run-name example01` 的实验输出根目录为 `runs/h4l-train-example01/`。
+The gate runs M0c, M2, M3, five calibrations, and common templates from the global prepared artifact. Gated candidates can be expanded only after the gate passes. Failed directories remain immutable evidence; after a fix, use a new `--run-name` or `--output-root`.
+The experiment output root for `--run-name example01` is `runs/h4l-train-example01/`.
 
-### 6.3 运行五随机种子正式批次
+### 6.3 Run the formal five-seed batch
 
 ```bash
 python scripts/h4l_run.py --run-name example01
 ```
 
-默认批次执行 seed 42–46 的注册候选、校准、共同模板、T1 `mu=1` inference 与报告。显式 `--seed 42` 仅是单种子诊断，不能支持五种子主比较。
+The default batch executes registered candidates, calibration, common templates, T1 `mu=1` inference, and reporting for seeds 42–46. Explicit `--seed 42` is only a single-seed diagnostic and cannot support the main five-seed comparison.
 
-批次中断后，使用 `--continue` 继续：合法的完整阶段会被跳过；不完整、损坏或绑定不匹配的最终阶段目录会先隔离为 `.名称.<uuid>.invalid`，再重试一次。已有 `.failed` 证据不会被删除。
+After a batch is interrupted, resume with `--continue`: valid complete stages are skipped; incomplete, corrupt, or mismatched final stage directories are first quarantined as `.name.<uuid>.invalid`, then retried once. Existing `.failed` evidence is not deleted.
 
 ```bash
 python scripts/h4l_run.py --run-name example01 --continue
 ```
 
-三个脚本均支持 `--help`、`--plan-only`、`--no-progress` 和受校验的 `--continue`。完成、失败、诊断或已发布的 run 均须保留；恢复应使用续跑契约，新的诊断使用新目录。`--clean` 会删除本地产物，不能作为绕过不可变证据或 assessment 历史的恢复方式。
+All three scripts support `--help`, `--plan-only`, `--no-progress`, and validated `--continue`. Completed, failed, diagnostic, or published runs must be preserved; recovery must use the continuation contract, and new diagnostics require new directories. `--clean` deletes local artifacts and cannot be used to bypass immutable evidence or assessment history during recovery.
 
-### 6.4 运行 Stage B 生成 freeze
+### 6.4 Run Stage B to produce a freeze
 
 ```bash
 python scripts/h4l_off_run.py --source-run-name example01 --run-name study-001 \
   --threshold-method joint-support-v1 --stage-b
 ```
 
-先运行 Stage B，产生 freeze 和自动绑定的 evaluation plan。
+Run Stage B first to produce a freeze and an automatically bound evaluation plan. Direct off-only planning uses `--plan`, rather than the full wrapper's `--plan-only`.
 
-`scripts/h4l_off_run.py` 直接复用指定 `--source-run-name` 的完整五随机种子批次和对应的 `runs/h4l-prepare-<source-run-name>/prepare`，不重新 prepare 或训练。它自动核对 prepared artifact、population、核心协议，以及 75 个 `m4l=off` 训练/校准产物的候选、seed、checkpoint 和上游绑定；任一身份不一致时拒绝复用。
+The joint-support selector proposes 19 calibration-background quantile cuts, checks signed-yield support in both calibration and template roles, and chooses the feasible cut nearest the median. It does not optimize AUC or `W68`. All 75 test05 nominal selections use the median. For support rules, tie-breaking, resampling, and identities, see the [joint-support design](docs/methods/h4l-off-joint-support-v1.md).
 
-默认边缘 CRN 工作流要求来源协议严格一致；`--force` 不可用于绕过兼容性审核。
+`scripts/h4l_off_run.py` directly reuses the complete five-seed batch specified by `--source-run-name` and its corresponding `runs/h4l-prepare-<source-run-name>/prepare`, without repeating prepare or training. It automatically checks the prepared artifact, population, core protocol, and the candidate, seed, checkpoint, and upstream bindings of all 75 `m4l=off` training/calibration artifacts; reuse is rejected if any identity does not match.
 
-### 6.5 评估访问审核
+The default marginal CRN workflow requires exact agreement of source protocols; `--force` cannot bypass compatibility review.
 
-Stage B 完成后，assessment/T2 只能使用与实际 freeze、population、protocol 和 P0/T1 文件绑定的 access-review。当前 evaluator 消费 `h4l-off-assessment-access-v3` receipt，还须绑定 evaluation specification、plan、五个 seed block 和来源审核摘要。[pending 示例](config/examples/h4l_off_assessment_access.pending.json) 含占位 ID 且缺少完整 block，不能直接使用。
+### 6.5 Review assessment access
 
-独立审核者须提供真实来源审核材料，说明历史访问、事件组隔离及适用性证据，再通过以下命令绑定实际 Stage B：
+After Stage B completes, assessment/T2 can use only an access-review bound to the actual freeze, population, protocol, and P0/T1 files. The current evaluator consumes an `h4l-off-assessment-access-v3` receipt, which must also bind the evaluation specification, plan, five seed blocks, and source-review summary. The [pending example](config/examples/h4l_off_assessment_access.pending.json) contains placeholder IDs and lacks complete blocks, so it cannot be used directly.
+
+An independent reviewer must supply actual source-review materials covering historical access, event-group isolation, and applicability evidence, then bind them to the actual Stage B through this command:
 
 ```bash
 python -m higgsml.cli attribution access-review \
@@ -199,11 +228,11 @@ python -m higgsml.cli attribution access-review \
   --run-dir runs/h4l-off-study-001/access-review
 ```
 
-绑定会检查实时访问历史并保留来源的独立性状态，不会补造独立证据。已有合法 v3 receipt 可直接使用；同一 freeze 的恢复须复用既有 receipt。只有 `h4l_all.py` 在历史允许时提供自动本地 self-review，其结果始终为非独立、探索性材料。
+Binding checks live access history and preserves the source's independence status; it does not fabricate independent evidence. An existing valid v3 receipt can be used directly; resuming the same freeze requires reusing the existing receipt. Only `h4l_all.py` provides an automatic local self-review when history permits, and its result is always non-independent, exploratory material.
 
-### 6.6 生成最终报告
+### 6.6 Generate the final report
 
-完成独立审核后，执行：
+After binding the required access review, execute; eligibility for an independent claim depends on the review's actual evidence and independence:
 
 ```bash
 python scripts/h4l_off_run.py --source-run-name example01 --run-name study-001 \
@@ -211,11 +240,11 @@ python scripts/h4l_off_run.py --source-run-name example01 --run-name study-001 \
   --access-review runs/h4l-off-study-001/access-review/validated-off-assessment-access.json
 ```
 
-该命令读取并绑定实际 prepared、registration、nominal、freeze 和 evaluation-plan artifact，随后执行 C–E evaluation 并生成最终报告。它不会自动生成或批准 access-review。
+This command reads and binds the actual prepared, registration, nominal, freeze, and evaluation-plan artifacts, then performs C–E evaluation and generates the final report. It does not automatically generate or approve an access-review.
 
-脚本依次完成 registration、共同 nominal 模板、freeze、Asimov、事件 bootstrap、三组 model-self Toys、三组受控 assessment Toys、T2 和最终报告。Stage B 使用新目录；`--evaluation` 复用该 Stage B 并拒绝覆盖已有 evaluation。若来源批次尚不存在或不完整，先使用 `scripts/h4l_run.py` 生成新的完整五随机种子批次。详细阶段契约与恢复规则见[off-only 复现步骤](docs/implementation-and-reproduction.md#off-only-attribution-execution)。
+The script completes registration, common nominal templates, freeze, Asimov, event bootstrap, three groups of model-self Toys, three groups of controlled assessment Toys, T2, and the final report in sequence. Stage B uses a fresh directory; `--evaluation` reuses that Stage B and refuses to overwrite an existing evaluation. If the source batch does not yet exist or is incomplete, first use `scripts/h4l_run.py` to produce a new complete five-seed batch. For detailed stage contracts and recovery rules, see [off-only attribution execution](docs/implementation-and-reproduction.md#off-only-attribution-execution).
 
-### 6.7 默认边缘 CRN 评估
+### 6.7 Default marginal CRN evaluation
 
 ```bash
 python scripts/h4l_off_run.py \
@@ -223,15 +252,27 @@ python scripts/h4l_off_run.py \
   --threshold-method joint-support-v1 --stage-b
 ```
 
-默认工作流使用共同总数与单调类别分配的人工 CRN 耦合，保持候选边缘 Poisson
-分布；它不代表物理事件联合配对。J0/J1 必须通过才能 freeze，历史已打开的
-assessment 不会因此重新获得资格。命令行不再提供 v1/v2/v3 版本选择；现有
-产物中的版本字段继续用于不可变证据识别。完整契约见
-[复现手册](docs/implementation-and-reproduction.md#default-marginal-crn-evaluation)。
+The default workflow uses artificial CRN coupling with common totals and monotone category allocation, preserving each candidate's marginal Poisson distribution; it does not represent joint pairing of physical events. J0/J1 must pass before freezing, and previously opened assessment does not regain eligibility as a result. The command line no longer offers v1/v2/v3 version selection; version fields in existing artifacts remain identifiers for immutable evidence. For the full contract, see [Implementation and reproduction](docs/implementation-and-reproduction.md#default-marginal-crn-evaluation).
 
-## 7. 使用项目工具开展研究
+The 36-unit scientific matrix contains one 200-replica event-MC bootstrap; model-self and assessment cells at `mu=0,1,2` for each of five training seeds, with 500 Toys per candidate per cell; and five T2 cells at `mu=1`, each with 20 outer calibration replicas and 100 inner Toys. T2 inner fits are conditional on their outer replicas and must not be treated as independent repetitions of the whole procedure. The [marginal CRN design](docs/methods/h4l-off-marginal-coupling-v3.md) records the probability, stream, and support contracts; independent category-allocation sensitivity remains pending.
 
-`higgsml` 暴露十二个核心可组合阶段，另有 `attribution`、`sample-efficiency`、`sample-efficiency-report` 和 `sample-efficiency-controls` 专用入口：
+### 6.8 Explore the separately registered sample-efficiency study
+
+Sample efficiency is a supporting study with its own compact-candidate freeze, training subsets, registration, controls, and confirmation. Its classifiers receive explicit `m4l`; the off-only BC/AC results do not select a compact candidate or complete its registration. The checked-in overlay contains null choices and the example configurations contain placeholder paths, so they are not executable formal experiments without completed bindings.
+
+The independent script entry points are:
+
+```bash
+python scripts/h4l_learning_curve.py --help
+python scripts/h4l_sample_efficiency_report.py --help
+python scripts/h4l_sample_efficiency_controls.py --help
+```
+
+See [Sample efficiency](docs/sample-efficiency.md) for prerequisites and registration. The current paper reports one training budget, not learning curves, capacity-matched controls, or independent compact-candidate noninferiority.
+
+## 7. Use the project tools for research
+
+`higgsml` exposes twelve core composable stages, plus dedicated `attribution`, `sample-efficiency`, `sample-efficiency-report`, and `sample-efficiency-controls` entry points:
 
 ```text
 audit -> prepare -> [me-export -> me-import] -> train -> calibrate
@@ -248,15 +289,11 @@ higgsml mc-bootstrap --help
 higgsml evidence-import --help
 ```
 
-直接调用阶段时，必须显式绑定 dataset、`config/protocols/h4l_protocol.json`、上游 run 与 `runs/` 下的全新输出目录。编排脚本会自动传入该唯一默认协议；`higgsml` 子命令仍要求显式提供 `--protocol`。`manifest.json` 记录数据集、协议快照、上游 artifact、文件摘要、代码/环境、随机种子和科学终态；模型 JSON 只保存数值张量，不加载可执行 pickle。详细字段见[产物与谱系契约](docs/implementation-and-reproduction.md#artifact-and-lineage-contract)。
+Direct stage calls must explicitly bind the dataset, `config/protocols/h4l_protocol.json`, upstream runs, and a fresh output directory under `runs/`. Orchestration scripts automatically pass this single default protocol; `higgsml` subcommands still require explicit `--protocol`. `manifest.json` records the dataset, protocol snapshot, upstream artifacts, file digests, code/environment, random seeds, and scientific terminal state; model JSON stores only numerical tensors and does not load executable pickle. For detailed fields, see the [artifact and lineage contract](docs/implementation-and-reproduction.md#artifact-and-lineage-contract).
 
-最终 `report` 支持重复传入 `--training-run`、`--evaluation-run`、`--evidence-run`，并继续以
-`--result-run` 承载主推断结果。增强报告除 `report.json`/`report.md` 外，会发布完整精度 UTF-8 CSV、
-逐表逻辑行的 `analysis_records.jsonl`、`provenance.json` 与 `data_dictionary.json`。其中 `models.csv` 和 `feature_metrics.csv` 明确记录所选
-checkpoint 的 validation absolute-weight AUC 及同 seed 相对 M0c 的 AUC 绝对差；训练状态与推断状态
-分别保存。旧 run 不修改，可作为显式上游生成新的报告目录。
+The final `report` accepts repeated `--training-run`, `--evaluation-run`, and `--evidence-run` arguments, while `--result-run` continues to carry the main inference result. In addition to `report.json`/`report.md`, the enhanced report publishes full-precision UTF-8 CSV files, `analysis_records.jsonl` with logical rows for each table, `provenance.json`, and `data_dictionary.json`. `models.csv` and `feature_metrics.csv` explicitly record the selected checkpoint's validation absolute-weight AUC and its absolute AUC difference from M0c for the same seed; training and inference status are stored separately. Old runs remain unchanged and can serve as explicit upstream inputs for a new report directory.
 
-注册统计评价由独立脚本执行：
+Registered statistical evaluation uses a separate script:
 
 ```bash
 python scripts/h4l_evaluate.py --help
@@ -265,24 +302,20 @@ python scripts/h4l_evaluate.py --plan config/examples/h4l_evaluation_plan.json \
   --output-root runs/h4l-evaluation-001 --plan-only
 ```
 
-示例计划是 `exploratory_posthoc` 模板，三个输入 artifact ID 均为待替换的零值，不能直接作为正式
-注册计划执行。实际执行会核对 prepared/template/freeze artifact ID、协议摘要和 Toy/T2 预算；
-计划模式只审计矩阵，不打开 assessment。外部 signed-MC/T1、物理系统变化和 MELA
-材料通过 `evidence-import` 只读接入；缺失材料必须保持 `external_pending`。
+The example plan is an `exploratory_posthoc` template whose three input artifact IDs are zero-valued placeholders that must be replaced; it cannot be executed directly as a formal registered plan. Actual execution checks prepared/template/freeze artifact IDs, protocol digests, and Toy/T2 budgets; plan mode only audits the matrix and does not open assessment. External signed-MC/T1 materials, physical systematic variations, and MELA materials are incorporated read-only through `evidence-import`; missing materials must retain `external_pending` status.
 
+## 8. Follow scientific and operational constraints
 
-## 8. 遵守科学与运行约束
+- Process only controlled MC or explicitly labeled synthetic events; never read, hash, preprocess, score, or plot real data.
+- Use `m4l` only as defined by the versioned H4l protocol; signed `physical_weight` is for physical yields, while optimizer weights follow the protocol.
+- Keep each physical event group within the same split/fold; do not mix the responsibilities of train, validation, calibration, template, and assessment roles.
+- Access assessment only after the protocol-defined frozen state; results must not feed back into candidate, threshold, binning, mapping, or protocol adjustments.
+- Preserve dataset identities, SHA-256 hashes, protocol seals, checkpoints, upstream bindings, and lineage.
+- Passing software tests establishes only the corresponding software behavior; it does not establish improved `mu` precision, reliable coverage, or full-MC scientific conclusions.
 
-- 只处理受控 MC 或显式标记的合成事件，绝不读取、散列、预处理、评分或绘制真实数据。
-- `m4l` 只能按版本化 H4l 协议使用；signed `physical_weight` 用于物理产额，优化器权重按协议定义。
-- 同一物理事件组必须保持在同一 split/fold；train、validation、calibration、template、assessment 的职责不可混用。
-- assessment 只能在协议定义的冻结状态后访问，结果不得回流调整候选、阈值、分箱、映射或协议。
-- 数据身份、SHA-256、协议 seal、checkpoint、上游绑定与 lineage 必须保留。
-- 软件测试通过只证明对应软件行为；不能据此声称获得 `mu` 精度改善、覆盖可靠性或完整 MC 科学结论。
+## 9. Validate code, dependencies, and the environment
 
-## 9. 验证代码、依赖与运行环境
-
-在仓库根目录运行：
+Run from the repository root:
 
 ```powershell
 python -m compileall -q src scripts tests
@@ -290,20 +323,30 @@ python -m pytest -q
 python -m pip check
 ```
 
-## 10. 查阅项目文档
+## 10. Browse project documentation
 
-- [文档索引](docs/README.md)
-- [研究方案](docs/research-design.md)
-- [软件与科学模块结构](docs/implementation-and-reproduction.md#tools-and-architecture)
-- [复现实验手册](docs/implementation-and-reproduction.md)
-- [产物与谱系契约](docs/implementation-and-reproduction.md#artifact-and-lineage-contract)
-- [证据与完成边界](docs/results-and-limitations.md#evidence-required-for-conclusions)
-- [当前科研与软件状态](docs/results-and-limitations.md#software-and-validation-status)
-- [样本效率独立研究](docs/sample-efficiency.md)
-- [论文证据索引](paper/result-evidence.md)与[固定选择](paper/selected-snapshot.json)
-- [论文构建说明](paper/README.md)
-- [论文 LaTeX 源码](paper/latex/main.tex)
+Start with the [documentation index](docs/README.md), then choose the reading path for your task:
 
-## 11. 许可证与第三方条款
+| Topic | Current documentation |
+|---|---|
+| Questions, candidate families, and study scope | [Research design](docs/research-design.md) |
+| Controlled samples, selections, features, weights, and roles | [Data and processing](docs/data-and-processing.md) |
+| Training, calibration, templates, likelihoods, and uncertainty | [Methods and evaluation](docs/methods-and-evaluation.md) |
+| Commands, architecture, bindings, and recovery | [Implementation and reproduction](docs/implementation-and-reproduction.md), [module architecture](docs/implementation-and-reproduction.md#tools-and-architecture), and [artifact and lineage contract](docs/implementation-and-reproduction.md#artifact-and-lineage-contract) |
+| Numerical results and claim boundaries | [Results and limitations](docs/results-and-limitations.md), [evidence requirements](docs/results-and-limitations.md#evidence-required-for-conclusions), and [software/validation status](docs/results-and-limitations.md#software-and-validation-status) |
+| Separately registered training-size study | [Sample efficiency](docs/sample-efficiency.md) |
+| Manuscript evidence and compilation | [Paper evidence index](paper/result-evidence.md), [pinned selection](paper/selected-snapshot.json), [build instructions](paper/README.md), and [LaTeX source](paper/latex/main.tex) |
 
-见 [`LICENSE`](LICENSE)。第三方数据、软件与实验资料仍受其各自许可和使用条款约束。
+Detailed designs, study records, and historical verification were reorganized on **2026-10-06**:
+
+| Location | Contents and interpretation |
+|---|---|
+| `docs/methods/` | [Joint-support threshold design](docs/methods/h4l-off-joint-support-v1.md) and [marginal CRN design](docs/methods/h4l-off-marginal-coupling-v3.md); detailed contracts with scope notes on historical defaults |
+| `docs/studies/` | [Statistical validation](docs/studies/statistical-validation-20260923.md), [physics and baseline audit](docs/studies/physics-baseline-audit-20260923.md), and [confirmation draft](docs/studies/confirmation-design-20260923.md); dated findings and outstanding proposals, including a non-executable off-only confirmation design separate from sample efficiency |
+| `docs/history/` | [Evidence alignment](docs/history/evidence-alignment-20260923.md), [entry hardening](docs/history/h4l-entry-hardening-20260924.md), [joint-support implementation](docs/history/h4l-off-joint-support-v1-verification-20260922.md), and [marginal CRN implementation](docs/history/h4l-off-marginal-coupling-v3-verification-20260918.md); historical implementation and review evidence |
+
+Implementation plans and review decisions were consolidated into the corresponding historical records. The migration did not create a scientific contract, confirmation registration, or assessment clearance. Historical test counts are not current test runs. Code defines implemented behavior; versioned contracts and run snapshots define the executed analysis; published artifacts establish numerical results.
+
+## 11. License and third-party terms
+
+See [`LICENSE`](LICENSE). Third-party data, software, and experimental materials remain subject to their respective licenses and terms of use.

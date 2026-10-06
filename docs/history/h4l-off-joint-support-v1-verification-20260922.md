@@ -7,6 +7,22 @@ updated_at: 2026-09-22T18:02:18+08:00
 
 # Verification record
 
+## Record scope and subsequent changes
+
+This historical implementation record is dated 2026-09-22 and was relocated on
+2026-10-06 from `docs/changes/h4l-off-joint-support-v1/verification.md`.
+The implementation plan from the same change is consolidated below.
+The original records remain in Git history before this migration (HEAD
+`e1448f3eb1b841b371d82b3ccfc1bc4f7f2bf160`). Test outcomes and execution limits
+below are historical; they were not rerun or expanded by the relocation.
+The later selected test05 analysis is documented separately in
+[results and limitations](../results-and-limitations.md#h4l-off-test05-controlled-mc-result)
+and the [paper evidence index](../../paper/result-evidence.md).
+The development replay's 131 nonmedian selections must not be substituted for
+test05's formal bootstrap results. Historical local evidence under `var/` and
+absolute host-specific test paths is not bundled with Git; it was not found or
+revalidated during this migration.
+
 Mode: implementation feedback loop, not independent review. Base revision:
 `d26e730840e523cb80e10fc0f512a94acc9ae9e3`, plus the current uncommitted change.
 No commits, pushes, formal analysis or assessment access were performed.
@@ -100,3 +116,37 @@ Final outcome: implementation and required self-checks completed. No unresolved
 implementation failure remains in the exercised checks. This is not an
 independent review or scientific-coverage validation. Existing pyhf/jsonschema
 RefResolver deprecation warnings remain.
+
+## Implementation scope and authorization (consolidated plan)
+
+The plan had `change_id=h4l-off-joint-support-v1`, `status=implemented` and
+`updated_at=2026-09-22T18:02:18+08:00`. Its source was the user's approval of the
+[specification](../methods/h4l-off-joint-support-v1.md) and explicit implementation
+request on 2026-09-22. It records implementation decisions, without claiming
+separate human review of the plan.
+
+1. Add the versioned method contract and pure selector in
+   `modeling/joint_support.py`, reusing calibration projection and group statistics.
+   Validate roles, process identities, mass/score support, multiplicity and bindings;
+   record all 19 cuts and scientific failures.
+2. Rebuild nominal artifacts with a fixed [105,140] grid, preserving source audit,
+   G1 and M0off likelihood equivalence. Bind method identity across marginal
+   registration, nominal, specification, freeze and evaluation plan.
+3. Route bootstrap C*/T* and T2 C*/T through the selector. Isolate bootstrap and
+   Toy/T2 streams by analysis contract; preserve CRN, access history, budgets and
+   failure denominators.
+4. Propagate the explicit threshold-method flag through CLI and wrappers. Update
+   schemas, qualification reporting and fresh-root runbook commands while preserving
+   the median defaults that existed at implementation time.
+5. Run hand-calculation and integration tests, exact hashed fresh-cohort replay,
+   focused tests, full pytest and dependency checks. Record software and development
+   replay separately from unexecuted formal analysis.
+
+The implementation authorization did not include retraining, formal
+MC/Toy/T2/assessment execution, old artifact edits, commits or pushes.
+Selection-aware coverage remained unvalidated. The historical rollback selected
+median-v1 in a fresh root. The direct implementation request superseded the skill's
+separate plan-approval workflow; the newly written plan was not represented as
+independently approved. The full wrapper later changed its default to joint support
+in commit `03ea1b4`; use [current instructions](../implementation-and-reproduction.md)
+for current defaults and recovery.

@@ -96,7 +96,7 @@ New local reviews use [`h4l-off-self-review-access-v2`](../config/schemas/h4l_se
 
 The wrapper returns `5` for preflight/access/support blocking and `6` when children exit normally but the requested completion evidence is missing or invalid. Other child failures retain their exit codes. Exit `0` means the requested execution scope completed (or a read-only plan returned without blocking). Full completion requires all 36 registered terminal units, their payload hashes and identities, and a report bound to those exact units and the plan. The reported path may select a current `report-resume-*` snapshot instead of an older `report`. Published numerical failures can be terminal: `execution_status=complete` can coexist with `scientific_status=incomplete`. Even numerically valid output remains `unvalidated_exploratory_only`. Stage B alone reports `stage_b_complete` and `evaluation_started=false` for this invocation.
 
-These orchestration checks do not change physical weights, add scale factors, replace T0/T1 interval algorithms, or establish selection-aware coverage. See the [entry-hardening record](changes/h4l-entry-hardening-20260924.md) for verification and remaining scientific prerequisites.
+These orchestration checks do not change physical weights, add scale factors, replace T0/T1 interval algorithms, or establish selection-aware coverage. See the [entry-hardening record](history/h4l-entry-hardening-20260924.md) for historical verification, subsequent default/root changes and remaining scientific prerequisites.
 
 ### Prepare reusable inputs
 

@@ -1,5 +1,12 @@
 # Repository Agent Guide
 
+## Project language
+
+Use English throughout project files by default, including documentation,
+source-code comments and docstrings, configuration descriptions, user-facing
+messages, and newly authored reports. Use another language only when the user
+explicitly requests it for the relevant file or content.
+
 ## Project scope
 
 This repository maintains one MC-only educational and technical workflow for

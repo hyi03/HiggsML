@@ -1,18 +1,25 @@
-# 论文结果证据索引
+# Paper result evidence index
 
-核对日期：2026-09-26。正式 LaTeX 稿采用 test05 的已发布报告；
-[selected-snapshot.json](selected-snapshot.json) 固定结果快照、来源清单和报告身份。
-依据为实际运行产物、绑定协议和执行代码，不将旧 docs 的陈述当作结果证据。
-`paper/evidence/` 为本地 Git 忽略目录，可保留额外来源清单和历史核验记录；论文默认构建不读取该目录。
+Evidence review date: 2026-09-26. English translation: 2026-10-06; no new scientific
+validation was performed for this edit. The formal LaTeX manuscript uses the
+published test05 report; [selected-snapshot.json](selected-snapshot.json) pins the
+result snapshot, provenance, and report identity. Evidence comes from actual run
+artifacts, bound protocols, and execution code; historical documentation statements
+are not treated as numerical evidence. The local `paper/evidence/` directory is
+ignored by Git and may retain additional source manifests and historical review
+records. The default manuscript build does not read that directory.
 
-## 当前版本与绑定
+## Execution revision and bindings
 
-报告路径：`runs/h4l-off-test05/evaluation/report`。报告、Asimov、freeze、prepared 及训练
-产物均记录执行提交 `c5cdfa8dfab1733ee1cb2c0b4fbca087ab222a4f`，生成时工作区为 clean。
-本次论文导出在同一 HEAD 加论文工具的未提交改动上执行，provenance 的 `source_dirty=true`
-描述导出环境，不代表历史科学运算使用了这些改动。
+Report path: `runs/h4l-off-test05/evaluation/report`. The report, Asimov, freeze,
+prepared, and training artifacts record execution commit
+`c5cdfa8dfab1733ee1cb2c0b4fbca087ab222a4f`, with a clean working tree at generation.
+The 2026-09-26 paper export ran at the same revision with uncommitted changes to
+paper tools. Its provenance field `source_dirty=true` describes the export
+environment; it does not mean the historical scientific computation used those
+changes.
 
-| 对象 | Artifact ID |
+| Object | Artifact ID |
 |---|---|
 | report | `baede583dc2ef36330af1184d266833f3e64a3179fc8d5ce8bff1b6867307cb5` |
 | asimov | `45805304950d8ad926f551d7a914fb7ed88cfd6267877aace79f613fffd6c78c` |
@@ -22,59 +29,88 @@
 | template | `649a09a23bff2317c2924261caa74ee4d9f06072af7d62498141726d2dec982d` |
 | access | `1551fbf5b4751212703e8ecd6d15358aaf16ff4491685614ad93bb27c9b38385` |
 
-核心协议 SHA-256 为 `e8747ca77188732bac1d1c72e9e0ce4c86056a580cd45db9be33975837ed515e`。
-阈值方法是另行绑定的 `joint-support-v1`，不能只按核心协议哈希把历史 median 方法与当前结果视为同一分析。
-快照目录为 `var/paper-evidence/test05-20260926/`；provenance 保存 15 个聚合来源的
-大小、SHA-256、artifact、执行版本及 manifest 哈希，并记录所有训练身份。
+Core protocol SHA-256:
+`e8747ca77188732bac1d1c72e9e0ce4c86056a580cd45db9be33975837ed515e`.
+The threshold method is separately bound as `joint-support-v1`. The shared core
+protocol hash alone does not make the historical median method and the current
+analysis equivalent.
 
-2026-09-23 版本矩阵与旧快照选择保留在本地 `paper/evidence/history/`，原样保留历史含义。
-旧 test01 的 161/200 bootstrap 和 test03 Stage B 状态均不是当前稿的结果来源。
+The snapshot directory is `var/paper-evidence/test05-20260926/`. Provenance records
+the sizes, SHA-256 hashes, artifact identities, execution revisions, and manifest
+hashes of 15 aggregate sources, together with all training identities.
+The 2026-09-23 revision matrix and previous snapshot selection remain local under
+`paper/evidence/history/`, preserving their historical meaning. Neither the old
+test01 result with 161/200 bootstrap replicas nor the test03 Stage B status supplies
+results for the current manuscript.
 
-## 数值映射
+## Numerical mapping
 
-W68/AUC 取五种子中位数；直接比较先同种子配对；Shapley 和 24 个交互从完整联盟向量重算；
-105 对比较均核验。代数容差 `rtol=atol=1e-12` 不代表独立统计数值验证。
-论文图表及宏由 `make_figures.py` 从固定快照生成。当前 LaTeX 使用的六张 PDF 图和四个 TeX 输入已保存到 Git；
-普通 PDF 编译直接读取这些文件。MC 百分位范围只读取完整预算的 bootstrap 字段，不以训练种子区间替代。
+W68 and AUC are medians across five seeds. Direct contrasts are paired within
+seed before aggregation. Shapley values and 24 interactions are recomputed from
+the complete coalition vector; all 105 pairwise comparisons were checked.
+The algebraic tolerance `rtol=atol=1e-12` does not establish independent statistical
+or numerical validation.
 
-BC/AC/ABCD 的 W68 中位数分别为 1.511617/1.515244/1.535930；M0off 为 1.663723。
-AC−BC、AC−ABCD、BC−ABCD 的 95% MC 配对宽度差范围均跨零，不能写成显著优于。
-B、C 的 Shapley 95% MC 范围为正；A、D 跨零。200 个副本固定训练网络，不涵盖独立重新训练
-或选择后区间校准；每侧 2.5% 尾部仅约 5 个次序统计量。
+[make_figures.py](scripts/make_figures.py) generates manuscript figures, tables,
+and macros from the pinned snapshot. The six PDF figures and four TeX inputs used
+by the current LaTeX manuscript are committed to Git; ordinary PDF compilation
+reads them directly. MC percentile ranges use only the complete-budget bootstrap
+fields; training-seed ranges are not substituted for them.
 
-μ=1 的 model-self/assessment/T2 条件覆盖中位数（68%）分别为：
+The median W68 values for BC, AC, and ABCD are respectively
+1.511617/1.515244/1.535930; the M0off median is 1.663723.
+The 95% MC paired width-difference ranges for AC-BC, AC-ABCD, and BC-ABCD all
+include zero and do not establish significant superiority. The Shapley 95% MC
+ranges are positive for B and C and include zero for A and D. The 200 replicas
+hold trained networks fixed, excluding independent retraining and post-selection
+interval calibration. Each 2.5% tail contains only about 5 order statistics.
 
-| 候选 | model-self | assessment | T2 |
+Five-seed median conditional coverage of the 68% intervals at mu=1 is:
+
+| Candidate | model-self | assessment | T2 |
 |---|---|---|---|
 | M0off | 0.6500 | 0.6280 | 0.6370 |
 | AC | 0.6680 | 0.6380 | 0.6535 |
 | BC | 0.6780 | 0.6580 | 0.6635 |
 | ABCD | 0.6560 | 0.6460 | 0.6495 |
 
-T2 先在各训练种子内汇总外层结果；不可把内层拟合当成独立全流程重复。图中的范围为五种子最小–最大，
-不是覆盖率的置信区间。名义 template signed 产额为背景 2.497852287449695、信号 2.7683194272433287。
-角色产额含角色重标度，不能跨角色相加。
+T2 first aggregates outer-replica results within each training seed. Inner fits
+must not be treated as independent repetitions of the full workflow. Figure
+ranges show the minimum and maximum across five seeds, not confidence intervals
+for coverage. Nominal template signed yields are 2.497852287449695 for background
+and 2.7683194272433287 for signal. Role yields include role-specific rescaling and
+must not be added across roles.
 
-## 方法与资格
+## Method and qualification
 
-`joint-support-v1` 显式指定质量边界 [105,140] GeV。非空候选为两个 score 类别各一个质量箱，
-M0off 为包容计数。阈值由 calibration 背景提出 19 个分位候选，同时满足 calibration/template
-支持条件后选择最接近中位数的点，不优化 W68。名义 75/75 取中位数；bootstrap 的 15000 次选择
-中有 112 次偏离中位数、0 次失败。T2 固定 template、重采样 calibration 并重新选择阈值。
+`joint-support-v1` explicitly specifies mass boundaries [105,140] GeV. Nonempty
+candidates have two score categories, each with one mass bin; M0off is an inclusive
+count. Calibration background proposes 19 quantile candidates. After requiring
+support in both calibration and template roles, the selector chooses the point
+closest to the median; it does not optimize W68. All 75/75 nominal selections use
+the median. Of 15000 bootstrap selections, 112 deviate from the median and 0 fail.
+T2 holds the template fixed, resamples calibration, and reselects the threshold.
 
-| 证据维度 | 当前状态 |
+| Evidence dimension | Recorded status |
 |---|---|
-| 正式计算完成度 | 80/80 nominal；36/36 evaluation valid；200/200 bootstrap valid |
-| Toy 候选拟合 | model-self 120000、assessment 120000、T2 160000，全部有效 |
-| 登记及选择后覆盖 | exploratory_posthoc；selection_aware_coverage=unvalidated |
-| 独立数值／物理适用性验证 | 未完成；同实现复算不能替代独立参照 |
-| assessment access | single_researcher_self_review，independent=false |
-| 主张资格 | primary_claim_eligible=false；类别分配敏感性 pending |
+| Computation completion | 80/80 nominal; 36/36 evaluation valid; 200/200 bootstrap valid |
+| Toy candidate fits | model-self 120000, assessment 120000, T2 160000; all valid |
+| Registration and post-selection coverage | exploratory_posthoc; selection_aware_coverage=unvalidated |
+| Independent numerical / physical applicability validation | Incomplete; recomputation with the same implementation cannot replace an independent reference |
+| Assessment access | single_researcher_self_review, independent=false |
+| Claim eligibility | primary_claim_eligible=false; category-allocation sensitivity pending |
 
-此前同次数据审查对三个 test05 根目录的 403 个 manifest 和 884 个绑定文件完成身份、大小及哈希检查，
-并从保存的 Toy 区间重算 4160 组覆盖统计，未发现不一致。完整记录在本地忽略目录
-`artifacts/test05-publication-review-20260926/review.md`。这不包含原始 ROOT 重新下载校验，
-也不是独立物理或统计实现验证。论文导出器只检查其选定聚合来源，不能把完整性审查范围归给导出器。
+The prior integrity review checked identities, sizes, and hashes for 403 manifests
+and 884 bound files across the three test05 roots. It also recomputed 4160 coverage
+summaries from saved Toy intervals and found no inconsistency. The full record
+is in the local ignored directory
+`artifacts/test05-publication-review-20260926/review.md`. That review did not
+redownload and verify raw ROOT files and was not independent validation of physics
+or the statistical implementation. The paper exporter checks only its selected
+aggregate sources; the wider integrity-review scope must not be attributed to it.
 
-本次没有重训、重拟合、改变冻结阈值、生成新 Toy 或打开新的 assessment population。
-生成证据留在忽略目录，不提交为源码；迁移时须同时保存快照与运行产物，永久外部归档尚未建立。
+The historical paper export did not retrain, refit, change frozen thresholds,
+generate new Toys, or open a new assessment population. Generated evidence remains
+in ignored directories rather than being committed as source. Preserve both the
+snapshot and run artifacts when migrating the project. Permanent external archival
+publication had not been established at the evidence review date.

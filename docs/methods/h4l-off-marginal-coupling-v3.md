@@ -7,10 +7,29 @@ updated_at: 2026-09-18T11:04:14+08:00
 
 # Spec: H4l off-only marginal-preserving common-random-number coupling
 
+## Record scope and subsequent changes
+
+This is the approved design dated 2026-09-18, translated where necessary and
+relocated on 2026-10-06. Its original repository path was
+`docs/changes/h4l-off-marginal-coupling-v3/spec.md`; the original text is retained
+in Git history before this migration (HEAD
+`e1448f3eb1b841b371d82b3ccfc1bc4f7f2bf160`).
+The opt-in/default-cutover and explicit v1/v2/v3 CLI requirements below describe
+that design stage. The current CLI no longer exposes the version selector;
+historical version fields still identify immutable artifacts. See
+[current methods](../methods-and-evaluation.md#within-seed-marginal-crn-evaluation)
+and [current reproduction instructions](../implementation-and-reproduction.md).
+This relocation does not supply a new approval, default-cutover receipt,
+assessment authorization or scientific validation. The implementation plan and
+review resolutions are consolidated in the
+[historical verification record](../history/h4l-off-marginal-coupling-v3-verification-20260918.md).
+
 This revision incorporates the decisions in the
-[point-by-point review confirmation](../../4-Reviews/h4l-off-marginal-coupling-v3-review-confirm.md),
-covering the [GPT-5.6 Sol review](../../4-Reviews/spec-review-by-gpt-5.6-sol.md)
-and [GPT-5.5 review](../../4-Reviews/spec-review-by-gpt-5.5.md).
+point-by-point review confirmation, originally at
+`docs/4-Reviews/h4l-off-marginal-coupling-v3-review-confirm.md`, covering the
+GPT-5.6 Sol review (`docs/4-Reviews/spec-review-by-gpt-5.6-sol.md`) and GPT-5.5
+review (`docs/4-Reviews/spec-review-by-gpt-5.5.md`). These three source reports
+were not found in the migration workspace and are not supplied by this document.
 The confirmation accepts nine findings and partially accepts the identity-scope
 finding. It is not approval to implement or to change the default version.
 
@@ -476,5 +495,6 @@ authorizations.
 ## Approval Record
 
 - Status: approved
-- Decision source: User instruction on 2026-09-18: 按此方案执行任务，修改代码
+- Decision source: User instruction on 2026-09-18, translated from Chinese:
+  "Execute the task according to this plan and modify the code."
 - Approved at: 2026-09-18 (current task)

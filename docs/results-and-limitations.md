@@ -191,7 +191,7 @@ remains historical evidence. It had 161/200 valid bootstrap replicas and null
 formal bootstrap intervals, with a non-independent access review. It is not the
 selected paper source. Its nominal agreement with some test05 values does not
 make their method identity, random draws, coverage values or qualification
-interchangeable. Historical checks are in [the dated alignment record](changes/evidence-alignment-20260923.md);
+interchangeable. Historical checks are in [the dated alignment record](history/evidence-alignment-20260923.md);
 those records and old runs are not rewritten by this update.
 
 ## Historical exploratory observations
@@ -237,7 +237,7 @@ The following distinguishes implemented capabilities from the selected test05 ev
 | Record | Reported result | Interpretation |
 |---|---|---|
 | 2026-09-27 top-level documentation alignment | 57 passed, 6 pyhf/jsonschema deprecation warnings; 24 unique CLI examples parsed; local links/anchors and LF checked | Focused tests: `test_h4l_all_script.py`, `test_h4l_off_run_script.py`, `test_h4l_readiness.py`, `test_joint_support.py`, `test_paper_evidence.py`. No full-suite rerun or new scientific execution. |
-| 2026-09-23 F4/F11/F12 final verification | Windows Python 3.12.13: 596 passed, 5 skipped, 511 deprecation warnings, 922.92 s; short temporary root | Final software/synthetic suite for this working-tree change; not independent numerical or scientific validation. [Record](changes/evidence-alignment-20260923.md) |
+| 2026-09-23 F4/F11/F12 final verification | Windows Python 3.12.13: 596 passed, 5 skipped, 511 deprecation warnings, 922.92 s; short temporary root | Final software/synthetic suite for this working-tree change; not independent numerical or scientific validation. [Record](history/evidence-alignment-20260923.md) |
 | 2026-09-13 enhanced-report/status update | Focused 39 passed; Windows full suite 416 passed / 34 failed | The source record attributes failures to existing scientific-resource seals and training-history contract inconsistency; no resources were re-signed. This rewrite has not independently reproduced the diagnosis. |
 | 2026-09-11 performance implementation | Windows 532 passed, 60 warnings, 332.74 s; dependency check and diff check passed | A historical checkout/test inventory, not the latest suite result |
 
@@ -380,4 +380,4 @@ independent scientific validation are distinct gates. `h4l-off-test05` completed
 assessment under a non-independent self-review, so its diagnostics remain
 exploratory. Changing the workflow or run name does not reset source usage history.
 
-The [F4/F11/F12 record](changes/evidence-alignment-20260923.md) describes historical software and archive checks. Current paper selection and build boundaries are maintained in [the paper evidence index](../paper/result-evidence.md) and [build instructions](../paper/README.md).
+The [F4/F11/F12 record](history/evidence-alignment-20260923.md) describes historical software and archive checks. Current paper selection and build boundaries are maintained in [the paper evidence index](../paper/result-evidence.md) and [build instructions](../paper/README.md).

@@ -3,6 +3,8 @@
 Updated against the repository code and selected paper evidence on **2026-09-27**.
 These seven top-level Markdown documents describe the maintained MC-only workflow,
 its current exploratory result, and separately registered extensions.
+Detailed designs, study records and historical verification were reorganized on
+**2026-10-06**; that documentation migration did not execute or requalify analysis.
 
 ## Active off-only study
 
@@ -57,6 +59,31 @@ Start execution with [environment and installation](implementation-and-reproduct
 and the [main workflow](implementation-and-reproduction.md#main-workflow). To reuse
 trained models, use [off-only attribution execution](implementation-and-reproduction.md#off-only-attribution-execution).
 To compile the paper without local runs, use [manuscript reproduction](implementation-and-reproduction.md#manuscript-reproduction).
+
+## Detailed methods, supporting studies and history
+
+The top-level documents describe current behavior and evidence. The nine records
+below preserve approved design detail, unexecuted study proposals and dated
+verification. Their scope notes distinguish original defaults, authorization and
+local evidence from later changes. Historical test counts are not current test
+runs; absent local archives are not supplied by translating or moving a document.
+
+| Location | Record | Scope |
+|---|---|---|
+| methods/ | [Joint-support threshold design](methods/h4l-off-joint-support-v1.md) | Approved selector, role/multiplicity rules, identities, budgets and acceptance criteria |
+| methods/ | [Marginal CRN design](methods/h4l-off-marginal-coupling-v3.md) | Approved probability/stream/support contract; historical version-routing requirements |
+| studies/ | [Statistical validation](studies/statistical-validation-20260923.md) | Historical T0 probe with retained failures; signed-MC/selector validation not executed |
+| studies/ | [Physics and baseline audit](studies/physics-baseline-audit-20260923.md) | Dated source/correction findings, missing physical references and baseline prerequisites |
+| studies/ | [Confirmation draft](studies/confirmation-design-20260923.md) | Resource/history audit and non-executable off-only noninferiority proposal; separate from sample efficiency |
+| history/ | [Evidence alignment](history/evidence-alignment-20260923.md) | F4/F11/F12 software verification and test01 source restoration |
+| history/ | [Entry hardening](history/h4l-entry-hardening-20260924.md) | History/completion verification and subsequent default/root changes |
+| history/ | [Joint-support implementation](history/h4l-off-joint-support-v1-verification-20260922.md) | Development replay, software outcomes and consolidated implementation authorization |
+| history/ | [Marginal CRN implementation](history/h4l-off-marginal-coupling-v3-verification-20260918.md) | Engineering gates, software outcomes, consolidated plan and review decisions |
+
+Implementation plans were consolidated into their corresponding historical
+verification records; marginal CRN review findings and decisions form one review
+table. Original documents remain in Git history before this migration. No new
+scientific contract, confirmation registration or assessment clearance is created.
 
 ## Sources of truth
 
