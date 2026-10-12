@@ -1,5 +1,26 @@
 # Paper result evidence index
 
+## Availability update: 2026-10-12
+
+The historical record below is preserved as a dated evidence index, not a new
+verification of the selected bytes. The selected directory
+`var/paper-evidence/test05-20260926/` is currently absent. The existing local
+`runs/h4l-off-test05/evaluation/report/manifest.json` instead identifies report
+`2a05ef38f12f8885edfb0a9b584c6e930f59ecac46af084cbe51fbe8e5280ca9` at execution
+revision `10682ce5b3322b7a472a13b05d9fc039407ca18b`. It has not been selected as a
+replacement for historical `baede583...`. The 2026-10-12 review reconciliation
+checked current aggregates; their agreement does not prove historical lineage.
+
+The manuscript revision retains all six PDF figures, four numerical TeX inputs
+and the selection unchanged. It documents the identity gap, source-defined
+methods and missing historical execution details. A selected-source coverage
+count supplement, asset refresh and stable external release remain pending.
+Ordinary compilation checks formatting and references, not source provenance.
+The four scientific qualifications remain unchanged. No scientific execution
+was performed for this revision.
+
+## Historical evidence record: 2026-09-26
+
 Evidence review date: 2026-09-26. English translation: 2026-10-06; no new scientific
 validation was performed for this edit. The formal LaTeX manuscript uses the
 published test05 report; [selected-snapshot.json](selected-snapshot.json) pins the
