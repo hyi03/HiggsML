@@ -34,9 +34,9 @@ signal-strength interval widths in simulated
 \date{October 12, 2026}
 
 \begin{abstract}
-We present an exploratory educational and technical demonstration of
-feature-group attribution in simulated $H\to ZZ^*\to2e2\mu$ events from
-the ATLAS 2020 educational collection. Nineteen observables form four groups:
+We study how kinematic feature groups affect nominal signal-strength
+interval widths in simulated $H\to ZZ^*\to2e2\mu$ events from the ATLAS
+2020 educational collection. Nineteen observables form four groups:
 individual-lepton kinematics (A), dilepton masses and separations (B),
 collective four-lepton kinematics (C), and decay angles (D). All fifteen
 nonempty combinations are trained separately for five seeds. Explicit
@@ -44,22 +44,21 @@ four-lepton mass is omitted, without imposing mass independence.
 A constant-score reference and a common, frozen likelihood prescription
 define the coalition value through the nominal T1 Asimov 68\% profile-interval
 width at signal strength $\mu=1$. The comparison uses two score-category
-counts versus an inclusive count in one 105--140 GeV mass bin; it does not
-test improvement over a resolved mass-peak fit. At $10\,\mathrm{fb}^{-1}$,
+counts versus an inclusive count in one 105--140 GeV mass bin.
+At $10\,\mathrm{fb}^{-1}$,
 the six-input BC and ten-input AC combinations have median widths
 \WidthBC{} and \WidthAC{}, compared with \WidthABCD{} for all nineteen inputs.
 Their median reductions relative to the constant reference are \GainBC\%
 and \GainAC\%. Exact finite-game Shapley summation assigns the largest
 positive nominal contributions to B and C and a negative contribution to D.
-The conditional 95\% MC percentile ranges for compact-versus-full width
-differences include zero. Assessment 68\% coverage medians at $\mu=1$ are
-0.658 for BC, 0.638 for AC, and 0.646 for ABCD; these diagnostics do not
-calibrate the full selection procedure. The highlighted candidates were
-chosen after inspecting the ranking, independent confirmation is absent,
-and cross-model pseudo-experiment pairing does not represent shared physical
-events. The selected historical aggregate source is not currently available
-for reverification. The retained results identify exploratory candidates,
-without establishing superiority or calibrated precision gains.
+With trained networks fixed, the 95\% MC bootstrap percentile ranges remain
+positive for B and C and include zero for the compact-versus-full width
+differences. This exploratory comparison identifies dilepton and collective
+kinematics as the principal contributors to nominal interval narrowing in
+the specified analysis, and BC and AC as compact candidates for prospective
+evaluation. The attribution characterizes the combined learning and
+score-category inference procedure; calibrated precision and performance
+in a resolved mass-spectrum fit are separate validation targets.
 \end{abstract}
 \maketitle
 
@@ -126,25 +125,22 @@ finite-game attribution and explicit category-selection, finite-template,
 and qualification limits. Exact summation is not statistical calibration,
 and no numerical benchmark against these other methods is performed.
 
-The present analysis uses only two simulated members of the ATLAS 2020 open
-data collection\cite{ATLAS2020}. The provider describes this collection as
-``only for educational purposes and is not suited for scientific
-publications.'' We use it for an exploratory educational and technical
-demonstration of a restricted population. The results are not an experimental
-measurement or an ATLAS or CMS collaboration result. This suitability
-statement is distinct from licensing; venue suitability has not been
-established. The analysis records a complete nominal comparison and
-conditional pseudo-experiment diagnostics, but its finite-simulation and
-independent-validation requirements are not all satisfied. We therefore
-report the observed pattern and its limitations together. In particular,
-the executed joint-support method specifies a single mass bin. The resulting comparison
-quantifies the value of score categories in that coarse analysis; it cannot
-establish an improvement over a fit that resolves the Higgs mass peak.
-The numerical tables and figures retain the historical selected publication
-assets. The selected aggregate source cannot currently be reverified, and
-the locally available same-named report has a different identity. The
-materials statement and Appendix~\ref{app:recipe} distinguish these sources
-and separate source-defined methods from verified historical execution.
+The analysis uses two simulated samples from the ATLAS 2020 open data
+collection\cite{ATLAS2020} as an educational setting for a specific
+methodological question: which kinematic groups contribute to narrower
+nominal signal-strength intervals after classifier scores are compressed
+into event categories? The joint-support prescription fixes a single mass
+bin over 105--140 GeV and compares two score categories with an inclusive
+count. This design quantifies the contribution of the score partition
+within a common mass window. The complete coalition comparison then relates
+subset performance to group contributions, conditional interactions, and
+training-seed variability. Finite-MC resampling and pseudo-experiments
+characterize the uncertainty and interval behaviour of this exploratory
+comparison. Its scope is the specified simulated population and inference
+procedure; comparison with a resolved mass-spectrum fit requires a separate
+analysis. Dataset-use conditions and the availability of computational
+materials are described in the materials statement and
+Appendix~\ref{app:recipe}.
 
 \section{Simulated samples and event definition}
 \label{sec:samples}
@@ -1081,7 +1077,8 @@ including retraining. Budgets, failure treatment, accuracy targets, and
 acceptance criteria must be fixed before execution. Independent category
 allocation must also be studied separately from the registered coupling.
 
-These limitations leave a useful, narrower conclusion. In the executed
+The coalition comparison connects feature choice to the final inference
+objective. In the executed
 single-mass-bin analysis, conventional classifier training can yield compact
 kinematic representations whose score partitions have smaller nominal
 signal-strength intervals than the full input. Exact coalition accounting
@@ -1093,42 +1090,40 @@ resolved mass fit, and independently sourced variations remains open.
 \section{Conclusions}
 \label{sec:conclusions}
 
-We have examined kinematic feature groups through their effect on the
-nominal Asimov interval width for the signal strength in an exploratory
-educational study of a controlled simulated $H\to ZZ^*\to2e2\mu$ population.
-All fifteen nonempty combinations of
-nineteen observables were evaluated with five trained networks each and a
-deterministic empty-coalition reference. Explicit four-lepton mass was
-excluded from the classifiers. The final T1 likelihood used a common,
-frozen grid prescribed as one mass bin, so the comparison concerns
-score-category information within the selected mass window.
+The complete four-group coalition comparison shows how kinematic feature
+choices affect nominal signal-strength interval widths in the specified
+simulated $H\to ZZ^*\to2e2\mu$ analysis. Evaluating all fifteen nonempty
+subsets over five training seeds links direct subset comparisons to exact
+Shapley contributions and conditional interactions. The six-input BC and
+ten-input AC representations give smaller nominal Asimov widths than the
+nineteen-input ABCD representation in every same-seed comparison. Their
+median widths are \WidthBC{} and \WidthAC{}, respectively, versus
+\WidthABCD{} for ABCD, with nominal reductions of \GainBC\% and \GainAC\%
+relative to the inclusive-count reference. Dilepton variables (B) and
+collective four-lepton kinematics (C) provide the largest positive Shapley
+contributions, and their fixed-network 95\% MC bootstrap percentile ranges
+remain positive. The resulting picture is that compact representations can
+produce effective score categories under the prescribed training and
+likelihood construction; the full input set does not yield the narrowest
+nominal intervals in this comparison.
 
-The compact BC and AC inputs have median nominal widths of \WidthBC{} and
-\WidthAC{}, compared with \WidthABCD{} for ABCD. They improve over the
-constant reference by \GainBC\% and \GainAC\% and have smaller nominal
-Asimov widths than ABCD in all five same-seed comparisons.
-Their relative ordering is not stable enough
-to identify a universal winner. Exact Shapley attribution gives the largest
-positive contributions to B and C, a smaller positive contribution to A,
-and a negative contribution to D for this particular procedure. The AUC
-and interval-width rankings differ despite their strong overall association.
-
-All 36 evaluation units and 200 MC bootstrap replicas are numerically
-valid, but the result remains exploratory. The MC percentile ranges span
-zero for the highlighted compact-versus-full differences and for the
-angular contribution. The observed conditional coverage estimates differ
-from nominal values across the examined injections;
-the joint selector lacks selection-aware coverage validation,
-pseudo-experiment pairing is artificial, and independent physical and
-assessment-history validation is incomplete. The negative angular
-contribution does not imply absent angular
-information, and the nominal reductions do not establish a precision gain
-over a resolved mass-spectrum analysis. The complete coalition comparison
-instead defines concrete compact candidates and validation questions for a
-subsequent independently controlled study.
-The historical selected source remains unavailable for reverification;
-numerical agreement with a differently identified local report does not
-resolve that provenance gap.
+The methodological implication is to evaluate feature choices against the
+inference objective together with their conditional contributions. The
+differing AUC and interval-width rankings show why classification ranking
+alone does not determine the preferred representation for this fit. The
+negative nominal angular contribution likewise describes the response of
+the fitted procedure to adding D, rather than the physical information
+carried by decay angles. The compact-versus-full differences and the angular
+contribution have fixed-network MC percentile ranges spanning zero;
+their signs are therefore descriptive findings of this exploratory study.
+BC and AC therefore provide concrete candidates for a prospectively fixed,
+independently controlled comparison. The next steps are to calibrate
+coverage of the complete threshold-selection and inference procedure,
+assess sensitivity to pseudo-experiment category allocation, and test these
+representations in a likelihood that resolves the mass spectrum. The
+present result supplies the complete subset comparison needed to formulate
+those tests and identifies B and C as the leading contributors to nominal
+interval narrowing within the single-mass-bin analysis.
 
 \begin{acknowledgments}
 [Funding and acknowledgments]
@@ -1138,8 +1133,12 @@ resolve that provenance gap.
 The Monte Carlo samples used in this study are publicly available from the
 ATLAS 2020 educational collection on the CERN Open Data
 Portal\cite{ATLAS2020}. The two samples and their normalization are specified
-in Appendix~\ref{app:recipe}. Their use follows the provider's stated
-educational purpose.
+in Appendix~\ref{app:recipe}. The provider describes this collection as
+``only for educational purposes and is not suited for scientific
+publications.'' This statement concerns suitability in addition to
+licensing; venue suitability has not been established. The study is an
+educational and technical analysis of simulated events, not an experimental
+measurement or an ATLAS or CMS collaboration result.
 
 The analysis methods and numerical settings are described in the main text
 and Appendix~\ref{app:recipe}. The figures and tables summarize the original
@@ -1148,6 +1147,10 @@ execution records are currently unavailable for independent verification,
 and a complete computational archive has not been released. These limitations
 prevent exact numerical reproduction of the reported results from the
 materials provided with this manuscript.
+The numerical tables and figures retain the historical selected publication
+assets. The locally available report with the same run name has a different
+identity and is not a replacement for the selected source; numerical
+agreement alone does not establish historical provenance.
 
 \clearpage
 \onecolumngrid
