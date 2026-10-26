@@ -36,6 +36,12 @@ they are not the current paper's numerical source.
 
 ## Research reading path
 
+For a guided introduction, open the 33-slide interactive paper explanation in
+[Chinese](paper-explained/index.html) or [English](paper-explained/index-en.html).
+It runs offline and connects the physics inputs, neural networks, likelihood intervals,
+subset rankings, Shapley contributions and validation limits. See its
+[usage and source notes](paper-explained/README.md) for controls and evidence bindings.
+
 | Document | Questions answered |
 |---|---|
 | [Research design](research-design.md) | What does the current paper test, and how do the optional studies differ? |
