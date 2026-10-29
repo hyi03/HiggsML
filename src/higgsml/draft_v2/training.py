@@ -1,6 +1,8 @@
 """Fixed CPU learner and validation-only empirical threshold for draft-v2."""
+import sys
 import numpy as np
 import torch
+from tqdm.auto import tqdm
 from sklearn.metrics import roc_auc_score
 from torch import nn
 
@@ -81,7 +83,7 @@ def predict(model, frame, protocol):
     return _predict_discriminant_payload(model, frame, _roles=('train', 'validation', 'evaluation'), _digest=digest_json)
 
 
-def train(frame, protocol, subset, seed, prepared_id):
+def train(frame, protocol, subset, seed, prepared_id, *, progress=True):
     validate_protocol(protocol)
     candidate_key(subset, seed)
     if set(frame.role) != {'train', 'validation'}:
@@ -108,7 +110,9 @@ def train(frame, protocol, subset, seed, prepared_id):
     weights = torch.tensor(absolute / np.asarray(class_means)[labels], dtype=torch.float32)
     vw = np.abs(validation.physical_weight.to_numpy(float))
     cfg = protocol['training']
-    with torch.random.fork_rng(devices=[]):
+    with torch.random.fork_rng(devices=[]), tqdm(
+            total=cfg['max_epochs'], desc=f'{subset} seed {seed}', unit='epoch',
+            position=1, leave=False, disable=not progress, file=sys.stderr) as epoch_progress:
         torch.manual_seed(seed)
         network = ResearchClassifier(len(names))
         optimizer = torch.optim.AdamW(network.parameters(), lr=cfg['learning_rate'], weight_decay=cfg['weight_decay'])
@@ -135,6 +139,9 @@ def train(frame, protocol, subset, seed, prepared_id):
             if auc > best + cfg['minimum_improvement']:
                 best, best_epoch = auc, epoch
                 best_state = {k: v.detach().clone() for k, v in network.state_dict().items()}
+            epoch_progress.set_postfix(auc=f'{auc:.4f}', best_epoch=best_epoch,
+                                       patience=f"{epoch-best_epoch}/{cfg['patience']}", refresh=False)
+            epoch_progress.update()
             if epoch - best_epoch >= cfg['patience']:
                 break
         network.load_state_dict(best_state)
@@ -154,4 +161,8 @@ def train(frame, protocol, subset, seed, prepared_id):
             validation_background_high_absolute_acceptance=float(vw[background & (scores >= threshold)].sum()
                                                                 / vw[background].sum()))
     model['model_id'] = digest_json(model)
+    if progress:
+        stopped = 'early stopping' if len(history) < cfg['max_epochs'] else 'epoch limit'
+        tqdm.write(f'{subset}:{seed} finished: {len(history)} epochs ({stopped}); '
+                   f'selected epoch {best_epoch}, validation AUC {best:.4f}', file=sys.stderr)
     return model

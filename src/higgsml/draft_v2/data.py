@@ -99,12 +99,16 @@ def root_manifest(receipt_path, protocol):
     return dict(schema_version='h4l-root-input-v1', dataset=protocol['dataset'], mc_only=True, files=files)
 
 
-def reconstruct(manifest_path, protocol, *, metrics=None, max_entries=4096, root_threads=1):
+def reconstruct(manifest_path, protocol, *, metrics=None, max_entries=4096, root_threads=1,
+                progress=True):
     # The shared extractor stops before role assignment. The old export still
     # applies its unchanged five-role assignment and historical source mask.
+    if progress and metrics is None:
+        metrics = {}
     frame = _export_selected_research_data(
         manifest_path, DEFAULT_PROTOCOL.parent.parent / 'profiles/open_data_2020.yaml', protocol,
-        metrics=metrics, max_entries=max_entries, root_threads=root_threads)
+        metrics=metrics, max_entries=max_entries, root_threads=root_threads,
+        show_prepare_progress=progress)
     began = time.perf_counter()
     frame = assign_roles(frame, protocol)
     if metrics is not None:

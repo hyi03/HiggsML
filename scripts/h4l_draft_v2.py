@@ -26,6 +26,7 @@ def main(argv=None):
     parser.add_argument('--continue', dest='continuation', action='store_true')
     parser.add_argument('--retry-failed', action='store_true')
     parser.add_argument('--plan-only', action='store_true')
+    parser.add_argument('--no-progress', action='store_true', help='Disable terminal progress bars and stage notices.')
     args = parser.parse_args(argv)
     try:
         name = _validated_run_name(args.run_name)
@@ -43,6 +44,8 @@ def main(argv=None):
                     command.extend(['--access-review', str(args.access_review)])
                 if args.continuation:
                     command.append('--continue')
+                if args.no_progress:
+                    command.append('--no-progress')
             print(json.dumps(result, indent=2))
             return 0
         from higgsml.draft_v2 import workflow
@@ -50,25 +53,33 @@ def main(argv=None):
         previous = torch.get_num_threads()
         try:
             torch.set_num_threads(1)
+            def announce(stage):
+                if not args.no_progress:
+                    print(f'{stage.upper()} draft-v2: starting stage checks and execution', file=sys.stderr, flush=True)
             receipt = args.dataset_receipt
             if receipt is None and args.synthetic_events is None:
                 receipt = PROJECT_ROOT / 'data/raw/atlas2020_4lep/dataset_receipt.json'
+            announce('prepare')
             workflow.prepare(root, protocol, receipt=receipt, synthetic_events=args.synthetic_events,
-                             continuation=args.continuation)
+                             continuation=args.continuation, progress=not args.no_progress)
             if args.through == 'prepare':
                 return 0
-            trained = workflow.train(root, protocol, continuation=args.continuation)
+            announce('train')
+            trained = workflow.train(root, protocol, continuation=args.continuation, progress=not args.no_progress)
             if any(r.read_json('training-state.json')['status'] != 'trained' for r in trained):
                 print(json.dumps({'execution_status': 'complete', 'scientific_status': 'incomplete'}))
                 return 6
             if args.through == 'train':
                 return 0
+            announce('freeze')
             workflow.freeze(root, protocol, continuation=args.continuation)
             if args.through == 'freeze':
                 print(f'Frozen. Review {root / "freeze/access-review.pending.json"}; pending is not approval.')
                 return 0
+            announce('evaluate')
             evaluation = workflow.evaluate(root, protocol, access_review=args.access_review,
                                           continuation=args.continuation, retry_failed=args.retry_failed)
+            announce('report')
             report = workflow.report(root, protocol, evaluation_run=evaluation.path, continuation=args.continuation)
             summary = report.read_json('summary.json')
             print(json.dumps(dict(execution_status='complete', scientific_status=summary['scientific_status'],

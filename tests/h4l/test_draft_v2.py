@@ -426,3 +426,65 @@ def test_wrapper_plan_never_launches_or_writes(tmp_path, monkeypatch, capsys):
     assert module.main(['--run-name', 'plan', '--plan-only']) == 0
     assert json.loads(capsys.readouterr().out)['mode'] == 'plan_only'
     assert not (tmp_path / 'runs').exists()
+
+
+def test_progress_does_not_change_trained_model(frozen_study, protocol, capsys):
+    root, _, _, prepared, _ = frozen_study
+    frame = data.read_events(prepared.file('events.jsonl'), protocol)
+    previous = torch.get_num_threads()
+    try:
+        torch.set_num_threads(1)
+        hidden = training.train(frame, protocol, 'ABCD', 42, prepared.manifest['artifact_id'], progress=False)
+        assert capsys.readouterr().err == ''
+        visible = training.train(frame, protocol, 'ABCD', 42, prepared.manifest['artifact_id'], progress=True)
+        output = capsys.readouterr().err
+    finally:
+        torch.set_num_threads(previous)
+    assert 'ABCD seed 42' in output and 'selected epoch' in output
+    assert visible == hidden
+
+
+def test_reused_training_units_show_completed_count_without_event_reads(frozen_study, protocol, capsys, monkeypatch):
+    root, _, _, _, _ = frozen_study
+    monkeypatch.setattr(data, 'read_events', lambda *a, **kw: pytest.fail('Reused models opened event payload'))
+    assert len(workflow.train(root, protocol, continuation=True, progress=True)) == 15
+    output = capsys.readouterr().err
+    assert 'Training units' in output and '15/15' in output and 'reused' in output
+    workflow.train(root, protocol, continuation=True, progress=False)
+    assert capsys.readouterr().err == ''
+
+
+@pytest.mark.parametrize('enabled', [True, False])
+def test_root_progress_forwarded_with_metrics_buffer(protocol, monkeypatch, enabled):
+    options = {}
+    def extract(*args, **kwargs):
+        options.update(kwargs)
+        return synthetic_frame()
+    monkeypatch.setattr(data, '_export_selected_research_data', extract)
+    result = data.reconstruct('unused-synthetic-manifest', protocol, progress=enabled)
+    assert options['show_prepare_progress'] is enabled
+    if enabled:
+        assert isinstance(options['metrics'], dict)
+    assert set(result.role) == {'train', 'validation', 'evaluation'}
+
+
+@pytest.mark.parametrize('disabled', [False, True])
+def test_wrapper_progress_default_and_opt_out(tmp_path, monkeypatch, capsys, disabled):
+    import importlib.util
+    wrapper = Path(__file__).resolve().parents[2] / 'scripts/h4l_draft_v2.py'
+    spec = importlib.util.spec_from_file_location('draft_v2_progress_wrapper_test', wrapper)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, 'PROJECT_ROOT', tmp_path)
+    calls = []
+    monkeypatch.setattr(workflow, 'prepare', lambda *a, **kw: calls.append(('prepare', kw['progress'])))
+    def train(*args, **kwargs):
+        calls.append(('train', kwargs['progress']))
+        return []
+    monkeypatch.setattr(workflow, 'train', train)
+    args = ['--run-name', 'display-test', '--through', 'train'] + (['--no-progress'] if disabled else [])
+    assert module.main(args) == 0
+    assert calls == [('prepare', not disabled), ('train', not disabled)]
+    output = capsys.readouterr().err
+    assert (not output) if disabled else ('PREPARE draft-v2' in output and 'TRAIN draft-v2' in output)
+    assert not (tmp_path / 'runs').exists()

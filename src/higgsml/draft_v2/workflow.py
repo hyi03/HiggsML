@@ -1,10 +1,12 @@
 """Immutable draft-v2 stages, explicit exploratory access and complete lineage."""
 import os
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 import uuid
 
 import pandas as pd
+from tqdm.auto import tqdm
 
 from higgsml.artifacts import ResearchRun, digest_json, read_json, read_run
 from higgsml.dataset_binding import dataset_context
@@ -56,7 +58,7 @@ def _prepared(root, protocol):
     return loaded, metadata
 
 
-def prepare(root, protocol, *, receipt=None, synthetic_events=None, continuation=False):
+def prepare(root, protocol, *, receipt=None, synthetic_events=None, continuation=False, progress=True):
     if (receipt is None) == (synthetic_events is None):
         raise ResearchError('Provide exactly one MC acquisition receipt or labelled synthetic fixture')
     source = Path(receipt if receipt is not None else synthetic_events).resolve()
@@ -73,7 +75,7 @@ def prepare(root, protocol, *, receipt=None, synthetic_events=None, continuation
         if receipt is not None:
             manifest = data.root_manifest(receipt, protocol)
             manifest_path = run.write_json('root-input.json', manifest)
-            frame = data.reconstruct(manifest_path, protocol)
+            frame = data.reconstruct(manifest_path, protocol, progress=progress)
         else:
             fixture = read_json(source)
             if (set(fixture) != {'schema_version', 'dataset', 'source_kind', 'events'}
@@ -108,32 +110,39 @@ def _check_model(loaded, prepared, metadata, protocol, subset, seed):
     return model
 
 
-def train(root, protocol, *, continuation=False):
+def train(root, protocol, *, continuation=False, progress=True):
     prepared, metadata = _prepared(root, protocol)
     frame = None
     stages = []
-    for subset in CANDIDATES:
-        for seed in SEEDS:
+    with tqdm(total=len(candidate_keys()), desc='Training units', unit='model',
+              disable=not progress, file=sys.stderr) as model_progress:
+        for subset, seed in [(s, k) for s in CANDIDATES for k in SEEDS]:
             key, name = candidate_key(subset, seed), f'train/{subset}-{seed}'
             prior = _existing(root, name, 'train', protocol, continuation)
             if prior is not None:
                 _check_model(prior, prepared, metadata, protocol, subset, seed)
                 stages.append(prior)
+                model_progress.set_postfix(unit=key, status='reused', refresh=False)
+                model_progress.update()
                 continue
             if frame is None:
                 frame = data.read_events(prepared.file('events.jsonl'), protocol)
                 if frame.attrs['population_id'] != metadata['population_id']:
                     raise ResearchError('Prepared population digest mismatch')
-            print(f'TRAIN draft-v2 {key}', flush=True)
+            if progress:
+                tqdm.write(f'TRAIN draft-v2 {key}', file=sys.stderr)
             with _run(root, name, 'train', protocol, [prepared]) as run:
                 state = dict(key=key, prepared_artifact_id=prepared.manifest['artifact_id'], status='trained')
                 try:
-                    model = training.train(frame, protocol, subset, seed, prepared.manifest['artifact_id'])
+                    model = training.train(frame, protocol, subset, seed, prepared.manifest['artifact_id'],
+                                           progress=progress)
                     run.write_json('model.json', model)
                 except ResearchStateError as error:
                     state.update(status=error.status, reason=str(error))
                 run.write_json('training-state.json', state)
             stages.append(_load(root, 'train', protocol, name=name))
+            model_progress.set_postfix(unit=key, status=state['status'], refresh=False)
+            model_progress.update()
     return stages
 
 

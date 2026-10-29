@@ -22,6 +22,7 @@ def build_parser():
     parser.add_argument('--continue', dest='continuation', action='store_true')
     parser.add_argument('--retry-failed', action='store_true', help='Explicitly retry an interrupted evaluation under the identical freeze.')
     parser.add_argument('--plan-only', action='store_true', help='Read metadata only; no event files, output creation or child execution.')
+    parser.add_argument('--no-progress', action='store_true', help='Disable terminal progress bars and stage notices.')
     return parser
 
 
@@ -58,6 +59,10 @@ def execute(args, protocol):
     if args.retry_failed and args.stage != 'evaluate':
         raise ResearchError('--retry-failed applies only to evaluation')
     kwargs = {'continuation': args.continuation}
+    if not args.no_progress:
+        print(f'{args.stage.upper()} draft-v2: starting stage checks and execution', file=sys.stderr, flush=True)
+    if args.stage in {'prepare', 'train'}:
+        kwargs['progress'] = not args.no_progress
     if args.stage == 'prepare':
         kwargs.update(receipt=args.dataset_receipt, synthetic_events=args.synthetic_events)
     elif args.stage == 'evaluate':

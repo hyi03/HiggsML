@@ -125,6 +125,16 @@ completed units. `--plan-only` reads manifest metadata without opening event
 files, writing artifacts or launching child processes; a pending identity is
 not clearance. The wrapper uses one CPU thread and serial units on every OS.
 
+Terminal progress is enabled by default on stderr. The wrapper announces each
+stage before its checks; preparation shows ROOT event counts, percentage,
+elapsed/remaining time and selected events. Training shows the fifteen units
+(including validated reused units) and a per-model epoch bar with validation
+AUC, selected epoch and patience. The 200-epoch total is a maximum: early
+stopping can finish below 100%, and the final message reports the actual epoch
+count. Use `--no-progress` on either entry point to disable progress. Plan-only
+execution does not create progress bars. Already-running processes do not pick
+up this display change automatically.
+
 ## Recovery and outputs
 
 `--continue` validates hashes, stage identities, protocol, source and upstream
