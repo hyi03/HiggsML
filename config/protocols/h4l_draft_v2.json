@@ -1,0 +1,30 @@
+{
+  "schema_version": "h4l-draft-v2-protocol-v1",
+  "protocol_id": "h4l-draft-v2-all-mc-602020-v1",
+  "dataset": "atlas2020_4lep",
+  "source_population": "all_mc",
+  "final_state": "2e2mu",
+  "mass_window": [105.0, 140.0],
+  "luminosity_pb": 10000.0,
+  "development_probability": 1.0,
+  "roles": {"train": 0.6, "validation": 0.2, "evaluation": 0.2},
+  "role_hash": "sha256:h4l-draft-v2-role-v1:group:big64:mod100",
+  "candidates": ["ABCD", "BCD", "ACD", "ABD", "ABC"],
+  "seeds": [42, 43, 44],
+  "mass_input": "off",
+  "training": {
+    "max_epochs": 200, "patience": 20, "minimum_improvement": 0.0001,
+    "batch_size": 1024, "learning_rate": 0.001, "weight_decay": 0.0001
+  },
+  "threshold": "validation-background-absolute-weight-empirical-median-v1",
+  "templates": {"mass_edges": [105.0, 140.0], "score_categories": 2,
+    "min_neff_signed": 20.0, "min_rho": 0.2},
+  "inference": {"pyhf_version": "0.7.6", "layer": "T1", "mu": 1.0,
+    "mu_bounds": [0.0, 20.0], "confidence_level": 0.68,
+    "template_modifier": "shapesys", "template_correlation": "independent_process_bins"},
+  "spectra": {"candidates": ["ABCD", "BCD"], "seed": 42,
+    "mass_edges": [105.0, 110.0, 115.0, 120.0, 125.0, 130.0, 135.0, 140.0]},
+  "protocol_scope": "synthetic_software_defaults_not_physics_validation",
+  "qualification": {"status": "exploratory_posthoc", "independent": false,
+    "selection_aware_coverage": "unvalidated", "primary_claim_eligible": false}
+}

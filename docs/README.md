@@ -36,6 +36,11 @@ they are not the current paper's numerical source.
 
 ## Research reading path
 
+For the separately implemented supervisor-review proposal, see the
+[draft-v2 three-subset runbook](draft-v2-workflow.md). Its all-MC 60/20/20
+allocation, five representations and three seeds are separate from the selected
+historical paper evidence. Software verification does not supply revised MC results.
+
 For a guided introduction, open the 33-slide interactive paper explanation in
 [Chinese](paper-explained/index.html) or [English](paper-explained/index-en.html).
 It runs offline and connects the physics inputs, neural networks, likelihood intervals,

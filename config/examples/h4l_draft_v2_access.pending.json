@@ -1,0 +1,16 @@
+{
+  "schema_version": "h4l-draft-v2-access-v1",
+  "status": "pending",
+  "decision": "pending",
+  "dataset": "atlas2020_4lep",
+  "source_population": "all_mc",
+  "source_kind": "controlled_mc",
+  "historical_test_included": true,
+  "independent": false,
+  "protocol_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "prepared_artifact_id": "0000000000000000000000000000000000000000000000000000000000000000",
+  "freeze_id": "0000000000000000000000000000000000000000000000000000000000000000",
+  "history_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "reviewed_by": "",
+  "reviewed_at": ""
+}

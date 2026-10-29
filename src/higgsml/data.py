@@ -507,7 +507,7 @@ def load_research_data(path, dataset, protocol, *, allow_assessment=False, asses
         raise ResearchError("invalid research data") from exc
 
 
-def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4096,
+def _export_selected_research_data(manifest_path, profile_path, protocol, *, max_entries=4096,
                          metrics=None, diagnostic_entries_per_file=None,
                          root_threads=1, show_prepare_metrics=False,
                          show_prepare_progress=False):
@@ -692,11 +692,23 @@ def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4
     frame = pd.DataFrame(rows)
     if metrics is not None:
         metrics['dataframe_seconds'] = time.perf_counter()-began
-    began = time.perf_counter() if metrics is not None else None
-    frame = assign_roles(frame, p)
-    if metrics is not None:
-        metrics['role_assignment_seconds'] = time.perf_counter()-began
-        progress.sample_rss()
     frame.attrs.update(source_kind="controlled_mc", source_evidence={"dataset_snapshot": context.snapshot(),
                       "manifest": raw, **source_access_record(p)})
+    return frame
+
+
+def export_research_data(manifest_path, profile_path, protocol, *, max_entries=4096,
+                         metrics=None, diagnostic_entries_per_file=None,
+                         root_threads=1, show_prepare_metrics=False,
+                         show_prepare_progress=False):
+    """Preserve the original five-role export around the shared reconstruction."""
+    frame = _export_selected_research_data(
+        manifest_path, profile_path, protocol, max_entries=max_entries, metrics=metrics,
+        diagnostic_entries_per_file=diagnostic_entries_per_file, root_threads=root_threads,
+        show_prepare_metrics=show_prepare_metrics, show_prepare_progress=show_prepare_progress)
+    began = time.perf_counter() if metrics is not None else None
+    frame = assign_roles(frame, protocol)
+    if metrics is not None:
+        metrics['role_assignment_seconds'] = time.perf_counter()-began
+        PrepareProgressReporter(metrics).sample_rss()
     return frame

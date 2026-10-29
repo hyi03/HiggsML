@@ -7,7 +7,8 @@ from higgsml.errors import ResearchError, ResearchStateError
 
 
 HISTORY_DIRECTORIES = ('.research-claims', '.h4l-mass-off-v2-claims',
-                       '.h4l-mass-off-v3-claims', '.h4l-population-access')
+                       '.h4l-mass-off-v3-claims', '.h4l-population-access',
+                       '.h4l-draft-v2-claims')
 
 
 def _safe_path(path):
@@ -79,7 +80,13 @@ def audit_population_history(root, *, population_id=None, prepared_id=None):
                     continue
                 if ((population_id is None and prepared_id is None)
                         or (population_id is not None and binding.get('population_id') == population_id)
-                        or (prepared_id is not None and binding.get('prepared_artifact_id') == prepared_id)):
+                        or (prepared_id is not None and binding.get('prepared_artifact_id') == prepared_id)
+                        # A later legacy/development study also overlaps an
+                        # already accessed all-MC source. Different role/split
+                        # population hashes cannot restore held-out status.
+                        or (binding.get('source_population') == 'all_mc'
+                            and binding.get('dataset') == 'atlas2020_4lep'
+                            and binding.get('source_kind') == 'controlled_mc')):
                     matches.append({'path': str(path.resolve()), 'sha256': sha256_file(path), 'claim': value})
     return {**scope, 'matches': matches, 'scope': 'declared_roots_only_not_independent_validation'}
 

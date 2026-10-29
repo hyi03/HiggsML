@@ -269,9 +269,9 @@ def predict_discriminant(artifact, frame):
     return _predict_discriminant_payload(artifact, frame)
 
 
-def _predict_discriminant_payload(artifact, frame):
+def _predict_discriminant_payload(artifact, frame, *, _roles=None, _digest=None):
     content = {k:v for k,v in artifact.items() if k != 'model_id'}
-    if digest(content) != artifact.get('model_id'):
+    if (digest if _digest is None else _digest)(content) != artifact.get('model_id'):
         raise ResearchError('model artifact digest mismatch')
     expected = list(representation_features(artifact['representation'], groups=artifact['groups'],
                                             mass_input=artifact.get('mass_input', 'on')))
@@ -280,7 +280,8 @@ def _predict_discriminant_payload(artifact, frame):
         width = artifact['architecture'][1]
     if artifact['ordered_inputs'] != expected or artifact['architecture'] != [len(expected),width,64,32,1]:
         raise ResearchError('ordered feature or architecture binding mismatch')
-    _validate_frame(frame, ['train','validation','calibration','template','assessment'], expected)
+    _validate_frame(frame, _roles if _roles is not None else
+                    ['train','validation','calibration','template','assessment'], expected)
     if set(frame.dataset) != {artifact['dataset']}:
         raise ResearchError('model dataset binding mismatch')
     mean, scale = np.asarray(artifact['scaler']['mean']), np.asarray(artifact['scaler']['scale'])

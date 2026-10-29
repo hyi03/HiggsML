@@ -8,6 +8,12 @@ Repository outputs are not official ATLAS/CMS results, a Higgs discovery, or a p
 
 ## 1. Understand the project scope and evidence status
 
+The independent [draft-v2 workflow](docs/draft-v2-workflow.md) implements the
+proposed five-representation, three-seed comparison with all controlled 2020 MC
+and a 60/20/20 three-subset allocation. It has a separate protocol and
+`higgsml draft-v2` entry point; it does not convert the historical paper results
+into revised-study evidence or change the defaults documented below.
+
 - The only active code is the H4l package under `src/higgsml`; legacy15 preprocessing, the old training/testing workflow, and XGBoost implementations have been removed.
 - The default study uses the controlled `atlas2020_4lep` MC sample pair, with the protocol-defined `2e2mu` final state and a mass range of 105–140 GeV.
 - The active off-only paper uses raw classifier scores and the separately bound `joint-support-v1` method. Software also supports `mass-only`, `decay7`, `engineered19`, `lab-extension`, independently retrained explicit-`m4l` on/off controls, ordinary/adversarial training, conditional CDFs, common mass/score templates, T0/T1 inference, and sample-efficiency studies. Those supporting implementations are not completed results of the active paper.

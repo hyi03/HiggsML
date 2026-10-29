@@ -194,8 +194,9 @@ def test_mc_source_rejected_before_uproot_open(tmp_path, monkeypatch):
         export_research_data(manifest, tmp_path / "missing.yaml", load_protocol())
 
 
+@pytest.mark.parametrize('draft_v2', [False, True])
 def test_root_export_selects_protocol_population_before_payload(
-    tmp_path, monkeypatch,
+    tmp_path, monkeypatch, draft_v2,
 ):
     protocol_name = "h4l_protocol.json"
     expected_rows = 2
@@ -263,10 +264,18 @@ def test_root_export_selects_protocol_population_before_payload(
     monkeypatch.setattr(uproot,"open",Root)
     protocol = load_protocol(PROJECT_ROOT / "config" / "protocols" / protocol_name)
     metrics = {}
-    frame = export_research_data(
-        manifest, profile, protocol, max_entries=1, metrics=metrics,
-        root_threads=2,
-    )
+    if draft_v2:
+        from higgsml.draft_v2.data import reconstruct
+        from higgsml.draft_v2.protocol import DEFAULT_PROTOCOL, load_protocol as load_draft
+        protocol = load_draft(DEFAULT_PROTOCOL)
+        expected_rows, expected_ranges = 4, [(0, 1), (1, 2), (0, 1), (1, 2)]
+        expected_split, payload_access = 'exploratory', 'all_mc_entries'
+        frame = reconstruct(manifest, protocol, max_entries=1, metrics=metrics, root_threads=2)
+    else:
+        frame = export_research_data(
+            manifest, profile, protocol, max_entries=1, metrics=metrics,
+            root_threads=2,
+        )
     assert len(frame) == expected_rows
     assert [(start, stop) for _, start, stop in payload_calls] == expected_ranges
     assert set(frame.split) == {expected_split}

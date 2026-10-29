@@ -12,14 +12,25 @@ from higgsml.qualification import contract_checked
 def build_templates(frame, *, mass_edges, mapping_id, candidate_id,
                     category_column="category", categories=(0, 1), thresholds=None,
                     structural_zero_evidence=None, _statistics=None):
+    """Original five-role entry point: only the template role is admissible."""
+    return _build_role_templates(frame, mass_edges=mass_edges, mapping_id=mapping_id,
+        candidate_id=candidate_id, category_column=category_column, categories=categories,
+        thresholds=thresholds, structural_zero_evidence=structural_zero_evidence,
+        _statistics=_statistics, expected_role="template")
+
+
+def _build_role_templates(frame, *, mass_edges, mapping_id, candidate_id,
+                          category_column="category", categories=(0, 1), thresholds=None,
+                          structural_zero_evidence=None, _statistics=None, expected_role):
+    """Shared numerical kernel; workflow services enforce their own role contract."""
     thresholds = thresholds or {}
     minimum = float(thresholds.get("min_neff_signed", thresholds.get("min_effective_count", 20)))
     rho_min = float(thresholds.get("min_rho", thresholds.get("min_cancellation_ratio", .2)))
     required = {"dataset", "label", "role", "event_group_id", "yield_weight", "m4l", category_column}
     if not required <= set(frame.columns) or frame.empty:
         raise ResearchError("Template input is empty or lacks required columns")
-    if set(frame.role) != {"template"} or frame.dataset.nunique() != 1:
-        raise ResearchError("Templates require one dataset and template role exclusively")
+    if set(frame.role) != {expected_role} or frame.dataset.nunique() != 1:
+        raise ResearchError(f"Templates require one dataset and {expected_role} role exclusively")
     if not mapping_id or not candidate_id:
         raise ResearchError("Mapping and candidate identities are required")
     edges = np.asarray(mass_edges, dtype=float)
@@ -82,7 +93,7 @@ def build_templates(frame, *, mass_edges, mapping_id, candidate_id,
     if not any(s["is_signal"] for s in samples) or not any(not s["is_signal"] for s in samples):
         raise ResearchStateError("Missing effective signal or background", status="insufficient_statistics")
     active = [i for i in range(n_mass * len(categories)) if any(s["bin_status"][i] != "structural_zero" for s in samples)]
-    return {"status": "valid" if not issues else "insufficient_statistics", "dataset": str(frame.dataset.iloc[0]), "role": "template", "candidate_id": candidate_id, "mapping_id": mapping_id, "mass_edges": edges.tolist(), "categories": list(categories), "active_bins": active, "samples": samples, "issues": issues, "structural_zero_evidence": structural_zero_evidence, "variance_convention": "sum_outer_products_of_group_bin_signed_weights"}
+    return {"status": "valid" if not issues else "insufficient_statistics", "dataset": str(frame.dataset.iloc[0]), "role": expected_role, "candidate_id": candidate_id, "mapping_id": mapping_id, "mass_edges": edges.tolist(), "categories": list(categories), "active_bins": active, "samples": samples, "issues": issues, "structural_zero_evidence": structural_zero_evidence, "variance_convention": "sum_outer_products_of_group_bin_signed_weights"}
 
 
 def common_mass_grid(candidate_frames, *, mass_edges, thresholds, assessment_started=False,

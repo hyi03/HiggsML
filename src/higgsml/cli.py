@@ -13,6 +13,7 @@ from higgsml.errors import ResearchError
 def build_parser():
     parser = argparse.ArgumentParser(prog='higgsml', description='Bound MC-only H4l analysis stages.')
     stages = parser.add_subparsers(dest='command', required=True)
+    stages.add_parser('draft-v2', help='Independent three-subset all-MC workflow; use draft-v2 --help for stages')
     for name in ('audit','prepare','me-export','me-import','train','calibrate','templates','freeze',
                  'infer','mc-bootstrap','evidence-import','report'):
         sub = stages.add_parser(name)
@@ -65,6 +66,7 @@ def build_parser():
 def main(argv=None):
     arguments = list(sys.argv[1:] if argv is None else argv)
     delegated = {
+        "draft-v2": "higgsml.cli_draft_v2",
         "attribution": "higgsml.cli_attribution",
         "sample-efficiency": "higgsml.cli_sample_efficiency",
         "sample-efficiency-report": "higgsml.cli_sample_efficiency_report",
