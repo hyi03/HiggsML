@@ -1,0 +1,46 @@
+% !TeX root = main.tex
+% Layout conversion of the source Mermaid graph; all ten nodes and eleven edges are retained.
+\begin{figure*}[tbp]
+\centering
+\begin{tikzpicture}[
+  workflowbox/.style={draw,rounded corners=2pt,align=center,text width=5cm,
+               minimum height=1.1cm,inner sep=5pt,font=\small},
+  flow/.style={-{Stealth[length=2mm]},semithick}
+]
+\node[workflowbox] (A) at (0,0)
+  {Controlled MC and common physical selection};
+\node[workflowbox] (B) at (0,-1.8)
+  {Group-preserving 60/20/20 data assignment};
+\node[workflowbox] (C) at (-3.2,-3.8)
+  {Training: standardization and five model representations};
+\node[workflowbox] (D) at (3.2,-3.8)
+  {Validation: checkpoint and background-median threshold};
+\node[workflowbox] (E) at (3.2,-5.8)
+  {Freeze models, thresholds and analysis choices};
+\node[workflowbox] (F) at (-3.2,-5.8)
+  {Final evaluation events held until freeze};
+\node[workflowbox] (G) at (0,-7.8)
+  {Apply frozen scores and form high / low categories};
+\node[workflowbox] (H) at (-3.2,-9.8)
+  {Before / after mass spectra};
+\node[workflowbox] (I) at (3.2,-9.8)
+  {Two-category templates and nominal intervals};
+\node[workflowbox] (J) at (3.2,-11.8)
+  {Four within-seed ablation comparisons};
+\draw[flow] (A) -- (B);
+\draw[flow] (B) -- (C);
+\draw[flow] (B) -- (D);
+\draw[flow] (C) -- (D);
+\draw[flow] (D) -- (E);
+\draw[flow] (B.west) -- (-6.4,-1.8) |- (F.west);
+\draw[flow] (E) -- (G);
+\draw[flow] (F) -- (G);
+\draw[flow] (G) -- (H);
+\draw[flow] (G) -- (I);
+\draw[flow] (I) -- (J);
+\end{tikzpicture}
+\caption{Executed draft001 analysis sequence. Final evaluation followed the common
+freeze and its explicitly approved access record. The high-score subset is used for the after-cut illustration; both
+categories contribute to inference.}
+\label{fig:workflow}
+\end{figure*}

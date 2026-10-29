@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="32 页中英文解读已完成的 HiggsML draft001：60/20/20 划分、冻结学习、真实质量谱、十五个名义区间及十二个条件消融差值。探索性、非独立，覆盖率未验证。">
+  <title>论文图解 · draft001 结果 · HiggsML</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <script defer src="teaching.js"></script>
+  <script defer src="results-data.js"></script>
+  <script defer src="content.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#deck">跳到幻灯片</a>
+  <header class="toolbar">
+    <a class="brand" href="#slide-1">HiggsML <span>Draft v2 · 已完成的 MC 研究</span></a>
+    <nav aria-label="演示工具">
+      <a class="language-link" href="#slide-23">数值结果</a>
+      <a class="language-link" href="#slide-17">质量谱</a>
+      <a class="language-link" id="language-link" href="index-en.html" lang="en" hreflang="en" aria-label="切换到英文版">English</a>
+      <button id="toc-button" aria-haspopup="dialog">目录</button>
+      <button id="full-button">全屏</button>
+      <button id="print-button">打印</button>
+    </nav>
+  </header>
+  <main id="deck" tabindex="-1" aria-label="当前论文与 draft001 结果讲解"></main>
+  <footer class="navigation">
+    <button id="prev" aria-label="上一页">← 上一页</button>
+    <label class="page-control">第 <input id="page" type="number" min="1" max="32" value="1" aria-label="跳转页码"> / <span id="page-count">32</span> 页</label>
+    <button id="jump">跳转</button>
+    <span id="chapter-status"></span>
+    <button id="next" aria-label="下一页">下一页 →</button>
+  </footer>
+  <div class="progress" aria-hidden="true"><div id="progress-fill"></div></div>
+  <div id="announcement" class="sr-only" aria-live="polite"></div>
+  <dialog id="toc" aria-labelledby="toc-title"><header><h2 id="toc-title">32 页学习路线</h2><button id="toc-close" aria-label="关闭目录">关闭</button></header><ol id="toc-list"></ol></dialog>
+  <noscript>请启用 JavaScript。本站离线展示已完成的 draft001 汇总结果；没有事件读取或模型计算。</noscript>
+</body>
+</html>

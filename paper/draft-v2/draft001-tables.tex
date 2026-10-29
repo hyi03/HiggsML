@@ -1,0 +1,29 @@
+% Source: draft001 report 9aab6d274a3e2d00d892c2d8fbf89b1e46f5b7a95d0bf0c085af90672ea36898.
+\begin{table*}[tbp]
+\caption{Completed draft001 nominal results. Part (a) reports all fifteen
+widths; part (b) reports all twelve within-seed differences and their medians.
+Values are rounded to six decimal places only for display. Every required seed
+is present; no failed seed is removed. The inclusive-count reference is computed
+once from the same evaluation population and has no training-seed spread.}
+\label{tab:nominal}
+\centering
+\begin{tabular}{lrrrr}\toprule
+(a) Representation & Seed 42 $W_{68}$ & Seed 43 $W_{68}$ & Seed 44 $W_{68}$ & Median \\\midrule
+ABCD & 1.472197 & 1.464392 & 1.454428 & 1.464392 \\
+BCD & 1.470689 & 1.474847 & 1.475575 & 1.474847 \\
+ACD & 1.467509 & 1.461483 & 1.479746 & 1.467509 \\
+ABD & 1.505681 & 1.513746 & 1.500712 & 1.505681 \\
+ABC & 1.452977 & 1.435664 & 1.456733 & 1.452977 \\
+\bottomrule\end{tabular}
+\par\medskip
+Shared inclusive-count $W_{68}=1.638845$ (one reference, no seed spread).\par\medskip
+\centering
+\begin{tabular}{lrrrr}\toprule
+(b) Removed group & Seed 42 $\Delta W_G$ & Seed 43 $\Delta W_G$ & Seed 44 $\Delta W_G$ & Median $\Delta W_G$ \\\midrule
+A: BCD & -0.001508 & +0.010455 & +0.021146 & +0.010455 \\
+B: ACD & -0.004688 & -0.002909 & +0.025317 & -0.002909 \\
+C: ABD & +0.033485 & +0.049355 & +0.046283 & +0.046283 \\
+D: ABC & -0.019220 & -0.028728 & +0.002304 & -0.019220 \\
+\bottomrule\end{tabular}
+\par\medskip
+\end{table*}
