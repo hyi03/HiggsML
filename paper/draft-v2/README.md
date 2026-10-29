@@ -7,6 +7,40 @@ separately for seeds 42–44. All fifteen model intervals and the shared inclusi
 reference have valid numerical status. Results remain exploratory,
 non-independent and coverage-unvalidated.
 
+## Project Report
+
+[project-report.tex](project-report.tex) is a separate
+English A4 project report dated 30 October 2026.
+It presents the completed draft001 spectrum comparisons, lists
+exact baseline cuts with external-source correspondence and project adaptations,
+and distinguishes evaluation event-group counts from expected signed yields.
+It includes two spectrum figures, selection/yield summaries and a compact
+interval-results update. It does not claim a complete step-by-step cutflow.
+
+Compile this report explicitly, independently of the manuscript:
+
+```sh
+latexmk -pdf -interaction=nonstopmode -halt-on-error -outdir=.build/project-report project-report.tex
+cp .build/project-report/project-report.pdf project-report.pdf
+```
+
+The convenience [PDF](project-report.pdf) and build output are
+ignored. The PDF is synchronized with the current source. The report uses the
+existing figure copies in `figures/draft001/`;
+compilation does not require the run directory or external document downloads.
+In an editor, select `project-report.tex` explicitly as the build
+target; keep `main.tex` as the original manuscript's target.
+
+The current report was verified on 30 October 2026: eight A4 pages
+compiled with local TeX Live 2026 /
+latexmk 4.88, without warnings or overfull/underfull boxes. All pages were rendered
+and visually inspected. Report numbers were checked against bound draft001
+aggregates; the original manuscript source was unchanged. Tight-ID working-point
+correspondence and the exact external source of the longitudinal-impact cut
+remain explicitly unconfirmed. The report now states the model-self Asimov/T1
+interval construction, the exact spectrum support-flag criteria and the
+descriptive status of the mass-region fractions. No scientific stage was rerun.
+
 ## Current files
 
 - [main.tex](main.tex): manuscript, abstract, methods, results and references.
