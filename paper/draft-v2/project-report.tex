@@ -52,19 +52,17 @@ amount. These statements describe the controlled simulation used in this project
 Analysis objective & Completed work & Supporting evidence \\
 \midrule
 Define the before/after comparison & The same selected evaluation population, with and without each frozen high-score cut. & Sections 2 and 4 \\
-Locate the signal region & Separate signal spectra and the fraction of its yield in 120--130 GeV. & Figure 1; Table 5 \\
+Locate the signal region & Separate signal spectra and the fraction of its yield in 120--130 GeV. & Figure~\ref{fig:yields}; Table~\ref{tab:fractions} \\
 Characterize the background & Its actual simulated mass distribution, shown separately from signal. & Figure 1 \\
-Quantify yield and shape changes & Signed-yield retention and separately normalized before/after shapes. & Tables 3--5; Figure 2 \\
+Quantify yield and shape changes & Signed-yield retention and separately normalized before/after shapes. & Tables~\ref{tab:groups}, \ref{tab:yields}, \ref{tab:fractions}; Figure~\ref{fig:shapes} \\
 Establish interpretation limits & A description of the selected events, with statistical and physical limits. & Sections 5--7 \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-The two illustrations are ABCD and BCD at training seed 42. ABCD uses all
-nineteen kinematic inputs. BCD omits the eight individual-lepton momentum and
-pseudorapidity inputs, retaining dilepton, collective-event and angular inputs.
-The four-lepton mass is excluded from both networks' explicit inputs. Correlated
-kinematics can still carry mass information.
+The illustrations compare two input schemes at training seed 42. The physical
+variables and combinations denoted by A/B/C/D are introduced at the end of
+Section 2; Section 4 explains the networks and score thresholds.
 
 The broader project continues to examine how input groups affect the nominal
 signal-strength interval width, $W_{68}$. The spectra explain the physical
@@ -74,43 +72,174 @@ selection and mass-spectrum explanation.
 
 \clearpage
 \reportsection{2. Data used and the common physical selection}
-The source is the ATLAS 2020 educational 13 TeV collection \cite{OpenData}:
+Two ATLAS 2020 educational 13 TeV MC members are used \cite{OpenData}:
 signal DSID 345060 (\texttt{ggH125\_ZZ4lep}) and background DSID 363490
-(\texttt{llll}). Only these two simulated members are used. The background label
-does not by itself establish a pure quark-initiated $ZZ$ sample. The analysis
-retains two electrons and two muons and normalizes yields to $10\,\mathrm{fb}^{-1}$.
+(\texttt{llll}). The background label does not establish pure quark-initiated
+$ZZ$. The selected final state is $2e2\mu$; yields use $10\,\mathrm{fb}^{-1}$.
+
+\textbf{Source and existing preselection.} The file labels identify a
+125 GeV gluon-fusion Higgs signal and four-lepton background. Before release,
+loose object and event preselection retained at least four leptons (electrons
+or muons), as documented by CERN \cite{OpenData}. The project adds
+Table~\ref{tab:cuts}; generators, detector-simulation chains and production-filter
+efficiencies require separate production evidence.
 
 \begin{table}[h!]
-\caption{Executed common cuts, applied before the neural network cut.
-\textbf{L}: numerical/method support in external literature;
-\textbf{A}: project adaptation of a related external prescription;
-\textbf{P}: project-fixed choice. These labels establish correspondence, not proof
-of the historical origin of every line of code.}
+\caption{Counts before/after common selection. The first row counts public ROOT
+entries; later rows count draft001 event groups, verified one to one with selected
+entries. The final three rows partition the selected population.}
+\label{tab:population}
+\centering
+\small
+\begin{tabular}{lrrr}
+\toprule
+Stage & Signal & Background & Total \\
+\midrule
+Public ROOT input (before project cuts) & 164,716 & 554,279 & 718,995 \\
+After common selection (all subsets) & 45,083 & 3,593 & 48,676 \\
+\quad Training & 27,026 & 2,175 & 29,201 \\
+\quad Validation & 9,008 & 720 & 9,728 \\
+\quad Final evaluation & 9,049 & 698 & 9,747 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Counts exclude events removed before release and do not give a cut-by-cut record.
+
+\textbf{Event structure.} Both files share the \texttt{mini} tree schema (one entry
+per event). Metadata confirm these 19 profile branches in ROOT order:
+
+\begingroup
+\small
+\begin{verbatim}
+Branch                       ROOT type
+runNumber                    int32_t
+eventNumber                  int32_t
+channelNumber                int32_t
+mcWeight                     float
+trigE                        bool
+trigM                        bool
+lep_n                        uint32_t
+lep_trigMatched              std::vector<bool>
+lep_pt                       std::vector<float>
+lep_eta                      std::vector<float>
+lep_phi                      std::vector<float>
+lep_E                        std::vector<float>
+lep_z0                       std::vector<float>
+lep_charge                   std::vector<int32_t>
+lep_type                     std::vector<uint32_t>
+lep_isTightID                std::vector<bool>
+lep_ptcone30                 std::vector<float>
+lep_etcone20                 std::vector<float>
+lep_tracksigd0pvunbiased     std::vector<float>
+\end{verbatim}
+\endgroup
+
+The first seven fields are event scalars; later vectors contain \texttt{lep\_n}
+elements, with matching indices for the same lepton. \texttt{*Number} identifies
+the event/sample; \texttt{mcWeight} is the signed generator weight.
+Momenta, energies and isolation sums use MeV, converted to GeV as needed;
+\texttt{lep\_z0} uses mm and \texttt{lep\_tracksigd0pvunbiased} stores $d_0/\sigma(d_0)$.
+
+\textbf{Trigger.} The electron- and muon-trigger flags \texttt{trigE} and
+\texttt{trigM} must satisfy a logical OR. At least one good lepton must also
+have \texttt{lep\_trigMatched=true}, linking it to the trigger decision.
+Literature comparisons appear in Section 3.
+
+\clearpage
+\textbf{Selection rules.} Table~\ref{tab:cuts} lists single-branch rules first,
+then combined and reconstructed conditions. This grouping is for readability;
+the execution sequence is summarized below the table.
+
+\begin{table}[h!]
+\caption{Common selection before the neural network cut, using the ROOT branch
+names above. Momentum and mass thresholds are in GeV.}
 \label{tab:cuts}
 \small
 \renewcommand{\arraystretch}{1.12}
-\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{.18\linewidth}>{\raggedright\arraybackslash}p{.43\linewidth}Y@{}}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{.35\linewidth}Y@{}}
 \toprule
-Step & Exact project rule & Purpose and source status \\
+Input variable(s) & Exact project rule \\
 \midrule
-Trigger & \texttt{trigE} or \texttt{trigM} is true. & Triggered events; \textbf{A}, Ref.~\cite{ATLAS13}, Sec.~5.2. \\
-Identification & Keep $e/\mu$ with \texttt{lep\_isTightID=true}; at least four survive each quality step. & Good leptons; \textbf{P}, exact working-point correspondence unconfirmed. \\
-Isolation & \texttt{lep\_ptcone30}/$p_T<0.3$ and \texttt{lep\_etcone20}/$p_T<0.3$ for each lepton. & Reduce nonisolated leptons; \textbf{A}, Refs.~\cite{HZZCuts,HZZAnalysis}; see Section 3. \\
-Transverse impact & $|d_0|/\sigma(d_0)<5$ for electrons; $<3$ for muons. & Suppress displaced leptons; \textbf{L}, Ref.~\cite{ATLAS13}, Sec.~5.2. \\
-Longitudinal impact & $|z_0\sin\theta|=|z_0/\cosh\eta|<0.5$ mm. & Vertex compatibility; \textbf{P}, exact external source unconfirmed. \\
-Multiplicity and matching & Exactly four good leptons; at least one is trigger-matched. & Defined four-lepton population; \textbf{A}, Refs.~\cite{HZZCuts,ATLASRun1}. \\
-Ordered momentum & Descending $p_T$: $p_{T,1}\geq20$, $p_{T,2}\geq15$, $p_{T,3}\geq10$, $p_{T,4}\geq7\gev$. & Acceptance; \textbf{A}, Ref.~\cite{ATLAS13}, Secs.~5.1--5.2. \\
-Pseudorapidity & Electron $|\eta|<2.47$; muon $|\eta|<2.7$. & Detector acceptance; \textbf{L}, Ref.~\cite{ATLAS13}, Sec.~5.1; muon-type details differ. \\
-Charge and pairing & Total charge zero; valid same-flavour opposite-sign (SFOS) pairs. $Z_1$ is closest to the nominal $Z$ mass; $Z_2$ uses the remaining pair. & Reconstruct the two dileptons; \textbf{L}, Ref.~\cite{ATLAS13}, Sec.~5.2; charge also in Ref.~\cite{HZZCuts}. \\
-Pair masses & Every SFOS mass $>5\gev$; $50<m_{Z1}<106\gev$; $12<m_{Z2}<115\gev$. & Dilepton selection; \textbf{L} for $Z$ windows, \textbf{A} for all-SFOS rule; Ref.~\cite{ATLAS13}, Sec.~5.2. \\
-Research population & Exactly $2e2\mu$; $105\leq m_{4\ell}<140\gev$. & Fixed study scope; \textbf{P}, not an externally established optimum. \\
+\multicolumn{2}{@{}l}{\textbf{Rules using one branch}} \\
+\texttt{lep\_trigMatched} & At least one of the four good leptons is trigger-matched. \\
+\texttt{lep\_pt} & For the four good leptons, ordered by decreasing $p_T$:
+$p_{T,1}\geq20$, $p_{T,2}\geq15$, $p_{T,3}\geq10$, $p_{T,4}\geq7$. \\
+\texttt{lep\_type} & Keep electrons and muons: $|\texttt{lep\_type}|\in\{11,13\}$. \\
+\texttt{lep\_isTightID} & Keep leptons with a true tight-identification flag. \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{Combined and reconstructed conditions}} \\
+\texttt{trigE}, \texttt{trigM} & Require \texttt{trigE=true} or \texttt{trigM=true}. \\
+\texttt{lep\_ptcone30}, \texttt{lep\_pt} & Track isolation: $p_T>0$ and
+\texttt{lep\_ptcone30}/\texttt{lep\_pt}$<0.3$ for each lepton. \\
+\texttt{lep\_etcone20}, \texttt{lep\_pt} & Calorimeter isolation: $p_T>0$ and
+\texttt{lep\_etcone20}/\texttt{lep\_pt}$<0.3$ for each lepton. \\
+\nolinkurl{lep_tracksigd0pvunbiased}, \texttt{lep\_type} & Absolute transverse
+impact-parameter significance $<5$ for electrons and $<3$ for muons. \\
+\texttt{lep\_z0}, \texttt{lep\_eta} & Longitudinal impact:
+$|\texttt{lep\_z0}/\cosh(\texttt{lep\_eta})|<0.5$ mm. \\
+\texttt{lep\_n} and the quality mask & Exactly four leptons must survive quality filtering;
+the original \texttt{lep\_n} may exceed four. \\
+\texttt{lep\_eta}, \texttt{lep\_type} & For all four good leptons:
+$|\eta|<2.47$ for electrons or $|\eta|<2.7$ for muons. \\
+\texttt{lep\_charge}, \texttt{lep\_type} & Total charge zero; exactly two
+electrons and two muons; two disjoint same-flavour opposite-sign (SFOS) pairs. \\
+\texttt{lep\_pt}, \texttt{lep\_eta}, \texttt{lep\_phi}, \texttt{lep\_E},
+plus SFOS pairing & Reconstruct pair masses; require every SFOS mass $>5$,
+with
+$50<m_{12}<106$ and $12<m_{34}<115$. \\
+The four lepton four-vectors & Combined invariant mass $105\leq m_{4\ell}<140$. \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-All models use these same rules. ``Before'' in the following figures means
-\emph{after this complete baseline}, and ``after'' adds only the frozen network
-score cut. The network selects events; it does not change an event's reconstructed mass.
+\textbf{Mass notation.} In Ref.~\cite{ATLAS13}, $m_{12}$ is the mass of the
+SFOS pair closest to the nominal $Z$ mass; $m_{34}$ is the remaining pair's
+mass. These are \texttt{mZ1} and \texttt{mZ2} in the code, reconstructed from
+lepton four-vectors. Pair labels do not imply $p_T$ ordering.
+
+\textbf{Execution.} After the trigger check, apply flavour, tight-ID, track
+isolation, calorimeter isolation and transverse/longitudinal impact filters,
+requiring at least four survivors at each step. Require exactly four good
+leptons, then apply trigger matching, ordered-$p_T$, acceptance, charge/pairing,
+pair-mass and study-population cuts. All models share this baseline: ``before''
+means after these cuts, and ``after'' adds only the frozen network score cut.
+
+
+\clearpage
+\textbf{Network inputs: the A/B/C/D feature groups.} After common selection,
+the lepton branches are reconstructed into the 19 inputs below. Leptons are
+ordered by decreasing $p_T$; $Z_1/Z_2$ follow the $m_{12}/m_{34}$ pairing above.
+
+\begin{table}[h!]
+\caption{Feature groups and their physical meaning. Momenta and masses use GeV;
+azimuthal angles use radians.}
+\label{tab:features}
+\small
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{.07\linewidth}>{\raggedright\arraybackslash}p{.41\linewidth}cY@{}}
+\toprule
+Group & Code variables & Count & Physical meaning \\
+\midrule
+A & \texttt{lep1\_pt}--\texttt{lep4\_pt}; \texttt{lep1\_eta}--\texttt{lep4\_eta} & 8 &
+Individual-lepton transverse momenta and pseudorapidities: momentum scales and directions relative to the beam. \\
+B & \texttt{mZ1}, \texttt{mZ2}; \texttt{deltaR\_Z1}, \texttt{deltaR\_Z2} & 4 &
+Dilepton masses and within-pair angular separations,
+$\Delta R=\sqrt{(\Delta\eta)^2+(\Delta\phi)^2}$. \\
+C & \texttt{pt4l}, \texttt{deltaPhi\_ZZ} & 2 &
+Four-lepton transverse momentum and the absolute azimuthal separation between the two dileptons. \\
+D & \texttt{cos\_theta\_star}, \texttt{cos\_theta\_1}, \texttt{cos\_theta\_2};
+\texttt{phi\_decay\_planes}, \texttt{phi\_production\_plane} & 5 &
+One production-angle cosine, two decay polar-angle cosines, and two angles describing decay- and production-plane orientations. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+ABCD/BCD/ACD/ABD/ABC use 19/11/15/17/14 inputs, respectively, and are trained
+separately. Group D uses the relevant rest frames with fixed negative-lepton
+and positive laboratory-beam conventions. The groups share underlying lepton
+information and are correlated; omitting explicit $m_{4\ell}$ does not remove
+implicit mass information.
 
 \clearpage
 \reportsection{3. What is supported by external sources?}
@@ -164,12 +293,66 @@ example additionally multiplies pileup, lepton and trigger scale factors
 therefore not expected to be reproduced by the present weight definition.
 
 \clearpage
-\reportsection{4. What remains after the selections?}
-The common selected population is assigned by physical event group to training,
-validation and final evaluation with probabilities 60\%, 20\% and 20\%.
-The same assignment is used for every model and seed. Training sets the
-standardization and network parameters; validation selects the checkpoint and
-score threshold. Final evaluation applies those frozen choices.
+\reportsection{4. Neural network selection and retained samples}
+\textbf{Sample roles.} The common selected population is assigned by physical
+event group to training, validation and final evaluation with probabilities
+60\%, 20\% and 20\%; actual counts appear in Table~\ref{tab:population}.
+Each physical event group stays in one subset, with the same assignment for
+all models and seeds. Training fits input standardization and network
+parameters; validation selects the checkpoint and threshold; final evaluation
+applies the frozen choices. Finite-sample counts need not be exactly 60/20/20.
+
+\textbf{Network and training.} Each input scheme uses a fully connected binary
+classifier with architecture
+\[
+ d_{\rm in}\longrightarrow64\longrightarrow64\longrightarrow32\longrightarrow1.
+\]
+All three hidden layers use LayerNorm and SiLU; Dropout with probability 0.1
+follows the first two hidden layers. A sigmoid converts the output to a
+$0$--$1$ score $s$. Labels are 1 for signal and 0 for background, so higher
+scores favour signal. The score is a ranking discriminant, not a calibrated
+physical signal probability. ABCD and BCD have 19 and 11 inputs, respectively.
+
+Each input is standardized using the training mean and standard deviation;
+validation and evaluation reuse that transform. The loss is weighted binary
+cross-entropy. Training weights are absolute physical weights divided by
+their training-class mean; this does not equalize class totals. AdamW uses a
+learning rate of $10^{-3}$, weight decay $10^{-4}$ and batches of 1024 on CPU
+float32, for at most 200 epochs. Validation AUC (area under the ROC curve) uses
+absolute physical weights. A checkpoint replaces the retained best only when
+AUC improves by more than $10^{-4}$; 20 epochs without an update stop training.
+At seed 42, ABCD stopped after epoch 87 and retained epoch 67; BCD stopped
+after epoch 86 and retained epoch 66.
+
+\textbf{How is the score threshold obtained?} Restore the selected checkpoint
+and sort only the \emph{validation-background} scores from low to high.
+Accumulate absolute physical weights $a_i=|w_i|$ in that order. The threshold
+is the first score whose cumulative $a_i$ reaches half the total:
+\[
+ k=\min\left\{j:\sum_{i=1}^{j}a_{(i)}\geq\frac12\sum_i a_i\right\},
+ \qquad t=s_{(k)}.
+\]
+The index $(i)$ denotes score order. No interpolation is used. Evaluation
+assigns $s\geq t$ to the high category and $s<t$ to the low category; tied
+scores stay together.
+
+\textbf{Teaching example (not actual run data).} Suppose five ordered
+validation-background scores are $0.10,0.30,0.60,0.80,0.90$, with absolute
+weights $1,2,1,4,2$. The total is 10 and half is 5; cumulative weights are
+$1,3,4,8,10$. The first crossing occurs at $t=0.80$. Scores 0.80 and 0.90
+enter the high category, retaining $6/10=60\%$ of the absolute weight.
+Discrete weights and tied scores mean retention need not be exactly 50\%;
+still less does it require 50\% \emph{signed} background retention in evaluation.
+
+Actual seed-42 thresholds are $0.746724$ for ABCD and $0.860891$ for BCD,
+rounded for display; evaluation uses full precision. Each model's threshold
+was frozen before inspecting evaluation spectra and was not adjusted using
+final-evaluation results.
+
+\clearpage
+\textbf{Evaluation counts and yields.} The comparisons below use the same
+final-evaluation subset. High-score subsets illustrate selection; interval
+inference still includes both score categories, as explained in Section 7.
 
 \begin{table}[h!]
 \caption{Physical event groups in the final-evaluation sample. The last two
@@ -186,20 +369,11 @@ Background & 698 & 386 & 378 \\
 \end{tabular}
 \end{table}
 
-These baseline numbers are \textbf{after the common physical selection and
-within the evaluation subset}. They are not the total selected counts across
-all three subsets. The available completed aggregates do not provide a full
-step-by-step cutflow. Consequently, this report does not assign counts or
-efficiencies to individual baseline cuts or infer an overall baseline efficiency
-from these evaluation counts.
-
-For each network, the cut is the absolute-weight median of validation-background
-scores. The seed-42 thresholds are $0.746724$ for ABCD and $0.860891$ for BCD,
-rounded here; evaluation uses the original full precision. Scores at or above
-the threshold enter the high category, with tied scores kept together. The cuts
-were not retuned after examining the evaluation spectra. A 50\% validation
-absolute-weight target does not imply exactly 50\% signed-background retention
-on the evaluation sample.
+The baseline in Table~\ref{tab:groups} is only the evaluation subset after
+common selection; all selected events are counted in Table~\ref{tab:population}.
+For example, ABCD high score retains 8,761/9,049 signal event groups, whereas
+the yield retention below is 96.80\%. The former counts groups; the latter
+uses signed physical weights.
 
 \begin{table}[h!]
 \caption{Expected signed yields at $10\,\mathrm{fb}^{-1}$ and their retention.
@@ -403,7 +577,7 @@ ATLAS Collaboration, \emph{ATLAS 13 TeV samples collection at least four leptons
 (electron or muon), for 2020 Open Data release} (2020).
 \href{https://opendata.cern.ch/record/15005}{CERN Open Data record 15005},
 \href{https://doi.org/10.7483/OPENDATA.ATLAS.2Y1T.TLGL}{doi:10.7483/OPENDATA.ATLAS.2Y1T.TLGL}.
-Source for the two simulated dataset members; see its usage statement.
+Source for the two MC members and the loose preselection before release; see its usage statement.
 
 \bibitem{ATLAS13}
 ATLAS Collaboration, \emph{Measurement of the Higgs boson coupling properties in
@@ -436,7 +610,7 @@ working points are not asserted to be this project's prescription.
 \end{thebibliography}
 \endgroup
 
-\textbf{Local result source.} All numerical results and both figures come from
+\textbf{Local result source.} Interval, yield and mass-spectrum results and both figures come from
 \nolinkurl{runs/h4l-draft-v2-draft001/report/}, linked to the completed prepare,
 freeze and evaluation artifacts. Report file sizes and SHA-256 values were
 checked against its manifest; both figure copies match the report byte for byte.
@@ -446,9 +620,15 @@ The frozen protocol is \nolinkurl{config/protocols/h4l_draft_v2.json}.
 \textbf{Selection implementation.} Exact inequalities were checked against
 \nolinkurl{config/protocols/h4l_selection_v1.yaml} and
 \nolinkurl{src/higgsml/physics/selection.py}, with the draft-v2 protocol's
-$[105,140)$ GeV override and $2e2\mu$ restriction. Report preparation used
-completed aggregates and public documents; it did not reopen event payloads,
-train models, rescore events or refit intervals. Missing step-by-step counts
-remain missing rather than being estimated from another run.
+$[105,140)$ GeV override and $2e2\mu$ restriction. This revision uses the CERN record's methodology and completed-run protocols,
+model metadata and aggregates. Input counts in Table~\ref{tab:population} come
+from the bound dataset record; selected and role counts come from prepare-file
+identity envelopes, with the file checked against its manifest hash. Event-value
+payloads were not decoded. Network and threshold details were also checked
+against \nolinkurl{src/higgsml/draft_v2/training.py} and
+\nolinkurl{src/higgsml/modeling/discriminants.py}; model files match their
+manifest hashes. No retraining, event rescoring or interval refitting was
+performed. Cut-by-cut counts remain unavailable and are not estimated from
+another run.
 
 \end{document}
