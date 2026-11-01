@@ -9,6 +9,7 @@ from higgsml.errors import ResearchError
 from higgsml.draft_v2.protocol import QUALIFICATION
 from higgsml.draft_v2.reporting import summarize
 from higgsml.draft_v2.validation_thresholds import threshold_diagnostics
+from higgsml.draft_v2.validation_evidence import evidence_scope, sample_support, csv_tables, evidence_markdown
 from higgsml.draft_v2.validation_protocol import KEYS, MODES, units
 from higgsml.draft_v2 import validation_registry as registry
 from higgsml.draft_v2.validation_execution import inventory
@@ -53,12 +54,15 @@ def collect(root, protocol, registered, registration, nominal, models):
         else:
             toys[unit] = result
             numerical &= result['summary']['valid_fits'] == 500
+    thresholds = threshold_diagnostics(replicas, nominal, models)
     summary = dict(schema_version='h4l-draft-v2-validation-report-v1',
         registration_id=registration['registration_id'], source_kind=registration['source']['source_kind'],
         execution_status='complete' if len(terminals) == len(units()) else 'incomplete',
         numerical_status='complete' if numerical else 'incomplete', qualification=QUALIFICATION,
         completed_units=len(terminals), planned_units=len(units()), evidence=evidence,
-        contrasts=summarize_bootstrap(replicas, nominal), thresholds=threshold_diagnostics(replicas, nominal, models),
+        contrasts=summarize_bootstrap(replicas, nominal), thresholds=thresholds,
+        evidence_scope=evidence_scope(evidence, replicas, toys, thresholds),
+        sample_support=sample_support(nominal, replicas, evidence),
         model_self={u: {k: v for k, v in value.items() if k != 'results'} for u, value in toys.items()},
         interpretation='Exploratory posthoc fixed-checkpoint diagnostics. Bootstrap percentile ranges are conditional '
             'on selected networks. Model-self coverage uses each nominal model as its own truth; '
@@ -75,6 +79,8 @@ def export(run, summary):
             writer.writerow(['source_kind', *columns])
             writer.writerows([[summary['source_kind'], *r] for r in rows])
         run.register_file(name)
+    for name, columns, rows in csv_tables(summary['sample_support']):
+        write_csv(name, columns, rows)
     write_csv('bootstrap-contrasts.csv', ['mode', 'removed_group', 'replica', 'median_difference'],
         [[r['mode'], r['removed_group'], i, v] for r in summary['contrasts'] for i, v in enumerate(r['values'])])
     write_csv('thresholds.csv', ['mode', 'model', 'replica', 'nominal_threshold', 'threshold',
@@ -208,7 +214,8 @@ def export(run, summary):
             'paired-category-yield-changes.csv subtracts fixed from refitted cuts on the same evaluation draw. '
             'category-yield-changes.csv instead subtracts nominal yields and also includes evaluation resampling. '
             'Threshold-estimation failures and downstream support failures have separate counts. '
-            'Formal threshold summaries require all 200 estimates; histograms label available estimates.\n')
+            'Formal threshold summaries require all 200 estimates; histograms label available estimates.\n\n'
+            + evidence_markdown(summary['evidence_scope'], summary['sample_support']))
     (run.path/'report.md').write_text(text, encoding='utf-8')
     run.register_file('report.md')
 

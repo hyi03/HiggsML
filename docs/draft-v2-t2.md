@@ -14,6 +14,26 @@ Results remain `exploratory_posthoc`, `independent=false`,
 `selection_aware_coverage=unvalidated`, and `primary_claim_eligible=false`.
 The scope remains `synthetic_software_defaults_not_physics_validation`.
 
+## Current execution priority
+
+Retain this implementation as an optional extension. For the current limited
+background-MC study, first complete the [core supplement](draft-v2-validation.md):
+paired bootstrap, fixed-model threshold diagnostics and model-self Toys.
+Standalone assessment Toys are deferred. Full T2 execution is also deferred
+until its repeated-calibration question warrants dividing the evaluation parent.
+Neither the availability of the code nor a successful software test establishes
+that the two MC parents satisfy support or supply independent confirmation.
+
+When T2 is needed and parent access is authorized, explicitly use
+`--through prepare` to inspect the actual fixed-fold support before choosing
+the full fitting stage. `--plan-only` reads metadata and cannot supply this
+support check. No estimate formed by halving nominal effective counts is a
+preflight result. Keep the frozen support gates and the original 640-unit
+budget even when support fails; do not repartition or select favorable cells.
+An already registered T2 run remains incomplete until its own terminal matrix
+is complete. The core supplement's completion says nothing about that matrix.
+The wrapper defaults and direct CLI behavior are unchanged.
+
 ## Estimand and fixed budget
 
 | Component | Rule |

@@ -10,6 +10,7 @@ from higgsml.draft_v2 import validation_reporting as reporting
 from higgsml.draft_v2.protocol import load_protocol, DEFAULT_PROTOCOL
 from higgsml.draft_v2.validation_protocol import KEYS, MODES, units
 from higgsml.draft_v2.validation_thresholds import threshold_diagnostics, yield_difference
+from higgsml.draft_v2.validation_evidence import evidence_scope, sample_support
 
 
 def result(background, signal, status='valid'):
@@ -126,6 +127,8 @@ def test_threshold_csv_and_figures_include_missing_pairs(tmp_path):
         interpretation='Synthetic reporting fixture only; no statistical qualification.',
         contrasts=reporting.summarize_bootstrap({}, nominal), thresholds=threshold_diagnostics(replicas, nominal, models),
         model_self={}, evidence={unit: {'status': 'missing'} for unit in units()})
+    summary['sample_support'] = sample_support(nominal, {}, summary['evidence'])
+    summary['evidence_scope'] = evidence_scope(summary['evidence'], {}, {}, summary['thresholds'])
     class Export:
         path = tmp_path
         def register_file(self, name):

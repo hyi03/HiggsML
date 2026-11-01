@@ -12,6 +12,27 @@ Software tests use labelled synthetic data. Completing this workflow does not
 establish physical applicability or independent numerical validation, and is
 not an ATLAS/CMS result, Higgs discovery or physics measurement.
 
+## Recommended execution priority
+
+For the current finite-background-MC study, prioritize the existing core
+supplement: paired event-MC bootstrap, its fixed-model threshold diagnostics,
+and model-self Toys. This evaluates width-difference stability, sensitivity to
+threshold estimation and interval behavior under each model's own truth while
+retaining the complete evaluation parent for template construction.
+
+Standalone assessment Toys are deferred; they need a separately specified
+mother population and independence scope. The implemented [T2 extension](draft-v2-t2.md)
+remains optional and its full execution is deferred until a concrete
+repeated-calibration coverage question and actual parent-support preflight
+justify that work. More Toys do not increase the effective MC sample size.
+These priorities do not change training, roles, support gates or registered
+budgets, and do not establish independent-reference coverage.
+
+The core wrapper ends at its own report and never starts assessment or T2.
+Completing the core supplement does not require those optional studies. A T2
+run already registered under its separate protocol still needs all of its own
+units for complete execution; deferral never turns missing units into success.
+
 ## Fixed design
 
 The independent contract is
@@ -98,6 +119,54 @@ Bias and mean width describe valid fits only. Failure, missing-upper-crossing,
 and boundary-hit rates retain the planned denominator. Missing estimates are
 not counted as boundary hits, and their failure counts remain visible. Coverage
 under a model's own truth does not validate that model for signed MC or physics.
+
+## Evidence scope and sample support reports
+
+The report-only `h4l-draft-v2-evidence-scope-v1` extension adds `evidence_scope`
+to `summary.json` and a readable scope table to `report.md`. Each included
+component records completed/missing/corrupt units and valid/planned results,
+keeping execution and numerical completeness separate. Threshold validity
+counts available estimates even if later support or interval fitting fails.
+Both bootstrap modes share execution units and the inclusive reference;
+their displayed result counts must not be added as extra fits.
+
+Assessment is labelled `not_evaluated_in_this_workflow`, with independent
+reference coverage `unvalidated`. T2 is labelled `not_included_in_this_report`
+and `not_assessed_by_this_report`. The report neither scans sibling T2 runs nor
+claims they have or have not executed. No optional result is implicitly imported.
+Qualification remains unchanged even if every included result is valid.
+
+The `h4l-draft-v2-sample-support-v1` extension adds `sample_support` to the same
+JSON report, nominal and bootstrap tables to Markdown, and three CSV files:
+
+- `nominal-support.csv`: bound nominal process/category/mass-bin physical-group
+  counts, signed yields, variances, signed effective counts, cancellation ratios
+  and recorded bin statuses. Missing values remain blank and negative yields
+  remain signed. A physical group occupying several bins can be counted in
+  several rows; row counts are not a distinct-population total.
+- `bootstrap-support-summary.csv`: for each mode and candidate, completed,
+  missing and corrupt replicas; valid intervals; threshold failures; support
+  assessed/passed/failed/unavailable counts; downstream interval failures;
+  available template counts; and observed minimum effective count and rho.
+- `bootstrap-support-failures.csv`: replica-level failure phases and stored
+  process/bin reason codes where available. Missing or corrupt units are
+  execution gaps, not fabricated support failures. Multiple bins may fail in
+  one replica; JSON reason counts count each distinct reason once per replica,
+  so different reason counts are not necessarily mutually exclusive.
+
+Formal failure rates require complete terminals; the support failure rate also
+requires known support outcomes for every replica with an estimated threshold.
+Rates retain all 200 planned replicas in their denominator, with threshold
+failures reported separately. Observed minima include unsupported templates
+and remain descriptive when the run is incomplete. No diagnostic estimates
+two-fold support from nominal moments: actual T2 support requires its own
+authorized preflight. Its evaluation parents also use a different normalization.
+
+This extension consumes only validated source and unit aggregates, with no
+event reads, scoring, resampling or fitting. `report --continue` preserves old
+reports and publishes a `report-resume-*` artifact when these fields are absent
+or the inventory has changed. It does not modify unit artifacts, random streams,
+protocols, budgets or source runs. No controlled-MC report refresh is automatic.
 
 ## Commands and access
 
@@ -289,3 +358,22 @@ Compileall, pip check, LF, local links and diff-whitespace checks also passed.
 The full-suite count above belongs to the preceding implementation batch; the
 full suite was not repeated for this aggregate-report extension. No new event
 access, controlled-MC execution, original threshold update or paper edit occurred.
+
+### Evidence-scope and support-report verification (2026-11-01)
+
+The reporting extension passed 11 focused evidence/threshold tests, followed by
+39 related tests across evidence, supplemental validation, threshold diagnostics
+and T2 (301.23 seconds in the Python 3.12 `pytorch` environment on macOS Intel).
+Compilation, dependency consistency, LF, local Markdown links and diff-whitespace
+checks also passed. The full repository suite was not repeated for this
+report-only change; earlier full-suite counts retain their original scope.
+
+Checks cover exact copying of signed nominal moments, unavailable values,
+threshold/support/interval failure separation, complete-budget denominators,
+missing versus corrupt units, per-replica reason deduplication, evidence-scope
+labels, CSV/Markdown exports and immutable report migration. The integration
+test forbids event payload access, scoring and fitting while refreshing a
+report, preserves its original bytes and validates reuse of the new report.
+Existing T2 incomplete-unit and recovery tests remain passing. No protocol,
+budget, numerical kernel, wrapper default, source run or paper asset was changed;
+no controlled-MC supplemental execution or report refresh was performed.

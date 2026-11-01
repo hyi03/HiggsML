@@ -18,6 +18,10 @@ adds paired event bootstrap, fixed-checkpoint threshold diagnostics and
 model-self Toys without changing nominal execution.
 A separate [nested T2 workflow](docs/draft-v2-t2.md) adds repeated validation
 recalibration with two fixed evaluation folds and a 64,000-fit budget.
+The current priority is the core supplement above; standalone assessment Toys
+and full T2 execution are deferred. T2 remains available for a separately
+justified coverage study with actual parent-support preflight. Core completion
+does not establish independent-reference coverage or complete a separate T2 run.
 
 - The only active code is the H4l package under `src/higgsml`; legacy15 preprocessing, the old training/testing workflow, and XGBoost implementations have been removed.
 - The default study uses the controlled `atlas2020_4lep` MC sample pair, with the protocol-defined `2e2mu` final state and a mass range of 105–140 GeV.

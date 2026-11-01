@@ -280,7 +280,22 @@ def test_model_self_no_payload_and_full_budget_terminal(source, tmp_path, monkey
     changed['results'].pop()
     with pytest.raises(ResearchError, match='budget'):
         execution.validate_result(changed, registration, 'model-self-inclusive-mu0')
-    report = reporting.report(source, root, EXPECTED)
+    # A report extension publishes a new aggregate, preserving the old report.
+    source_bundle = registry.load_source(source)
+    old_summary, ids = reporting.collect(root, EXPECTED, registered, registration,
+                                         source_bundle['nominal'], source_bundle['models'])
+    old_summary.pop('evidence_scope')
+    old_summary.pop('sample_support')
+    with registry.new_run(root, 'report', 'report', EXPECTED, [registered]) as old:
+        old.write_json('binding.json', dict(registration_id=registration['registration_id'], terminal_artifacts=ids))
+        old.write_json('summary.json', old_summary)
+    old_bytes = (root/'report/summary.json').read_bytes()
+    def no_inference(*args, **kwargs):
+        raise AssertionError('Reporting must not score or fit')
+    monkeypatch.setattr(stats.training, 'predict', no_inference)
+    monkeypatch.setattr(stats, 'profile_interval', no_inference)
+    report = reporting.report(source, root, EXPECTED, continuation=True)
+    assert report.path.name.startswith('report-resume-') and (root/'report/summary.json').read_bytes() == old_bytes
     summary = report.read_json('summary.json')
     assert summary['completed_units'] == 1 and summary['execution_status'] == 'incomplete'
     import csv
@@ -290,6 +305,17 @@ def test_model_self_no_payload_and_full_budget_terminal(source, tmp_path, monkey
     assert all(r['budget'] == '500' for r in rows)
     assert all(r['percentile_16_84'] is None for r in summary['contrasts'])
     assert summary['qualification']['selection_aware_coverage'] == 'unvalidated'
+    assert summary['evidence_scope']['covered']['model-self']['completed_units'] == 1
+    assert summary['evidence_scope']['covered']['model-self']['valid_results'] == 0
+    assert summary['evidence_scope']['assessment']['independent_reference_coverage'] == 'unvalidated'
+    assert summary['evidence_scope']['t2']['execution_status'] == 'not_assessed_by_this_report'
+    assert len(summary['sample_support']['nominal']) == 62
+    assert all(row['missing_replicas'] == 200 for row in summary['sample_support']['bootstrap'])
+    with report.file('nominal-support.csv').open() as stream:
+        support_rows = list(csv.DictReader(stream))
+    assert len(support_rows) == 62 and all(row['source_kind'] == 'synthetic' for row in support_rows)
+    assert report.file('bootstrap-support-summary.csv').is_file()
+    assert report.file('bootstrap-support-failures.csv').is_file()
     assert reporting.report(source, root, EXPECTED, continuation=True).manifest == report.manifest
 
 
