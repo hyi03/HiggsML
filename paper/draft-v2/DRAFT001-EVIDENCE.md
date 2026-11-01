@@ -50,8 +50,13 @@ width was checked against the result interval, and all twelve reduced-minus-ABCD
 differences and their four medians were recomputed from unrounded widths.
 `draft001-spectra.tex` quotes signed yields, correlated retention errors and mass
 fractions from the bound report aggregates. The two spectrum PDFs are byte-for-byte
-copies in the ignored `figures/draft001/` directory. Full before/after
+copies in `figures/draft001/`, now tracked as publication assets. Full before/after
 and normalized-shape covariance remains in the immutable report's `spectra.json`.
+
+On 1 November 2026, both PDFs were copied from the bound report after rechecking
+their manifest sizes and hashes. An export containing only Git-index files,
+without `runs/`, compiled both Chinese reports successfully (12 and 11 pages),
+with no LaTeX warnings or overfull/underfull boxes.
 
 This manuscript update did not read event payloads, score models, change thresholds,
 train, fit intervals or rerun scientific stages. Numerical validity is distinct
@@ -59,7 +64,7 @@ from calibrated coverage and independent physical applicability.
 
 ## Build
 
-From `paper/draft-v2/`, after preserving the verified figure copies:
+From `paper/draft-v2/`, using the tracked figure copies:
 
 ```sh
 latexmk -pdf -interaction=nonstopmode -halt-on-error -outdir=.build main.tex
@@ -67,7 +72,7 @@ latexmk -pdf -interaction=nonstopmode -halt-on-error -outdir=.build main.tex
 
 Terminal output is `.build/main.pdf`, an ignored build output. The editor
 maintains its own PDF preview. Compilation only reads TeX sources and the two copied
-PDF figures, with no event or run access. A fresh environment needs the verified
+PDF figures, with no event or run access. A clean checkout includes the verified
 figure assets; do not rerun MC analysis to compile the manuscript.
 The pre-update main source, workflow and README are preserved locally under
 `var/paper-evidence/draft001-manuscript-before-update/`.

@@ -86,9 +86,11 @@ Choose the corresponding `.tex` file explicitly as the editor's build target.
 - [DRAFT001-EVIDENCE.md](DRAFT001-EVIDENCE.md): report identities, hashes and checks.
 - `figures/draft001/`: two verified PDF figures copied from the immutable report.
 
-The figures are inputs to compilation, not disposable build-cache files. They
-remain ignored and must be preserved with the local manuscript. Their originals
-remain in `runs/h4l-draft-v2-draft001/report/`.
+The two figure PDFs are tracked publication assets and are included in a clean
+checkout. They are copied byte-for-byte from `runs/h4l-draft-v2-draft001/report/`
+after checking their sizes and SHA-256 hashes against the bound manifest and
+the evidence index. Ordinary compilation uses the tracked copies and does not
+require `runs/`. Other generated figures and build outputs remain ignored.
 
 ## Compile
 

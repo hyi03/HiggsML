@@ -9,7 +9,11 @@ main.pdf
 *.out
 *.synctex.gz
 *.toc
-figures/
+figures/*
+!figures/draft001/
+figures/draft001/*
+!figures/draft001/mass-yields.pdf
+!figures/draft001/mass-shapes.pdf
 *Notes.bib
 project-report.pdf
 project-report-cn.pdf
