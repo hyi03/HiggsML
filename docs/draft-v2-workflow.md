@@ -62,8 +62,12 @@ aggregating events; it has no trained empty model or training-seed spread.
 The report contains all fifteen widths, one shared reference, and the twelve
 within-seed reduced-minus-ABCD differences. Medians require all three relevant
 seeds, and are formed after computing the differences. Seed variation is not a
-confidence interval. Shapley, full subset searches, bootstrap, Toys, T2,
-adversaries and CDF transformations are outside this implementation.
+confidence interval. The nominal workflow does not run bootstrap or Toys; the
+separately registered [supplemental evaluation](draft-v2-validation.md) adds
+conditional event bootstrap and model-self diagnostics. Shapley, full subset
+searches, adversaries and CDF transformations remain outside this workflow.
+The separate [nested T2 extension](draft-v2-t2.md) evaluates repeated calibration
+with fixed evaluation halves; it is not started by the nominal wrapper.
 
 ## Commands and access
 

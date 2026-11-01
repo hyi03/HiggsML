@@ -1,0 +1,62 @@
+{
+  "schema_version": "h4l-draft-v2-t2-v1",
+  "dataset": "atlas2020_4lep",
+  "source_protocol": "h4l-draft-v2-all-mc-602020-v1",
+  "outer": {
+    "count": 20,
+    "seed": 42002,
+    "sampling": "uniform_multinomial_validation_physical_groups",
+    "shared_across_candidates_and_folds": true
+  },
+  "inner": {
+    "count": 100,
+    "seed": 42003,
+    "injections": [
+      1
+    ],
+    "confidence_level": 0.68,
+    "auxiliary_generation": "regenerated_from_fit_template_nominal_nuisance",
+    "main_generation": "poisson_from_other_evaluation_fold",
+    "coupling": "independent_candidate_fold_toy_streams"
+  },
+  "folds": {
+    "count": 2,
+    "hash": "sha256:h4l-draft-v2-t2-eval-fold-v1:group:big64:mod2",
+    "probability": 0.5,
+    "normalization": "physical_weight/(0.2*0.5)",
+    "fixed_template_and_mother_parents": true,
+    "disjoint_physical_groups": true
+  },
+  "inference": {
+    "layer": "T1",
+    "mu_bounds": [
+      0.0,
+      20.0
+    ],
+    "pyhf_version": "0.7.6"
+  },
+  "threshold": "validation-background-absolute-weight-empirical-median-v1",
+  "fixed": [
+    "networks",
+    "checkpoints",
+    "training_roles",
+    "evaluation_fold_membership",
+    "parent_events"
+  ],
+  "rng": "sha256-first64-pcg64-t2-unit-index-v1",
+  "unit": "candidate_x_template_fold_x_outer_replica_all_100_inner_toys",
+  "budget": {
+    "units": 640,
+    "planned_fits": 64000
+  },
+  "failures": "preserve_all_planned_inner_slots_no_replacement_or_support_rescue",
+  "aggregation": "per_outer_then_average_two_folds_then_summarize_20_outer_clusters",
+  "uncertainty_scope": "recalibration_conditional_on_fixed_networks_and_fixed_crossfit_parents",
+  "protocol_scope": "synthetic_software_defaults_not_physics_validation",
+  "qualification": {
+    "status": "exploratory_posthoc",
+    "independent": false,
+    "selection_aware_coverage": "unvalidated",
+    "primary_claim_eligible": false
+  }
+}

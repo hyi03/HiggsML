@@ -8,7 +8,7 @@ from higgsml.errors import ResearchError, ResearchStateError
 
 HISTORY_DIRECTORIES = ('.research-claims', '.h4l-mass-off-v2-claims',
                        '.h4l-mass-off-v3-claims', '.h4l-population-access',
-                       '.h4l-draft-v2-claims')
+                       '.h4l-draft-v2-claims', '.h4l-draft-v2-validation-claims', '.h4l-draft-v2-t2-claims')
 
 
 def _safe_path(path):

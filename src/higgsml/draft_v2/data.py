@@ -134,8 +134,11 @@ def write_events(frame, path, protocol):
     return population_digest(groups, protocol['dataset'])
 
 
-def read_events(path, protocol, *, evaluation=False, freeze=None, prepared_id=None):
-    if evaluation and (not isinstance(freeze, dict) or freeze.get('status') != 'frozen'
+def read_events(path, protocol, *, evaluation=False, freeze=None, prepared_id=None, roles=None):
+    if roles is not None and (not set(roles) or not set(roles) <= {"validation", "evaluation"}):
+        raise ResearchError("Explicit reader roles must be validation/evaluation")
+    evaluation_access = evaluation or (roles is not None and "evaluation" in roles)
+    if evaluation_access and (not isinstance(freeze, dict) or freeze.get('status') != 'frozen'
             or freeze.get('protocol_sha256') != digest_json(protocol)
             or freeze.get('prepared_artifact_id') != prepared_id
             or freeze.get('freeze_id') != digest_json({k: v for k, v in freeze.items() if k != 'freeze_id'})):
@@ -156,7 +159,8 @@ def read_events(path, protocol, *, evaluation=False, freeze=None, prepared_id=No
                         or identity['dataset'] != protocol['dataset'] or identity['split'] != 'exploratory'):
                     raise ResearchError("Invalid role/population before payload access")
                 identities.append(identity)
-                if (identity['role'] == 'evaluation') != evaluation:
+                if (identity['role'] not in roles if roles is not None else
+                        (identity['role'] == 'evaluation') != evaluation):
                     continue  # Deliberately before JSON payload decoding.
                 value = json.loads(payload)
                 if not isinstance(value, dict) or set(value) & set(IDENTITY):

@@ -1,0 +1,24 @@
+{
+  "schema_version": "h4l-draft-v2-validation-access-v1",
+  "status": "pending",
+  "decision": "pending",
+  "dataset": "atlas2020_4lep",
+  "source_population": "all_mc",
+  "independent": false,
+  "source_kind": "synthetic",
+  "budget": {
+    "paired_replicas": 200,
+    "modes": [
+      "fixed-threshold",
+      "refitted-threshold"
+    ]
+  },
+  "prepared_artifact_id": "0000000000000000000000000000000000000000000000000000000000000000",
+  "population_id": "0000000000000000000000000000000000000000000000000000000000000000",
+  "source_freeze_id": "0000000000000000000000000000000000000000000000000000000000000000",
+  "registration_id": "0000000000000000000000000000000000000000000000000000000000000000",
+  "protocol_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "history_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "reviewed_by": "",
+  "reviewed_at": ""
+}

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Fixed draft-v2 supplemental validation protocol",
+  "const": {
+    "schema_version": "h4l-draft-v2-validation-v1",
+    "dataset": "atlas2020_4lep",
+    "source_protocol": "h4l-draft-v2-all-mc-602020-v1",
+    "bootstrap": {
+      "replicas": 200,
+      "seed": 42001,
+      "modes": [
+        "fixed-threshold",
+        "refitted-threshold"
+      ],
+      "sampling": "multinomial_uniform_physical_groups_within_role",
+      "paired_across_models_and_seeds": true,
+      "evaluation_draw_shared_across_modes": true
+    },
+    "toys": {
+      "count": 500,
+      "seed": 42,
+      "injections": [
+        0,
+        1,
+        2
+      ],
+      "auxiliary_generation": "regenerated",
+      "coupling": "independent_candidates"
+    },
+    "inference": {
+      "layer": "T1",
+      "confidence_level": 0.68,
+      "mu_bounds": [
+        0.0,
+        20.0
+      ],
+      "pyhf_version": "0.7.6"
+    },
+    "rng": "sha256-first64-pcg64-unit-index-v1",
+    "percentiles": [
+      0.16,
+      0.84,
+      0.025,
+      0.975
+    ],
+    "quantile_method": "linear",
+    "failure_policy": "retain_all_no_replacement_complete_estimands_only",
+    "uncertainty_scope": "fixed_selected_checkpoints_not_retraining_or_selection_coverage",
+    "protocol_scope": "synthetic_software_defaults_not_physics_validation",
+    "qualification": {
+      "status": "exploratory_posthoc",
+      "independent": false,
+      "selection_aware_coverage": "unvalidated",
+      "primary_claim_eligible": false
+    }
+  }
+}

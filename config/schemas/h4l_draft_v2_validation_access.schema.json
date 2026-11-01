@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "decision",
+    "dataset",
+    "source_population",
+    "independent",
+    "source_kind",
+    "budget",
+    "prepared_artifact_id",
+    "population_id",
+    "source_freeze_id",
+    "registration_id",
+    "protocol_sha256",
+    "history_sha256",
+    "reviewed_by",
+    "reviewed_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "h4l-draft-v2-validation-access-v1"
+    },
+    "status": {
+      "enum": [
+        "pending",
+        "approved"
+      ]
+    },
+    "decision": {
+      "enum": [
+        "pending",
+        "allow_exploratory_supplement"
+      ]
+    },
+    "dataset": {
+      "const": "atlas2020_4lep"
+    },
+    "source_population": {
+      "const": "all_mc"
+    },
+    "independent": {
+      "const": false
+    },
+    "source_kind": {
+      "enum": [
+        "synthetic",
+        "controlled_mc"
+      ]
+    },
+    "budget": {
+      "const": {
+        "paired_replicas": 200,
+        "modes": [
+          "fixed-threshold",
+          "refitted-threshold"
+        ]
+      }
+    },
+    "prepared_artifact_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "population_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "source_freeze_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "registration_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "protocol_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "history_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "reviewed_by": {
+      "type": "string"
+    },
+    "reviewed_at": {
+      "type": "string"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "approved"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "decision": {
+            "const": "allow_exploratory_supplement"
+          },
+          "reviewed_by": {
+            "pattern": "\\S"
+          },
+          "reviewed_at": {
+            "pattern": "\\S"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -98,6 +98,8 @@ scientific contract, confirmation registration or assessment clearance is create
 
 ## Sources of truth
 
+- [Draft-v2 supplemental evaluation](draft-v2-validation.md): separate fixed-budget bootstrap, threshold diagnostics and model-self Toys.
+- [Draft-v2 nested T2](draft-v2-t2.md): separately registered two-fold evaluation of repeated calibration, conditional on fixed networks and MC parents.
 - [Core H4l protocol](../config/protocols/h4l_protocol.json): base scientific parameters, roles, training and inference budgets.
 - [Joint-support method](../config/protocols/h4l_off_joint_support_v1.json): the separately bound threshold selector and explicit single mass bin used by test05.
 - [Off-only definition](../config/protocols/feature_attribution_mass_off.json): candidate family, estimands and budgets; execution requires a bound registration artifact.
