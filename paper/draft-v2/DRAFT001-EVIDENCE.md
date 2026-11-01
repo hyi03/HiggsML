@@ -153,3 +153,40 @@ checked unchanged. The updated last two pages were visually inspected.
 The local evidence folder contains source and page comparisons. No event
 payload was opened and no training, scoring, Toy generation or interval fitting
 was performed for this document update.
+
+## Chinese report restructuring — 1 November 2026
+
+The spectrum-centered rewrite keeps `project-report-cn.tex`; the separate
+`project-report-B-cn.tex` presents the same evidence through three
+questions about selection, feature-group deletion, and statistical robustness.
+The separate report was subsequently renamed to `project-report-B-cn` and its
+question-form headings and overview row labels were changed to declarative wording.
+The earlier Chapter 7 references above describe the previous layout. Its interval
+and supplemental results now appear in Appendix C of the spectrum report and
+Sections 4–5 of the question-driven report. No source run or qualification changed.
+
+The original source and PDF were preserved in
+`var/paper-evidence/report-structure-20261101/`. All seven retained table bodies
+(population, selection, features, evaluation groups, yields, mass-region fractions,
+and nominal widths) match the pre-restructure source exactly. The progress-navigation
+table was removed. The width table's caption now explicitly distinguishes
+three-seed medians from the single shared inclusive-count reference.
+The two figure copies still match the hashes recorded above. These checks compare
+document assets; they do not constitute a fresh audit of scientific run payloads.
+
+The revision separates network learning, validation-AUC checkpoint selection,
+validation-background threshold selection, frozen evaluation, and signed-yield
+accounting. Both reports retain the physical and statistical limitations,
+including implicit mass information, one-bin/two-category inference, conditional
+bootstrap ranges, model-self undercoverage and non-independence. Detailed
+reconstruction, source comparisons and normalization remain available in appendices.
+
+Both reports compile with the existing LuaLaTeX/latexmk workflow on macOS using
+TeX Live 2026. The spectrum-centered report has 12 A4 pages; the question-driven
+report has 11. Final logs contain no LaTeX warnings, undefined references,
+overfull or underfull boxes. All final pages were rendered at 120 dpi and reviewed
+for layout, with detailed inspection of the rewritten method and figure pages.
+Labels, local graphic paths, preserved table bodies, quoted statistical values,
+LF line endings and whitespace were checked. The convenience PDFs match the
+compiled outputs. No event payload, scientific execution, new external-source
+verification, or software regression suite was involved in this document-only edit.

@@ -43,21 +43,39 @@ descriptive status of the mass-region fractions. No scientific stage was rerun.
 
 ## Chinese project report
 
-`project-report-cn.tex` was revised on 1 November 2026 against the comments in
-`var/review/project-report_annotated_v3.pdf`. The revision keeps the report at
-10 pages, combines selection rules with source comparisons, explains feature
-reconstruction and yield normalization, and clarifies training/model selection.
-It preserves the existing numerical results and figures. Sample-specific
-production details and exact release preselection remain explicitly unconfirmed.
-The English report is a separate, earlier version.
-The controlled statistical update adds only Chapter 7 bootstrap/model-self results and provenance, retaining the nominal tables, figures, chapter starts and ten-page layout.
+The Chinese reports were reorganized on 1 November 2026 after the annotated-PDF
+revision and the limited statistical update. They use two reading routes:
+
+- [project-report-cn.tex](project-report-cn.tex) keeps the original filename and
+  follows the spectrum-centered structure: scope, samples and selection, frozen
+  network method, event counts and yields, mass spectra, and conclusions.
+  Interval results and statistical diagnostics are retained in an appendix;
+  the main conclusions still state the non-independence and undercoverage limits.
+- [project-report-B-cn.tex](project-report-B-cn.tex) is a separate
+  question-driven report: what the network selects, how feature-group deletion
+  changes nominal intervals, and how robust those differences are. Each question
+  connects the necessary method to its evidence and interpretation limits.
+
+Both versions distinguish training, AUC checkpoint selection, validation-background
+threshold selection, frozen evaluation, and signed-yield accounting. The existing
+numerical table bodies and two figure assets are preserved. Detailed branch,
+reconstruction, selection-source, normalization, and training information remains
+in the appendices. Sample production details and exact release preselection are
+still unconfirmed. The English report and REVTeX manuscript are separate versions.
+The earlier ten-page layout is superseded; chapter and appendix references now
+follow each report's structure. The comparison that motivated these changes is
+in [structure-options-cn.md](structure-options-cn.md).
 
 ```sh
 latexmk -lualatex -interaction=nonstopmode -halt-on-error -outdir=.build/project-report-cn project-report-cn.tex
 cp .build/project-report-cn/project-report-cn.pdf project-report-cn.pdf
+
+latexmk -lualatex -interaction=nonstopmode -halt-on-error -outdir=.build/project-report-B-cn project-report-B-cn.tex
+cp .build/project-report-B-cn/project-report-B-cn.pdf project-report-B-cn.pdf
 ```
 
-The Chinese PDF and build directory remain ignored; no scientific run is needed.
+Both Chinese PDFs and build directories remain ignored; no scientific run is needed.
+Choose the corresponding `.tex` file explicitly as the editor's build target.
 
 ## Current files
 
