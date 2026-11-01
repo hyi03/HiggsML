@@ -41,6 +41,23 @@ remain explicitly unconfirmed. The report now states the model-self Asimov/T1
 interval construction, the exact spectrum support-flag criteria and the
 descriptive status of the mass-region fractions. No scientific stage was rerun.
 
+## Chinese project report
+
+`project-report-cn.tex` was revised on 1 November 2026 against the comments in
+`var/review/project-report_annotated_v3.pdf`. The revision keeps the report at
+10 pages, combines selection rules with source comparisons, explains feature
+reconstruction and yield normalization, and clarifies training/model selection.
+It preserves the existing numerical results and figures. Sample-specific
+production details and exact release preselection remain explicitly unconfirmed.
+The English report is a separate, earlier version.
+
+```sh
+latexmk -lualatex -interaction=nonstopmode -halt-on-error -outdir=.build/project-report-cn project-report-cn.tex
+cp .build/project-report-cn/project-report-cn.pdf project-report-cn.pdf
+```
+
+The Chinese PDF and build directory remain ignored; no scientific run is needed.
+
 ## Current files
 
 - [main.tex](main.tex): manuscript, abstract, methods, results and references.

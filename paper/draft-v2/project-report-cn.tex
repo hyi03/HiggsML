@@ -11,7 +11,7 @@
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[L]{\small\textcolor{reportblue}{HiggsML | 项目报告}}
-\fancyhead[R]{\small 2026 年 10 月 30 日}
+\fancyhead[R]{\small 2026 年 11 月 1 日}
 \fancyfoot[C]{\thepage}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{6pt}
@@ -56,24 +56,26 @@
 \end{tabularx}
 \end{table}
 
-后文展示两组输入方案在训练随机种子 42 下的比较。A/B/C/D 的具体物理量及组合含义见第二章末，
+后文展示两组输入方案在训练随机种子 42 下的比较。A/B/C/D 的具体物理量及组合含义见第三章，
 网络与分数阈值的确定方法见第四章。
 
 项目还持续研究输入变量组对标称信号强度区间宽度 $W_{68}$ 的影响。质量谱为这一比较提供事件选择方面的解释。
 第 7 章简述已完成的区间结果；本报告重点说明事件选择与质量谱。
 
 \clearpage
-\reportsection{2. 数据与共同物理筛选}
-分析使用 ATLAS 2020 教育用途 13 TeV 数据集中的两份模拟样本\cite{OpenData}：
-信号 DSID 345060（\texttt{ggH125\_ZZ4lep}）和背景 DSID 363490（\texttt{llll}）。
-仅凭背景标签，不能将其认定为纯夸克初态 $ZZ$ 样本。所选末态为 $2e2\mu$，
-产额归一化至 $10\,\mathrm{fb}^{-1}$。
+\reportsection{2. 数据来源与事件结构}
+分析使用 ATLAS 2020 教育用途 13 TeV 集合的两份 MC 样本\cite{OpenData}，产额对应
+$10\,\mathrm{fb}^{-1}$。信号 DSID 345060（\texttt{ggH125\_ZZ4lep}）表示胶子融合产生
+质量设为 $125\gev$ 的希格斯，再经 $H\to ZZ^*\to4\ell$ 衰变。背景 DSID 363490
+（\texttt{llll}）为四轻子样本；具体初态及 $Z/\gamma^*$ 贡献尚缺 DSID 生产说明，不能将其写成纯夸克初态 $ZZ$。
+本项目另选 $2e2\mu$ 末态，这不是对生成样本末态范围的声明。
 
-\textbf{来源与已有预筛选。} 这两份 MC 文件来自 ATLAS 发布的教育样本；信号文件标记为
-125 GeV 的胶子融合希格斯样本，背景为四轻子样本。CERN 记录\cite{OpenData} 的方法说明指出，
-该集合在发布前已执行较宽松的对象选择及事件预筛选，保留至少四个轻子（电子或缪子）的事件。
-因此，公开 ROOT 条目并非全部未经筛选的生成事件；本项目在此基础上再执行表~\ref{tab:cuts} 的共同筛选。
-具体生成器、探测器模拟链和生产级过滤效率，仍需单独的样本生产证据核实。
+\textbf{模拟与发布。} 一般模拟链为：设定物理过程并生成硬散射，模拟粒子簇射与强子化，
+模拟探测器响应，再重建电子、缪子等对象，最后预筛选并发布 ROOT 文件。
+这里使用公开的轻子对象字段构造候选，不使用生成器真值四动量；后文“重建”指本项目的四动量组合。
+两份样本的生成器版本、簇射和探测器模拟配置仍待生产记录核实，不能沿用参考论文的配置。
+CERN 记录只确认发布前施加宽松对象和事件选择、保留至少四个电子或缪子；其具体动量、接受度及品质阈值尚未确认。
+故本项目研究的是已预筛选的总体，再施加下页共同筛选，不能由下表推算相对全部生成事件的接受效率。
 
 \begin{table}[h!]
 \caption{公开输入与本项目共同筛选后的数量。首行为 ROOT 条目数；其后为 draft001 的物理事件组数，
@@ -96,96 +98,103 @@
 
 上述计数描述公开样本到项目基线的变化，不包含发布前被滤掉的事件，也不构成每条筛选条件的逐步计数。
 
-\textbf{事件结构。} 两份文件的 \texttt{mini} 树具有相同结构，每个条目对应一个事件。
-下列为输入配置读取的 19 个分支，顺序与 ROOT 文件一致，已通过文件元数据核对。
+\textbf{事件结构。} \texttt{mini} 树的一个 entry 是一条事件记录，branch 是其中一个字段。
+下表列出本项目读取的全部 19 个分支，\emph{不是原始文件的完整分支清单，也不是 19 维网络输入}。
+前七个字段为标量，其余为向量；例如 \texttt{lep\_n=4} 时，各轻子向量均含四个元素，相同下标对应同一轻子。
 
 \begingroup
 \small
-\begin{verbatim}
-Branch                       ROOT type
-runNumber                    int32_t
-eventNumber                  int32_t
-channelNumber                int32_t
-mcWeight                     float
-trigE                        bool
-trigM                        bool
-lep_n                        uint32_t
-lep_trigMatched              std::vector<bool>
-lep_pt                       std::vector<float>
-lep_eta                      std::vector<float>
-lep_phi                      std::vector<float>
-lep_E                        std::vector<float>
-lep_z0                       std::vector<float>
-lep_charge                   std::vector<int32_t>
-lep_type                     std::vector<uint32_t>
-lep_isTightID                std::vector<bool>
-lep_ptcone30                 std::vector<float>
-lep_etcone20                 std::vector<float>
-lep_tracksigd0pvunbiased     std::vector<float>
-\end{verbatim}
+\renewcommand{\arraystretch}{1.13}
+\begin{tabularx}{\linewidth}{@{}p{.62\linewidth}Y@{}}
+\toprule
+读取的分支 & 含义与存储单位 \\
+\midrule
+\texttt{runNumber, eventNumber, channelNumber} & 事件／样本标识（整数） \\
+\texttt{mcWeight; trigE, trigM; lep\_n} & 生成器权重；触发布尔值；轻子数 \\
+\texttt{lep\_pt, lep\_eta, lep\_phi, lep\_E} & $p_T$、$\eta$、$\phi$、能量；动量和能量为 MeV，角度为弧度 \\
+\texttt{lep\_charge, lep\_type} & 电荷和粒子类型（整数向量） \\
+\texttt{lep\_isTightID, lep\_trigMatched} & 鉴别和触发匹配标志（布尔向量） \\
+\texttt{lep\_ptcone30, lep\_etcone20} & 径迹／量能器隔离量（MeV） \\
+\texttt{lep\_z0; lep\_tracksigd0pvunbiased} & $z_0$（mm）；$d_0/\sigma(d_0)$（无量纲） \\
+\bottomrule
+\end{tabularx}
 \endgroup
 
-前七个字段为事件级标量；之后每个向量含 \texttt{lep\_n} 个元素，相同下标对应同一轻子。
-\texttt{*Number} 字段标识事件或样本，\texttt{mcWeight} 为带符号生成器权重。
-动量、能量和隔离量之和以 MeV 存储，需要时换算为 GeV；\texttt{lep\_z0} 的单位为 mm。
-\texttt{lep\_tracksigd0pvunbiased} 存储 $d_0/\sigma(d_0)$。
-
-\textbf{触发条件。} \texttt{trigE} 和 \texttt{trigM} 分别记录电子与缪子触发判定，至少一个须为真。
-此外，至少一个通过品质筛选的轻子须满足 \texttt{lep\_trigMatched=true}，将所选轻子与触发判定关联起来。
-与文献的详细比较见第 3 章。
+运动学、隔离及碰撞参数字段为浮点向量。使用时将 MeV 换算为 GeV；带符号权重转换为预期产额的方法见第四章。
+上述字段映射来自项目输入配置及此前 ROOT 元数据核对；这不补足尚缺的生产链证据。
 
 \clearpage
-\textbf{筛选规则。} 表~\ref{tab:cuts} 先列单分支规则，再列组合条件与重建量条件。
-这一分组便于阅读；实际执行顺序见表后说明。
+\subsection*{2.1 事件筛选及来源}
+表~\ref{tab:cuts} 按实际执行顺序排列。前三段分别检查触发、筛选轻子品质、定义四轻子候选；
+最后限制研究末态。所有模型使用同一基线：“筛选前”已通过本表，“筛选后”仅额外施加冻结的网络阈值。
 
 \begin{table}[h!]
-\caption{神经网络筛选前的共同筛选，变量采用上列 ROOT 分支名。动量与质量阈值的单位均为 GeV。}
+\caption{共同筛选的执行顺序。动量与质量单位为 GeV，分支含义见前页。}
 \label{tab:cuts}
 \small
-\renewcommand{\arraystretch}{1.12}
-\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{.35\linewidth}Y@{}}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabularx}{\linewidth}{@{}p{.23\linewidth}Y@{}}
 \toprule
-输入变量 & 项目实际规则 \\
+步骤 & 实际条件及目的 \\
 \midrule
-\multicolumn{2}{@{}l}{\textbf{单分支规则}} \\
-\texttt{lep\_trigMatched} & 四个通过品质筛选的轻子中，至少一个与触发匹配。 \\
-\texttt{lep\_pt} & 四个通过品质筛选的轻子按 $p_T$ 降序排列：
-$p_{T,1}\geq20$、$p_{T,2}\geq15$、$p_{T,3}\geq10$、$p_{T,4}\geq7$。 \\
-\texttt{lep\_type} & 保留电子和缪子：$|\texttt{lep\_type}|\in\{11,13\}$。 \\
-\texttt{lep\_isTightID} & 保留严格鉴别（tight-ID）标志为真的轻子。 \\
+\textbf{事件触发} & \texttt{trigE} 或 \texttt{trigM} 为真，要求事件通过电子或缪子触发。 \\
 \midrule
-\multicolumn{2}{@{}l}{\textbf{组合条件与重建量条件}} \\
-\texttt{trigE}, \texttt{trigM} & 要求 \texttt{trigE=true} 或 \texttt{trigM=true}。 \\
-\texttt{lep\_ptcone30}, \texttt{lep\_pt} & 径迹隔离：每个轻子须满足 $p_T>0$ 且
-\texttt{lep\_ptcone30}/\texttt{lep\_pt}$<0.3$。 \\
-\texttt{lep\_etcone20}, \texttt{lep\_pt} & 量能器隔离：每个轻子须满足 $p_T>0$ 且
-\texttt{lep\_etcone20}/\texttt{lep\_pt}$<0.3$。 \\
-\nolinkurl{lep_tracksigd0pvunbiased}, \texttt{lep\_type} & 横向碰撞参数显著度的绝对值：电子 $<5$，缪子 $<3$。 \\
-\texttt{lep\_z0}, \texttt{lep\_eta} & 纵向碰撞参数条件：
-$|\texttt{lep\_z0}/\cosh(\texttt{lep\_eta})|<0.5$ mm。 \\
-\texttt{lep\_n} 与品质筛选掩码 & 品质筛选后须恰好剩余四个轻子；原始 \texttt{lep\_n} 可以大于四。 \\
-\texttt{lep\_eta}, \texttt{lep\_type} & 四个轻子均须满足接受度条件：电子 $|\eta|<2.47$，缪子 $|\eta|<2.7$。 \\
-\texttt{lep\_charge}, \texttt{lep\_type} & 总电荷为零；恰好两个电子和两个缪子；组成两个互不重叠的同味异号（SFOS）轻子对。 \\
-\texttt{lep\_pt}, \texttt{lep\_eta}, \texttt{lep\_phi}, \texttt{lep\_E}，
-以及 SFOS 配对 & 重建轻子对质量；每个 SFOS 质量均须 $>5$，且
-$50<m_{12}<106$、$12<m_{34}<115$。 \\
-四个轻子的四动量 & 总不变质量满足 $105\leq m_{4\ell}<140$。 \\
+\textbf{轻子品质} & 依次执行以下条件，每步至少保留四个轻子，以筛出符合要求的提示轻子候选： \\
+味道、鉴别 & $|\texttt{lep\_type}|\in\{11,13\}$；\texttt{lep\_isTightID=true}。 \\
+径迹、量能器隔离 & $p_T>0$；依次要求 \texttt{lep\_ptcone30}/\texttt{lep\_pt}$<0.3$、
+\texttt{lep\_etcone20}/\texttt{lep\_pt}$<0.3$，抑制周围活动较多的对象。 \\
+横向、纵向碰撞参数 & $|d_0/\sigma(d_0)|<$ 5（电子）或 3（缪子）；
+$|z_0/\cosh\eta|<0.5$ mm，限制相对主顶点的位移。 \\
+\midrule
+\textbf{四轻子候选} & 以下条件依次定义共同分析总体： \\
+多重数、触发匹配 & 品质筛选后恰好四个轻子；至少一个 \texttt{lep\_trigMatched=true}。
+原始 \texttt{lep\_n} 可以大于四。 \\
+排序动量、接受度 & 按 $p_T$ 降序，依次 $\geq20,15,10,7$；
+电子 $|\eta|<2.47$、缪子 $|\eta|<2.7$，限定运动学及探测器接受范围。 \\
+电荷、配对 & 总电荷为零；存在两个互不重叠的同味异号（SFOS）对，构造 $ZZ^*$ 候选。 \\
+轻子对质量 & 所有 SFOS 质量 $>5$；$50<m_{Z1}<106$、$12<m_{Z2}<115$，排除低质量对并限定候选。 \\
+四轻子质量、末态 & $105\leq m_{4\ell}<140$；随后要求两个电子和两个缪子，限定本项目研究范围。 \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\textbf{质量符号。} 文献~\cite{ATLAS13} 中，$m_{12}$ 为质量最接近标称 $Z$ 质量的 SFOS 对的质量，
-$m_{34}$ 为剩余一对的质量。它们由轻子四动量重建，在代码中分别记为 \texttt{mZ1} 和 \texttt{mZ2}。
-配对编号不表示按 $p_T$ 排序。
+\textbf{物理来源及项目改动。} ATLAS 13 TeV 分析\cite{ATLAS13} 第 5.1--5.2 节支持接受度、
+前三个动量尺度、SFOS 配对、$Z$ 质量窗口及横向碰撞参数条件的物理动机；
+$12\gev$ 的次主导质量下限适用于这里的 $m_{4\ell}<140\gev$。以下差异须保留：
+\begin{itemize}[itemsep=1pt,topsep=2pt]
+\item 文献使用宽松电子鉴别及详细缪子要求；本项目统一使用 tight-ID，工作点等价性未确认。
+\item 本项目动量阈值允许取等号，第四轻子统一 $p_T\geq7$；文献分别要求电子 $E_T>7$、缪子 $p_T>5$，部分缪子另有要求。
+\item 本项目两种隔离均 $<30\%$；文献径迹隔离 $<15\%$，量能器隔离电子 $<20\%$、缪子 $<30\%$，且有额外锥及修正规定。
+\item 本项目仅取恰好四个合格轻子的 $2e2\mu$ 道；未复现文献的多候选、角分离等完整程序。该道的 $Z$ 窗口已比 $5\gev$ 条件更严格。
+\end{itemize}
+官方教育示例\cite{HZZCuts,HZZAnalysis}支持部分多重数、电荷、味道和动量规则，但其隔离函数调用已注释掉。
+Run-1 文献\cite{ATLASRun1}支持触发匹配原则。tight-ID 工作点与 $|z_0\sin\theta|<0.5$ mm 的确切外部依据仍待核实，
+本报告将其列为项目固定选择，不声称复现已发表测量。
 
-\textbf{执行顺序。} 触发检查后，依次执行味道、tight-ID、径迹隔离、量能器隔离和横向、纵向碰撞参数筛选，
-每步至少保留四个轻子。随后要求恰好四个合格轻子，再执行触发匹配、按序 $p_T$、接受度、电荷与配对、
-轻子对质量及研究总体条件。所有模型使用相同基线：“筛选前”指已通过这些条件，
-“筛选后”则仅额外施加已冻结的网络分数阈值。
+\clearpage
+\reportsection{3. 物理量重建与网络输入}
+\textbf{从轻子字段到候选。} 对通过品质筛选的轻子，先将动量和能量换算为 GeV，并按 $p_T$ 降序编号。
+以 $c=1$，由公开的 $(p_T,\eta,\phi,E)$ 构造四动量：
+\[
+ p^\mu=(E,p_x,p_y,p_z),\qquad
+ p_x=p_T\cos\phi,\quad p_y=p_T\sin\phi,\quad p_z=p_T\sinh\eta.
+\]
+电荷和味道确定 SFOS 配对。在本项目 $2e2\mu$ 道中，电子对和缪子对给出唯一的两对；
+质量更接近 $91.1876\gev$ 的一对记为 $Z_1$，另一对记为 $Z_2$。
+文献的 $m_{12},m_{34}$ 即代码中的 \texttt{mZ1,mZ2}；$Z_1$ 不固定指电子对，也不按 $p_T$ 编号。
+相加得到 $P_j=p_{j^-}+p_{j^+}$、$Q=P_1+P_2$，再计算
+\[
+ m_{Zj}=\sqrt{P_j^2},\qquad m_{4\ell}=\sqrt{Q^2},\qquad
+ p_{T,4\ell}=\sqrt{Q_x^2+Q_y^2}.
+\]
+这一步组合已有轻子对象，不重新模拟探测器。重建质量谱可能受到辐射、探测器响应及选择影响，
+其宽度不能直接解释为希格斯本征宽度。
+
+\textbf{输入来源。} A 组直接取排序后的 $p_T,\eta$；B、C 组由上述四动量计算。
+$\Delta R$ 使用同一对内两轻子的 $\eta,\phi$，方位角差先折回 $[-\pi,\pi)$；
+\texttt{deltaPhi\_ZZ} 则是两个轻子对方位角差的绝对值。以下 19 维输入不是 ROOT 中另外 19 个现成字段。
 
 
-\textbf{网络输入：A/B/C/D 四组物理量。} 原始轻子分支经共同筛选和重建后，组成下列 19 个输入。
-轻子按 $p_T$ 降序编号；$Z_1/Z_2$ 对应上文的 $m_{12}/m_{34}$ 配对。
 
 \begin{table}[h!]
 \caption{输入变量分组及其物理含义。动量和质量使用 GeV，方位角使用弧度。}
@@ -209,41 +218,15 @@ D & \texttt{cos\_theta\_star}, \texttt{cos\_theta\_1}, \texttt{cos\_theta\_2}；
 \end{tabularx}
 \end{table}
 
+\textbf{五个角度如何得到？} D 组先作洛伦兹变换。在四轻子静止系中，
+$\cos\theta^*$ 是 $Z_1$ 与变换后的实验室正束流方向的夹角余弦；
+$\cos\theta_1,\cos\theta_2$ 分别在各自轻子对静止系中，取负轻子方向与另一轻子对反方向的夹角余弦。
+两个平面角在四轻子静止系计算：用负、正轻子动量的叉积定义各衰变平面法向量，
+用正束流方向与 $Z_1$ 方向定义产生平面法向量；绕 $Z_1$ 轴用有向角分别比较两个衰变平面、产生平面与第一衰变平面。
+角度范围为 $[-\pi,\pi)$，余弦范围为 $[-1,1]$，各模型沿用同一约定。
+
 ABCD/BCD/ACD/ABD/ABC 分别使用 19/11/15/17/14 维输入，各自独立训练。
-D 组角度在相应静止系中定义，采用负轻子和实验室正束流方向的固定约定。
 各组共享底层轻子信息、彼此相关；虽不显式输入 $m_{4\ell}$，仍可能包含质量信息。
-
-\clearpage
-\reportsection{3. 外部来源支持哪些条件？}
-\textbf{已发表的物理分析。} ATLAS 13 TeV 四轻子分析\cite{ATLAS13} 第 5.1--5.2 节，
-为轻子接受度、按序横动量、SFOS 配对、主导与次主导 $Z$ 质量窗口，以及电子和缪子的碰撞参数显著度上限
-提供了具体参考。$m_{Z2}$ 的 $12\gev$ 下限与该文献对 $m_{4\ell}<140\gev$ 的规定一致，
-覆盖本项目的整个质量窗口。这些对应关系支持筛选条件的物理动机，但不意味着本项目复现了该测量。
-
-\textbf{解释筛选时需要说明的差异。}
-\begin{itemize}
-\item 文献采用宽松电子鉴别和详细的缪子类型要求；本项目对两类轻子统一使用现有 tight-ID 标志。
-尚未证实它与已发表工作点等价。
-\item 前三个动量尺度 20、15、10 GeV 与文献一致。本项目允许阈值处取等号，并统一采用 7 GeV 的第四轻子阈值。文献要求电子 $E_T>7\gev$、缪子 $p_T>5\gev$，对量能器标记缪子另设更高阈值。
-因此，第四轻子条件及统一使用 $p_T$ 属于项目改动。
-\item 文献要求径迹隔离低于 15\%，电子量能器隔离低于 20\%、缪子低于 30\%，并规定了详细的锥大小和修正。
-本项目对两个存储的隔离量统一采用 30\% 上限，是项目简化，而非该文献的完整隔离规定。
-\item 文献允许多个四轻子候选组合，并执行角分离及其他重建程序。本项目要求恰好四个合格轻子，
-且仅使用双电子双缪子样本。项目的 5 GeV 条件检查所有 SFOS 对；文献则在 $4e/4\mu$ 道中讨论替代配对否决。
-在本项目中，更严格的 $Z$ 质量窗口已约束两个物理 SFOS 对。
-\end{itemize}
-
-\textbf{官方教育示例。} 文献~\cite{HZZCuts,HZZAnalysis} 指定版本的 \texttt{HZZCuts.py}
-第 2--25 行定义四轻子多重数、总电荷为零、味道，以及第二、第三轻子的 15/10 GeV 阈值。
-其隔离函数（第 28--33 行）排除比值大于 0.3 的情况，而本项目要求严格小于 0.3。
-尤其需要注意，\texttt{HZZAnalysis.py} 第 162--168 行已注释掉这些隔离函数的调用，
-因此不能据此声称该示例执行了本项目的完整隔离筛选。
-Run-1 分析\cite{ATLASRun1} 第 5.1 节支持触发匹配原则，但其触发处理更为详细。
-
-\textbf{尚未确认的来源与归一化差异。} 在已核对来源中，tight-ID 选择和
-$|z_0\sin\theta|<0.5$ mm 的确切外部出处仍未确认，因此将其报告为项目固定选择。
-项目采用生成器权重和固定样本归一化；官方教育示例还乘以堆积、轻子及触发尺度因子
-（文献~\cite{HZZAnalysis} 第 140--142 行）。因此，当前权重定义不应被期待复现其公布或示例产额。
 
 \clearpage
 \reportsection{4. 神经网络筛选与保留样本}
@@ -252,20 +235,21 @@ $|z_0\sin\theta|<0.5$ mm 的确切外部出处仍未确认，因此将其报告�
 训练拟合输入标准化和网络参数；验证选择检查点与阈值；最终评估仅应用已冻结的模型与阈值。
 这些比例是分配概率，有限样本计数不必恰好为 60/20/20。
 
-\textbf{网络结构与训练。} 每种输入方案使用一个全连接二分类网络，结构为
-\[
- d_{\rm in}\longrightarrow64\longrightarrow64\longrightarrow32\longrightarrow1.
-\]
-三个隐藏层均使用 LayerNorm 和 SiLU 激活，前两个隐藏层后加入概率 0.1 的 Dropout。
-输出经 sigmoid 转为 $0$--$1$ 的分数 $s$；训练标签为信号 1、背景 0，较高分数倾向于信号。
-该分数用作排序判别量，不将其解释为已校准的物理信号概率。ABCD 与 BCD 的输入维数分别为 19 和 11。
+\textbf{网络怎样学习？} 信号标签为 1、背景为 0。每个输入用训练集均值和标准差标准化，
+验证、评估沿用该变换。网络输出 $0$--$1$ 分数 $s$，通过加权二元交叉熵衡量输出与标签的差异，
+再反向传播梯度并用 AdamW 更新参数。训练权重为绝对物理权重除以各训练类别的平均绝对权重，
+不强制两类总权重相等。较高分数倾向于信号，但不是已校准的物理信号概率。
 
-每个输入用训练集均值和标准差标准化，验证、评估沿用相同变换。
-损失为加权二元交叉熵，训练权重取物理权重的绝对值，再除以各训练类别的平均绝对权重；
-这不强制两类总权重相等。优化器为 AdamW，学习率 $10^{-3}$、权重衰减 $10^{-4}$，批量大小 1024，
-采用 CPU float32，最多训练 200 轮。每轮按绝对物理权重计算验证 AUC（ROC 曲线下面积）；
-相对已保留最优值提高超过 $10^{-4}$ 才更新检查点，连续 20 轮未更新则提前停止。
-种子 42 的 ABCD 在第 87 轮停止、保留第 67 轮；BCD 在第 86 轮停止、保留第 66 轮。
+\textbf{怎样评价并选定模型？} 每轮用绝对物理权重计算验证 AUC（ROC 曲线下面积），
+衡量信号通常能否排在背景之前；0.5 对应随机排序，1 对应完全区分。
+AUC 比已保存最佳值提高超过 $10^{-4}$ 才更新检查点；连续 20 轮未更新则提前停止，最多 200 轮。
+最终恢复保存的检查点，而非最后一轮。种子 42 的 ABCD 在第 87 轮停止、保留第 67 轮；
+BCD 在第 86 轮停止、保留第 66 轮。训练损失用于优化，验证 AUC 用于选模型；AUC 更高并不自动意味着 $W_{68}$ 更小。
+
+\textbf{固定结构与参数。} 全连接网络为
+$d_{\rm in}\to64\to64\to32\to1$，三个隐藏层均有 LayerNorm 和 SiLU，前两个隐藏层后有 0.1 Dropout，
+输出经 sigmoid 转为分数。ABCD/BCD 输入维数为 19/11；学习率 $10^{-3}$，权重衰减 $10^{-4}$，
+批量 1024，使用 CPU float32。
 
 \textbf{分数阈值如何得到？} 恢复所选检查点后，只取\emph{验证集背景}的分数，按从小到大排序。
 令 $a_i=|w_i|$ 为其绝对物理权重，依次累计 $a_i$；第一次达到总绝对权重一半的分数就是阈值：
@@ -286,8 +270,21 @@ $0.10,0.30,0.60,0.80,0.90$，对应绝对权重为 $1,2,1,4,2$。
 阈值在查看评估质量谱前已冻结，各模型分别确定阈值，未按最终评估结果调节。
 
 \clearpage
-\textbf{评估子集的事件数与产额。} 以下比较均使用同一最终评估子集。高分子集用于展示筛选效果；
-区间推断仍使用高分和低分两个类别，见第 7 章。
+\textbf{从模拟事件数到预期产额。} 每个事件的物理权重为
+\[
+ w_i^{\rm phys}=\frac{\mathcal L\,\sigma_{\rm eff}}{S_{\rm gen}}\,w_i^{\rm gen},
+ \qquad \mathcal L=10^4\,\mathrm{pb}^{-1},\quad w_i^{\rm gen}=\texttt{mcWeight}.
+\]
+这里 $\sigma_{\rm eff}$ 为配置中的有效截面，$S_{\rm gen}$ 为样本归一化用的生成器权重和，
+不是公开条目数或筛选后事件数。官方固定版本参数表\cite{SampleInfo}给出：
+信号 $(\sigma_{\rm eff},S_{\rm gen})=(0.0060239\,\mathrm{pb},27881776.6536)$，
+背景为 $(1.2578\,\mathrm{pb},7538705.8077)$，与项目配置一致。
+项目不再另乘 $k$ 因子或过滤效率（配置均为 1）；有效截面中分支比与过滤效率的具体分解仍待生产说明核实，不能重复乘入。
+当前也未乘堆积、轻子和触发尺度因子，与官方示例\cite{HZZAnalysis}有别，不能据此复现其产额。
+
+\textbf{评估子集的事件数与产额。} 以下使用同一最终评估子集。
+模拟事件数反映采样规模，权重和才估计给定亮度下的预期事件数，故数千个 MC 事件可只对应几个预期事件。
+高分子集用于展示筛选效果；区间推断仍同时使用高分和低分类别，见第 7 章。
 
 \begin{table}[h!]
 \caption{最终评估样本中的物理事件组数。后两列为种子 42 的高分子集，并非新的独立样本。}
@@ -453,7 +450,8 @@ A、B、D 的差值在不同种子间改变符号。ABC 在五种表示中的中
 
 \clearpage
 \reportsection{来源与简要溯源说明}
-英文报告记录的外部来源核对日期为 2026 年 10 月 30 日。已发表分析提供筛选背景，
+筛选文献沿用 2026 年 10 月 30 日的核对记录；本次于 11 月 1 日复核 CERN 发布说明及固定版本样本参数表。
+已发表分析提供筛选背景，
 不提供本报告的数值结果。CERN 记录明确说明该数据集用于教育，不适用于科学出版。
 本进展报告保持教育与技术研究范围；使用该数据集不意味着复现下列研究级分析。
 
@@ -474,7 +472,7 @@ the $H\to ZZ^*\to4\ell$ decay channel at $\sqrt{s}=13$ TeV with the ATLAS detect
 JHEP \textbf{03} (2018) 095.
 \href{https://doi.org/10.1007/JHEP03(2018)095}{doi:10.1007/JHEP03(2018)095};
 \href{https://arxiv.org/pdf/1712.02304v2#page=8}{arXiv:1712.02304v2，第 5.1--5.2 节，第 8--9 页}。
-本报告第 2--3 章筛选与工作点比较的来源。
+本报告第 2.1 节筛选与工作点比较的来源。
 
 \bibitem{HZZCuts}
 ATLAS Open Data outreach tools, \emph{HZZCuts.py}，版本
@@ -494,6 +492,11 @@ in the four-lepton channel in $pp$ collisions at center-of-mass energies of
 \href{https://doi.org/10.1103/PhysRevD.91.012006}{doi:10.1103/PhysRevD.91.012006};
 \href{https://arxiv.org/pdf/1408.5191v3#page=7}{arXiv:1408.5191v3，第 5.1 节，印刷页码第 6--7 页}。
 触发匹配原则的参考；不声称其详细阈值和工作点与本项目相同。
+\bibitem{SampleInfo}
+ATLAS Open Data outreach tools, \emph{infofile.py}，版本同文献~\cite{HZZCuts}。
+\href{https://github.com/atlas-outreach-data-tools/atlas-outreach-Python-uproot-framework-13tev/blob/8ad2015be6d350060c3a183aff5802570bc9ada4/infofile.py}{固定版本样本参数表}。
+\texttt{ggH125\_ZZ4lep} 与 \texttt{llll} 条目的 DSID、\texttt{xsec} 和 \texttt{sumw}；
+不提供完整生成器或探测器模拟配置。
 \end{thebibliography}
 \endgroup
 
@@ -503,13 +506,14 @@ in the four-lepton channel in $pp$ collisions at center-of-mass energies of
 详细身份记录见 \nolinkurl{paper/draft-v2/DRAFT001-EVIDENCE.md}；
 冻结协议为 \nolinkurl{config/protocols/h4l_draft_v2.json}。
 
-\textbf{筛选实现。} 英文报告已对照 \nolinkurl{config/protocols/h4l_selection_v1.yaml}
-及 \nolinkurl{src/higgsml/physics/selection.py} 核对精确不等式，并采用 draft-v2 协议的
-$[105,140)$ GeV 质量窗口覆盖及 $2e2\mu$ 限制。本次修订依据 CERN 记录的方法说明，以及已完成运行的协议、模型元数据和汇总结果。
-表~\ref{tab:population} 的输入数来自绑定的数据集记录，筛选后及分配数来自 prepare 文件的身份外壳计数，
-并核对该文件的清单哈希；未解码事件数值载荷。网络结构和阈值算法另对照
-\nolinkurl{src/higgsml/draft_v2/training.py} 及
-\nolinkurl{src/higgsml/modeling/discriminants.py} 核实，模型文件与其清单哈希一致。
-未重新训练、计算事件分数或拟合区间。逐条筛选计数仍未提供，不用其他运行结果估算。
+\textbf{本次修订范围。} 按批注重组来源、筛选、重建及训练说明，保留原有结果与图。
+筛选顺序对照 \nolinkurl{src/higgsml/physics/selection.py} 及 \nolinkurl{src/higgsml/data.py}，
+使用 draft-v2 的 $[105,140)$ GeV 范围与 $2e2\mu$ 限制；重建和角度对照同目录的
+\texttt{reconstruction.py}、\texttt{features.py}、\texttt{angular5.py}，权重对照
+\texttt{weights.py} 及 \nolinkurl{config/dataset_science_v1.json}，训练说明对照
+\nolinkurl{src/higgsml/draft_v2/training.py}。
+表~\ref{tab:population} 沿用此前已核对的输入及 prepare 身份计数，未新增逐条筛选计数。
+本次未读取事件载荷、重新训练、评分或拟合。官方 2020 文档入口目前跳转到 2025 发布页，未用其补证旧样本；
+DSID 生产配置、发布前精确筛选及完整官方分支说明仍需对应版本来源，不能由本文的一般流程替代。
 
 \end{document}
