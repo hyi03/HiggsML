@@ -436,16 +436,23 @@ $\Delta W_G=W_{68}(\mathrm{ABCD}\setminus G)-W_{68}(\mathrm{ABCD})$，再汇总�
 A、B、D 的差值在不同种子间改变符号。ABC 在五种表示中的中位宽度最小，
 但这不足以确立普遍最优的输入组合或已证实的精度提升。
 
+\textbf{补充统计评估。} 已完成 200 次配对事件组重抽样（bootstrap，含阈值重估诊断）及
+24,000 次模型自生成伪实验（model-self Toys），均具有有效数值状态。
+固定网络并重估阈值时，$\Delta W_C$ 和 $\Delta W_D$ 的 95\% 重抽样百分位范围分别为
+$[0.0101,0.0711]$ 和 $[-0.0384,0.0055]$，A、B 的范围均跨零。
+删去 C 的变宽现象较稳健；删去 D 的改善尚不稳健。
+
 \textbf{解释状态。} 这些结果属于探索性、非独立 MC 结果。重新划分后，研究仍使用先前已使用过的源事件。
-区间以自身模板作为期望观测；覆盖率尚未独立校准。T1 在似然内处理有限模板统计，
-但不提供不同模型区间宽度之差的完整 MC 不确定度。种子变化范围不是置信区间。
+区间以自身模板作为期望观测；在 $\mu=1$ 的 model-self 检验中，16 个候选的标称 68\% 区间覆盖率为
+60.4\%--67.2\%，存在欠覆盖，尚未独立校准。重抽样范围条件于既有检查点，
+不包含独立重训练及完整模型选择的不确定性，不是已校准的置信区间。种子变化范围也不是置信区间。
 项目属于教育与技术研究，不是 ATLAS/CMS 官方结果、希格斯发现或物理测量。
 
 \textbf{下一步。}
 \begin{itemize}
 \item 检查筛选前后比较是否充分解释了所选信号和背景。
 \item 评估已记录的项目改动，并优先核实尚未确认的筛选条件来源。
-\item 优先验证物理权重与筛选的适用性、宽度差的有限 MC 不确定度及区间覆盖率。这些工作仍待完成。
+\item 优先核实物理权重与筛选的适用性，并研究低计数区间构造与覆盖率校准；assessment 和完整 T2 按需后续评估。
 \end{itemize}
 
 \clearpage
@@ -500,13 +507,14 @@ ATLAS Open Data outreach tools, \emph{infofile.py}，版本同文献~\cite{HZZCu
 \end{thebibliography}
 \endgroup
 
-\textbf{本地结果来源。} 区间、产额与质量谱结果及两幅图来自
+\textbf{本地结果来源。} 标称区间、产额与质量谱结果及两幅图仍来自
 \nolinkurl{runs/h4l-draft-v2-draft001/report/}，并关联已完成的准备、冻结和评估产物。
 英文报告记录：报告文件大小与 SHA-256 已对照清单核对，两份图的副本与报告原图逐字节一致。
+补充统计结果来自 \nolinkurl{runs/h4l-draft-v2-validation001/report/}。
 详细身份记录见 \nolinkurl{paper/draft-v2/DRAFT001-EVIDENCE.md}；
 冻结协议为 \nolinkurl{config/protocols/h4l_draft_v2.json}。
 
-\textbf{本次修订范围。} 按批注重组来源、筛选、重建及训练说明，保留原有结果与图。
+\textbf{本次修订范围。} 在既有评审修订基础上，仅补充第 7 章统计进展及本节溯源；原有标称结果与图不变。
 筛选顺序对照 \nolinkurl{src/higgsml/physics/selection.py} 及 \nolinkurl{src/higgsml/data.py}，
 使用 draft-v2 的 $[105,140)$ GeV 范围与 $2e2\mu$ 限制；重建和角度对照同目录的
 \texttt{reconstruction.py}、\texttt{features.py}、\texttt{angular5.py}，权重对照

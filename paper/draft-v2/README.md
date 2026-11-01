@@ -50,6 +50,7 @@ reconstruction and yield normalization, and clarifies training/model selection.
 It preserves the existing numerical results and figures. Sample-specific
 production details and exact release preselection remain explicitly unconfirmed.
 The English report is a separate, earlier version.
+The controlled statistical update adds only Chapter 7 bootstrap/model-self results and provenance, retaining the nominal tables, figures, chapter starts and ten-page layout.
 
 ```sh
 latexmk -lualatex -interaction=nonstopmode -halt-on-error -outdir=.build/project-report-cn project-report-cn.tex

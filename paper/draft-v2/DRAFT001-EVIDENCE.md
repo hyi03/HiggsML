@@ -106,3 +106,50 @@ historical website verification scripts passed, as did all three archived
 spectrum-helper tests. Current TeX input/figure paths, immutable-report figure
 hashes, LF and `git diff --check` were checked. These are reporting and software
 checks; no scientific stages were rerun.
+
+## Chinese project report only — supplemental update, 1 November 2026
+
+This addition binds only the limited statistical update in Chapter 7 and the
+provenance note of `project-report-cn.tex`. It does not revise the historical
+records above or the numerical source of `main.tex` and the English report.
+Nominal widths, event counts, yields and spectrum figures retain the draft001
+report identity stated above. The new material is taken from the separately
+published controlled-MC supplement:
+
+- Report: `runs/h4l-draft-v2-validation001/report/`.
+- Report artifact ID: `0e95510075beff91cbcd68bba53109b63d459c70faea6223fdcf9181eba4c195`.
+- Bound source report: `9aab6d274a3e2d00d892c2d8fbf89b1e46f5b7a95d0bf0c085af90672ea36898`.
+- Execution and numerical status: complete; 248/248 terminal units, comprising
+  200 paired event-group bootstrap replicas and 48 model-self cells containing
+  500 Toys each (24,000 total). Threshold diagnostics share the bootstrap units.
+
+| Consumed aggregate | SHA-256 |
+|---|---|
+| `summary.json` | `414e31e427969e6b4a423c0400704ac7097f784cbf9333d3a029d13351711837` |
+| `bootstrap-summary.csv` | `1080d9ca991eed9a843e0844e4cf9fd08a8b6a9d5ec2b3c8f2b3f4aa650f06d6` |
+| `coverage.csv` | `65d15b129ee237bbc1e43bd5b32dd1a567b87c23f664786fc85b5bd0cb7a0594` |
+
+Chapter 7 adds the refitted-threshold 2.5/97.5 percentile ranges for the median
+within-seed reduced-minus-ABCD width difference: C `[0.0101, 0.0711]` and
+D `[-0.0384, 0.0055]`, rounded to four decimals. A and B ranges include zero.
+These ranges condition on existing checkpoints and omit retraining and complete
+model-selection uncertainty; they are not calibrated confidence intervals.
+At injected mu=1, the 15 models and inclusive reference have model-self coverage
+between 60.4% and 67.2% for nominal 68% intervals. This is evidence of
+undercoverage within the model-self diagnostic, not independent calibration.
+Assessment and T2 results are not included in this supplement. Qualification
+remains exploratory_posthoc, independent=false,
+selection_aware_coverage=unvalidated and primary_claim_eligible=false.
+
+Before editing, the Chinese source and PDF were preserved in
+`var/paper-evidence/project-report-cn-supplement-20261101-204139/`, with hashes
+in `before.json`. The candidate compiled with the existing LuaLaTeX workflow
+to ten A4 pages, without LaTeX warnings, undefined references or overfull/underfull
+boxes. All ten pages were rendered at 150 dpi. Pages 1–8 are pixel-identical to
+the preserved PDF, the original page-9 nominal table retains its position,
+and changes on pages 9–10 are confined to the updated paragraphs and provenance.
+Chapter starts, figure/table labels, nominal table source and references were
+checked unchanged. The updated last two pages were visually inspected.
+The local evidence folder contains source and page comparisons. No event
+payload was opened and no training, scoring, Toy generation or interval fitting
+was performed for this document update.
