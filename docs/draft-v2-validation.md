@@ -4,7 +4,9 @@ This independent workflow binds an existing completed draft-v2 source run. It
 reuses its prepared population, fifteen frozen networks and thresholds, nominal
 sixteen templates, and report-selected evaluation artifact. It never retrains,
 changes the 60/20/20 allocation, selects a checkpoint, or updates manuscript
-assets. The nominal wrapper does not invoke these stages.
+assets. The nominal wrapper does not invoke these stages. The integrated
+[`h4l_v2_all.py` command](draft-v2-workflow.md#integrated-nominal-and-supplemental-command)
+explicitly orchestrates nominal stages and this supplement with separate reviews.
 
 All results retain `exploratory_posthoc`, `independent=false`,
 `selection_aware_coverage=unvalidated`, and `primary_claim_eligible=false`.

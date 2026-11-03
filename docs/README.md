@@ -41,6 +41,10 @@ For the separately implemented supervisor-review proposal, see the
 allocation, five representations and three seeds are separate from the selected
 historical paper evidence. Software verification does not supply revised MC results.
 
+The [integrated draft-v2 command](draft-v2-workflow.md#integrated-nominal-and-supplemental-command)
+is `python scripts/h4l_v2_all.py`: nominal stages followed by the core supplement,
+with separate access reviews and opt-in T2. Use `--plan-only` before execution.
+
 For a guided introduction, open the 33-slide interactive paper explanation in
 [Chinese](paper-explained/index.html) or [English](paper-explained/index-en.html).
 It runs offline and connects the physics inputs, neural networks, likelihood intervals,

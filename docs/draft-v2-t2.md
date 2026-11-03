@@ -5,7 +5,9 @@ conditional on the fifteen existing draft-v2 networks. It uses the approved
 two-fold design within the existing evaluation role and does not change the
 source run, its 60/20/20 allocation, nominal thresholds or manuscript assets.
 The nominal and [supplemental validation](draft-v2-validation.md) wrappers do
-not start T2. Neither original protocol is extended in place.
+not start T2. Neither original protocol is extended in place. The integrated
+[`h4l_v2_all.py` command](draft-v2-workflow.md#integrated-nominal-and-supplemental-command)
+can explicitly append this separate workflow with `--with-t2` and a T2 review.
 
 The contract is
 [`h4l_draft_v2_t2_v1.json`](../config/protocols/h4l_draft_v2_t2_v1.json), with

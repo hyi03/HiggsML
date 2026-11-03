@@ -139,6 +139,77 @@ count. Use `--no-progress` on either entry point to disable progress. Plan-only
 execution does not create progress bars. Already-running processes do not pick
 up this display change automatically.
 
+## Integrated nominal and supplemental command
+
+`scripts/h4l_v2_all.py` combines the nominal stages with the independently
+registered core supplement. It defaults to run name `draft001`, one native
+thread per worker and one supplement worker. From the repository root:
+
+```sh
+python scripts/h4l_v2_all.py --run-name draft001 --plan-only
+python scripts/h4l_v2_all.py --run-name draft001
+```
+
+The default sequence is prepare, all fifteen training units, freeze, nominal
+evaluation and report, supplemental registration, paired bootstrap, model-self
+Toys and supplemental report. No acquisition, standalone assessment Toys or
+paper-asset refresh is launched. The separate protocols, budgets, support checks
+and exploratory qualifications are unchanged. Existing standalone commands keep
+their behavior; only this new command orchestrates both workflows.
+
+A fresh controlled-MC run cannot cross all gates unattended: each review binds
+identities created by earlier stages. The default command stops with a nonzero
+status at an unmet access gate, preserves completed work and prints the pending
+receipt location. It never generates an approval. To stop explicitly at each
+review boundary and then continue using actual separately reviewed receipts:
+
+```sh
+python scripts/h4l_v2_all.py --run-name draft001 --through freeze
+python scripts/h4l_v2_all.py --run-name draft001 --continue --nominal-access-review /path/to/nominal-approved.json --through validation-register
+python scripts/h4l_v2_all.py --run-name draft001 --continue --nominal-access-review /path/to/nominal-approved.json --validation-access-review /path/to/supplement-approved.json --workers 2
+```
+
+The first pending receipt is in `runs/h4l-draft-v2-draft001/freeze/`; the second
+is in `runs/h4l-draft-v2-validation-draft001/register/`. Both are named
+`access-review.pending.json`. Reviews must retain exact bindings and reflect
+current history. Merely changing a pending file's status is not a review.
+Completed stages and units are validated by their domain services before reuse.
+The nominal report receives the actual selected evaluation path, including a
+validated retry. The final JSON lists the actual report paths, including any
+supplemental `report-resume-*` output. No combined report artifact is written.
+
+Use `--with-t2` to append separate T2 registration, support preparation, fitting
+and reporting. It requires its own `--t2-access-review`. The core supplement
+remains the current priority; inspect actual fixed-parent support before a full
+T2 execution:
+
+```sh
+python scripts/h4l_v2_all.py --run-name draft001 --continue --with-t2 --through t2-register
+python scripts/h4l_v2_all.py --run-name draft001 --continue --with-t2 --t2-access-review /path/to/t2-approved.json --through t2-prepare
+python scripts/h4l_v2_all.py --run-name draft001 --continue --with-t2 --t2-access-review /path/to/t2-approved.json --workers 2
+```
+
+These T2 examples assume nominal and core units have already completed; otherwise
+supply their reviewed receipts as well. T2 results are not imported into the
+core supplemental report. Other stop points are `--through nominal` and
+`--through validation`. `--through t2*` requires `--with-t2`.
+
+`--dataset-receipt` overrides the nominal receipt; `--synthetic-events` is a
+mutually exclusive labelled software-fixture input. `--no-progress` disables
+stage notices and bars. Workers are 1–4 for supplemental/T2 stages; nominal
+training stays serial. Plans read metadata only and never create output, launch
+children or open/hash event payloads. If the nominal report does not exist yet,
+downstream identities are explicitly pending, not validated or approved.
+
+Binding/access errors stop downstream stages. Incomplete training stops before
+freezing. Scientific terminal failures are retained; later reports and registered
+diagnostics can still run. Exit 6 denotes incomplete requested execution or
+numerical/scientific results; exit 0 covers requested stages only and never
+grants scientific qualification. A freeze-only stop reports numerical status
+as not evaluated. Corrupt/interrupted evidence is not automatically retried:
+use the existing dedicated nominal, supplemental or T2 recovery commands with
+their explicit recovery flags, then resume this command with `--continue`.
+
 ## Recovery and outputs
 
 `--continue` validates hashes, stage identities, protocol, source and upstream

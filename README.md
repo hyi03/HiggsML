@@ -23,6 +23,14 @@ and full T2 execution are deferred. T2 remains available for a separately
 justified coverage study with actual parent-support preflight. Core completion
 does not establish independent-reference coverage or complete a separate T2 run.
 
+The integrated entry point is `python scripts/h4l_v2_all.py --run-name draft001`.
+It runs nominal preparation/training/freezing/evaluation/reporting, then the core
+supplement and its report. Use `--plan-only` for a metadata-only preview,
+`--continue` for validated reuse, and `--with-t2` to explicitly include T2.
+Separate bound access reviews remain required at each new event-access budget;
+the command stops at an unmet gate and never creates approvals. See the
+[integrated run instructions](docs/draft-v2-workflow.md#integrated-nominal-and-supplemental-command).
+
 - The only active code is the H4l package under `src/higgsml`; legacy15 preprocessing, the old training/testing workflow, and XGBoost implementations have been removed.
 - The default study uses the controlled `atlas2020_4lep` MC sample pair, with the protocol-defined `2e2mu` final state and a mass range of 105–140 GeV.
 - The active off-only paper uses raw classifier scores and the separately bound `joint-support-v1` method. Software also supports `mass-only`, `decay7`, `engineered19`, `lab-extension`, independently retrained explicit-`m4l` on/off controls, ordinary/adversarial training, conditional CDFs, common mass/score templates, T0/T1 inference, and sample-efficiency studies. Those supporting implementations are not completed results of the active paper.
