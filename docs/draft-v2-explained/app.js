@@ -4,8 +4,8 @@
   const {slides,t,en} = DraftContent;
   const $ = selector => document.querySelector(selector);
   const count = slides.length;
-  const sourceLink = slide => `${t('当前基础报告','Current basic report')}: <a href="../../paper/draft-v2/${slide.sourceFile || 'project-report-cn.tex'}" target="_blank" rel="noopener">${slide.source}</a>`;
-  $('#deck').innerHTML = slides.map((s,i) => `<section class="slide" id="slide-${i+1}" aria-labelledby="title-${i+1}"${i?' hidden':''}><header class="slide-header"><p class="section-label">${s.chapter}${s.supervisorRelated?` <span class="supervisor-badge">${t('导师要求 · 直接回应','Supervisor request · Direct response')}</span>`:''}</p><${i?'h2':'h1'} id="title-${i+1}">${s.title}</${i?'h2':'h1'}><p class="lead">${s.lead}</p></header><div class="slide-content"><div class="slide-body" tabindex="0" aria-label="${t('本页图表与要点','Figures and key points')}">${s.body}</div><div class="slide-explanation" role="region" tabindex="0" aria-label="${t('本页讲解','Explanation for this slide')}">${s.notes}</div></div><footer class="slide-footer"><span>${sourceLink(s)}</span><span>${t('draft001 · 论文显示精度 · 探索性','draft001 · Manuscript display precision · Exploratory')} · ${String(i+1).padStart(2,'0')} / ${count}</span></footer></section>`).join('');
+  const sourceLink = slide => `${slide.teaching?t('教学扩展（基于报告）','Teaching expansion (based on report)'):t('当前基础报告','Current basic report')}: <a href="../../paper/draft-v2/${slide.sourceFile || 'project-report-cn.tex'}" target="_blank" rel="noopener">${slide.source}</a>`;
+  $('#deck').innerHTML = slides.map((s,i) => `<section class="slide" id="slide-${i+1}" aria-labelledby="title-${i+1}"${i?' hidden':''}><header class="slide-header"><p class="section-label">${s.chapter}${s.supervisorRelated?` <span class="supervisor-badge">${t('导师要求 · 直接回应','Supervisor request · Direct response')}</span>`:''}</p><${i?'h2':'h1'} id="title-${i+1}">${s.title}</${i?'h2':'h1'}><p class="lead">${s.lead}</p></header><div class="slide-content"><div class="slide-body" tabindex="0" aria-label="${t('本页图表与要点','Figures and key points')}">${s.body}</div><div class="slide-explanation" role="region" tabindex="0" aria-label="${t('本页讲解','Explanation for this slide')}">${s.notes}</div></div><footer class="slide-footer"><span>${sourceLink(s)}</span><span>${s.teaching?t('人工教学解释 · 非研究结果','Teaching explanation · Not research results'):t('draft001 · 论文显示精度 · 探索性','draft001 · Manuscript display precision · Exploratory')} · ${String(i+1).padStart(2,'0')} / ${count}</span></footer></section>`).join('');
   $('#page').max = count;
   $('#page-count').textContent = count;
   $('#toc-title').textContent = t(`${count} 页学习路线`,`${count}-slide learning route`);
@@ -26,6 +26,29 @@
   }
   $('#median-example').addEventListener('change',showMedian);
   showMedian();
+
+  function showForward() {
+    const pt=Number($('#toy-pt').value),phi=Number($('#toy-phi').value);
+    const r=DraftTeaching.tinyForward(pt,phi), fmt=value=>value.toFixed(4);
+    $('#toy-pt-value').value=fmt(pt);
+    $('#toy-phi-value').value=fmt(phi);
+    const stage=(label,body)=>`<div class="nn-stage"><h3>${label}</h3>${body}</div>`;
+    const node=(label,value)=>`<div class="nn-node"><span>${label}</span><strong>${fmt(value)}</strong></div>`;
+    const arrow='<span class="nn-arrow" aria-hidden="true">→</span>';
+    $('#toy-output').innerHTML=`<div class="nn-forward" role="group" aria-label="${t('人工前向计算的四个步骤','Four stages of the artificial forward calculation')}">${[
+      stage(t('1 · 标准化','1 · Scale'),node('x₁=(pT−40)/20',r.x[0])+node('x₂=(|Δφ|−1.6)/0.8',r.x[1])),
+      stage(t('2 · 加权求和','2 · Weighted sums'),node('a₁=0.6x₁−0.4x₂+0.1',r.a[0])+node('a₂=−0.3x₁+0.8x₂−0.2',r.a[1])),
+      stage(t('3 · 非线性','3 · Nonlinearity'),node('h₁=SiLU(a₁)',r.h[0])+node('h₂=SiLU(a₂)',r.h[1])),
+      stage(t('4 · 输出','4 · Output'),node('z=0.9h₁−0.7h₂+0.05',r.z)+node('s=sigmoid(z)',r.score))
+    ].join(arrow)}</div><p class="small">${t('每个隐藏节点接收 x₁ 和 x₂。固定人工参数，仅改变输入；没有学习、真实模型评分或阈值判断。','Each hidden node receives x₁ and x₂. Artificial parameters stay fixed while inputs change; no learning, actual model scoring or threshold decision occurs.')}</p>`;
+  }
+  for(const id of ['toy-pt','toy-phi']) $('#'+id).addEventListener('input',showForward);
+  $('#toy-reset').addEventListener('click',()=>{
+    $('#toy-pt').value=DraftTeaching.toyDefaults.pt;
+    $('#toy-phi').value=DraftTeaching.toyDefaults.phi;
+    showForward();
+  });
+  showForward();
 
   const number = (v,d=3) => Number(v).toFixed(d);
   const sign = (v,d=3) => (v>=0?'+':'−')+Math.abs(v).toFixed(d);

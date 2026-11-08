@@ -67,3 +67,39 @@ Repartitioning does not restore independence. No significance, precision gain,
 independent feature contribution or universal best subset is established.
 The collection's educational-use/publication restriction and unconfirmed production,
 release-selection and some external-cut/weight details remain explicit in the report.
+
+## Neural-network teaching expansion — 8 November 2026
+
+The eight added bilingual pages are educational explanations based on report
+Section 3 and the existing ResearchClassifier implementation; they are not added
+scientific evidence or changes to the report. The actual network remains
+`d_in → 64 → 64 → 32 → 1` with sigmoid applied for scoring. Hidden blocks 1/2
+use Linear/LayerNorm/SiLU/Dropout(0.1), block 3 omits Dropout, and output is Linear.
+Training uses logits for stable loss. Saved input scaling differs from within-event
+LayerNorm; dropout masks hidden outputs only during training.
+
+The tiny forward function in `teaching.js` uses these fixed artificial definitions:
+
+```text
+x1 = (pT4l - 40) / 20
+x2 = (absDeltaPhiZZ - 1.6) / 0.8
+a1 = 0.6*x1 - 0.4*x2 + 0.1
+a2 = -0.3*x1 + 0.8*x2 - 0.2
+h1 = SiLU(a1); h2 = SiLU(a2)
+z = 0.9*h1 - 0.7*h2 + 0.05
+score = sigmoid(z)
+```
+
+Inputs range over [0,160] GeV and [0,pi] rad, defaulting to 40 and 1.6.
+Default hidden outputs are about 0.052497918747894 and -0.09003320053750444;
+z is 0.1602713672493577 and score 0.539982293295586. Display rounds to four
+decimals; intermediate calculations retain JavaScript Number precision. Invalid
+or nonfinite inputs are rejected. Reset restores inputs, not trained parameters.
+
+These scaling statistics and coefficients are not obtained from MC, checkpoints
+or a fit. The reduced network omits extra layers, LayerNorm and Dropout, and has
+no real selection threshold. Independent input adjustment does not imply a valid
+full physical event. The example score must not be interpreted as a physical
+probability, model performance or research result. Teaching slides are labelled
+separately from current report results. Existing report display data and publication
+figures retain their original bytes, bindings and interpretation.

@@ -27,6 +27,19 @@ globalThis.DraftTeaching = (() => {
     if (!(group in dimensions)) throw new RangeError('Unknown feature group');
     return 'ABCD'.replace(group,'');
   }
+  // Hand-assigned teaching function, never a trained model or physical event generator.
+  const toyDefaults = Object.freeze({pt:40,phi:1.6});
+  const sigmoid = value => 1 / (1 + Math.exp(-value));
+  function tinyForward(pt,phi) {
+    if (!Number.isFinite(pt) || !Number.isFinite(phi) || pt<0 || pt>160 || phi<0 || phi>Math.PI) {
+      throw new RangeError('Teaching inputs must be finite: pT in [0,160], angle in [0,pi]');
+    }
+    const x=[(pt-40)/20,(phi-1.6)/0.8];
+    const a=[0.6*x[0]-0.4*x[1]+0.1,-0.3*x[0]+0.8*x[1]-0.2];
+    const h=a.map(value=>value*sigmoid(value));
+    const z=0.9*h[0]-0.7*h[1]+0.05;
+    return {x,a,h,z,score:sigmoid(z)};
+  }
   // Resolve semantic destinations against the current deck, never fixed positions.
   function pageFromHash(slides, hash, current=1) {
     const clamp = n => Math.max(1, Math.min(slides.length, Math.round(n)));
@@ -37,5 +50,5 @@ globalThis.DraftTeaching = (() => {
     const index = slides.findIndex(s => s.id === (aliases[name] || name));
     return index < 0 ? current : index + 1;
   }
-  return Object.freeze({dimensions,models,examples,dimension,weightedMedian,reduced,pageFromHash});
+  return Object.freeze({dimensions,models,examples,dimension,weightedMedian,reduced,pageFromHash,toyDefaults,tinyForward});
 })();

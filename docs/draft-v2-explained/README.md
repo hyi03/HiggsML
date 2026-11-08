@@ -1,10 +1,10 @@
 # Draft-v2 explained: basic selection metrics
 
 Open [Chinese](index.html) or [English](index-en.html) directly in a browser.
-Both editions have 40 aligned slides following the seven chapters of the updated
+Both editions have 48 aligned slides following the seven chapters of the updated
 [Chinese basic report](../../paper/draft-v2/project-report-cn.tex), dated
 8 November 2026. The intended audience is advanced physics undergraduates and
-readers who need an introduction to the ML method. No server, local runs,
+readers with no neural-network background. Basic physics and algebra are assumed. No server, local runs,
 ignored asset bundle, installation or internet is required.
 
 ## Reading route
@@ -13,23 +13,47 @@ ignored asset bundle, installation or internet is required.
 |---|---|
 | 1–4 | Purpose, conditional deletions, roadmap and physical channel |
 | 5–10 | Samples, baseline selection, weights, grouped errors and data roles |
-| 11–18 | Features, MLP architecture, loss, AUC checkpoints, threshold and freeze |
-| 19–23 | Retentions, signal/background ratio, units and ABCD/BCD worked example |
-| 24–32 | All fifteen models, twelve contrast rows, interactions, deletion plot and C/A/B/D interpretation |
-| 33–36 | Yields/errors, absolute spectra, normalized shapes and support limits |
-| 37–40 | Qualifications, identities, outstanding evidence and conclusions |
+| 11–26 | Event vectors, nodes, hidden layers, nonlinearities, artificial forward interaction, actual MLP, learning, validation and freeze |
+| 27–31 | Retentions, signal/background ratio, units and ABCD/BCD worked example |
+| 32–40 | All fifteen models, twelve contrast rows, interactions, deletion plot and C/A/B/D interpretation |
+| 41–44 | Yields/errors, absolute spectra, normalized shapes and support limits |
+| 45–48 | Qualifications, identities, outstanding evidence and conclusions |
 
 The toolbar opens [all basic metrics](index.html#all-results) or
 [mass spectra](index.html#spectra). Semantic links follow slide IDs; numeric
 navigation uses the current order. Language switching preserves the current page.
-Four existing interactions now teach input dimensions, weighted medians,
+Four existing interactions teach input dimensions, weighted medians,
 seed/metric comparisons and paired contrasts. The report's five-event artificial
 threshold example gives t=0.80 and 60% high-side absolute weight; it is the default
 teaching example. The grouped-weight arithmetic remains explicitly artificial.
 
-Supervisor-request links and badges cover slides 33–36. They connect before/after
+Supervisor-request links and badges cover slides 41–44. They connect before/after
 yields, simulated signal/background location, shape redistribution and interpretation
 limits. They do not claim supervisor approval or new scientific validation.
+
+## Neural networks from first principles
+
+Eight new pages build a continuous route: one event as an input vector; the
+network's role; a node's weights and bias; hidden representations; nonlinear
+activation; a forward-pass interaction; learning from labels; and training versus
+validation versus frozen scoring. The actual architecture page explicitly shows
+`input → 64 → 64 → 32 → 1 → sigmoid`, including the different roles of input
+scaling, LayerNorm, SiLU and training-only Dropout.
+
+The [fifth interaction](index.html#forward-widget) is an artificial `2 → 2 → 1`
+network. Native keyboard-accessible sliders control pT4ℓ (0–160 GeV, default 40)
+and |ΔφZZ| (0–π rad, default 1.6); reset restores both defaults. Four labelled
+stages display standardized inputs, both weighted sums, SiLU hidden outputs,
+logit and sigmoid score to four decimals. HTML diagrams and text values work
+offline, on mobile and in print; no third-party library is added.
+
+All example values, scaling constants and parameters are hand-assigned. Moving
+inputs independently does not generate a physical four-lepton event. This tiny
+network omits extra real-network layers, LayerNorm and Dropout; it does not train,
+read checkpoints or apply a real cut. A score is neither a calibrated physical
+probability nor a research result. Connection parameters are explicitly distinct
+from physical event weights. Numerical and conceptual source boundaries are
+explained in [source notes](SOURCE-NOTES.md).
 
 ## Current results and provenance
 
@@ -68,7 +92,7 @@ node docs/draft-v2-explained/tools/check.mjs
 
 Default checks evaluate both complete editions, compare all metric/contrast cells
 with the current report, verify source identities and current PDF hashes, check
-translations, links, navigation, teaching examples and LF endings.
+translations, links, navigation, teaching examples, the tiny-network default/intermediate/boundary calculations, and LF endings.
 `--source-only` runs the smaller script/resource/teaching check.
 
 These are report/source consistency checks, not a new audit of original run

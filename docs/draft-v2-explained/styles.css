@@ -13,3 +13,25 @@
 .spectrum-figure object{width:100%;flex:1;min-height:320px;border:0}
 @media(max-width:800px){.spectrum-figure object{height:370px;min-height:0;display:block}}
 @media print{.spectrum-figure object{height:500px;flex:none}}
+
+/* Teaching stages retain text equivalents, native keyboard controls and print values. */
+.nn-concept{display:grid;justify-items:stretch;gap:8px;text-align:center}
+.nn-concept>span:not([aria-hidden]){border:1px solid var(--line);padding:12px;background:#f3f7fa}
+.nn-controls{display:grid;gap:8px}.nn-controls label{display:flex;justify-content:space-between;gap:12px;font-size:.9em}
+.nn-controls input{width:100%;accent-color:var(--accent)}.nn-controls output{font-variant-numeric:tabular-nums}
+.nn-controls button{justify-self:start}.nn-forward{display:grid;grid-template-columns:1fr;gap:8px}
+.nn-stage{border:1px solid var(--line);background:#f3f7fa;padding:10px;min-width:0}
+.nn-stage h3{font-size:.85em;margin:0 0 8px}.nn-node{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;padding:4px 0;font-size:.85em}
+.nn-node span{overflow-wrap:anywhere}.nn-node strong{font-variant-numeric:tabular-nums;color:var(--accent)}
+.nn-arrow{font-size:1.1em;text-align:center;transform:rotate(90deg);line-height:1}
+@media(min-width:1100px){.nn-forward{grid-template-columns:minmax(0,1fr) 14px minmax(0,1fr);align-items:stretch}.nn-arrow{align-self:center;transform:none}.nn-arrow:nth-child(4){grid-column:1/-1;transform:rotate(90deg)}}
+@media print{.nn-controls button{display:none}.nn-forward{break-inside:avoid}.nn-controls input{display:none}.nn-stage{break-inside:avoid}}
+
+@media(min-width:1100px){
+ .nn-controls{grid-template-columns:1fr 1fr;gap:6px 14px}
+ .nn-controls label[for="toy-pt"]{grid-column:1;grid-row:1}
+ .nn-controls #toy-pt{grid-column:1;grid-row:2}
+ .nn-controls label[for="toy-phi"]{grid-column:2;grid-row:1}
+ .nn-controls #toy-phi{grid-column:2;grid-row:2}
+ .nn-controls #toy-reset{grid-column:1/-1;grid-row:3}
+}

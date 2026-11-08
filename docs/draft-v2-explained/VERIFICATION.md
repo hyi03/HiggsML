@@ -1,3 +1,55 @@
+# Neural-network teaching expansion — 8 November 2026
+
+Both editions now have 48 slides. Eight new teaching slides introduce event
+vectors, the network's purpose, nodes/connection weights/biases, hidden layers,
+nonlinearity, an artificial forward pass, learning from labels, and the distinction
+between training, validation and frozen scoring. The actual-network page was
+rewritten to distinguish the three hidden layers from the output logit and sigmoid.
+Earlier 40-slide records below are historical.
+
+## Checks executed
+
+The default `node docs/draft-v2-explained/tools/check.mjs` passed using the bundled
+Node runtime. It verifies both 48-slide editions and aligned unique IDs, placement
+of the eight additions, translations, teaching labels, all local resources and
+semantic navigation, existing fifteen-model/twelve-contrast cells and current
+report/PDF bindings. The original forty slide IDs remain, in their original order.
+The report display data, paper sources, protocols, models and evidence were not
+changed. `git diff --check` passed.
+
+Tiny-network checks cover the default inputs, expected intermediate values and
+score 0.539982293295586, a changed-input example, all domain corners and additional
+interior points, score bounds and rejection of nonfinite/out-of-domain inputs.
+The numerical oracle checks full intermediate precision rather than mirroring
+four-decimal display strings. Existing weighted-median tests still pass.
+
+Installed Chrome 157.0.8103.39 via Playwright opened the actual offline files.
+`/tmp/higgsml-nn48-qa.cjs` checked 48 slides × two languages × desktop/mobile
+(1440×1000 and 390×844), totaling 192 visible states. The successful run had no
+JavaScript errors, failed requests, remote HTTP/HTTPS requests or document
+horizontal overflow. Both-language slider boundary inputs, default/reset state,
+keyboard adjustment without accidental slide navigation, language switching and
+all four previous interaction families passed. Print media exposed all 48 slides
+and all four forward-computation stages.
+
+Screenshots of the Chinese/English forward widget, English hidden-layer page and
+Chinese mobile widget at `/tmp/higgsml-nn48-*.png` were visually inspected. Desktop
+uses two columns of computation stages, mobile a single connected reading order;
+all values have textual labels. Native print pagination/fullscreen and other
+browser engines were not validated. Print checks establish visibility, not a
+publication-quality PDF export.
+
+## Interpretation limits
+
+All tiny-network inputs, scaling constants and parameters are artificial, with
+no training or checkpoint/event access. It omits extra real-network layers,
+LayerNorm and Dropout and applies no actual threshold. Its score is neither a
+calibrated physical probability nor a research result. Independently controlled
+inputs do not generate a full physical event. The work changes teaching content
+only and does not establish scientific validity or alter qualifications.
+
+---
+
 # Basic report synchronization — 8 November 2026
 
 Both editions now follow the seven-chapter basic report in

@@ -19,14 +19,24 @@ export function checkDisplay(root){
  for(const values of Object.values(D.mass_fractions_percent))for(const value of values)assert.ok(report.includes(value.toFixed(1)));
  for(const name of ['mass-yields','mass-shapes','deletion-differences'])assert.ok(evidence.includes(D.source_files[`paper/draft-v2/figures/basic-20261108/${name}.pdf`]));
  assert.deepEqual(Array.from(zh.DraftContent.slides,s=>s.id),Array.from(en.DraftContent.slides,s=>s.id));
- for(const c of [zh,en]){const slides=c.DraftContent.slides;assert.equal(slides.length,40);assert.equal(new Set(slides.map(s=>s.id)).size,40);assert.equal(slides.filter(s=>s.supervisorRelated).length,4);
+ for(const c of [zh,en]){const slides=c.DraftContent.slides;assert.equal(slides.length,48);assert.equal(new Set(slides.map(s=>s.id)).size,48);assert.equal(slides.filter(s=>s.supervisorRelated).length,4);
  for(const s of slides){const html=s.body+s.notes;assert.ok(s.title&&s.lead&&s.source&&s.notes.includes('<p>'));assert.doesNotMatch(html,/\bNaN\b|\bundefined\b/);if(c.DraftContent.en)assert.doesNotMatch(s.title+s.lead+html,/[\u4e00-\u9fff]/);
  assert.equal(s.sourceFile,'project-report-cn.tex');assert.doesNotMatch(s.body,/W₆₈|W68|60\.4%|67\.2%|24,000|1\.464392/);
  for(const m of html.matchAll(/(?:href|src|data)="([^"]+)"/g)){if(m[1].startsWith('#'))assert.notEqual(c.DraftTeaching.pageFromHash(slides,m[1],0),0);else assert.ok(existsSync(path.resolve(root,m[1].split('#')[0])),m[1]);}}
+ const expectedAfter={
+  'event-vector':'features','network-purpose':'model-widget','neuron':'network-purpose',
+  'hidden-layers':'neuron','nonlinearity':'hidden-layers','forward-widget':'nonlinearity',
+  'learning-cycle':'network','train-inference':'training'};
+ for(const [id,previous]of Object.entries(expectedAfter)){
+  const index=slides.findIndex(s=>s.id===id);assert.equal(slides[index-1].id,previous);assert.equal(slides[index].teaching,true);
+ }
+ const toy=slides.find(s=>s.id==='forward-widget');
+ assert.match(toy.notes,c.DraftContent.en?/artificial 2→2→1/:/人工简化网络/);
+ for(const id of ['toy-pt','toy-phi','toy-reset','toy-output'])assert.equal(slides.filter(s=>s.body.includes(`id="${id}"`)).length,1);
  for(const m of ['ABCD','BCD','ACD','ABD','ABC'])assert.equal(D.rows.filter(r=>r.subset===m).length,3);
  const reversed=Array.from(slides).reverse();for(const id of ['all-results','contrasts','spectrum-yields','provenance'])assert.equal(c.DraftTeaching.pageFromHash(reversed,'#'+id),reversed.findIndex(s=>s.id===id)+1);
  assert.equal(c.DraftTeaching.pageFromHash(slides,'#widths'),slides.findIndex(s=>s.id==='all-results')+1);
  }
  assert.deepEqual(D.qualification,{status:'exploratory_posthoc',independent:false,selection_aware_coverage:'unvalidated',primary_claim_eligible:false});
- console.log('PASS: both 40-slide basic-report editions; 15 metric rows; 12 contrast rows; current report identities and PDF hashes; local links; translations; historical-result isolation.');
+ console.log('PASS: both 48-slide basic-report editions; 15 metric rows; 12 contrast rows; current report identities and PDF hashes; local links; translations; historical-result isolation.');
 }
