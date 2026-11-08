@@ -1,17 +1,17 @@
 % !TeX root = project-report.tex
+% !TeX program = lualatex
+% Build: latexmk -lualatex -interaction=nonstopmode -halt-on-error -outdir=.build/project-report project-report.tex
 \documentclass[11pt,a4paper]{article}
-\usepackage[T1]{fontenc}
-\usepackage[utf8]{inputenc}
 \usepackage[margin=21mm,headheight=14pt]{geometry}
-\usepackage{lmodern,microtype,amsmath,amssymb,graphicx,booktabs,array,tabularx}
-\usepackage{xcolor,enumitem,fancyhdr,caption,xurl}
+\usepackage{lmodern,amsmath,amssymb,graphicx,booktabs,array,tabularx}
+\usepackage{xcolor,enumitem,fancyhdr,caption,xurl,placeins,float,needspace}
 \usepackage[colorlinks=true,linkcolor=teal,citecolor=teal,urlcolor=teal]{hyperref}
 \definecolor{reportblue}{HTML}{18536B}
-\hypersetup{pdftitle={Project Report: Event Selection and Mass Spectra Before and After Neural Network Cuts},pdfauthor={HiggsML project}}
+\hypersetup{pdftitle={Effects of Feature Groups on Four-Lepton MC Event Selection},pdfauthor={HiggsML project}}
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\small\textcolor{reportblue}{HiggsML | Project Report}}
-\fancyhead[R]{\small 30 October 2026}
+\fancyhead[L]{\small\textcolor{reportblue}{HiggsML | Project report}}
+\fancyhead[R]{\small 8 November 2026}
 \fancyfoot[C]{\thepage}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{6pt}
@@ -19,75 +19,65 @@
 \setlist[itemize]{leftmargin=1.4em,itemsep=3pt,topsep=4pt}
 \captionsetup{font=small,labelfont=bf,justification=raggedright,singlelinecheck=false}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
-\newcommand{\reportsection}[1]{\section*{\textcolor{reportblue}{#1}}}
+\raggedbottom
+\setlength{\textfloatsep}{12pt}
+\setlength{\intextsep}{12pt}
 \newcommand{\gev}{\,\mathrm{GeV}}
-\newcommand{\status}[1]{\textbf{#1}}
+
 \begin{document}
+{\LARGE\bfseries\color{reportblue} Effects of Feature Groups on\\ Four-Lepton MC Event Selection\par}
+\vspace{6pt}
+Project report $\cdot$ Basic-metric comparison $\cdot$ 8 November 2026
 
-{\LARGE\bfseries\color{reportblue} Project Report\par}
-\vspace{3pt}
-{\Large Event Selection and Mass Spectra Before and After Neural Network Cuts\par}
-\vspace{5pt}
+\section{Research purpose and comparison scope}
 
-\reportsection{1. Project Objectives and Progress Overview}
-This project evaluates the effect of neural network selection on four-lepton
-invariant-mass distributions. The analysis identifies the simulated Higgs signal
-and background regions and characterizes changes in their yields and mass shapes.
-The completed comparisons use a common final-evaluation sample and selection
-rules fixed before evaluation.
+Different kinematic variables describe different aspects of an event and may contain overlapping information.
+This report removes one input group at a time to examine how selection performance changes and how the current training procedure uses each group.
+It compares five input configurations, ABCD, BCD, ACD, ABD and ABC, each trained separately with seeds 42, 43 and 44.
+ABCD uses all four groups; each other configuration omits one group. All configurations share the event split, hidden-layer architecture and threshold-selection rule.
+The comparison considers signal retention, background suppression and the signal-to-background ratio. Mass spectra are used to check whether selection changes the distribution along the mass axis.
 
-\textbf{Main finding.} Both illustrated networks retain most of the simulated
-Higgs signal while removing roughly half the background yield. The signal
-remains concentrated near 125 GeV. The background is already broad and nonuniform
-before selection; after selection, a larger fraction of its remaining yield lies
-in the signal mass region. Thus the background changes in shape as well as in
-amount. These statements describe the controlled simulation used in this project.
+The report is intended for senior undergraduate physics students. Comparisons after model scoring use weighted sums, ratios, differences and medians.
+The samples and network method are introduced first, followed by a worked example with two models and then the complete five-configuration comparison.
+The main text uses controlled-MC results from the new local draft001 run; its provenance and the scope of verification are given in Appendix~\ref{app:provenance}.
+The study is educational and technical; Section~\ref{sec:conclusion} states the limits of its conclusions.
 
-\begin{table}[h!]
-\caption{Completed comparisons and supporting evidence.}
-\label{tab:response}
+\section{Simulated samples and event selection}
+
+\subsection{Signal, background and study population}
+The analysis uses two MC samples from the ATLAS 2020 educational 13 TeV collection~\cite{OpenData}, with yields normalized to $10\,\mathrm{fb}^{-1}$.
+Signal DSID 345060 (\texttt{ggH125\_ZZ4lep}) describes gluon-fusion production of a Higgs boson with a mass set to $125\gev$, followed by $H\to ZZ^*\to4\ell$.
+Background DSID 363490 (\texttt{llll}) is a four-lepton sample. Its initial-state composition and $Z/\gamma^*$ contributions still require a DSID production record; it must not be described as purely quark-initiated $ZZ$.
+The project additionally selects the $2e2\mu$ final state; this does not specify the full final-state content of the generated sample.
+
+Every comparison uses the same baseline selection: event triggers and lepton quality, exactly four qualified leptons, same-flavor opposite-sign pairs, momentum, acceptance and pair-mass requirements, and finally $2e2\mu$ with $105\leq m_{4\ell}<140$ GeV.
+The electron and muon pairs form two candidates. The pair whose mass is closer to $91.1876$ GeV is called $Z_1$, and the other is $Z_2$.
+Here reconstruction means combining released lepton four-momenta, not resimulating the detector.
+Appendix~\ref{app:cuts} lists the complete cuts, their order and their correspondence to references; Appendix~\ref{app:fields} defines the four-momenta and angles.
+
+``Before network selection'' already includes these common cuts. ``After network selection'' additionally requires the frozen network's high-score threshold.
+These are therefore the same evaluation population and a subset of it, rather than two independently generated samples.
+
+\subsection{Sample allocation and the role of each subset}
+After the common selection, physical event groups are assigned to training, validation and final evaluation with probabilities of 60\%, 20\% and 20\%.
+Members of a group always remain together. All input configurations and seeds share this assignment.
+These are allocation probabilities; the realized counts need not equal these percentages exactly.
+
+\begin{center}
 \small
-\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{.27\linewidth}Y p{.19\linewidth}@{}}
+\begin{tabularx}{\linewidth}{@{}p{.18\linewidth}p{.18\linewidth}Y@{}}
 \toprule
-Analysis objective & Completed work & Supporting evidence \\
+Subset & Probability & Role in this study \\
 \midrule
-Define the before/after comparison & The same selected evaluation population, with and without each frozen high-score cut. & Sections 2 and 4 \\
-Locate the signal region & Separate signal spectra and the fraction of its yield in 120--130 GeV. & Figure~\ref{fig:yields}; Table~\ref{tab:fractions} \\
-Characterize the background & Its actual simulated mass distribution, shown separately from signal. & Figure 1 \\
-Quantify yield and shape changes & Signed-yield retention and separately normalized before/after shapes. & Tables~\ref{tab:groups}, \ref{tab:yields}, \ref{tab:fractions}; Figure~\ref{fig:shapes} \\
-Establish interpretation limits & A description of the selected events, with statistical and physical limits. & Sections 5--7 \\
+Training & 60\% & Fit input-standardization and network parameters. \\
+Validation & 20\% & Select a checkpoint using AUC, then determine a threshold from background scores. \\
+Final evaluation & 20\% & Calculate selected yields and mass spectra after the model and threshold are frozen. \\
 \bottomrule
 \end{tabularx}
-\end{table}
-
-The illustrations compare two input schemes at training seed 42. The physical
-variables and combinations denoted by A/B/C/D are introduced at the end of
-Section 2; Section 4 explains the networks and score thresholds.
-
-The broader project continues to examine how input groups affect the nominal
-signal-strength interval width, $W_{68}$. The spectra explain the physical
-selection alongside that comparison. Section 7 briefly reports the completed
-interval results; the main emphasis of this progress report is the requested
-selection and mass-spectrum explanation.
-
-\clearpage
-\reportsection{2. Data used and the common physical selection}
-Two ATLAS 2020 educational 13 TeV MC members are used \cite{OpenData}:
-signal DSID 345060 (\texttt{ggH125\_ZZ4lep}) and background DSID 363490
-(\texttt{llll}). The background label does not establish pure quark-initiated
-$ZZ$. The selected final state is $2e2\mu$; yields use $10\,\mathrm{fb}^{-1}$.
-
-\textbf{Source and existing preselection.} The file labels identify a
-125 GeV gluon-fusion Higgs signal and four-lepton background. Before release,
-loose object and event preselection retained at least four leptons (electrons
-or muons), as documented by CERN \cite{OpenData}. The project adds
-Table~\ref{tab:cuts}; generators, detector-simulation chains and production-filter
-efficiencies require separate production evidence.
-
-\begin{table}[h!]
-\caption{Counts before/after common selection. The first row counts public ROOT
-entries; later rows count draft001 event groups, verified one to one with selected
-entries. The final three rows partition the selected population.}
+\end{center}
+Evaluation results are not fed back into model selection or threshold adjustment.
+\begin{table}[H]
+\caption{Sample counts available in the new-run aggregates. The first row gives ROOT entries recorded in source metadata; the second gives physical event groups in final-evaluation templates. This revision does not read event payloads or recheck a one-to-one entry/group correspondence.}
 \label{tab:population}
 \centering
 \small
@@ -95,273 +85,186 @@ entries. The final three rows partition the selected population.}
 \toprule
 Stage & Signal & Background & Total \\
 \midrule
-Public ROOT input (before project cuts) & 164,716 & 554,279 & 718,995 \\
-After common selection (all subsets) & 45,083 & 3,593 & 48,676 \\
-\quad Training & 27,026 & 2,175 & 29,201 \\
-\quad Validation & 9,008 & 720 & 9,728 \\
-\quad Final evaluation & 9,049 & 698 & 9,747 \\
+Released ROOT input (before project cuts) & 164,716 & 554,279 & 718,995 \\
+Final-evaluation subset & 9,049 & 698 & 9,747 \\
 \bottomrule
 \end{tabular}
 \end{table}
+Table~\ref{tab:population} gives the source-sample and final-evaluation counts.
+The consumed aggregates do not provide training or validation counts, so historical counts are not substituted.
+This is not a cut-by-cut cutflow and cannot establish acceptance relative to all generated events.
 
-Counts exclude events removed before release and do not give a cut-by-cut record.
+\subsection{Event counts, physical weights and expected yields}\label{sec:weights}
+Event-group counts describe how many simulated groups are available; sums of signed weights describe how many events are expected at a specified luminosity.
+These are different quantities: many MC events may represent a small expected yield.
+Let $w_i^{\rm phys}$ denote a sample-normalized physical weight. The final-evaluation subset has allocation probability 0.2, so its yield weight is
+\[
+ u_i=\frac{w_i^{\rm phys}}{0.2},\qquad
+ Y_{\rm before}=\sum_{i\in E}u_i,\qquad
+ Y_{\rm high}=\sum_{i\in E,\,s_i\geq t}u_i.
+\]
+Here $E$ is the final-evaluation baseline for one process, $s_i$ is a network score and $t$ is that model's frozen threshold.
+Dividing by 0.2 estimates the yield at the same $10\,\mathrm{fb}^{-1}$; training, validation and evaluation must not be added as three independent luminosities.
+Negative generator contributions retain their signs. Appendix~\ref{app:weights} gives the physical normalization and sample constants.
+\FloatBarrier
 
-\textbf{Event structure.} Both files share the \texttt{mini} tree schema (one entry
-per event). Metadata confirm these 19 profile branches in ROOT order:
+\section{Feature groups and neural-network method}
 
-\begingroup
-\small
-\begin{verbatim}
-Branch                       ROOT type
-runNumber                    int32_t
-eventNumber                  int32_t
-channelNumber                int32_t
-mcWeight                     float
-trigE                        bool
-trigM                        bool
-lep_n                        uint32_t
-lep_trigMatched              std::vector<bool>
-lep_pt                       std::vector<float>
-lep_eta                      std::vector<float>
-lep_phi                      std::vector<float>
-lep_E                        std::vector<float>
-lep_z0                       std::vector<float>
-lep_charge                   std::vector<int32_t>
-lep_type                     std::vector<uint32_t>
-lep_isTightID                std::vector<bool>
-lep_ptcone30                 std::vector<float>
-lep_etcone20                 std::vector<float>
-lep_tracksigd0pvunbiased     std::vector<float>
-\end{verbatim}
-\endgroup
-
-The first seven fields are event scalars; later vectors contain \texttt{lep\_n}
-elements, with matching indices for the same lepton. \texttt{*Number} identifies
-the event/sample; \texttt{mcWeight} is the signed generator weight.
-Momenta, energies and isolation sums use MeV, converted to GeV as needed;
-\texttt{lep\_z0} uses mm and \texttt{lep\_tracksigd0pvunbiased} stores $d_0/\sigma(d_0)$.
-
-\textbf{Trigger.} The electron- and muon-trigger flags \texttt{trigE} and
-\texttt{trigM} must satisfy a logical OR. At least one good lepton must also
-have \texttt{lep\_trigMatched=true}, linking it to the trigger decision.
-Literature comparisons appear in Section 3.
-
-\clearpage
-\textbf{Selection rules.} Table~\ref{tab:cuts} lists single-branch rules first,
-then combined and reconstructed conditions. This grouping is for readability;
-the execution sequence is summarized below the table.
-
-\begin{table}[h!]
-\caption{Common selection before the neural network cut, using the ROOT branch
-names above. Momentum and mass thresholds are in GeV.}
-\label{tab:cuts}
-\small
-\renewcommand{\arraystretch}{1.12}
-\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{.35\linewidth}Y@{}}
+\subsection{Input information and learning objective}
+Table~\ref{tab:feature-overview} summarizes the physical meaning of the input groups.
+All four groups are constructed from the released lepton four-momenta. Appendix~\ref{app:fields} gives variable names, reconstruction formulas and angular conventions.
+\begin{table}[H]
+\caption{Feature groups and input dimensions. The input dimensions of ABCD, BCD, ACD, ABD and ABC are 19, 11, 15, 17 and 14, respectively.}
+\label{tab:feature-overview}
+\centering\small
+\begin{tabularx}{\linewidth}{@{}cp{.35\linewidth}Yc@{}}
 \toprule
-Input variable(s) & Exact project rule \\
+Group & Variables & Physical meaning & Size \\
 \midrule
-\multicolumn{2}{@{}l}{\textbf{Rules using one branch}} \\
-\texttt{lep\_trigMatched} & At least one of the four good leptons is trigger-matched. \\
-\texttt{lep\_pt} & For the four good leptons, ordered by decreasing $p_T$:
-$p_{T,1}\geq20$, $p_{T,2}\geq15$, $p_{T,3}\geq10$, $p_{T,4}\geq7$. \\
-\texttt{lep\_type} & Keep electrons and muons: $|\texttt{lep\_type}|\in\{11,13\}$. \\
-\texttt{lep\_isTightID} & Keep leptons with a true tight-identification flag. \\
-\midrule
-\multicolumn{2}{@{}l}{\textbf{Combined and reconstructed conditions}} \\
-\texttt{trigE}, \texttt{trigM} & Require \texttt{trigE=true} or \texttt{trigM=true}. \\
-\texttt{lep\_ptcone30}, \texttt{lep\_pt} & Track isolation: $p_T>0$ and
-\texttt{lep\_ptcone30}/\texttt{lep\_pt}$<0.3$ for each lepton. \\
-\texttt{lep\_etcone20}, \texttt{lep\_pt} & Calorimeter isolation: $p_T>0$ and
-\texttt{lep\_etcone20}/\texttt{lep\_pt}$<0.3$ for each lepton. \\
-\nolinkurl{lep_tracksigd0pvunbiased}, \texttt{lep\_type} & Absolute transverse
-impact-parameter significance $<5$ for electrons and $<3$ for muons. \\
-\texttt{lep\_z0}, \texttt{lep\_eta} & Longitudinal impact:
-$|\texttt{lep\_z0}/\cosh(\texttt{lep\_eta})|<0.5$ mm. \\
-\texttt{lep\_n} and the quality mask & Exactly four leptons must survive quality filtering;
-the original \texttt{lep\_n} may exceed four. \\
-\texttt{lep\_eta}, \texttt{lep\_type} & For all four good leptons:
-$|\eta|<2.47$ for electrons or $|\eta|<2.7$ for muons. \\
-\texttt{lep\_charge}, \texttt{lep\_type} & Total charge zero; exactly two
-electrons and two muons; two disjoint same-flavour opposite-sign (SFOS) pairs. \\
-\texttt{lep\_pt}, \texttt{lep\_eta}, \texttt{lep\_phi}, \texttt{lep\_E},
-plus SFOS pairing & Reconstruct pair masses; require every SFOS mass $>5$,
-with
-$50<m_{12}<106$ and $12<m_{34}<115$. \\
-The four lepton four-vectors & Combined invariant mass $105\leq m_{4\ell}<140$. \\
+A & $p_T$ and $\eta$ of the four leptons & Individual-lepton momentum scales and directions & 8 \\
+B & $m_{Z1}$, $m_{Z2}$ and the two within-pair $\Delta R$ values & Pair masses and internal angular separations & 4 \\
+C & $p_{T,4\ell}$ and $|\Delta\phi_{ZZ}|$ & Overall transverse motion and the azimuthal relation between the two pairs & 2 \\
+D & Three angular cosines and two plane angles & Spatial orientation of production and decay & 5 \\
 \bottomrule
 \end{tabularx}
 \end{table}
+Each input configuration is trained separately. None explicitly includes $m_{4\ell}$.
+However, the variables share underlying lepton information and can still carry mass information, motivating the mass-spectrum checks.
 
-\textbf{Mass notation.} In Ref.~\cite{ATLAS13}, $m_{12}$ is the mass of the
-SFOS pair closest to the nominal $Z$ mass; $m_{34}$ is the remaining pair's
-mass. These are \texttt{mZ1} and \texttt{mZ2} in the code, reconstructed from
-lepton four-vectors. Pair labels do not imply $p_T$ ordering.
+Training aims to assign higher scores to signal and lower scores to background, with labels 1 and 0, respectively.
+Each input's mean and standard deviation are calculated using training data only; the same transformation is then applied to validation and evaluation samples.
+The network produces one selection score per event as described below.
 
-\textbf{Execution.} After the trigger check, apply flavour, tight-ID, track
-isolation, calorimeter isolation and transverse/longitudinal impact filters,
-requiring at least four survivors at each step. Require exactly four good
-leptons, then apply trigger matching, ordered-$p_T$, acceptance, charge/pairing,
-pair-mass and study-population cuts. All models share this baseline: ``before''
-means after these cuts, and ``after'' adds only the frozen network score cut.
+\subsection{Fully connected model with three hidden layers}\label{sec:network}
+The model is a PyTorch \textbf{multilayer perceptron} (MLP), also called a feedforward fully connected neural network.
+Each event supplies a row of kinematic values, treated as one input vector.
+``Fully connected'' means each node receives outputs from all nodes in the preceding layer; ``feedforward'' means information passes successively from input to output.
+The layer widths are
+\[
+ \underbrace{d_{\rm in}}_{\text{input}}
+ \;\longrightarrow\;
+ \underbrace{64\;\longrightarrow\;64\;\longrightarrow\;32}_{\text{three hidden layers}}
+ \;\longrightarrow\;
+ \underbrace{1}_{\text{output}}.
+\]
+Hidden layers are the intermediate computational layers between input and output.
+The input dimension $d_{\rm in}$ depends on the configuration in Table~\ref{tab:feature-overview}.
+A width of 64 or 32 counts intermediate nodes, not events or physical variables.
+The nodes learn combinations of inputs; no node is assigned in advance to a specific physical quantity or feature group.
 
-
-\clearpage
-\textbf{Network inputs: the A/B/C/D feature groups.} After common selection,
-the lepton branches are reconstructed into the 19 inputs below. Leptons are
-ordered by decreasing $p_T$; $Z_1/Z_2$ follow the $m_{12}/m_{34}$ pairing above.
-
-\begin{table}[h!]
-\caption{Feature groups and their physical meaning. Momenta and masses use GeV;
-azimuthal angles use radians.}
-\label{tab:features}
-\small
-\renewcommand{\arraystretch}{1.12}
-\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{.07\linewidth}>{\raggedright\arraybackslash}p{.41\linewidth}cY@{}}
+\begin{table}[H]
+\caption{Network operations in execution order. Linear denotes a fully connected linear transformation. Only the input dimension changes between configurations; the hidden architecture is shared.}
+\label{tab:network}
+\centering\small
+\begin{tabularx}{\linewidth}{@{}p{.18\linewidth}p{.19\linewidth}Y@{}}
 \toprule
-Group & Code variables & Count & Physical meaning \\
+Component & Dimensions & Operations in order \\
 \midrule
-A & \texttt{lep1\_pt}--\texttt{lep4\_pt}; \texttt{lep1\_eta}--\texttt{lep4\_eta} & 8 &
-Individual-lepton transverse momenta and pseudorapidities: momentum scales and directions relative to the beam. \\
-B & \texttt{mZ1}, \texttt{mZ2}; \texttt{deltaR\_Z1}, \texttt{deltaR\_Z2} & 4 &
-Dilepton masses and within-pair angular separations,
-$\Delta R=\sqrt{(\Delta\eta)^2+(\Delta\phi)^2}$. \\
-C & \texttt{pt4l}, \texttt{deltaPhi\_ZZ} & 2 &
-Four-lepton transverse momentum and the absolute azimuthal separation between the two dileptons. \\
-D & \texttt{cos\_theta\_star}, \texttt{cos\_theta\_1}, \texttt{cos\_theta\_2};
-\texttt{phi\_decay\_planes}, \texttt{phi\_production\_plane} & 5 &
-One production-angle cosine, two decay polar-angle cosines, and two angles describing decay- and production-plane orientations. \\
+Input processing & $d_{\rm in}\to d_{\rm in}$ & Standardize each variable using its training-set mean and standard deviation. \\
+Hidden layer 1 & $d_{\rm in}\to64$ & Linear, LayerNorm, SiLU, Dropout (0.1). \\
+Hidden layer 2 & $64\to64$ & Linear, LayerNorm, SiLU, Dropout (0.1). \\
+Hidden layer 3 & $64\to32$ & Linear, LayerNorm, SiLU. \\
+Output & $32\to1$ & Linear produces a real value $z$; sigmoid is applied when computing scores. \\
 \bottomrule
 \end{tabularx}
 \end{table}
+A fully connected node first computes a weighted sum plus a bias:
+\[
+ a_j=\sum_k W_{jk}h_k+b_j.
+\]
+Here $h_k$ is an incoming value, while $W_{jk}$ and $b_j$ are learned parameters.
+The first layer receives standardized inputs; later layers receive outputs from the preceding hidden layer.
+Training adjusts these weights, biases and the normalization layers' learned parameters to distinguish signal from background.
 
-ABCD/BCD/ACD/ABD/ABC use 19/11/15/17/14 inputs, respectively, and are trained
-separately. Group D uses the relevant rest frames with fixed negative-lepton
-and positive laboratory-beam conventions. The groups share underlying lepton
-information and are correlated; omitting explicit $m_{4\ell}$ does not remove
-implicit mass information.
-
-\clearpage
-\reportsection{3. What is supported by external sources?}
-\textbf{Published physics reference.} The ATLAS 13 TeV four-lepton analysis
-\cite{ATLAS13}, Sections 5.1--5.2, supplies a concrete reference for lepton
-acceptance, ordered transverse momenta, SFOS pairing, the leading/subleading
-$Z$ mass windows and the electron/muon impact-parameter significance limits.
-The $12\gev$ lower bound for $m_{Z2}$ agrees with its prescription for
-$m_{4\ell}<140\gev$, which covers this project's full mass window.
-These agreements support the physical motivation of the cuts; they do not make
-this project a reproduction of that measurement.
-
-\textbf{Differences that matter when explaining the selection.}
+The other operations in Table~\ref{tab:network} have the following roles:
 \begin{itemize}
-\item The publication uses loose electron identification and detailed muon-type
-requirements. The project applies the available tight-ID flag to both lepton
-flavours. Equivalence to a published working point has not been established.
-\item The first three momentum scales, 20, 15 and 10 GeV, match the published
-selection. The project accepts equality at each threshold and uses a common
-7 GeV fourth-lepton threshold. The publication uses electron $E_T>7\gev$ and
-muon $p_T>5\gev$, with a higher threshold for calorimeter-tagged muons.
-Thus the project's fourth-lepton rule and use of $p_T$ are adaptations.
-\item The publication requires track isolation below 15\% and calorimeter
-isolation below 20\% for electrons or 30\% for muons, with detailed cone and
-correction definitions. A common 30\% limit on both stored isolation quantities
-is a project simplification, not that published isolation prescription.
-\item The publication permits several candidate quadruplets and applies angular
-separation and additional reconstruction procedures. The project requires
-exactly four good leptons and uses a restricted two-electron/two-muon sample.
-Its 5 GeV check covers every SFOS pair, whereas the publication discusses the
-alternative-pair veto in the $4e/4\mu$ channels. Here the stronger $Z$ windows
-already constrain the two physical SFOS pairs.
+\item \textbf{LayerNorm:} normalize the values within a hidden layer for one event, followed by learned scaling and shifting.
+Unlike input standardization, whose statistics come from the training set, LayerNorm computes statistics within each event. It does not refit means and standard deviations on the final-evaluation population.
+\item \textbf{SiLU:} apply the nonlinear transformation $a/(1+e^{-a})$.
+This allows nonlinear combinations of inputs; a sequence consisting only of linear transformations would still reduce to a single linear transformation.
+\item \textbf{Dropout:} during training, set each output in the first two hidden layers to zero with probability 0.1 and scale surviving outputs by $1/0.9$.
+This reduces reliance on a few intermediate nodes. Dropout is disabled for validation and final evaluation; it does not remove 10\% of events or physical feature groups.
 \end{itemize}
+The output layer produces a real value $z$, which is converted to a signal-like score between 0 and 1 using
+\[
+ s=\frac{1}{1+e^{-z}}.
+\]
+The network \textbf{ranks events and supplies a selection score}; it does not directly predict a signal yield, mass or signal strength.
+Yields are still obtained by summing the physical weights of events passing the threshold.
+Because training uses weights rescaled within each class, the score is not directly a physical signal fraction or a calibrated probability.
 
-\textbf{Official educational example.} At the fixed revision in
-Refs.~\cite{HZZCuts,HZZAnalysis}, \texttt{HZZCuts.py}, lines 2--25, defines
-four-lepton multiplicity, zero charge, flavour and second/third-lepton thresholds
-of 15/10 GeV. Its isolation functions (lines 28--33) reject ratios above 0.3,
-whereas this project requires ratios strictly below 0.3. Crucially, their calls
-are commented out in \texttt{HZZAnalysis.py}, lines 162--168. The example therefore
-cannot be cited as having executed this project's full isolation selection.
-The Run-1 analysis \cite{ATLASRun1}, Section 5.1, supports the trigger-matching
-principle, but uses a more detailed trigger treatment.
+\subsection{Network training and configuration comparison}
+Each MC training event has a known signal or background label.
+Training events are shuffled at the start of each epoch and divided into batches of at most 1024 events. One epoch visits the full training set once.
+Each batch uses a weighted binary cross-entropy loss: assigning low scores to signal or high scores to background increases the loss.
 
-\textbf{Unresolved provenance and normalization.} The exact external origin of
-the tight-ID choice and $|z_0\sin\theta|<0.5$ mm remains unconfirmed in the sources
-checked. They are reported as fixed project choices. The project also uses
-generator weights and fixed sample normalization; the official educational
-example additionally multiplies pileup, lepton and trigger scale factors
-(Ref.~\cite{HZZAnalysis}, lines 140--142). Its published/example yields are
-therefore not expected to be reproduced by the present weight definition.
+An event's optimization weight is the absolute physical weight divided by the mean absolute weight of its training class.
+The batch loss is the arithmetic mean of the weighted per-event losses.
+This equalizes the mean per-event weight between classes, but does not force equal total class weights.
+Optimization weights are used for learning; final yields use signed physical weights.
+
+Backpropagation computes how parameters affect the loss, and AdamW updates them.
+The learning rate $10^{-3}$ controls the update scale; weight decay $10^{-4}$ shrinks parameters during updates to discourage excessive growth.
+Training uses a CPU and 32-bit floating-point values for at most 200 epochs.
+The validation-AUC rule below determines when to stop and which checkpoint to retain.
+
+All five configurations use the same hidden layers, optimizer, training budget, event split and checkpoint rule, changing only the included features.
+Changing the input dimension also changes the first layer's parameter count.
+Each configuration is trained from a random initialization for seeds 42, 43 and 44, giving fifteen models.
+Seeds control initialization, batch shuffling and Dropout, but do not change the fixed physical-event split.
+The report compares seeds individually; it does not average their scores into an ensemble.
+Layer widths and hyperparameters are fixed settings. Other architectures were not compared, and this architecture is not claimed to be optimal.
+
+\subsection{Checkpoint selection using validation AUC}
+After each epoch, AUC (area under the ROC curve) is calculated on validation data using absolute physical weights to check whether signal generally ranks above background.
+An AUC of 0.5 corresponds to random ranking and 1 to perfect separation.
+AUC selects checkpoints within a training run; it does not determine the high-score threshold.
+
+A new checkpoint is saved only if validation AUC improves by more than $10^{-4}$ over the saved best value.
+Training stops after 20 consecutive epochs without such improvement, subject to the 200-epoch maximum.
+The saved best checkpoint is restored, so the final training epoch and the selected epoch can differ.
+For seed 42, ABCD stops at epoch 87 and uses epoch 67; BCD stops at epoch 86 and uses epoch 66.
+Appendix~\ref{app:network} gives implementation and reproduction details.
+
+\subsection{Score thresholds from validation background}
+Once a model is selected, a rule is needed to divide continuous scores into high and low categories.
+Each model determines its own threshold using only \emph{validation background}:
+\begin{enumerate}[leftmargin=1.7em,itemsep=2pt,topsep=3pt]
+\item Sort validation-background events by increasing score.
+\item Accumulate absolute physical weights and find the first position reaching half the total weight.
+\item Use the score at that position as threshold $t$, without interpolation between scores.
+\end{enumerate}
+This is a prespecified weighted-median rule, not a scan of final-evaluation data for the best selection.
+Events with $s\geq t$ enter the high category and those with $s<t$ enter the low category; ties are not split.
+For seed 42, thresholds are $0.746724$ for ABCD and $0.860891$ for BCD, rounded here for display; evaluation uses full precision.
+The networks have different score scales, so threshold magnitudes alone do not measure model quality.
+
+\subsection{Frozen application to final evaluation}
+Only after the standardization parameters, checkpoint and threshold are frozen are they applied to final-evaluation events.
+Each baseline event receives a score and a high/low assignment; counts, signed yields and mass spectra are then computed.
+The network does not rewrite event masses; it changes which events enter the displayed high-score subset.
+
+The weighted-median rule does not guarantee exactly 50\% background retention.
+Discrete weights and tied scores can move the validation high-score absolute-weight fraction away from one half.
+Final evaluation also uses a different subset, and yield retention uses \emph{signed} weights.
+Appendix~\ref{app:threshold} provides an explicitly illustrative calculation.
+Basic metrics use high-score yields over the entire $[105,140)$ GeV window; low-score yields check that the two categories sum to the common baseline.
 
 \clearpage
-\reportsection{4. Neural network selection and retained samples}
-\textbf{Sample roles.} The common selected population is assigned by physical
-event group to training, validation and final evaluation with probabilities
-60\%, 20\% and 20\%; actual counts appear in Table~\ref{tab:population}.
-Each physical event group stays in one subset, with the same assignment for
-all models and seeds. Training fits input standardization and network
-parameters; validation selects the checkpoint and threshold; final evaluation
-applies the frozen choices. Finite-sample counts need not be exactly 60/20/20.
+\section{Comparison metrics and worked example}\label{sec:basic}
 
-\textbf{Network and training.} Each input scheme uses a fully connected binary
-classifier with architecture
-\[
- d_{\rm in}\longrightarrow64\longrightarrow64\longrightarrow32\longrightarrow1.
-\]
-All three hidden layers use LayerNorm and SiLU; Dropout with probability 0.1
-follows the first two hidden layers. A sigmoid converts the output to a
-$0$--$1$ score $s$. Labels are 1 for signal and 0 for background, so higher
-scores favour signal. The score is a ranking discriminant, not a calibrated
-physical signal probability. ABCD and BCD have 19 and 11 inputs, respectively.
-
-Each input is standardized using the training mean and standard deviation;
-validation and evaluation reuse that transform. The loss is weighted binary
-cross-entropy. Training weights are absolute physical weights divided by
-their training-class mean; this does not equalize class totals. AdamW uses a
-learning rate of $10^{-3}$, weight decay $10^{-4}$ and batches of 1024 on CPU
-float32, for at most 200 epochs. Validation AUC (area under the ROC curve) uses
-absolute physical weights. A checkpoint replaces the retained best only when
-AUC improves by more than $10^{-4}$; 20 epochs without an update stop training.
-At seed 42, ABCD stopped after epoch 87 and retained epoch 67; BCD stopped
-after epoch 86 and retained epoch 66.
-
-\textbf{How is the score threshold obtained?} Restore the selected checkpoint
-and sort only the \emph{validation-background} scores from low to high.
-Accumulate absolute physical weights $a_i=|w_i|$ in that order. The threshold
-is the first score whose cumulative $a_i$ reaches half the total:
-\[
- k=\min\left\{j:\sum_{i=1}^{j}a_{(i)}\geq\frac12\sum_i a_i\right\},
- \qquad t=s_{(k)}.
-\]
-The index $(i)$ denotes score order. No interpolation is used. Evaluation
-assigns $s\geq t$ to the high category and $s<t$ to the low category; tied
-scores stay together.
-
-\textbf{Teaching example (not actual run data).} Suppose five ordered
-validation-background scores are $0.10,0.30,0.60,0.80,0.90$, with absolute
-weights $1,2,1,4,2$. The total is 10 and half is 5; cumulative weights are
-$1,3,4,8,10$. The first crossing occurs at $t=0.80$. Scores 0.80 and 0.90
-enter the high category, retaining $6/10=60\%$ of the absolute weight.
-Discrete weights and tied scores mean retention need not be exactly 50\%;
-still less does it require 50\% \emph{signed} background retention in evaluation.
-
-Actual seed-42 thresholds are $0.746724$ for ABCD and $0.860891$ for BCD,
-rounded for display; evaluation uses full precision. Each model's threshold
-was frozen before inspecting evaluation spectra and was not adjusted using
-final-evaluation results.
-
-\clearpage
-\textbf{Evaluation counts and yields.} The comparisons below use the same
-final-evaluation subset. High-score subsets illustrate selection; interval
-inference still includes both score categories, as explained in Section 7.
-
-\begin{table}[h!]
-\caption{Physical event groups in the final-evaluation sample. The last two
-columns are high-score subsets at seed 42, not new independent samples.}
+\subsection{Event counts and weighted yields}
+The seed-42 ABCD and BCD models illustrate the comparison.
+Table~\ref{tab:groups} gives physical-event-group counts for the common baseline and high-score subsets.
+For example, ABCD retains 8,761 of 9,049 signal groups. The corresponding expected yield requires the signed-weight sum in Section~\ref{sec:weights}.
+Count fractions and yield retention fractions must be calculated separately.
+\begin{table}[H]
+\caption{Physical event groups in the current final-evaluation sample. The last two columns are seed-42 high-score subsets, not new independent samples.}
 \label{tab:groups}
 \centering
 \begin{tabular}{lrrr}
 \toprule
-Process & Baseline, before cut & ABCD high score & BCD high score \\
+Process & Baseline (before network cuts) & ABCD high & BCD high \\
 \midrule
 Signal & 9,049 & 8,761 & 8,563 \\
 Background & 698 & 386 & 378 \\
@@ -369,16 +272,35 @@ Background & 698 & 386 & 378 \\
 \end{tabular}
 \end{table}
 
-The baseline in Table~\ref{tab:groups} is only the evaluation subset after
-common selection; all selected events are counted in Table~\ref{tab:population}.
-For example, ABCD high score retains 8,761/9,049 signal event groups, whereas
-the yield retention below is 96.80\%. The former counts groups; the latter
-uses signed physical weights.
+\subsection{From yields to retention and signal-to-background ratio}
+Let $S_0$ and $B_0$ be the common baseline signal and background yields, and $S$ and $B$ their yields in a frozen network's high-score subset.
+All yields use the signed weights of Section~\ref{sec:weights} and correspond to $10\,\mathrm{fb}^{-1}$.
+Define
+\[
+ R_S=\frac{S}{S_0},\qquad R_B=\frac{B}{B_0},\qquad Q=\frac{S}{B}.
+\]
+$R_S$ is signal retention, $R_B$ is background retention, and $1-R_B$ is the fraction of background removed.
+$Q$ is the signal-to-background ratio; for example, $Q=2$ means the expected signal yield is twice the background yield.
+The relation
+\[
+ Q=\frac{S_0}{B_0}\frac{R_S}{R_B}
+\]
+shows that this convenient derived indicator depends on both retention fractions.
+Retention is tabulated as a percentage; yields and signal-to-background ratios are listed directly.
 
-\begin{table}[h!]
-\caption{Expected signed yields at $10\,\mathrm{fb}^{-1}$ and their retention.
-Errors are grouped MC standard errors at fixed networks and cuts; retention
-errors include shared-event before/after covariance.}
+Retaining signal and suppressing background can be competing objectives.
+A larger $Q$ can accompany signal loss, so configurations are not ranked solely by $Q$, nor combined into a single overall score.
+The common validation-background weighted-median rule does not ensure equal background retention in final evaluation.
+The comparison is therefore at each model's frozen operating point, not at matched signal or background efficiency.
+
+If a baseline denominator is nonpositive, the corresponding retention fraction is not calculated.
+If $B\leq0$, $Q$ is not calculated, and the reason is stated.
+Signed weights differ from ordinary counts: yields must not use absolute weights, and unusual ratios must not be clipped to $[0,1]$.
+Negative yields or retention fractions outside the usual range should be retained and their interpretation limits marked.
+
+\subsection{Worked example: ABCD and BCD}
+\begin{table}[H]
+\caption{Expected signed yields and retention at $10\,\mathrm{fb}^{-1}$ in the current run. Errors are MC standard errors calculated by physical event group for fixed networks and thresholds; retention errors include the covariance from events shared before and after selection.}
 \label{tab:yields}
 \centering
 \begin{tabular}{llrr}
@@ -394,80 +316,180 @@ Background & Before & $2.3553\pm0.1683$ & --- \\
 \bottomrule
 \end{tabular}
 \end{table}
+The quantities following $\pm$ are finite-MC standard errors.
+For one process and selection, let physical event group $g$ contribute $U_g=\sum_{i\in g}u_i$.
+Under the existing event-group counting convention,
+\[
+ Y=\sum_g U_g,\qquad \sigma_Y=\sqrt{\sum_g U_g^2}.
+\]
+First sum signed weights within each group, then sum the squared group contributions and take the square root.
+This differs from simply taking the square root of an event count; it reduces to $\sqrt{N}$ only in special cases such as independent unit-weight counts.
+This error is conditional on a fixed network and threshold.
+The numerator and denominator of a retention fraction share events, so its error includes covariance; Appendix~\ref{app:errors} gives the formula.
 
-The yield is a weighted physical expectation, not the number of simulated event
-groups in Table~\ref{tab:groups}. Evaluation yield weights are the signed physical
-weights divided by the 0.2 assignment probability, estimating the same
-$10\,\mathrm{fb}^{-1}$ exposure. The three subsets are not added as separate
-luminosities. Negative generator contributions are retained.
+Using the yields in Table~\ref{tab:yields}, ABCD gives
+\[
+ R_S\simeq\frac{2.6824}{2.7710}=96.80\%,\qquad
+ R_B\simeq\frac{1.2027}{2.3553}=51.06\%,\qquad
+ Q\simeq\frac{2.6824}{1.2027}=2.23.
+\]
+BCD has $Q\simeq2.6215/1.1012=2.38$.
+Using the rounded table values, removing A changes signal retention by about $94.60-96.80=-2.20$ percentage points and background retention by $46.75-51.06=-4.31$ percentage points, while increasing $Q$ by about $0.15$.
+BCD thus trades additional signal loss for less background and a higher signal-to-background ratio in this example; it is not thereby universally better.
+Displayed precision illustrates the arithmetic here; complete results are computed from unrounded aggregates.
 
-\textbf{Selection summary:} ABCD removes about 49\% of the
-background yield while losing about 3\% of signal; BCD removes about 53\% while
-losing about 5\%. BCD is more selective for both processes at its own frozen cut.
-This alone is not an equal-efficiency comparison or proof of a better classifier.
+\subsection{Group deletion: differences before summaries}
+Removing A, B, C or D gives BCD, ACD, ABD or ABC, respectively.
+For each seed $r$, compare the reduced configuration with ABCD at the same seed:
+\[
+ \Delta R_{S,G,r}=R_S(\mathrm{ABCD}\setminus G,r)-R_S(\mathrm{ABCD},r),
+\]
+\[
+ \Delta R_{B,G,r}=R_B(\mathrm{ABCD}\setminus G,r)-R_B(\mathrm{ABCD},r),\qquad
+ \Delta Q_{G,r}=Q(\mathrm{ABCD}\setminus G,r)-Q(\mathrm{ABCD},r).
+\]
+Multiply retention differences by 100 to report \textbf{percentage points}; $\Delta Q$ is a direct difference of ratios.
+Negative $\Delta R_S$ means greater signal loss, negative $\Delta R_B$ means less remaining background, and positive $\Delta Q$ means a higher signal-to-background ratio.
+These changes must be interpreted together; a negative difference is not always a deterioration.
 
-\clearpage
-\reportsection{5. Where are the signal and background?}
-Figure~\ref{fig:yields} directly answers the request to look at invariant mass
-before and after the neural network cuts. The left panels show the simulated
-Higgs signal; the right panels show background. Each panel compares the baseline
-with its high-score subset at the same luminosity and mass-bin boundaries.
+For each deleted group and metric, sort the three seed differences, take the middle value as the median and report the minimum and maximum.
+Differences are computed within seeds before summarizing: the median difference generally differs from the difference between medians.
+All three seeds must be retained.
 
-\begin{figure}[h!]
+A common sign indicates a consistent direction in these three trainings; a range crossing zero indicates a direction that changes with seed.
+These ranges are not confidence intervals and do not establish statistical significance.
+Reduced configurations are retrained, so differences include retraining and threshold changes and do not measure a group's independent physical contribution.
+
+\FloatBarrier
+\section{Results for the five input configurations}
+
+\subsection{Basic metrics for each seed}
+Table~\ref{tab:basic-all} shows all fifteen models rather than selecting the best training.
+The shared baseline is $S_0=2.7710$ and $B_0=2.3553$; each model's high and low yields sum to this baseline.
+\begin{table}[H]
+\caption{Basic metrics from the new local run. All fifteen model aggregates are valid. Values are calculated from unrounded signed yields. $R_S$ and $R_B$ are percentages; $S$ and $B$ correspond to $10\,\mathrm{fb}^{-1}$.}
+\label{tab:basic-all}
+\centering\small
+\begin{tabular}{llrrrrr}
+\toprule
+Inputs & Seed & $S$ & $B$ & $R_S$ & $R_B$ & $Q=S/B$ \\
+\midrule
+ABCD & 42 & 2.6824 & 1.2027 & 96.80 & 51.06 & 2.230 \\
+ABCD & 43 & 2.6809 & 1.1589 & 96.75 & 49.20 & 2.313 \\
+ABCD & 44 & 2.6670 & 1.0834 & 96.25 & 46.00 & 2.462 \\
+\addlinespace
+BCD & 42 & 2.6215 & 1.1012 & 94.60 & 46.75 & 2.381 \\
+BCD & 43 & 2.6156 & 1.1145 & 94.39 & 47.32 & 2.347 \\
+BCD & 44 & 2.6264 & 1.1344 & 94.78 & 48.16 & 2.315 \\
+\addlinespace
+ACD & 42 & 2.6667 & 1.1536 & 96.24 & 48.98 & 2.312 \\
+ACD & 43 & 2.6679 & 1.1232 & 96.28 & 47.69 & 2.375 \\
+ACD & 44 & 2.7039 & 1.2813 & 97.58 & 54.40 & 2.110 \\
+\addlinespace
+ABD & 42 & 2.5731 & 1.2186 & 92.86 & 51.74 & 2.112 \\
+ABD & 43 & 2.5408 & 1.2192 & 91.69 & 51.76 & 2.084 \\
+ABD & 44 & 2.5805 & 1.2026 & 93.13 & 51.06 & 2.146 \\
+\addlinespace
+ABC & 42 & 2.6975 & 1.1241 & 97.35 & 47.73 & 2.400 \\
+ABC & 43 & 2.6972 & 1.0311 & 97.33 & 43.78 & 2.616 \\
+ABC & 44 & 2.6941 & 1.1386 & 97.22 & 48.34 & 2.366 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\Needspace{24\baselineskip}
+\subsection{Deletion differences and seed variation}
+Table~\ref{tab:basic-deltas} preserves individual seed values; Figure~\ref{fig:basic-deltas} shows their directions and ranges.
+\begin{table}[H]
+\caption{Deletion differences from the new local run. Retention differences are in percentage points; signal-to-background-ratio differences are dimensionless. Every summary includes all three seeds.}
+\label{tab:basic-deltas}
+\centering\small
+\begin{tabular}{llccccc}
+\toprule
+Removed & Metric & Seed 42 & Seed 43 & Seed 44 & Median & Min--max \\
+\midrule
+A & $\Delta R_S$ & $-2.20$ & $-2.35$ & $-1.47$ & $-2.20$ & $[-2.35,-1.47]$ \\
+A & $\Delta R_B$ & $-4.31$ & $-1.88$ & $+2.17$ & $-1.88$ & $[-4.31,+2.17]$ \\
+A & $\Delta Q$ & $+0.150$ & $+0.033$ & $-0.147$ & $+0.033$ & $[-0.147,+0.150]$ \\
+\addlinespace
+B & $\Delta R_S$ & $-0.57$ & $-0.47$ & $+1.33$ & $-0.47$ & $[-0.57,+1.33]$ \\
+B & $\Delta R_B$ & $-2.09$ & $-1.51$ & $+8.40$ & $-1.51$ & $[-2.09,+8.40]$ \\
+B & $\Delta Q$ & $+0.081$ & $+0.062$ & $-0.351$ & $+0.062$ & $[-0.351,+0.081]$ \\
+\addlinespace
+C & $\Delta R_S$ & $-3.94$ & $-5.05$ & $-3.12$ & $-3.94$ & $[-5.05,-3.12]$ \\
+C & $\Delta R_B$ & $+0.68$ & $+2.56$ & $+5.06$ & $+2.56$ & $[+0.68,+5.06]$ \\
+C & $\Delta Q$ & $-0.119$ & $-0.229$ & $-0.316$ & $-0.229$ & $[-0.316,-0.119]$ \\
+\addlinespace
+D & $\Delta R_S$ & $+0.54$ & $+0.59$ & $+0.98$ & $+0.59$ & $[+0.54,+0.98]$ \\
+D & $\Delta R_B$ & $-3.34$ & $-5.42$ & $+2.34$ & $-3.34$ & $[-5.42,+2.34]$ \\
+D & $\Delta Q$ & $+0.169$ & $+0.302$ & $-0.096$ & $+0.169$ & $[-0.096,+0.302]$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
 \centering
-\includegraphics[width=\linewidth]{figures/draft001/mass-yields.pdf}
-\caption{Signed mass spectra from draft001 final evaluation. ABCD is shown above
-and BCD below, both at seed 42. Blue circles show the baseline; orange diamonds
-show high-score events. Signal is left and background right. Each point represents
-a 5 GeV bin; connecting lines guide the eye, not a continuous mass model. The
-vertical axes report expected yields at $10\,\mathrm{fb}^{-1}$ and have different
-scales for signal and background. Error bars use grouped MC variance. Shaded
-regions flag limited support under the criteria below; negative yields are retained.}
+\includegraphics[width=\linewidth]{figures/basic-20261108/deletion-differences.pdf}
+\caption{Within-seed deletion differences from the new local run. The horizontal axis identifies the removed group. Panels show signal-retention differences (percentage points), background-retention differences (percentage points) and signal-to-background-ratio differences. Circles show seeds 42--44, open diamonds show medians, thin lines span the minimum and maximum, and dashed lines mark zero. Thin lines are not confidence intervals.}
+\label{fig:basic-deltas}
+\end{figure}
+
+\subsection{Interpretation of the results}
+\textbf{Removing C.} Signal retention decreases for all three seeds ($-5.05$ to $-3.12$ percentage points), background retention increases ($+0.68$ to $+5.06$ percentage points), and $Q$ decreases ($-0.316$ to $-0.119$).
+Retaining C therefore helps selection in these three trainings at their respective frozen operating points.
+C describes overall four-lepton transverse motion and the azimuthal relation between the two pairs; this comparison cannot separate the effects of its two variables.
+
+\textbf{Removing A.} Signal retention decreases for every seed ($-2.35$ to $-1.47$ percentage points), but background-retention and $Q$ differences change sign with seed.
+Seeds 42 and 43 trade greater signal loss for less background; seed 44 loses signal while increasing background. This is not a consistent improvement.
+
+\textbf{Removing B.} Differences in all three metrics change sign across seeds.
+Seeds 42 and 43 slightly reduce both retention fractions and increase $Q$; seed 44 retains more signal and background but decreases $Q$.
+A median cannot replace an explanation of these changes in direction.
+
+\textbf{Removing D.} Signal retention increases for every seed ($+0.54$ to $+0.98$ percentage points), but background suppression and $Q$ do not consistently improve.
+Seeds 42 and 43 reduce background and increase $Q$; seed 44 shows the opposite directions for these two quantities.
+
+C thus shows the most consistent favorable direction when retained in this comparison, while the other groups involve tradeoffs or seed dependence.
+These are descriptive results for the current procedure, not evidence of a universally optimal input combination, independent feature contributions or statistical significance.
+\FloatBarrier
+
+\section{Changes in the mass spectra}
+This section checks the relation between selection and mass using ABCD and BCD at seed 42, on the same frozen evaluation population as the basic-metric table.
+The check covers only these two models; it cannot explain every deletion result or identify the mechanism behind group C's effect.
+The seven 5 GeV bins are for display only; basic metrics integrate over the full mass window.
+
+\subsection{Absolute yields: where signal and background lie}
+Figure~\ref{fig:yields} shows invariant-mass distributions before and after network selection.
+Signal is in the left column and background in the right.
+Each panel compares a baseline with its high-score subset at the same luminosity and bin boundaries.
+\begin{figure}[H]
+\centering
+\includegraphics[width=.92\linewidth]{figures/basic-20261108/mass-yields.pdf}
+\caption{Signed final-evaluation mass spectra from the current run. The upper row is ABCD and the lower row BCD, both at seed 42. Blue circles show the baseline and orange circles the high-score selection; signal is on the left and background on the right. Each point represents a 5 GeV bin. Connecting lines guide the eye and do not represent a continuous mass model. Yields correspond to $10\,\mathrm{fb}^{-1}$; signal and background use different vertical scales. Error bars are MC standard errors calculated by physical event group. Shading marks limited statistical support; negative yields are retained.}
 \label{fig:yields}
 \end{figure}
 
-\textbf{Support flags.} A mass bin is shaded if either its baseline or high-score
-sample has no event groups, nonpositive signed yield $Y$ or grouped variance $V$,
-signed effective count $N_{\rm eff}=Y^2/V<20$, or cancellation ratio
-$\rho=|Y|/\sum_i|w_i|<0.2$. Here $w_i$ is an event's evaluation yield weight,
-and $V$ sums squared yield contributions over physical event groups. Shading
-marks a support diagnostic, not a confidence band. The same criteria apply
-to the normalized shapes in Figure~\ref{fig:shapes}.
+\textbf{Signal location.} The simulated signal is concentrated near 125 GeV, and both selections largely retain that region.
+The network does not change individual event masses; distribution changes arise from selecting a subset of baseline events.
+Coarse bins cannot establish a peak shift, improved detector resolution or a change in the Higgs boson's physical width.
 
-\textbf{Signal location.} The simulated signal is concentrated around 125 GeV.
-The two selected curves largely retain that region. The network does not move
-individual event masses; any distribution change results from choosing a subset
-of the baseline events. The coarse bins do not establish a peak-position shift,
-an improved detector resolution or a change in the physical Higgs width.
+\textbf{Background distribution.} Background spans the full window and is already nonuniform before network selection.
+Suppression differs across mass regions, especially in the high-mass tail.
+A visually more prominent signal therefore involves both a reduction in background and a change in where the remaining background lies.
+Separately normalized shapes address the second point.
+\FloatBarrier
 
-\textbf{Background appearance.} The background extends across the mass window
-and is already nonuniform before the cut. It is reduced unevenly across mass,
-particularly in the upper tail. A visual increase in signal prominence therefore
-needs two explanations: how much background is removed, and how the remaining
-background is distributed. The separately normalized plots on the next page
-address the second question.
-
-\clearpage
-\reportsection{6. How do the shapes change?}
-Figure~\ref{fig:shapes} normalizes each process and selection by its own signed
-total. This removes the overall yield change from the comparison. Table~\ref{tab:fractions}
-quantifies the main visible changes using the same fixed mass regions.
-
-\begin{figure}[h!]
+\subsection{Normalized shapes: comparing beyond total yields}
+Figure~\ref{fig:shapes} divides each process and selection by its own signed total yield, removing changes in overall normalization from the comparison.
+Table~\ref{tab:fractions} quantifies the main visible changes in fixed mass regions.
+\begin{figure}[H]
 \centering
-\includegraphics[width=.94\linewidth]{figures/draft001/mass-shapes.pdf}
-\caption{Separately normalized before/after mass shapes for the same events and
-cuts as Figure~\ref{fig:yields}. Each bin is divided by its curve's own positive
-signed total. Error bars propagate shared normalization; before/after values
-also share events. A signed normalized shape need not be a probability density.
-Shaded and negative bins are retained without smoothing, clipping or rebinning.}
+\includegraphics[width=.82\linewidth]{figures/basic-20261108/mass-shapes.pdf}
+\caption{Separately normalized mass shapes from the current run, using the same events and thresholds as Figure~\ref{fig:yields}. Each bin is divided by its curve's own positive signed total yield. Error propagation accounts for shared normalization; the before/after selections also share events. A signed normalized shape is not necessarily a probability density. Shaded and negative bins are retained, without smoothing, clipping or rebinning.}
 \label{fig:shapes}
 \end{figure}
-
-\begin{table}[h!]
-\caption{Fraction of each curve's signed yield in fixed mass regions (\%).
-Entries are descriptive point estimates; uncertainties are not displayed.
-They do not establish the statistical significance of before/after differences.}
+\begin{table}[H]
+\caption{Signed yield in fixed mass regions as a percentage of each curve's own total yield in the current run. These descriptive point estimates have no displayed uncertainties and do not establish the statistical significance of before/after differences.}
 \label{tab:fractions}
 \centering
 \small
@@ -483,120 +505,281 @@ Background & $[135,140)$ & 22.0 & 6.5 & 9.0 \\
 \end{table}
 
 \textbf{Interpretation.} Signal remains concentrated in its main mass region.
-Background becomes relatively more concentrated there, while its high-mass tail
-fraction falls. This is descriptive evidence that the frozen selections depend
-on mass despite omitting explicit $m_{4\ell}$. It does not identify a unique
-responsible feature or establish a physical background resonance.
+The background fraction in that region rises, while its high-mass-tail fraction falls.
+This descriptively shows that the frozen selection remains mass-dependent even without an explicit $m_{4\ell}$ input.
+It neither identifies a unique responsible feature nor establishes a physical background resonance.
+\FloatBarrier
 
-\textbf{Limits.} The selected ABCD background bin $[105,110)$ GeV is negative;
-several background bins and the signal upper tail have low support. Shared-event
-and normalization correlations prevent treating plotted errors as independent
-measurements. The errors condition on fixed networks and cuts; they exclude
-threshold estimation, independent retraining and coverage uncertainty.
+\subsection{Statistical support and interpretation limits}
+Shading indicates too few event groups, unstable signed yields or strong cancellation of positive and negative weights; Appendix~\ref{app:errors} gives the criteria.
+The ABCD high-score background yield is negative in $[105,110)$ GeV, and several background bins and the signal high-mass tail have limited support.
+Errors are conditional on a fixed network and threshold.
+Shared events and normalization induce correlations, so before/after points must not be treated as independent measurements.
+
+\section{Conclusions and limitations}\label{sec:conclusion}
+For these five configurations and three seeds, removing C consistently lowers signal retention, raises background retention and lowers the signal-to-background ratio.
+Other deletions show tradeoffs or seed dependence.
+The ABCD/BCD mass-spectrum example also shows that reducing total background can change its relative mass distribution.
+The current network selection therefore needs to be understood through signal retention, background suppression and mass shape together.
+
+Conclusions are limited to two controlled-MC samples, the specified networks and frozen thresholds.
+Inputs are correlated, and deletion entails retraining and threshold changes; no group can be assigned an independent physical contribution from these differences.
+The three-seed range describes training variation only. Finite-MC errors are conditional on fixed models and do not include uncertainty from the full training and threshold-estimation procedure.
+This report does not establish statistical significance or improved measurement precision.
+
+The study remains exploratory and non-independent: a new split or run cannot turn previously used source samples into independent validation data.
+Sample-production settings, prerelease selection, the external basis of some cuts and the applicability of physical weights still require verification.
+This is an educational and technical study, not an official ATLAS/CMS result, a Higgs discovery or a physics measurement.
 
 \clearpage
-\reportsection{7. Project status and next steps}
-\textbf{Completed.} The simplified study trained five representations
-(ABCD, BCD, ACD, ABD and ABC) for seeds 42, 43 and 44. Groups A/B/C/D describe,
-respectively, individual-lepton kinematics, dilepton masses/separations,
-collective-event kinematics and five angles. Every reduced model was trained
-separately. All fifteen nominal intervals and the one shared inclusive-count
-reference have valid numerical status.
+\appendix
+\section{Fields, reconstruction and input conventions}\label{app:fields}
 
-The main metric remains $W_{68}=\mu_{\rm upper}-\mu_{\rm lower}$, the nominal
-68\% signal-strength interval width under the specified model. Signal strength
-$\mu$ scales the expected signal yield. Each interval uses model-self Asimov
-expected observations at injected $\mu=1$, with the T1 likelihood profiling
-finite-template-statistics nuisance parameters. Its endpoints use the asymptotic
-68\% quantile of $\chi^2$ with one degree of freedom for the profile-likelihood
-ratio statistic, within $0\leq\mu\leq20$. The nominal 68\% label does not establish
-calibrated repeated-sample coverage. Both high- and low-score categories enter
-the likelihood, each integrated over one mass interval, $[105,140)$ GeV.
-The seven display bins in the spectra are not likelihood bins. The high-score
-illustration therefore does not imply that low-score events were discarded
-from inference.
+\subsection{Simulation and release scope}
+A typical simulation chain specifies the process, generates hard scattering, simulates showers and hadronization, simulates detector response, reconstructs objects such as electrons and muons, and finally preselects events for ROOT-file release.
+This project constructs candidates from released lepton-object fields, not generator-truth four-momenta; ``reconstruction'' below means the project's four-momentum combinations.
+Generator versions, shower settings and detector-simulation configurations for these two samples still require production records and cannot be imported from a reference paper.
+The CERN record confirms loose object and event preselection and at least four electrons or muons before release; exact momentum, acceptance and quality thresholds remain unconfirmed.
+The project therefore studies a preselected population with additional common cuts. Table~\ref{tab:population} cannot give acceptance relative to all generated events.
 
-\begin{table}[h!]
-\caption{Compact progress summary of the nominal interval comparison.
-Medians summarize three fixed training seeds, not repeated independent MC samples.}
-\label{tab:widths}
-\centering
-\begin{tabular}{llr}
+\subsection{Fields read by the project}
+An entry in the \texttt{mini} tree is an event record; a branch is a field within that record.
+The following are all 19 branches read by this project, \emph{not the complete source-file branch list and not the 19-dimensional network input}.
+The first seven fields are scalars; the rest are vectors.
+For example, when \texttt{lep\_n=4}, each lepton vector has four elements and a common index identifies the same lepton.
+\begin{center}
+\small
+\renewcommand{\arraystretch}{1.13}
+\begin{tabularx}{\linewidth}{@{}p{.57\linewidth}Y@{}}
 \toprule
-Representation & Input group omitted & Median $W_{68}$ \\
+Branches read & Meaning and stored units \\
 \midrule
-ABCD & None & 1.464392 \\
-BCD & A & 1.474847 \\
-ACD & B & 1.467509 \\
-ABD & C & 1.505681 \\
-ABC & D & 1.452977 \\
-Inclusive-count reference & No trained classifier & 1.638845 \\
+\texttt{runNumber, eventNumber, channelNumber} & Event/sample identifiers (integers) \\
+\texttt{mcWeight; trigE, trigM; lep\_n} & Generator weight; trigger booleans; lepton count \\
+\texttt{lep\_pt, lep\_eta, lep\_phi, lep\_E} & $p_T$, $\eta$, $\phi$, energy; momentum and energy in MeV, angles in radians \\
+\texttt{lep\_charge, lep\_type} & Charge and particle type (integer vectors) \\
+\texttt{lep\_isTightID, lep\_trigMatched} & Identification and trigger-match flags (boolean vectors) \\
+\texttt{lep\_ptcone30, lep\_etcone20} & Track/calorimeter isolation (MeV) \\
+\texttt{lep\_z0; lep\_tracksigd0pvunbiased} & $z_0$ (mm); $d_0/\sigma(d_0)$ (dimensionless) \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
+\end{center}
+Kinematic, isolation and impact-parameter fields are floating-point vectors.
+MeV values are converted to GeV; Section~\ref{sec:weights} explains conversion of signed weights to yields.
+This mapping follows the input configuration and earlier ROOT-metadata checks; it does not supply the missing production-chain evidence.
+
+\subsection{Four-momentum reconstruction and feature groups}
+For leptons passing quality cuts, momenta and energies are converted to GeV and leptons are ordered by decreasing $p_T$.
+With $c=1$, the released $(p_T,\eta,\phi,E)$ determine
+\[
+ p^\mu=(E,p_x,p_y,p_z),\qquad
+ p_x=p_T\cos\phi,\quad p_y=p_T\sin\phi,\quad p_z=p_T\sinh\eta.
+\]
+Charges and flavors determine same-flavor opposite-sign (SFOS) pairing.
+In the selected $2e2\mu$ channel, the electron and muon pairs give a unique pair assignment.
+The pair closer in mass to $91.1876\gev$ is $Z_1$, and the other is $Z_2$.
+The reference notation $m_{12},m_{34}$ corresponds to \texttt{mZ1,mZ2}; $Z_1$ is not always the electron pair and is not ordered by $p_T$.
+Form $P_j=p_{j^-}+p_{j^+}$ and $Q=P_1+P_2$, then compute
+\[
+ m_{Zj}=\sqrt{P_j^2},\qquad m_{4\ell}=\sqrt{Q^2},\qquad
+ p_{T,4\ell}=\sqrt{Q_x^2+Q_y^2}.
+\]
+Here $Q$ denotes a four-vector, rather than the signal-to-background ratio of the main text.
+This combines existing lepton objects; it does not resimulate the detector.
+Radiation, detector response and selection can affect reconstructed mass spectra, whose width cannot be read directly as the Higgs boson's intrinsic width.
+
+Group A uses the ordered lepton $p_T$ and $\eta$ values; B and C are calculated from the four-momenta above.
+$\Delta R$ uses the two leptons' $\eta$ and $\phi$ within a pair, with the azimuthal difference wrapped to $[-\pi,\pi)$.
+\texttt{deltaPhi\_ZZ} is the absolute azimuthal difference between the two pairs.
+The resulting 19-dimensional input is not another set of 19 ready-made ROOT branches.
+\begin{table}[H]
+\caption{Input groups and their physical meaning. Momentum and mass use GeV; azimuthal angles use radians.}
+\label{tab:features}
+\small
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\linewidth}{@{}p{.07\linewidth}p{.43\linewidth}Y@{}}
+\toprule
+Group & Code variables & Physical meaning \\
+\midrule
+A & \texttt{lep1\_pt}--\texttt{lep4\_pt}; \texttt{lep1\_eta}--\texttt{lep4\_eta} & Individual-lepton transverse momentum and pseudorapidity: momentum scale and direction relative to the beam. \\
+B & \texttt{mZ1}, \texttt{mZ2}; \texttt{deltaR\_Z1}, \texttt{deltaR\_Z2} & Pair masses and internal angular separations $\Delta R=\sqrt{(\Delta\eta)^2+(\Delta\phi)^2}$. \\
+C & \texttt{pt4l}, \texttt{deltaPhi\_ZZ} & Four-lepton transverse momentum and absolute azimuthal difference between the two pairs. \\
+D & \texttt{cos\_theta\_star}, \texttt{cos\_theta\_1}, \texttt{cos\_theta\_2}; \texttt{phi\_decay\_planes}, \texttt{phi\_production\_plane} & One production-angle cosine, two decay polar-angle cosines and two angles describing relative decay/production-plane orientations. \\
+\bottomrule
+\end{tabularx}
 \end{table}
 
-The four comparisons are formed within each seed as
-$\Delta W_G=W_{68}(\mathrm{ABCD}\setminus G)-W_{68}(\mathrm{ABCD})$, then
-summarized. Removing C widens the interval for all three seeds, with median
-$\Delta W_C=0.046283$. The A, B and D differences change sign across seeds.
-ABC has the smallest median width among these five representations, but that
-does not establish a universally optimal input set or a confirmed precision gain.
+\subsection{Conventions for the five angles}
+Group D first applies Lorentz transformations.
+In the four-lepton rest frame, $\cos\theta^*$ is the cosine of the angle between $Z_1$ and the transformed positive laboratory beam direction.
+In each pair's rest frame, $\cos\theta_1$ or $\cos\theta_2$ uses the negative lepton's direction and the direction opposite to the other pair.
+The two plane angles are calculated in the four-lepton rest frame.
+Cross products of negative- and positive-lepton momenta define the decay-plane normals; the positive beam and $Z_1$ directions define the production-plane normal.
+Oriented angles around the $Z_1$ axis compare the two decay planes and the production plane with the first decay plane.
+Angles lie in $[-\pi,\pi)$ and cosines in $[-1,1]$; all models use the same convention.
+\FloatBarrier
 
-\textbf{Interpretation status.} These are exploratory, non-independent MC
-results. Previously used source events remain in the study even after a new
-split. The intervals use their own templates as expected observations; coverage
-has not been independently calibrated. T1 accounts for finite-template statistics
-within the likelihood, but does not supply complete MC uncertainty on differences
-between model widths. Seed variation is not a confidence interval. The project
-is an educational and technical study, not an official ATLAS/CMS result, a Higgs
-discovery or a physics measurement.
+\section{Complete selection and physical normalization}\label{app:cuts}
 
-\textbf{Next steps.}
-\begin{itemize}
-\item Review whether the before/after comparisons fully explain the selected signal and background.
-\item Assess the documented project adaptations and prioritize the unresolved selection references.
-\item Prioritize validation of physical weight/selection applicability, finite-MC
-uncertainty of width differences and interval coverage. These remain outstanding work.
+\subsection{Execution order of the common selection}
+\begin{table}[H]
+\caption{Common cuts in execution order. Momentum and mass are in GeV; Appendix~\ref{app:fields} defines the branches.}
+\label{tab:cuts}
+\small
+\renewcommand{\arraystretch}{1.1}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{.23\linewidth}Y@{}}
+\toprule
+Step & Applied requirement and purpose \\
+\midrule
+\textbf{Event trigger} & Require \texttt{trigE} or \texttt{trigM}: an electron or muon trigger. \\
+\midrule
+\textbf{Lepton quality} & Apply the following in order, retaining at least four leptons after each step, to select suitable prompt-lepton candidates. \\
+Flavor, identification & $|\texttt{lep\_type}|\in\{11,13\}$ and \texttt{lep\_isTightID=true}. \\
+Track, calorimeter isolation & $p_T>0$, then \texttt{lep\_ptcone30}/\texttt{lep\_pt}$<0.3$ and \texttt{lep\_etcone20}/\texttt{lep\_pt}$<0.3$, suppressing objects with substantial nearby activity. \\
+Transverse, longitudinal impact parameters & $|d_0/\sigma(d_0)|<$ 5 for electrons or 3 for muons; $|z_0/\cosh\eta|<0.5$ mm, limiting displacement relative to the primary vertex. \\
+\midrule
+\textbf{Four-lepton candidate} & Apply the following in order to define the common analysis population. \\
+Multiplicity, trigger matching & Exactly four quality-selected leptons, with at least one \texttt{lep\_trigMatched=true}. The original \texttt{lep\_n} may exceed four. \\
+Ordered momenta, acceptance & Descending $p_T$ values $\geq20,15,10,7$; electron $|\eta|<2.47$ and muon $|\eta|<2.7$, restricting kinematics and detector acceptance. \\
+Charge, pairing & Zero total charge and two disjoint SFOS pairs to form a $ZZ^*$ candidate. \\
+Pair masses & All SFOS masses $>5$; $50<m_{Z1}<106$ and $12<m_{Z2}<115$, removing low-mass pairs and restricting candidates. \\
+Four-lepton mass, final state & $105\leq m_{4\ell}<140$, followed by two electrons and two muons, defining the study scope. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Reference basis and project differences}
+Sections 5.1--5.2 of the ATLAS 13 TeV analysis~\cite{ATLAS13} motivate the acceptance, leading three momentum scales, SFOS pairing, $Z$ mass windows and transverse-impact-parameter cuts.
+The subleading-pair lower bound of $12\gev$ applies in the present $m_{4\ell}<140\gev$ region.
+The following differences remain:
+\begin{itemize}[itemsep=1pt,topsep=2pt]
+\item The reference uses loose electron identification and detailed muon requirements. The project uses tight-ID for both; working-point equivalence is unconfirmed.
+\item Project momentum thresholds allow equality and use $p_T\geq7$ for every fourth lepton. The reference requires electron $E_T>7$ or muon $p_T>5$, with further requirements for some muons.
+\item Both project isolation ratios are $<30\%$. The reference uses track isolation $<15\%$ and calorimeter isolation $<20\%$ for electrons or $<30\%$ for muons, plus additional cone and correction rules.
+\item The project uses only $2e2\mu$ with exactly four qualified leptons and does not reproduce the full multiple-candidate or angular-separation procedure. In this channel, the $Z$ windows already impose stronger bounds than the $5\gev$ condition.
 \end{itemize}
+Official educational examples~\cite{HZZCuts,HZZAnalysis} support some multiplicity, charge, flavor and momentum rules, but their isolation-function calls are commented out.
+The Run-1 reference~\cite{ATLASRun1} supports the trigger-matching principle.
+The exact external basis for the tight-ID working point and $|z_0\sin\theta|<0.5$ mm remains unverified.
+They are fixed project choices here, not a claim to reproduce a published measurement.
 
-\clearpage
-\reportsection{Sources and a short traceability note}
-The external sources below were checked on 30 October 2026. The published
-analyses provide selection context, not numerical results for this report.
-The CERN record explicitly describes its collection as educational and not
-suited for scientific publications. This progress report retains an
-educational/technical scope; using the collection does not reproduce the
-research-grade analyses cited below.
+\subsection{Physical-weight normalization}\label{app:weights}
+Each event has physical weight
+\[
+ w_i^{\rm phys}=\frac{\mathcal L\,\sigma_{\rm eff}}{S_{\rm gen}}\,w_i^{\rm gen},
+ \qquad \mathcal L=10^4\,\mathrm{pb}^{-1},\quad w_i^{\rm gen}=\texttt{mcWeight}.
+\]
+Here $\sigma_{\rm eff}$ is the configured effective cross section and $S_{\rm gen}$ is the generator-weight sum used for sample normalization, not the number of released or selected entries.
+The pinned official parameter table~\cite{SampleInfo} gives
+$(\sigma_{\rm eff},S_{\rm gen})=(0.0060239\,\mathrm{pb},27881776.6536)$ for signal and $(1.2578\,\mathrm{pb},7538705.8077)$ for background, matching the project configuration.
+No extra $k$ factor or filter efficiency is applied (both are configured as 1).
+The decomposition of branching fractions and filter efficiencies within the effective cross section still needs production documentation; these factors must not be multiplied in twice.
+Pileup, lepton and trigger scale factors are also not applied, unlike the official example~\cite{HZZAnalysis}, so its yields cannot be reproduced from these weights alone.
+\FloatBarrier
+
+\section{Error calculations and figure markings}\label{app:errors}
+
+\subsection{Retention errors with shared events}
+For one process, let physical event group $g$ contribute $T_g$ before selection and $H_g$ to the high-score subset.
+Writing $T=\sum_g T_g$ and $H=\sum_g H_g$ gives retention $R=H/T$.
+The existing event-group counting convention gives
+\[
+ V_T=\sum_g T_g^2,\qquad V_H=\sum_g H_g^2,\qquad C_{HT}=\sum_g H_gT_g.
+\]
+For $T>0$, first-order error propagation is
+\[
+ \sigma_R^2\simeq\frac{V_H}{T^2}+\frac{H^2V_T}{T^4}-\frac{2H C_{HT}}{T^3}.
+\]
+Before and after selections share event groups, so covariance $C_{HT}$ cannot be omitted.
+Errors on percentages in the table are $100\sigma_R$.
+These formulas explain existing aggregate errors; they do not add error bars or significance tests for deletion differences.
+Normalized mass shapes likewise propagate correlations between bins and their shared total yield.
+
+\subsection{Statistical-support flags for mass bins}
+A mass bin is shaded if either its baseline or high-score sample satisfies any of the following: no event groups; nonpositive signed yield $Y$ or grouped variance $V$; signed effective count $N_{\rm eff}=Y^2/V<20$; or cancellation ratio $\rho=|Y|/\sum_i|u_i|<0.2$.
+Here $u_i$ is an evaluation yield weight and $V$ is the sum of squared event-group contributions in that bin.
+Normalized shapes use the same flags. Shading is a support diagnostic, not a confidence band.
+
+\section{Implementation and reproduction}\label{app:network}
+
+\subsection{Model and aggregate calculations}
+Section~\ref{sec:network} describes the architecture.
+The class \texttt{ResearchClassifier} is defined in \nolinkurl{src/higgsml/modeling/discriminants.py}.
+The training procedure is in \nolinkurl{src/higgsml/draft_v2/training.py}, with hyperparameters bound by the frozen protocol.
+The loss uses \texttt{binary\_cross\_entropy\_with\_logits}, calculating binary cross entropy directly from real-valued outputs to avoid numerical problems from applying sigmoid and then taking logarithms.
+
+Postprocessing uses Python's \texttt{json} module to read aggregates, NumPy for ratios, differences, medians and minimum--maximum ranges, and Matplotlib for plotting.
+The reproduction steps are:
+\begin{enumerate}[leftmargin=1.7em,itemsep=2pt]
+\item Check report, freeze and protocol identities, plus completeness of all fifteen models and the shared baseline.
+\item Read high/low signal and background yields from \texttt{results.json}; check that their sums equal the common baseline.
+\item Calculate metrics from unrounded yields, subtract ABCD within each seed, then summarize the three differences by their median and range.
+\item Display yields to four decimal places, percentages and percentage-point differences to two, and signal-to-background ratios and their differences to three.
+Missing seeds or invalid metrics must be marked explicitly, not dropped before recalculating summaries.
+\end{enumerate}
+These basic comparisons do not require students to implement likelihood fitting or pseudoexperiments.
+See \nolinkurl{paper/draft-v2/README.md} for reproduction entry points and build commands.
+
+\subsection{Threshold formula and illustrative example}\label{app:threshold}
+Let $a_i=|w_i|$ be the absolute physical weight.
+Accumulate these weights in increasing score order; the threshold is the first score reaching half the total absolute weight:
+\[
+ k=\min\left\{j:\sum_{i=1}^{j}a_{(i)}\geq\frac12\sum_i a_i\right\},
+ \qquad t=s_{(k)}.
+\]
+Subscript $(i)$ denotes score order, and tied events enter the same category.
+\textbf{Teaching example, not actual run data.}
+Suppose five validation-background events have sorted scores $0.10,0.30,0.60,0.80,0.90$ and absolute weights $1,2,1,4,2$.
+The total is 10 and half is 5; cumulative weights are $1,3,4,8,10$, so the first crossing gives $t=0.80$.
+Scores 0.80 and 0.90 enter the high category, with absolute-weight fraction $6/10=60\%$.
+This illustrates the discrete-weight effect in the main-text threshold rule.
+\FloatBarrier
+
+\section{Result provenance and historical supplement}\label{app:provenance}
+
+\subsection{Current result source}
+The main-text results come from \nolinkurl{runs/h4l-draft-v2-draft001/report/}, with report identity
+\nolinkurl{a7e610a163e5d155705014201b7ee330323e3bf69309e0e89b2496edba5d4317},
+bound to \nolinkurl{config/protocols/h4l_draft_v2.json}.
+Verification for this revision is limited to identities and file checks of existing models and aggregates, numerical consistency and document builds; it does not include a new raw-event audit.
+Details are recorded in \nolinkurl{paper/draft-v2/BASIC-20261108-EVIDENCE.md}.
+Literature and sample parameters retain the checks recorded on 30 October and 1 November 2026; no new external-reference verification was performed for this revision.
+The CERN release record limits the collection to educational use and excludes scientific publication; this report accordingly retains an educational and technical scope.
+
+\subsection{Historical statistical methods}\label{app:interval}
+Historical draft001 and validation001 studies used model-expected observations, profile-likelihood intervals, paired resampling and model-self pseudoexperiments to examine interval widths, and observed undercoverage of nominal intervals.
+Those diagnostics did not establish independent coverage calibration.
+The historical methods and results are neither inputs to the present basic metrics nor validation of this new run.
+Runs sharing a name have different artifact identities; original numerical tables, identities and limitations remain in \nolinkurl{paper/draft-v2/DRAFT001-EVIDENCE.md} and its cited historical materials.
 
 \begingroup
 \small
-\renewcommand{\refname}{References used in this report}
+\renewcommand{\refname}{References for this report}
 \begin{thebibliography}{9}
 \bibitem{OpenData}
 ATLAS Collaboration, \emph{ATLAS 13 TeV samples collection at least four leptons
 (electron or muon), for 2020 Open Data release} (2020).
 \href{https://opendata.cern.ch/record/15005}{CERN Open Data record 15005},
 \href{https://doi.org/10.7483/OPENDATA.ATLAS.2Y1T.TLGL}{doi:10.7483/OPENDATA.ATLAS.2Y1T.TLGL}.
-Source for the two MC members and the loose preselection before release; see its usage statement.
+Source of both simulated samples and the description of loose prerelease selection; see the record's usage restrictions.
 
 \bibitem{ATLAS13}
 ATLAS Collaboration, \emph{Measurement of the Higgs boson coupling properties in
 the $H\to ZZ^*\to4\ell$ decay channel at $\sqrt{s}=13$ TeV with the ATLAS detector},
 JHEP \textbf{03} (2018) 095.
 \href{https://doi.org/10.1007/JHEP03(2018)095}{doi:10.1007/JHEP03(2018)095};
-\href{https://arxiv.org/pdf/1712.02304v2#page=8}{arXiv:1712.02304v2, Secs.~5.1--5.2, pp.~8--9}.
-Selection and working-point comparisons in Sections 2--3 of this report.
+\href{https://arxiv.org/pdf/1712.02304v2#page=8}{arXiv:1712.02304v2, Sections 5.1--5.2, pages 8--9}.
+Basis for the selection and working-point comparison in Appendix~\ref{app:cuts}.
 
 \bibitem{HZZCuts}
 ATLAS Open Data outreach tools, \emph{HZZCuts.py}, revision
 \nolinkurl{8ad2015be6d350060c3a183aff5802570bc9ada4}.
-\href{https://github.com/atlas-outreach-data-tools/atlas-outreach-Python-uproot-framework-13tev/blob/8ad2015be6d350060c3a183aff5802570bc9ada4/HZZCuts.py#L2-L33}{Fixed-version source, lines 2--33}.
-Multiplicity/charge, partial momentum cuts, flavour and optional isolation definitions.
+\href{https://github.com/atlas-outreach-data-tools/atlas-outreach-Python-uproot-framework-13tev/blob/8ad2015be6d350060c3a183aff5802570bc9ada4/HZZCuts.py#L2-L33}{Pinned source, lines 2--33}.
+Multiplicity, charge, some momentum rules, flavor and optional isolation definitions.
 
 \bibitem{HZZAnalysis}
-ATLAS Open Data outreach tools, \emph{HZZAnalysis.py}, same revision as
-Ref.~\cite{HZZCuts}.
-\href{https://github.com/atlas-outreach-data-tools/atlas-outreach-Python-uproot-framework-13tev/blob/8ad2015be6d350060c3a183aff5802570bc9ada4/HZZAnalysis.py#L140-L168}{Fixed-version source, lines 140--168}.
+ATLAS Open Data outreach tools, \emph{HZZAnalysis.py}, same revision as Ref.~\cite{HZZCuts}.
+\href{https://github.com/atlas-outreach-data-tools/atlas-outreach-Python-uproot-framework-13tev/blob/8ad2015be6d350060c3a183aff5802570bc9ada4/HZZAnalysis.py#L140-L168}{Pinned source, lines 140--168}.
 Event-weight factors, applied cuts and commented-out isolation calls.
 
 \bibitem{ATLASRun1}
@@ -604,31 +787,13 @@ ATLAS Collaboration, \emph{Measurements of Higgs boson production and couplings
 in the four-lepton channel in $pp$ collisions at center-of-mass energies of
 7 and 8 TeV with the ATLAS detector}, Phys.~Rev.~D \textbf{91}, 012006 (2015).
 \href{https://doi.org/10.1103/PhysRevD.91.012006}{doi:10.1103/PhysRevD.91.012006};
-\href{https://arxiv.org/pdf/1408.5191v3#page=7}{arXiv:1408.5191v3, Sec.~5.1, printed pp.~6--7}.
-Reference for the trigger-matching principle; its detailed thresholds and
-working points are not asserted to be this project's prescription.
+\href{https://arxiv.org/pdf/1408.5191v3#page=7}{arXiv:1408.5191v3, Section 5.1, printed pages 6--7}.
+Reference for the trigger-matching principle; detailed thresholds and working points are not claimed to match this project.
+
+\bibitem{SampleInfo}
+ATLAS Open Data outreach tools, \emph{infofile.py}, same revision as Ref.~\cite{HZZCuts}.
+\href{https://github.com/atlas-outreach-data-tools/atlas-outreach-Python-uproot-framework-13tev/blob/8ad2015be6d350060c3a183aff5802570bc9ada4/infofile.py}{Pinned sample-parameter table}.
+DSID, \texttt{xsec} and \texttt{sumw} for \texttt{ggH125\_ZZ4lep} and \texttt{llll}; it does not provide full generator or detector-simulation configurations.
 \end{thebibliography}
 \endgroup
-
-\textbf{Local result source.} Interval, yield and mass-spectrum results and both figures come from
-\nolinkurl{runs/h4l-draft-v2-draft001/report/}, linked to the completed prepare,
-freeze and evaluation artifacts. Report file sizes and SHA-256 values were
-checked against its manifest; both figure copies match the report byte for byte.
-The detailed identity record is \nolinkurl{paper/draft-v2/DRAFT001-EVIDENCE.md}.
-The frozen protocol is \nolinkurl{config/protocols/h4l_draft_v2.json}.
-
-\textbf{Selection implementation.} Exact inequalities were checked against
-\nolinkurl{config/protocols/h4l_selection_v1.yaml} and
-\nolinkurl{src/higgsml/physics/selection.py}, with the draft-v2 protocol's
-$[105,140)$ GeV override and $2e2\mu$ restriction. This revision uses the CERN record's methodology and completed-run protocols,
-model metadata and aggregates. Input counts in Table~\ref{tab:population} come
-from the bound dataset record; selected and role counts come from prepare-file
-identity envelopes, with the file checked against its manifest hash. Event-value
-payloads were not decoded. Network and threshold details were also checked
-against \nolinkurl{src/higgsml/draft_v2/training.py} and
-\nolinkurl{src/higgsml/modeling/discriminants.py}; model files match their
-manifest hashes. No retraining, event rescoring or interval refitting was
-performed. Cut-by-cut counts remain unavailable and are not estimated from
-another run.
-
 \end{document}

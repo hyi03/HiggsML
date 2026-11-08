@@ -4,6 +4,7 @@ globalThis.DraftTeaching = (() => {
   const dimensions = Object.freeze({A:8,B:4,C:2,D:5});
   const models = Object.freeze(['ABCD','BCD','ACD','ABD','ABC']);
   const examples = Object.freeze({
+    report: Object.freeze([{score:0.1,weight:1},{score:0.3,weight:2},{score:0.6,weight:1},{score:0.8,weight:4},{score:0.9,weight:2}]),
     balanced: Object.freeze([{score:0.1,weight:1},{score:0.3,weight:1},{score:0.6,weight:1},{score:0.8,weight:1}]),
     ties: Object.freeze([{score:0.1,weight:1},{score:0.35,weight:2},{score:0.35,weight:2},{score:0.8,weight:1}]),
     unequal: Object.freeze([{score:0.1,weight:4},{score:0.4,weight:1},{score:0.7,weight:1},{score:0.9,weight:1}])
@@ -26,5 +27,15 @@ globalThis.DraftTeaching = (() => {
     if (!(group in dimensions)) throw new RangeError('Unknown feature group');
     return 'ABCD'.replace(group,'');
   }
-  return Object.freeze({dimensions,models,examples,dimension,weightedMedian,reduced});
+  // Resolve semantic destinations against the current deck, never fixed positions.
+  function pageFromHash(slides, hash, current=1) {
+    const clamp = n => Math.max(1, Math.min(slides.length, Math.round(n)));
+    const numbered = hash.match(/^#slide-(\d+)$/);
+    if (numbered) return clamp(Number(numbered[1]));
+    const aliases = {spectra:'spectrum-yields',differences:'contrasts',widths:'all-results','width-widget':'metrics-widget'};
+    const name = hash.replace(/^#/, '');
+    const index = slides.findIndex(s => s.id === (aliases[name] || name));
+    return index < 0 ? current : index + 1;
+  }
+  return Object.freeze({dimensions,models,examples,dimension,weightedMedian,reduced,pageFromHash});
 })();

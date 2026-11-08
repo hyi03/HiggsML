@@ -7,61 +7,67 @@ separately for seeds 42–44. All fifteen model intervals and the shared inclusi
 reference have valid numerical status. Results remain exploratory,
 non-independent and coverage-unvalidated.
 
-## Project Report
+## English project report
 
-[project-report.tex](project-report.tex) is a separate
-English A4 project report dated 30 October 2026.
-It presents the completed draft001 spectrum comparisons, lists
-exact baseline cuts with external-source correspondence and project adaptations,
-and distinguishes evaluation event-group counts from expected signed yields.
-It includes two spectrum figures, selection/yield summaries and a compact
-interval-results update. It does not claim a complete step-by-step cutflow.
+[project-report.tex](project-report.tex) is the English counterpart of the current
+[Chinese basic report](project-report-cn.tex), synchronized on 8 November 2026.
+Both use the same verified local rerun, fifteen models, twelve deletion-contrast
+rows and three figures in `figures/basic-20261108/`. Their seven main sections
+cover purpose, samples, feature groups and the MLP, metrics and a worked example,
+complete results, mass spectra, and conclusions. The three-hidden-layer model,
+training and frozen thresholds are explained at senior-undergraduate level.
+Historical interval studies appear only as a short source-linked supplement.
 
-Compile this report explicitly, independently of the manuscript:
+Compile this standalone report with LuaLaTeX, as for the Chinese counterpart:
 
 ```sh
-latexmk -pdf -interaction=nonstopmode -halt-on-error -outdir=.build/project-report project-report.tex
+latexmk -lualatex -interaction=nonstopmode -halt-on-error -outdir=.build/project-report project-report.tex
 cp .build/project-report/project-report.pdf project-report.pdf
 ```
 
-The convenience [PDF](project-report.pdf) and build output are
-ignored. The PDF is synchronized with the current source. The report uses the
-existing figure copies in `figures/draft001/`;
-compilation does not require the run directory or external document downloads.
-In an editor, select `project-report.tex` explicitly as the build
-target; keep `main.tex` as the original manuscript's target.
+The convenience [English PDF](project-report.pdf) and build directory are ignored.
+The PDF is synchronized with the source; compilation uses publication assets and
+does not require local runs or external downloads. Select `project-report.tex`
+explicitly in an editor; `main.tex` remains the separate REVTeX manuscript.
+The English build now uses LuaLaTeX instead of the older pdfLaTeX command.
 
-The current report was verified on 30 October 2026: eight A4 pages
-compiled with local TeX Live 2026 /
-latexmk 4.88, without warnings or overfull/underfull boxes. All pages were rendered
-and visually inspected. Report numbers were checked against bound draft001
-aggregates; the original manuscript source was unchanged. Tight-ID working-point
-correspondence and the exact external source of the longitudinal-impact cut
-remain explicitly unconfirmed. The report now states the model-self Asimov/T1
-interval construction, the exact spectrum support-flag criteria and the
-descriptive status of the mass-region fractions. No scientific stage was rerun.
+The synchronized English PDF is 19 A4 pages. It was built on macOS 27.2 arm64 with
+TeX Live 2026, LuaHBTeX 1.24.0 and latexmk 4.88, without warnings, missing glyphs,
+undefined references or overfull/underfull boxes. The six numerical table bodies,
+formulas, labels, citation keys, source URLs and three figure hashes agree with
+the Chinese report. All fifteen metric rows and twelve contrast rows were
+recomputed from the hash-verified existing aggregate. Page rendering was checked
+for clipping, overlap and table/figure readability. These checks establish
+translation and document consistency, not independent scientific validation.
+No training, scoring, fitting, pseudoexperiments or raw-event access was needed.
 
 ## Chinese project report
 
 The Chinese reports were reorganized on 1 November 2026 after the annotated-PDF
-revision and the limited statistical update. They use two reading routes:
+revision and the limited statistical update. The first report was further
+simplified on 7 November 2026. They now use two reading routes:
 
-- [project-report-cn.tex](project-report-cn.tex) keeps the original filename and
-  follows the spectrum-centered structure: scope, samples and selection, frozen
-  network method, event counts and yields, mass spectra, and conclusions.
-  Interval results and statistical diagnostics are retained in an appendix;
-  the main conclusions still state the non-independence and undercoverage limits.
+- [project-report-cn.tex](project-report-cn.tex) compares feature groups through
+  signed signal/background yields, retention fractions, signal-to-background
+  ratios, and within-seed reduced-minus-ABCD differences. Its mathematics uses
+  sums, ratios, differences, medians and minimum–maximum ranges. All fifteen
+  model rows, the four deletion comparisons and the three-panel difference plot
+  now use the local rerun verified on 8 November 2026. Yields and spectra use
+  that same bound report, with a separate evidence record and asset directory.
+  Historical interval methods and their undercoverage limits are summarized in
+  one appendix paragraph with a link to the existing evidence record.
 - [project-report-B-cn.tex](project-report-B-cn.tex) is a separate
   question-driven report: what the network selects, how feature-group deletion
   changes nominal intervals, and how robust those differences are. Each question
   connects the necessary method to its evidence and interpretation limits.
 
 Both versions distinguish training, AUC checkpoint selection, validation-background
-threshold selection, frozen evaluation, and signed-yield accounting. The existing
-numerical table bodies and two figure assets are preserved. Detailed branch,
+threshold selection, frozen evaluation, and signed-yield accounting. The basic report preserves all current-result table bodies and three figure
+assets; its historical interval table has been replaced by a source reference. Detailed branch,
 reconstruction, selection-source, normalization, and training information remains
 in the appendices. Sample production details and exact release preselection are
-still unconfirmed. The English report and REVTeX manuscript are separate versions.
+still unconfirmed. The English basic report now follows the same structure and
+source as the Chinese basic report; the B report and REVTeX manuscript remain separate versions.
 The earlier ten-page layout is superseded; chapter and appendix references now
 follow each report's structure. The comparison that motivated these changes is
 in [structure-options-cn.md](structure-options-cn.md).
@@ -77,6 +83,68 @@ cp .build/project-report-B-cn/project-report-B-cn.pdf project-report-B-cn.pdf
 Both Chinese PDFs and build directories remain ignored; no scientific run is needed.
 Choose the corresponding `.tex` file explicitly as the editor's build target.
 
+### Completed basic comparison — 8 November 2026
+
+The English and Chinese basic reports now use the local `runs/h4l-draft-v2-draft001/report/`
+with report identity `a7e610a163e5d155705014201b7ee330323e3bf69309e0e89b2496edba5d4317`.
+See [BASIC-20261108-EVIDENCE.md](BASIC-20261108-EVIDENCE.md) for bindings, checks,
+full-precision-derived values and asset hashes. The reused run name does not
+identify the old manuscript's artifacts. The historical interval appendix,
+B report and REVTeX manuscript retain their original sources.
+
+All fifteen model results and the inclusive reference are numerically valid.
+The report/evaluation aggregate copies, protocol, frozen model identities,
+thresholds and access receipt were checked. Each model's high+low signed yields
+agree with the shared baseline. Baseline and high-category spectrum totals agree
+with the templates. Model metadata confirms the displayed seed-42 epochs and
+thresholds; template counts and spectrum fractions confirm the displayed values.
+Training/validation counts were not present in consumed aggregates and are no
+longer imported from historical tables. No event payload or raw ROOT data was
+read or hashed, and no scientific stage was rerun.
+
+The table uses all five representations at seeds 42–44. Ratios are computed from
+unrounded template yields, then reduced-minus-ABCD differences are computed
+within each seed before taking medians and minimum–maximum ranges. Plot points
+show each seed, diamonds their medians and segments their ranges, not confidence
+intervals. Removing C worsens all three basic metrics in each of these three
+seeds; other deletions have mixed effects. This is descriptive, not a significance
+claim or a universal feature ranking. Exploratory qualification is unchanged.
+
+The source-independent build uses three publication PDFs in
+`figures/basic-20261108/`. Two are verified copies of this rerun's spectra; the
+third is the derived deletion plot. Historical `figures/draft001/` assets remain
+unchanged. Use the corresponding LuaLaTeX build command above; no local run is needed to compile.
+The local tools are in `/Users/xulei/Library/TinyTeX/bin/universal-darwin`, already
+configured for login terminals. Aggregate calculations use Python 3.12.13 in
+`pytorch`, NumPy and Matplotlib; builds use TeX Live 2026 and latexmk 4.88.
+
+### Reading order and editorial verification
+
+The report now has seven chapters: research purpose; samples and selection;
+feature groups and the neural network; metrics and the ABCD/BCD worked example;
+all five representations and deletion results; mass spectra; conclusions and
+limitations. The complete comparison follows the worked example, and the deletion
+plot is followed immediately by a group-by-group interpretation. The main text
+retains the MLP structure and layer explanations, with a compact feature overview.
+Implementation APIs and reproduction details are in the appendices.
+
+The report explains signed group-level MC standard errors and the identity
+`S/B = (S0/B0) * (RS/RB)`. An appendix gives the covariance-aware retention-error
+formula and spectrum support flags. Spectrum captions now correctly describe
+standard-error bars and circular markers. Historical interval details remain in
+[DRAFT001-EVIDENCE.md](DRAFT001-EVIDENCE.md) and its references, with only a short
+historical summary in this report. Source metadata is recorded once in the source
+appendix and in [BASIC-20261108-EVIDENCE.md](BASIC-20261108-EVIDENCE.md).
+
+The six current-result table bodies (population, group counts, yields/errors,
+all fifteen models, twelve contrasts and mass-region fractions) and all three
+figure hashes were checked unchanged. The retention-error formula agrees with
+all four existing spectrum aggregates. This is an editorial and aggregate
+consistency check; it does not rerun or requalify the scientific analysis.
+The revised 16-page Chinese PDF compiles without warnings or overfull/underfull boxes.
+A page overview and full-page views of the revised examples, interpretation and
+appendices were checked without observed clipping or overlap.
+
 ## Current files
 
 - [main.tex](main.tex): manuscript, abstract, methods, results and references.
@@ -87,7 +155,7 @@ Choose the corresponding `.tex` file explicitly as the editor's build target.
 - `figures/draft001/`: two verified PDF figures copied from the immutable report.
 
 The two figure PDFs are tracked publication assets and are included in a clean
-checkout. They are copied byte-for-byte from `runs/h4l-draft-v2-draft001/report/`
+checkout. They were copied byte-for-byte from the historical `runs/h4l-draft-v2-draft001/report/`
 after checking their sizes and SHA-256 hashes against the bound manifest and
 the evidence index. Ordinary compilation uses the tracked copies and does not
 require `runs/`. Other generated figures and build outputs remain ignored.

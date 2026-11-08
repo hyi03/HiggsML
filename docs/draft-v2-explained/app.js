@@ -4,12 +4,12 @@
   const {slides,t,en} = DraftContent;
   const $ = selector => document.querySelector(selector);
   const count = slides.length;
-  const sourceLink = slide => `<a href="../../paper/draft-v2/${slide.sourceFile || 'main.tex'}" target="_blank" rel="noopener">${slide.source}</a>`;
-  $('#deck').innerHTML = slides.map((s,i) => `<section class="slide" id="slide-${i+1}" aria-labelledby="title-${i+1}"${i?' hidden':''}><header class="slide-header"><p class="section-label">${s.chapter}${s.supervisorRelated?` <span class="supervisor-badge">${t('导师要求 · 直接回应','Supervisor request · Direct response')}</span>`:''}</p><${i?'h2':'h1'} id="title-${i+1}">${s.title}</${i?'h2':'h1'}><p class="lead">${s.lead}</p></header><div class="slide-content"><div class="slide-body" tabindex="0" aria-label="${t('本页图表与要点','Figures and key points')}">${s.body}</div><div class="slide-explanation" role="region" tabindex="0" aria-label="${t('本页讲解','Explanation for this slide')}">${s.notes}</div></div><footer class="slide-footer"><span>${sourceLink(s)}</span><span>${t('draft001 · 探索性 MC 结果','draft001 · Exploratory MC results')} · ${String(i+1).padStart(2,'0')} / ${count}</span></footer></section>`).join('');
+  const sourceLink = slide => `${t('当前基础报告','Current basic report')}: <a href="../../paper/draft-v2/${slide.sourceFile || 'project-report-cn.tex'}" target="_blank" rel="noopener">${slide.source}</a>`;
+  $('#deck').innerHTML = slides.map((s,i) => `<section class="slide" id="slide-${i+1}" aria-labelledby="title-${i+1}"${i?' hidden':''}><header class="slide-header"><p class="section-label">${s.chapter}${s.supervisorRelated?` <span class="supervisor-badge">${t('导师要求 · 直接回应','Supervisor request · Direct response')}</span>`:''}</p><${i?'h2':'h1'} id="title-${i+1}">${s.title}</${i?'h2':'h1'}><p class="lead">${s.lead}</p></header><div class="slide-content"><div class="slide-body" tabindex="0" aria-label="${t('本页图表与要点','Figures and key points')}">${s.body}</div><div class="slide-explanation" role="region" tabindex="0" aria-label="${t('本页讲解','Explanation for this slide')}">${s.notes}</div></div><footer class="slide-footer"><span>${sourceLink(s)}</span><span>${t('draft001 · 论文显示精度 · 探索性','draft001 · Manuscript display precision · Exploratory')} · ${String(i+1).padStart(2,'0')} / ${count}</span></footer></section>`).join('');
   $('#page').max = count;
   $('#page-count').textContent = count;
   $('#toc-title').textContent = t(`${count} 页学习路线`,`${count}-slide learning route`);
-  $('#toc-list').innerHTML = slides.map((s,i) => `<li><a href="#slide-${i+1}"><span>${String(i+1).padStart(2,'0')}</span>${s.title}</a></li>`).join('');
+  $('#toc-list').innerHTML = slides.map((s,i) => `<li><a href="#${s.id}"><span>${String(i+1).padStart(2,'0')}</span>${s.title}</a></li>`).join('');
 
   function showModel(model) {
     const omitted = [...'ABCD'].find(g => !model.includes(g));
@@ -27,35 +27,31 @@
   $('#median-example').addEventListener('change',showMedian);
   showMedian();
 
-  const number = value => Number(value).toFixed(6);
-  const sign = value => (value >= 0 ? '+' : '−') + Math.abs(value).toFixed(6);
+  const number = (v,d=3) => Number(v).toFixed(d);
+  const sign = (v,d=3) => (v>=0?'+':'−')+Math.abs(v).toFixed(d);
+  const median = a => [...a].sort((x,y)=>x-y)[1];
   function showContrast() {
-    const group = $('#removed-group').value;
-    const row = DraftResults.summary.contrasts.find(r => r.removed_group === group);
-    const full = DraftResults.summary.rows.find(r => r.subset === 'ABCD');
-    const reduced = DraftResults.summary.rows.find(r => r.subset === row.reduced);
-    const deltaMedian = reduced.median - full.median;
-    $('#contrast-output').innerHTML = `<div class="comparison-formula">ΔW<sub>${group}</sub>(k) = W₆₈(${row.reduced}, k) − W₆₈(ABCD, k)</div><div class="contrast-seeds">${row.differences.map((v,i)=>`<div><span>Seed ${42+i}</span><strong>${sign(v)}</strong></div>`).join('')}</div><div class="calculation selected"><span>${t('论文规则：配对差值中位数','Manuscript rule: median of paired contrasts')}</span><strong>${sign(row.median_difference)}</strong></div><div class="calculation"><span>${t('另一统计量：宽度中位数之差','Different statistic: difference of width medians')}</span><strong>${sign(deltaMedian)}</strong></div><p class="small">${t('先相减再取中位数；完整精度计算后显示六位小数。','Subtract before taking the median; compute at full precision, then display six decimals.')}</p>`;
+    const group=$('#removed-group').value, metric=$('#contrast-metric').value;
+    const row=DraftManuscript.deltas.find(r=>r.group===group&&r.metric===metric);
+    const reduced=DraftTeaching.reduced(group), d=metric==='Q'?3:2;
+    const values=model=>DraftManuscript.rows.filter(r=>r.subset===model).map(r=>Number(r[metric]));
+    const alternate=median(values(reduced))-median(values('ABCD'));
+    $('#contrast-output').innerHTML=`<p>Δ${metric}: ${reduced} − ABCD ${metric==='Q'?'':'(pp)'}</p><div class="contrast-seeds">${row.values.map((v,i)=>`<div><span>Seed ${42+i}</span><strong>${v}</strong></div>`).join('')}</div><div class="calculation selected"><span>${t('报告配对差值中位数','Recorded median paired contrast')}</span><strong>${row.median}</strong></div><div class="calculation"><span>${t('显示精度下的两组中位数之差','Difference of medians at display precision')}</span><strong>${sign(alternate,d)}</strong></div><p>${t('记录范围','Recorded range')}: ${row.range}. ${t('不是置信区间。','Not a confidence interval.')}</p>`;
   }
-  $('#removed-group').addEventListener('change',showContrast);
+  for(const id of ['removed-group','contrast-metric']) $('#'+id).addEventListener('change',showContrast);
   showContrast();
   function showWidths() {
-    const view = $('#width-seed').value;
-    const index = DraftResults.summary.seeds.indexOf(Number(view));
-    const rows = DraftResults.summary.rows.map(r => ({label:r.subset,value:view === 'median'?r.median:r.widths[index]}));
-    rows.push({label:t('共享参考','Shared reference'),value:DraftResults.summary.inclusive_width});
-    $('#width-output').innerHTML = `<p class="small">${view === 'median' ? t('当前显示：三种子中位数','Current view: three-seed median') : t(`当前显示：种子 ${view}`,`Current view: seed ${view}`)}</p><div class="width-axis"><span>W₆₈ = 0</span><span>1.8</span></div><div class="width-bars">${rows.map((r,i)=>`<div class="width-row${i===5?' reference':''}"><span>${r.label}</span><div class="bar-track"><div style="width:${100*r.value/1.8}%"></div></div><strong>${number(r.value)}</strong></div>`).join('')}</div><p class="small">${t('条长为名义宽度；没有添加差值误差条或种子置信区间。','Bar lengths are nominal widths, without contrast error bars or seed confidence intervals.')}</p>`;
+    const seed=Number($('#width-seed').value),metric=$('#basic-metric').value;
+    const max=metric==='Q'?3:100, d=metric==='Q'?3:2;
+    const rows=DraftManuscript.rows.filter(r=>r.seed===seed);
+    $('#width-output').innerHTML=`<p>Seed ${seed} · ${metric}${metric==='Q'?'':' (%)'}</p><div class="width-axis"><span>0</span><span>${max}</span></div><div class="width-bars">${rows.map(r=>`<div class="width-row"><span>${r.subset}</span><div class="bar-track"><div style="width:${100*Number(r[metric])/max}%"></div></div><strong>${number(r[metric],d)}</strong></div>`).join('')}</div><p>${t('直接显示报告值；没有添加误差条或显著性。','Displays report values without added error bars or significance.')}</p>`;
   }
-  $('#width-seed').addEventListener('change',showWidths);
+  for(const id of ['width-seed','basic-metric']) $('#'+id).addEventListener('change',showWidths);
   showWidths();
 
   let current = 1;
   const clamp = value => Math.max(1, Math.min(count, Number.isFinite(value)?Math.round(value):1));
-  const fromHash = () => {
-    const match = location.hash.match(/^#slide-(\d+)$/);
-    const namedAnchors = {'#differences':25,'#widths':23,'#contrasts':25,'#spectra':17,'#provenance':30};
-    return match ? clamp(Number(match[1])) : namedAnchors[location.hash] || current;
-  };
+  const fromHash = () => DraftTeaching.pageFromHash(slides, location.hash, current);
   function render() {
     current = fromHash();
     document.querySelectorAll('.slide').forEach((s,i) => {s.hidden = i+1!==current;});

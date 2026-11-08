@@ -18,3 +18,10 @@ figures/draft001/*
 project-report.pdf
 project-report-cn.pdf
 project-report-B-cn.pdf
+
+# Publication assets for the verified 8 November basic comparison.
+!figures/basic-20261108/
+figures/basic-20261108/*
+!figures/basic-20261108/mass-yields.pdf
+!figures/basic-20261108/mass-shapes.pdf
+!figures/basic-20261108/deletion-differences.pdf

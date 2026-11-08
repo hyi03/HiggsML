@@ -1,107 +1,82 @@
-# Draft-v2 explained: completed draft001 study
+# Draft-v2 explained: basic selection metrics
 
-Open [Chinese](index.html) or [English](index-en.html). Both editions contain
-32 aligned slides explaining the current [manuscript](../../paper/draft-v2/main.tex)
-and its completed controlled-MC run `h4l-draft-v2-draft001`.
-Double-click either HTML file; no installation, server or internet is needed.
-Keep this directory and its local assets together, in their repository location
-for source links. Language switching preserves the slide number.
+Open [Chinese](index.html) or [English](index-en.html) directly in a browser.
+Both editions have 40 aligned slides following the seven chapters of the updated
+[Chinese basic report](../../paper/draft-v2/project-report-cn.tex), dated
+8 November 2026. The intended audience is advanced physics undergraduates and
+readers who need an introduction to the ML method. No server, local runs,
+ignored asset bundle, installation or internet is required.
 
 ## Reading route
 
-| Slides | Topic |
+| Slides | Report topic |
 |---|---|
-| 1–3 | Research question, physical channel and conditional ablations |
-| 4–8 | Two MC members, common selection, signed weights, event groups and 60/20/20 allocation |
-| 9–15 | Executed workflow, input groups, training, validation median and common freeze |
-| 16–19 | Actual final-evaluation yields, signed spectra, normalized shapes and support warnings |
-| 20–28 | Two-category T1 model, Asimov intervals, all widths and within-seed contrasts |
-| 29–32 | Completeness, provenance, qualifications, outstanding evidence and takeaways |
+| 1–4 | Purpose, conditional deletions, roadmap and physical channel |
+| 5–10 | Samples, baseline selection, weights, grouped errors and data roles |
+| 11–18 | Features, MLP architecture, loss, AUC checkpoints, threshold and freeze |
+| 19–23 | Retentions, signal/background ratio, units and ABCD/BCD worked example |
+| 24–32 | All fifteen models, twelve contrast rows, interactions, deletion plot and C/A/B/D interpretation |
+| 33–36 | Yields/errors, absolute spectra, normalized shapes and support limits |
+| 37–40 | Qualifications, identities, outstanding evidence and conclusions |
 
-The toolbar opens [width results](index-en.html#slide-23) or
-[mass spectra](index-en.html#slide-17) directly. The full source mapping is shown
-in each slide footer. Manuscript Tables I–IV and Figures 1–3 are referenced by
-their current REVTeX numbering.
+The toolbar opens [all basic metrics](index.html#all-results) or
+[mass spectra](index.html#spectra). Semantic links follow slide IDs; numeric
+navigation uses the current order. Language switching preserves the current page.
+Four existing interactions now teach input dimensions, weighted medians,
+seed/metric comparisons and paired contrasts. The report's five-event artificial
+threshold example gives t=0.80 and 60% high-side absolute weight; it is the default
+teaching example. The grouped-weight arithmetic remains explicitly artificial.
 
-The previous unexecuted-proposal/historical-illustration presentation was replaced
-as a whole. Its local snapshot is preserved at
-`var/paper-evidence/draft-v2-explained-before-draft001-20261029/`.
-Historical values and images are not loaded by the current site. The separate
-[historical manuscript archive](../../paper/draft-v2-history/README.md) remains intact.
+Supervisor-request links and badges cover slides 33–36. They connect before/after
+yields, simulated signal/background location, shape redistribution and interpretation
+limits. They do not claim supervisor approval or new scientific validation.
 
-## Supervisor-request guide
+## Current results and provenance
 
-The overview links directly to slides 16–19. Each of those slides carries a
-“Supervisor request · Direct response” badge and an explanation inside the
-existing slide card of how it answers the recorded request:
+The current report artifact is
+`a7e610a163e5d155705014201b7ee330323e3bf69309e0e89b2496edba5d4317`, documented in
+[BASIC-20261108-EVIDENCE.md](../../paper/draft-v2/BASIC-20261108-EVIDENCE.md).
+The shared run-directory name `h4l-draft-v2-draft001` does not identify the historical
+`9aab6d…` artifact. Source identities, current PDFs and numerical tables are bound
+separately; old interval/supplement values are not inputs or validation for this report.
 
-- Slide 16: common before/after population, frozen cuts and retained yields (Table III).
-- Slide 17: simulated signal near 125 GeV, broad background and direct before/after spectra (Figure 2).
-- Slide 18: separately normalized shape changes, distinguishing redistribution from yield reduction (Figure 3).
-- Slide 19: low-support and signed-weight limits on interpreting the spectra.
+Compare R_S, R_B and Q=S/B together at each model's frozen working point.
+Removing C lowers signal retention, raises background retention and lowers Q for
+all three seeds; A/B/D involve tradeoffs or seed dependence. All fifteen models
+and all twelve metric/removed-group contrast rows remain visible. Retention
+contrasts use percentage points; Q contrasts are direct differences. Min/max seed
+segments are not confidence intervals, and no contrast significance is established.
 
-Slide 20 connects these diagnostics to the two-category likelihood. The main
-objective and W68 metric remain unchanged. These labels map the recorded request
-to existing manuscript content; they do not claim supervisor approval or new
-scientific validation. Both language editions contain the same guide.
+`manuscript-data.js` transcribes report display cells: yields to four decimals,
+percentages/percentage-point differences to two, Q/Q differences to three.
+Paired medians and ranges come directly from the contrast table, not from
+subtracting rounded cells. No full-precision aggregates or covariance are inferred.
+The three original PDF figures are embedded from `figures/basic-20261108/`, with
+links to open them separately if inline PDF viewing is unsupported.
 
-## Results and scope
+Qualification remains `exploratory_posthoc`, `independent=false`,
+`selection_aware_coverage=unvalidated`, `primary_claim_eligible=false`.
+This educational/technical controlled-MC study is not an official ATLAS/CMS result,
+a Higgs discovery or a physics measurement. The report also retains the source
+collection's educational-use restriction.
 
-Five representations (ABCD, BCD, ACD, ABD and ABC) are separately trained for
-seeds 42–44, giving fifteen models. All controlled 2020 MC from DSIDs 345060 and
-363490 enters the common selection, including historical test events. Deterministic
-physical-group assignment uses 60% training, 20% validation and 20% final evaluation.
-Validation-background absolute-weight medians fix the cuts before the common freeze.
-Both score categories enter T1 in one half-open mass interval [105,140) GeV.
-
-All fifteen model intervals and the one shared inclusive-count reference are
-numerically valid. Median W68 is 1.464392 for ABCD and 1.452977 for ABC; the shared
-reference is 1.638845. Removing C widens all three intervals. A, B and D have
-mixed-sign seed contrasts. Differences are computed within seed before taking
-their median; the ACD example demonstrates why this order matters.
-
-These nominal model-self Asimov comparisons remain `exploratory_posthoc`,
-`independent=false`, `selection_aware_coverage=unvalidated` and
-`primary_claim_eligible=false`. Seed spreads are not confidence intervals.
-The analysis does not establish a confirmed precision improvement, a resolved
-mass-peak-fit gain, an official ATLAS/CMS result, a Higgs discovery or a measurement.
-No bootstrap, Toys, T2, Shapley, CDF or adversarial results are added.
-
-## Controls and interactions
-
-- Previous/Next, arrow keys, PageUp/PageDown, Space, Home/End and the slide-number
-  input navigate the deck. Browser back/forward follows slide history.
-- Contents opens a keyboard-accessible dialog; language switching keeps the slide.
-- Desktop cards combine figures/key points with explanations in adjacent scrollable
-  panes. Mobile uses continuous reading; tables can scroll horizontally.
-- Four interactions inspect model dimensions, teach weighted-median ties using
-  explicitly artificial examples, compare actual seed widths, and compute actual
-  paired contrasts versus the different statistic of subtracting width medians.
-- Print includes all 32 slides and their explanations. Long content can continue
-  across printed pages. Fullscreen uses the browser API.
-- Click either spectrum to open the original report image at full resolution.
-
-The browser only reads bundled scripts and images. There are no fetch calls,
-accounts, analytics, persistent storage, model payloads or event files.
-
-## Sources, synchronization and checks
-
-[Source notes](SOURCE-NOTES.md) record the selected report, aggregate checks,
-file hashes and interpretation limits. `results-data.js` contains verified report
-aggregates; `assets/` contains unchanged PNGs and full-precision CSV downloads.
-These local generated files remain ignored and must accompany the offline site.
-`content.js` is the bilingual narrative, `teaching.js` supplies deterministic
-teaching helpers, and `app.js` implements navigation and interactions.
-
-To recreate local assets from the already completed report:
+## Checks and maintenance
 
 ```sh
-conda run -n pytorch python docs/draft-v2-explained/tools/sync-results.py
 node docs/draft-v2-explained/tools/check.mjs
 ```
 
-Synchronization checks complete aggregate stages and their bound files. It does
-not read events/checkpoints, train, score, fit or create an access claim.
-It rejects a different report identity or changed existing assets.
+Default checks evaluate both complete editions, compare all metric/contrast cells
+with the current report, verify source identities and current PDF hashes, check
+translations, links, navigation, teaching examples and LF endings.
+`--source-only` runs the smaller script/resource/teaching check.
 
-See [verification](VERIFICATION.md) for executed checks and their limits.
+These are report/source consistency checks, not a new audit of original run
+aggregates, event payloads or scientific validity. See [source notes](SOURCE-NOTES.md)
+and [verification](VERIFICATION.md) for exact scope and browser checks.
+
+Historical `supplement-data.js` and `tools/sync-results.py` retain their original
+source meanings. Neither is loaded or executed by the current page. The old
+synchronizer remains pinned to the historical artifact and must not be used to
+populate this basic report. Historical statistical methods are briefly identified
+on the provenance slide, as in the report's final appendix.

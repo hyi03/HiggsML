@@ -8,3 +8,8 @@
 
 /* Supervisor-request mapping stays inside the existing slide card. */
 .supervisor-badge{display:inline-block;margin-left:10px;padding:3px 8px;border:1px solid #b9d9ce;border-radius:4px;background:#edf7f2;color:#215f4d;font-size:12px;letter-spacing:0;vertical-align:middle}.supervisor-response{border-left:3px solid #43866c;background:#f2f8f5;padding:12px 14px;margin:0 0 18px}.supervisor-response h3{margin-top:0}.supervisor-response p:last-child{margin-bottom:0}@media(max-width:800px){.supervisor-badge{margin:6px 0 0;display:table}}
+
+/* The committed PDF figures keep offline viewing independent of ignored PNG copies. */
+.spectrum-figure object{width:100%;flex:1;min-height:320px;border:0}
+@media(max-width:800px){.spectrum-figure object{height:370px;min-height:0;display:block}}
+@media print{.spectrum-figure object{height:500px;flex:none}}

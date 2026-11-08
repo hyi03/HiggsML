@@ -1,48 +1,69 @@
-# Draft001 explanation: sources and limits
+# Basic report explanation: sources and limits — 8 November 2026
 
-The source is the current `paper/draft-v2/main.tex`, its workflow, numerical
-and spectrum inputs, and the completed report
-`runs/h4l-draft-v2-draft001/report/`. This is a new three-subset analysis, not a
-projection of historical test05 results.
+## Current source
 
-Selected report artifact:
-`9aab6d274a3e2d00d892c2d8fbf89b1e46f5b7a95d0bf0c085af90672ea36898`.
+Both language editions follow `paper/draft-v2/project-report-cn.tex`, especially
+its fifteen-row basic metric table, twelve-row paired-contrast table, worked
+yield/error example and seven-chapter reading order. The main figures come from
+`paper/draft-v2/figures/basic-20261108/`. The evidence index is
+`paper/draft-v2/BASIC-20261108-EVIDENCE.md`.
 
-Its evaluation, freeze and prepared bindings are respectively:
+| Binding | Current identity |
+|---|---|
+| Report | `a7e610a163e5d155705014201b7ee330323e3bf69309e0e89b2496edba5d4317` |
+| Evaluation | `2e7995da1e9e27f239551acc05cd9b94f97e4f56297bf3cabdbdf96b9044efaf` |
+| Freeze | `c3b15bf87e37b132a542cb3a4dbc7d3d936680ed2691f6b51391a90b7851e12b` |
+| Prepared | `566a4493bfaf9f34b48c7e1671cfc9dacc5dcd6bf4915efd035815ceec76a40c` |
 
-- `01df03a5ea98bb098f6e3c2069fee50a17c67d06e53a1bd84003b1d6680aa324`
-- `f93ef041a9d32120fcaa1af0272d1a2af00484d5e08a50cafccaf457f6a60e8d`
-- `23c0e583716df4efdeb80654409aabc106661063ff765765712cab411e320953`
+The browser's `manuscript-data.js` records these identities and source-file SHA-256
+hashes. Default checks compare displayed cells to the report and verify all three
+PDF hashes against the current evidence record. This verifies transcription and
+publication assets, not original run integrity. The evidence index describes
+its own earlier checks; this synchronization does not claim to repeat them.
 
-The synchronizer verifies report-file sizes and SHA-256 hashes, the explicit
-report selection, completed upstream identities, freeze-file binding and equality
-of report/evaluation summary, interval and spectrum aggregates. It recomputes all
-median widths, twelve within-seed differences and their four medians. It requires
-all sixteen numerical terminals and preserves the non-independent qualification.
-The local projection includes consumed-file hashes and full grouped spectrum
-statistics, including before/after and normalized-shape covariance.
+## Numeric representation and interpretation
 
-Images are byte-for-byte copies of `mass-yields.png` and `mass-shapes.png` in the
-report; no schematic distributions or mass peaks are manufactured. CSV downloads
-likewise preserve original bytes. The signal/background group counts are 9,049
-and 698. Display yields refer to 10 fb^-1 with evaluation weight normalization
-`physical_weight / 0.2`, not MC row counts. Seven 5 GeV display bins differ from
-the one mass bin used by the likelihood.
+Yields retain four decimals, retention percentages and percentage-point contrasts
+two, and Q/Q contrasts three. The site displays the recorded paired differences,
+medians and ranges directly. The alternative difference-of-medians widget uses
+rounded displayed metric values and is labelled accordingly; it does not recover
+unrounded results. Regional fractions retain one percentage decimal.
 
-The projection preserves three-seed order 42, 43, 44. It does not interpret seed
-variation as a confidence interval. The median-contrast widget calculates the
-specified paired statistic from full-precision values. The weighted-median widget
-uses separate hand-authored nonnegative-weight examples, explicitly labelled as
-teaching arithmetic rather than measured MC results.
+Error cells are fixed-model/cut grouped MC standard errors. Sum contributions
+inside a physical group, square each group's sum, then sum and take the square
+root. Retention errors additionally include shared numerator/denominator event
+covariance. No new error bars or significance tests are fitted for deletion
+contrasts. Seed min/max segments are not confidence intervals. Negative yields
+and unsupported bins remain visible; no clipping or smoothing is performed.
 
-Scientific qualification stays `exploratory_posthoc`, `independent=false`,
-`selection_aware_coverage=unvalidated`, `primary_claim_eligible=false`. All-MC
-source reuse includes historical test events. Repartitioning does not restore
-independence. Template uncertainty within T1 does not calibrate all width contrasts,
-threshold selection or whole-procedure coverage.
+Source ROOT metadata counts (164,716 signal, 554,279 background) and evaluation
+physical-group counts (9,049, 698) are different counting units. Neither a complete
+cutflow nor one-to-one entry/group correspondence is established. Training and
+validation group counts are absent from current consumed aggregates and are not
+filled from old records. The spectra show only ABCD/BCD at seed 42 and cannot
+identify C's internal mechanism or explain all deletions.
 
-This documentation task opens only completed aggregate files. It performs no
-training, scoring, fitting, bootstrap, Toy, T2, Shapley, CDF or adversarial execution,
-and reads no event or checkpoint payload. Website and arithmetic checks are not
-independent physics validation. The manuscript's
-[evidence record](../../paper/draft-v2/DRAFT001-EVIDENCE.md) supplies further context.
+## Same directory name, different artifacts
+
+The historical nominal report `9aab6d…` and validation001 supplement `0e9551…`
+retain the meanings documented in `DRAFT001-EVIDENCE.md`. They studied interval
+widths and model-self diagnostics without establishing independent coverage
+calibration. They are not current basic-metric inputs or validation. The current
+page does not load `supplement-data.js`; the old synchronizer remains pinned to
+its original report and does not refresh the current display transcription.
+Historical figures in `figures/draft001/` are not referenced by current slides.
+
+## Scientific boundary
+
+No ROOT/events/checkpoints or original run aggregate payloads were read, hashed,
+trained, scored or fitted for this synchronization. Only repository report text,
+evidence records and publication figures were consumed. No scientific stage was
+run and no contract or run evidence was changed.
+
+Results remain `exploratory_posthoc`, `independent=false`,
+`selection_aware_coverage=unvalidated`, `primary_claim_eligible=false`.
+The study uses two controlled educational MC members, not collision data.
+Repartitioning does not restore independence. No significance, precision gain,
+independent feature contribution or universal best subset is established.
+The collection's educational-use/publication restriction and unconfirmed production,
+release-selection and some external-cut/weight details remain explicit in the report.
