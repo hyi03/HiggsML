@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "t1_validation_v2.schema.json",
+  "title": "H4l T1 software contract checks v2 (no scientific qualification)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "dataset",
+    "protocol_sha256",
+    "evidence_id",
+    "independent_reference",
+    "correlation",
+    "auxiliary",
+    "modifier",
+    "pyhf_version",
+    "validation_summary",
+    "qualification"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "h4l-t1-validation-v2"
+    },
+    "status": {
+      "const": "contract_checked"
+    },
+    "dataset": {
+      "const": "atlas2020_4lep"
+    },
+    "protocol_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "evidence_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "independent_reference": {
+      "type": "null"
+    },
+    "correlation": {
+      "const": "independent_process_bins"
+    },
+    "auxiliary": {
+      "const": "poisson_tau_gamma"
+    },
+    "modifier": {
+      "const": "shapesys"
+    },
+    "pyhf_version": {
+      "const": "0.7.6"
+    },
+    "validation_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewed_by",
+        "reviewed_at",
+        "numerical_tests"
+      ],
+      "properties": {
+        "reviewed_by": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reviewed_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "numerical_tests": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "contract_checked",
+        "source_audited",
+        "independent_numerical_validation",
+        "physical_applicability",
+        "confirmatory_eligibility"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "h4l-evidence-qualification-v2"
+        },
+        "contract_checked": {
+          "const": true
+        },
+        "source_audited": {
+          "const": false
+        },
+        "independent_numerical_validation": {
+          "const": false
+        },
+        "physical_applicability": {
+          "const": false
+        },
+        "confirmatory_eligibility": {
+          "const": false
+        }
+      }
+    }
+  }
+}

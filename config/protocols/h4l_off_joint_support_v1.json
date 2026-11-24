@@ -1,0 +1,38 @@
+{
+  "method_id": "h4l-off-joint-support-v1",
+  "quantile_numerators": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+  ],
+  "quantile_denominator": 20,
+  "selection_order": "abs(k-10),k",
+  "weights": {
+    "calibration": "physical_weight",
+    "template": "yield_weight"
+  },
+  "min_rho": 0.2,
+  "min_neff_signed": 20,
+  "mass_edges": [
+    105,
+    140
+  ],
+  "failure_policy": "no_feasible_joint_threshold",
+  "rng_policy": "h4l-off-joint-support-rng-v1"
+}

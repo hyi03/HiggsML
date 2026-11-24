@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "p0_validation_v2.schema.json",
+  "title": "H4l P0 software contract checks v2 (no scientific qualification)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "dataset",
+    "protocol_sha256",
+    "source_evidence_sha256",
+    "evidence_id",
+    "independent_reference",
+    "physical_definitions",
+    "qualification"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "h4l-p0-validation-v2"
+    },
+    "status": {
+      "const": "contract_checked"
+    },
+    "dataset": {
+      "const": "atlas2020_4lep"
+    },
+    "protocol_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "source_evidence_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "evidence_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "independent_reference": {
+      "type": "null"
+    },
+    "physical_definitions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "processes",
+        "units",
+        "four_vectors",
+        "pairing",
+        "weights",
+        "selection"
+      ],
+      "properties": {
+        "processes": {
+          "$ref": "#/$defs/definition"
+        },
+        "units": {
+          "$ref": "#/$defs/definition"
+        },
+        "four_vectors": {
+          "$ref": "#/$defs/definition"
+        },
+        "pairing": {
+          "$ref": "#/$defs/definition"
+        },
+        "weights": {
+          "$ref": "#/$defs/definition"
+        },
+        "selection": {
+          "$ref": "#/$defs/definition"
+        }
+      }
+    },
+    "qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "contract_checked",
+        "source_audited",
+        "independent_numerical_validation",
+        "physical_applicability",
+        "confirmatory_eligibility"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "h4l-evidence-qualification-v2"
+        },
+        "contract_checked": {
+          "const": true
+        },
+        "source_audited": {
+          "const": false
+        },
+        "independent_numerical_validation": {
+          "const": false
+        },
+        "physical_applicability": {
+          "const": false
+        },
+        "confirmatory_eligibility": {
+          "const": false
+        }
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reference"
+      ],
+      "properties": {
+        "status": {
+          "const": "contract_checked"
+        },
+        "reference": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "validated_definition": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "const": "validated"
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

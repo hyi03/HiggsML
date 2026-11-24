@@ -1,0 +1,15 @@
+/* English typography uses the shared slide layout and responsive/print rules. */
+@media screen and (min-width:801px){
+  .slide h1{font-size:3.8cqw}.slide h2{font-size:2.8cqw}.lead{font-size:1.36cqw}
+  .slide-body{font-size:1.35cqw;line-height:1.55}.slide-body h3{font-size:1.55cqw}
+  .callout{font-size:1.22cqw}.step strong{font-size:1.32cqw}.step span{font-size:1.1cqw}
+  .feature-item p{font-size:1.2cqw}.result-line{font-size:1.25cqw}
+  .navigation>span{max-width:180px}.slide-footer{font-size:.85cqw}
+}
+@media(max-width:800px){.toolbar nav{flex-wrap:wrap}.slide h2{font-size:27px}.slide-body{line-height:1.6}}
+@media print{
+  .slide h1{font-size:3.8cqw}.slide h2{font-size:2.8cqw}.lead{font-size:1.36cqw}
+  .slide-body{font-size:1.35cqw;line-height:1.55}.slide-body h3{font-size:1.55cqw}
+  .callout{font-size:1.22cqw}.step strong{font-size:1.32cqw}.step span{font-size:1.1cqw}
+  .feature-item p{font-size:1.2cqw}.result-line{font-size:1.25cqw}.slide-footer{font-size:.85cqw}
+}

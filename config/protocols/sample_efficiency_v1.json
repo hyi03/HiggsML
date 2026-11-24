@@ -1,0 +1,71 @@
+{
+  "schema_version": "h4l-sample-efficiency-protocol-v1",
+  "protocol_id": null,
+  "base_research_protocol_sha256": null,
+  "prepared_artifact_id": null,
+  "population_id": null,
+  "compact_candidate_freeze_artifact_id": null,
+  "compact_candidate_freeze_sha256": null,
+  "representations": null,
+  "sample_fractions": null,
+  "sample_draw_seeds": null,
+  "network_seeds": [42, 43, 44, 45, 46],
+  "subset_algorithm": {
+    "id": "stratified_group_sha256_prefix_v1",
+    "unit": "event_group_id",
+    "stratify_by": "label",
+    "hash": "sha256",
+    "rounding": "floor_per_label",
+    "nesting": "shared_sorted_prefix",
+    "full_endpoint": "single_full_identity",
+    "min_groups_per_label": null,
+    "min_effective_count": null
+  },
+  "primary_metric": {"id": "W68_Asimov_mu1_T1", "direction": "lower_is_better", "transform": "raw"},
+  "pairing_keys": ["sample_fraction", "sample_draw_seed_or_full", "network_seed", "architecture_variant"],
+  "template_policy": "batch_common_mass_grid_v1",
+  "noninferiority": {
+    "delta_w68": null,
+    "delta_source": null,
+    "confidence_level": null,
+    "ci_algorithm": "paired_event_group_percentile_v1",
+    "interval": "two_sided_equal_tailed",
+    "bootstrap_unit": "event_group_id",
+    "bootstrap_replicates": null,
+    "bootstrap_seed": null,
+    "decision": "upper_ci_le_delta"
+  },
+  "evaluation_uncertainty": {
+    "method": "paired_event_group_bootstrap_v1",
+    "role": "validation",
+    "replicates": null,
+    "seed": null,
+    "unit": "event_group_id",
+    "metric": "absolute_weight_auc"
+  },
+  "calibration_uncertainty": {"method": "not_estimated", "replicates": 0, "seed": null},
+  "capacity_control": {
+    "enabled": null,
+    "architecture_variant": "match_engineered19_parameter_count_v1",
+    "width_rule": "nearest_positive_integer_ties_lower_5568_over_d_plus_67",
+    "sample_fractions": null,
+    "network_seeds": null
+  },
+  "cdf_check": {"enabled": null, "transform": "physical", "representations": null, "sample_fractions": null},
+  "quality_target": {"enabled": null, "w68": null, "interpolation": "observed_monotone_linear_no_extrapolation_v1"},
+  "assessment_access": {
+    "discovery": "forbidden",
+    "learning_curve": "forbidden",
+    "confirmation": "independent_population_claim_before_decode",
+    "claim_namespace": "h4l-sample-efficiency-confirmation-v1",
+    "repeat": "same_freeze_explicit_only"
+  },
+  "failure_policy": {
+    "failed_cells": "retain",
+    "redraw": false,
+    "impute": false,
+    "missing_pair": "paired_cell_missing",
+    "incomplete_ledger": "learning_curve_incomplete",
+    "unknown_exception_exit_code": 70
+  }
+}

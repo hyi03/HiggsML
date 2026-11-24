@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="33 页交互讲解：从信号强度 μ、区间与宽度入门，读懂 HiggsML 的特征组合排名、Shapley 贡献与统计验证。">
+  <title>从模拟事件到特征组比较 · HiggsML 论文讲解</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="data.js"></script>
+  <script defer src="math.js"></script>
+  <script defer src="visuals.js"></script>
+  <script defer src="content.js"></script>
+  <script defer src="widgets.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#deck">跳到幻灯片</a>
+  <header class="toolbar">
+    <a class="brand" href="#slide-1">HiggsML <span>论文图解</span></a>
+    <nav aria-label="演示工具">
+      <a class="language-link" id="language-link" data-target="index-en.html" href="index-en.html" lang="en" hreflang="en" aria-label="切换到英文版">English</a>
+      <button id="toc-button" aria-haspopup="dialog">目录</button>
+      <button id="notes-button" aria-expanded="true" aria-controls="notes">详细讲解</button>
+      <button id="full-button">全屏</button>
+      <button id="print-button">打印</button>
+    </nav>
+  </header>
+  <main id="deck" tabindex="-1" aria-label="论文讲解幻灯片"></main>
+  <footer class="navigation">
+    <button id="prev" aria-label="上一页">← 上一页</button>
+    <label class="page-control">第 <input id="page" type="number" min="1" max="33" value="1" aria-label="跳转页码"> / <span id="page-count">33</span> 页</label>
+    <button id="jump">跳转</button>
+    <span id="chapter-status"></span>
+    <button id="next" aria-label="下一页">下一页 →</button>
+  </footer>
+  <aside id="notes" aria-label="本页详细讲解"></aside>
+  <div class="progress" aria-hidden="true"><div id="progress-fill"></div></div>
+  <div id="announcement" class="sr-only" aria-live="polite"></div>
+  <dialog id="toc" aria-labelledby="toc-title"><header><h2 id="toc-title">33 页学习路线</h2><button id="toc-close" aria-label="关闭目录">关闭</button></header><ol id="toc-list"></ol></dialog>
+  <noscript>请启用 JavaScript 后打开此离线幻灯片。所有脚本均随本目录提供，不需要联网。</noscript>
+</body>
+</html>

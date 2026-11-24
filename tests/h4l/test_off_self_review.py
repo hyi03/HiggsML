@@ -1,0 +1,129 @@
+import json
+import importlib.util
+from pathlib import Path
+import pytest
+
+from higgsml.artifacts import digest_json, sha256_file
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SELF_REVIEW_SCRIPT = PROJECT_ROOT / "scripts" / "h4l_off_self_review.py"
+
+
+def _load_self_review_module():
+    spec = importlib.util.spec_from_file_location(
+        "h4l_off_self_review_test_module", SELF_REVIEW_SCRIPT,
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _write(path: Path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(value), encoding="utf-8")
+
+
+def _stage_b(tmp_path):
+    prepared = tmp_path / "prepared" / "prepare"
+    run = tmp_path / "h4l-off-study"
+    protocol = {"dataset": "atlas2020_4lep", "id": "test"}
+    _write(prepared / "manifest.json", {"artifact_id": "1" * 64})
+    _write(prepared / "p0-validation.json", {"schema_version": "h4l-p0-validation-v1"})
+    _write(run / "register" / "registration.json", {
+        "prepared_artifact_id": "1" * 64,
+        "population_id": "2" * 64,
+        "protocol_sha256": digest_json(protocol),
+    })
+    _write(run / "freeze" / "manifest.json", {"artifact_id": "3" * 64})
+    _write(run / "freeze" / "protocol.json", protocol)
+    _write(run / "freeze" / "freeze.json", {
+        "prepared_artifact_id": "1" * 64,
+        "protocol_sha256": digest_json(protocol),
+    })
+    _write(run / "source-nominal" / "t1-validation.json", {
+        "schema_version": "h4l-t1-validation-v1",
+    })
+    _write(run / "evaluation-plan" / "evaluation-plan.json", {
+        "inputs": {
+            "prepared_artifact_id": "1" * 64,
+            "freeze_artifact_id": "3" * 64,
+        }
+    })
+    return prepared, run
+
+
+def test_generate_default_self_review_binds_current_stage_b(tmp_path):
+    from higgsml.inference.self_review import generate_self_review
+    prepared, run = _stage_b(tmp_path)
+
+    access = generate_self_review(run, prepared, reviewer="Local Researcher")
+
+    review = json.loads(access.read_text(encoding="utf-8"))
+    assert review["review_mode"] == "single_researcher_self_review"
+    assert review["independent"] is False
+    assert review["allowed_conclusions"] == "exploratory_self_reviewed_not_independently_validated"
+    assert review["freeze_artifact_id"] == "3" * 64
+    for key in ("p0_reference", "t1_reference"):
+        receipt = review[key]
+        target = access.parent / receipt["path"]
+        assert receipt == {
+            "path": target.name,
+            "sha256": sha256_file(target),
+            "size_bytes": target.stat().st_size,
+        }
+
+
+def test_self_review_checks_history_before_publishing_unused_claim(tmp_path):
+    from higgsml.inference.self_review import generate_self_review
+    from higgsml.errors import ResearchStateError
+    prepared, run = _stage_b(tmp_path)
+    _write(tmp_path / '.h4l-population-access/old.json', {
+        'population_id': '2' * 64, 'freeze_artifact_id': 'old',
+    })
+    with pytest.raises(ResearchStateError, match='history'):
+        generate_self_review(run, prepared, reviewer='Researcher')
+    assert not (run / 'source-access-review').exists()
+    assert not list(run.glob('*.staging'))
+
+
+def test_new_self_review_records_bounded_history_audit(tmp_path):
+    from higgsml.inference.self_review import generate_self_review, validate_self_review_access
+    from higgsml.errors import ResearchError
+    prepared, run = _stage_b(tmp_path)
+    access = generate_self_review(run, prepared, reviewer='Researcher')
+    review = json.loads(access.read_text())
+    assert review['history_review'] == 'self_reviewed_no_access_in_declared_roots'
+    assert review['history_audit']['roots'] == [str(tmp_path.resolve())]
+    assert review['history_audit']['matches'] == []
+    assert review['independent'] is False
+    validate_self_review_access(review, access.parent)
+    review['history_audit']['matches'] = [{'claim': 'consumed'}]
+    with pytest.raises(ResearchError, match='history'):
+        validate_self_review_access(review, access.parent)
+
+
+def test_self_review_cli_defaults_to_matching_named_prepare_root(
+    tmp_path, monkeypatch,
+):
+    module = _load_self_review_module()
+    observed = {}
+
+    def observe(run_root, prepared, *, reviewer):
+        observed.update(
+            run_root=run_root,
+            prepared=prepared,
+            reviewer=reviewer,
+        )
+        return run_root / "source-access-review" / "validated.json"
+
+    monkeypatch.setattr(module, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(module, "generate_self_review", observe)
+
+    assert module.main(["--run-name", "test02", "--reviewer", "Reviewer"]) == 0
+    assert observed == {
+        "run_root": tmp_path / "runs" / "h4l-off-test02",
+        "prepared": tmp_path / "runs" / "h4l-prepare-test02" / "prepare",
+        "reviewer": "Reviewer",
+    }

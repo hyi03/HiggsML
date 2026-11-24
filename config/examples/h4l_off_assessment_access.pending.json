@@ -1,0 +1,14 @@
+{
+  "schema_version": "h4l-off-assessment-access-v3",
+  "specification_id": "0000000000000000000000000000000000000000000000000000000000000000",
+  "evaluation_plan_id": "0000000000000000000000000000000000000000000000000000000000000000",
+  "blocks": [],
+  "source_review": {
+    "path": "independent-assessment-access.json",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "review_mode": "pending_independent_review",
+  "independent": false,
+  "source_history": [],
+  "access_id": "0000000000000000000000000000000000000000000000000000000000000000"
+}

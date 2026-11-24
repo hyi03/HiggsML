@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="33 interactive slides explaining HiggsML: signal strength, intervals, neural networks, feature-subset comparisons, Shapley values and validation.">
+  <title>From simulated events to feature comparisons · HiggsML</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="en/styles.css">
+  <script defer src="data.js"></script>
+  <script defer src="math.js"></script>
+  <script defer src="en/visuals.js"></script>
+  <script defer src="en/content.js"></script>
+  <script defer src="en/widgets.js"></script>
+  <script defer src="en/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#deck">Skip to slides</a>
+  <header class="toolbar">
+    <a class="brand" href="#slide-1">HiggsML <span>Paper explained</span></a>
+    <nav aria-label="Presentation tools">
+      <a class="language-link" id="language-link" data-target="index.html" href="index.html" lang="zh-CN" hreflang="zh-CN" aria-label="Switch to Chinese">中文</a>
+      <button id="toc-button" aria-haspopup="dialog">Contents</button>
+      <button id="notes-button" aria-expanded="true" aria-controls="notes">Details</button>
+      <button id="full-button">Fullscreen</button>
+      <button id="print-button">Print</button>
+    </nav>
+  </header>
+  <main id="deck" tabindex="-1" aria-label="Paper explanation slides"></main>
+  <footer class="navigation">
+    <button id="prev" aria-label="Previous slide">← Previous</button>
+    <label class="page-control">Page <input id="page" type="number" min="1" max="33" value="1" aria-label="Slide number"> / <span id="page-count">33</span></label>
+    <button id="jump">Go</button>
+    <span id="chapter-status"></span>
+    <button id="next" aria-label="Next slide">Next →</button>
+  </footer>
+  <aside id="notes" aria-label="Detailed explanation for this slide"></aside>
+  <div class="progress" aria-hidden="true"><div id="progress-fill"></div></div>
+  <div id="announcement" class="sr-only" aria-live="polite"></div>
+  <dialog id="toc" aria-labelledby="toc-title"><header><h2 id="toc-title">33-slide learning route</h2><button id="toc-close" aria-label="Close contents">Close</button></header><ol id="toc-list"></ol></dialog>
+  <noscript>Enable JavaScript to view this offline presentation. All scripts are provided locally; no internet connection is required.</noscript>
+</body>
+</html>

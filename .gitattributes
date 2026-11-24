@@ -1,0 +1,14 @@
+* text=auto eol=lf
+
+# Keep common binary artifacts byte-for-byte when they are intentionally tracked.
+*.gz binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.npz binary
+*.pdf binary
+*.png binary
+*.root binary
+*.woff binary
+*.woff2 binary
+*.zip binary
